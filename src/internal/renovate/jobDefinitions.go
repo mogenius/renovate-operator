@@ -2,6 +2,8 @@ package renovate
 
 import (
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
+	"strconv"
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -30,6 +32,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	}
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
+			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
@@ -91,6 +94,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
+			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
@@ -183,4 +187,13 @@ func getServiceAccountName(spec api.RenovateJobSpec) string {
 		return spec.ServiceAccount.Name
 	}
 	return ""
+}
+
+func getJobTimeoutSeconds() *int64 {
+	timeoutString := config.GetValue("JOB_TIMEOUT_SECONDS")
+	val, err := strconv.ParseInt(timeoutString, 10, 64)
+	if err != nil {
+		return ptr.To(int64(1800))
+	}
+	return ptr.To(val)
 }
