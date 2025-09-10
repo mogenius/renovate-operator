@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/mogenius/renovate-operator/compare/1.0.1...1.0.2) (2025-09-10)
+
+
+### Bug Fixes
+
+* issues within the release action & helm chart ([50f2041](https://github.com/mogenius/renovate-operator/commit/50f2041fb8550307a5f21e38ca3b5d61a0ddf9a8))
+
 ## [1.0.1](https://github.com/mogenius/renovate-operator/compare/1.0.0...1.0.1) (2025-09-10)
 
 
