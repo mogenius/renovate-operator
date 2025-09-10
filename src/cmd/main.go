@@ -53,6 +53,18 @@ func main() {
 			Optional: true,
 			Default:  "false",
 		},
+		{
+			Key:      "JOB_TIMEOUT_SECONDS",
+			Optional: true,
+			Default:  "1800",
+			Validate: func(value string) error {
+				_, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return fmt.Errorf("'JOB_TIMEOUT_SECONDS' needs to be an integer: %s", err.Error())
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 

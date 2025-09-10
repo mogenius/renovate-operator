@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -12,6 +13,17 @@ import (
 )
 
 func TestNewDiscoveryJob(t *testing.T) {
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{
+			Key:      "JOB_TIMEOUT_SECONDS",
+			Optional: true,
+			Default:  "1800",
+		},
+	})
+	if err != nil {
+		t.Errorf("expected to initialize config module without error, got %v", err)
+	}
+
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testjob",
