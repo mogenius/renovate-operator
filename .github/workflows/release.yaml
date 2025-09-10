@@ -235,7 +235,8 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            GOPATH=$(go env GOPATH)
+            export GOPATH=$(go env GOPATH)
+            export PATH=$PATH:$GOPATH/bin
 
             echo "Installing controller-gen"
             go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
