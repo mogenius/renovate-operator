@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/mogenius/renovate-operator/compare/1.0.5...1.0.6) (2025-09-10)
+
+
+### Bug Fixes
+
+* pull before commiting changes ([64958cb](https://github.com/mogenius/renovate-operator/commit/64958cb000e30ca1fd49c4ce2faeb15571fe46f5))
+
 ## [1.0.5](https://github.com/mogenius/renovate-operator/compare/1.0.4...1.0.5) (2025-09-10)
 
 
