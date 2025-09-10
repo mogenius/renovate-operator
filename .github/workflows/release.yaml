@@ -249,8 +249,9 @@ jobs:
             helm package -d /tmp/ ./charts/renovate-operator
             curl -XPOST -L -k --data-binary "@/tmp/${{ env.HELMNAME }}-$VERSION.tgz" https://${{ secrets.MO_HELMUSER }}:${{ secrets.MO_HELMPASS }}@helm.mogenius.com/api/public/charts
 
-            git pull --rebase
             git commit -m "chore: update Chart.yaml and documentation for version $VERSION [skip ci]"
+            
+            git pull --rebase
             git push origin main
           fi
    
