@@ -8,8 +8,7 @@ on:
 env:
   IMAGE_NAME: ghcr.io/mogenius/renovate-operator
   DOCKERFILE: Dockerfile
-  HELMNAME: "mogenius-k8s-manager"
-  HELMREPO: "mogenius/helm-k8s-manager"
+  HELMNAME: "renovate-operator"
 
 jobs:
   prepare:
