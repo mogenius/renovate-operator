@@ -230,6 +230,8 @@ jobs:
           sed -i "s/^version:.*/version: $VERSION/" charts/renovate-operator/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: $VERSION/" charts/renovate-operator/Chart.yaml
 
+          git add charts/renovate-operator/Chart.yaml
+
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else

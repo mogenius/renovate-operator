@@ -20,7 +20,7 @@ spec:
       {{- end }}
       containers:
         - name: renovate-operator
-          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.securityContext.container }}
           securityContext:
