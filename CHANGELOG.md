@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/mogenius/renovate-operator/compare/1.0.3...1.0.4) (2025-09-10)
+
+
+### Bug Fixes
+
+* export go variables for controller-gen install ([a457308](https://github.com/mogenius/renovate-operator/commit/a4573080f6c5256247a270f43b11f56e1d5fac18))
+
 ## [1.0.3](https://github.com/mogenius/renovate-operator/compare/1.0.2...1.0.3) (2025-09-10)
 
 
