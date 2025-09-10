@@ -1,3 +1,10 @@
+## [1.0.7](https://github.com/mogenius/renovate-operator/compare/1.0.6...1.0.7) (2025-09-10)
+
+
+### Bug Fixes
+
+* first commit and then rebase ([a1fe4b0](https://github.com/mogenius/renovate-operator/commit/a1fe4b09bdb4c27d9d791f3eac6f5c5b7535b80a))
+
 ## [1.0.6](https://github.com/mogenius/renovate-operator/compare/1.0.5...1.0.6) (2025-09-10)
 
 
