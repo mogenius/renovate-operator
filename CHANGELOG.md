@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/mogenius/renovate-operator/compare/1.0.4...1.0.5) (2025-09-10)
+
+
+### Bug Fixes
+
+* use the right path for helm package ([2abb826](https://github.com/mogenius/renovate-operator/commit/2abb826c21636c3c074f306fe28331123241d7c1))
+
 ## [1.0.4](https://github.com/mogenius/renovate-operator/compare/1.0.3...1.0.4) (2025-09-10)
 
 
