@@ -235,8 +235,12 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
+            GOPATH=$(go env GOPATH)
+
+            echo "Installing controller-gen"
             go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
 
+            echo "Generating CRDs"
             controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 
             git add charts/renovate-operator/crds
