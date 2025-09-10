@@ -246,7 +246,7 @@ jobs:
 
             git add charts/renovate-operator/crds
 
-            helm package -d /tmp/ .
+            helm package -d /tmp/ ./charts/renovate-operator
             curl -XPOST -L -k --data-binary "@/tmp/${{ env.HELMNAME }}-$VERSION.tgz" https://${{ secrets.MO_HELMUSER }}:${{ secrets.MO_HELMPASS }}@helm.mogenius.com/api/public/charts
 
             git commit -m "chore: update Chart.yaml and documentation for version $VERSION [skip ci]"
