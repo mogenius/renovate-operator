@@ -1,0 +1,249 @@
+name: Build, Package, Release (Production)
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ghcr.io/mogenius/renovate-operator
+  DOCKERFILE: Dockerfile
+  HELMNAME: "mogenius-k8s-manager"
+  HELMREPO: "mogenius/helm-k8s-manager"
+
+jobs:
+  prepare:
+    runs-on: self-hosted-ansible
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-amd64:
+    needs: prepare
+    runs-on: [self-hosted, X64]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build AMD64 image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker build -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=amd64 -t ${{ env.IMAGE_NAME }}:$VERSION-amd64 .
+          
+      - name: Push AMD64-linux image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker push ${{ env.IMAGE_NAME }}:$VERSION-amd64
+
+
+  build-arm64-linux:
+    needs: prepare
+    runs-on: [self-hosted, ARM64]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ARM64-linux image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker build --platform=linux/arm64 -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=arm64 -t ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux .
+
+      - name: Push AMD64-linux image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux
+        
+
+  build-arm64:
+    needs: prepare
+    runs-on: [self-hosted, ARM64]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ARM64 image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker build -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=arm64 -t ${{ env.IMAGE_NAME }}:$VERSION-arm64 .
+      - name: Push ARM64 image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm64
+       
+
+  build-armv7:
+    needs: prepare
+    runs-on: [self-hosted, ARM64]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ARMv7 image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker build -f ${{ env.DOCKERFILE }} --platform=linux/arm/v7 --build-arg GOOS=linux --build-arg GOARCH=arm --build-arg GOARM=7 -t ${{ env.IMAGE_NAME }}:$VERSION-arm7 .
+          
+      - name: Push ARMv7 image
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm7
+
+
+  merge-images:
+    needs: [build-amd64, build-arm64, build-arm64-linux, build-armv7, prepare]
+    runs-on: self-hosted-ansible
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge images into a multi-arch manifest
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          docker manifest create ${{ env.IMAGE_NAME }}:$VERSION \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:$VERSION
+          docker manifest create ${{ env.IMAGE_NAME }}:latest \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
+              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:latest
+        
+
+  helm-chart:
+    needs: [prepare, build-amd64, build-arm64, build-arm64-linux, build-armv7, merge-images]
+    runs-on: self-hosted-ansible
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ACCESS_GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          
+      - name: Install Helm
+        uses: azure/setup-helm@v4.3.1
+        id: install
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.23.2'
+
+      - name: Run helm-docs
+        uses: losisin/helm-docs-github-action@v1.6.2
+        with:
+          chart-search-root: charts/renovate-operator
+
+      - name: package and push
+        run: |
+          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+
+          sed -i "s/^version:.*/version: $VERSION/" charts/renovate-operator/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: $VERSION/" charts/renovate-operator/Chart.yaml
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
+
+            controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+
+            git add charts/renovate-operator/crds
+
+            helm package -d /tmp/ .
+            curl -XPOST -L -k --data-binary "@/tmp/${{ env.HELMNAME }}-$VERSION.tgz" https://${{ secrets.MO_HELMUSER }}:${{ secrets.MO_HELMPASS }}@helm.mogenius.com/api/public/charts
+
+            git commit -m "chore: update Chart.yaml and documentation for version $VERSION [skip ci]"
+            git push origin main
+          fi
+   

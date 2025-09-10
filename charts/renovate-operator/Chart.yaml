@@ -1,0 +1,23 @@
+apiVersion: v2
+name: renovate-operator
+description: Chart to deploy the renovate operator to your cluster
+type: application
+version: 1.0.0
+appVersion: "1.16.0"
+home: https://mogenius.com
+icon: https://app.mogenius.com/assets/logos/logo-mogenius-signet-neg.svg
+sources: 
+  - https://helm.mogenius.com/public
+maintainers:
+  - email: ruediger@mogenius.com
+    name: Rüdiger Küpper @mogenius
+    url: https://mogenius.com
+  - email: lukas@mogenius.com
+    name: Lukas Hankeln @mogenius
+    url: https://mogenius.com
+  - email: bene@mogenius.com
+    name: Benedikt Iltisberger @mogenius
+    url: https://mogenius.com
+  - email: behrang@mogenius.com
+    name: Behrang Alavi @mogenius
+    url: https://mogenius.com

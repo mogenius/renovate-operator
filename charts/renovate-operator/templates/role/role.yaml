@@ -1,0 +1,27 @@
+{{- if .Values.rbac.ownNamespaceOnly }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: renovate-operator-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  # Allow get, list, update on renovatejobs
+  - apiGroups: ["renovate-operator.mogenius.com"]
+    resources: ["renovatejobs", "renovatejobs/status"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+  # Allow create, get, list, update, delete on pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+  # Allow create, get, list, update, delete on jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+  # Allow log access from pods
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+{{- end }}

@@ -1,0 +1,45 @@
+image:
+  registry: ghcr.io
+  repository: mogenius/renovate-operator
+  tag: 1.0.0
+  pullPolicy: "IfNotPresent"
+
+ingress:
+  # -- whether to enable the ingress for the otlp service
+  enabled: false
+  # -- the ingressclassname for the ingress, default: nginx
+  ingressClassName: "nginx"
+  # -- the host the ingress should lsiten for
+  host: ~
+  # -- tls configuration to be applied on the ingress
+  tls: []
+    # - hosts:
+    #     - renovate.example.com
+    #   secretName: arenovate-tls
+  # -- labels to place on the ingress
+  labels: {}
+  # -- annotations to place on the ingress
+  annotations: {}
+
+rbac:
+  ownNamespaceOnly: false
+
+securityContext:
+  pod:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+    readOnlyRootFilesystem: true
+    privileged: false
+    allowPrivilegeEscalation: false
+
+resources: {}
