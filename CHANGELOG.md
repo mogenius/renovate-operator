@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/mogenius/renovate-operator/compare/1.0.2...1.0.3) (2025-09-10)
+
+
+### Bug Fixes
+
+* setting gopath to install controller-gen ([7b8dd76](https://github.com/mogenius/renovate-operator/commit/7b8dd766c555b1324d10e944dafd599a40f331a7))
+
 ## [1.0.2](https://github.com/mogenius/renovate-operator/compare/1.0.1...1.0.2) (2025-09-10)
 
 
