@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/mogenius/renovate-operator/compare/1.0.7...1.1.0) (2025-09-15)
+
+
+### Bug Fixes
+
+* semantic release token ([df2b092](https://github.com/mogenius/renovate-operator/commit/df2b09204c68a76ae4ea67d9069a8887a721edbd))
+
+
+### Features
+
+* adding default timeout of 30min ([d34d049](https://github.com/mogenius/renovate-operator/commit/d34d0495a6651d08de28cd02c2fa753c9cb092ec))
+
 ## [1.0.7](https://github.com/mogenius/renovate-operator/compare/1.0.6...1.0.7) (2025-09-10)
 
 
