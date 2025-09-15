@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/mogenius/renovate-operator/compare/1.2.1...1.2.2) (2025-09-15)
+
+
+### Bug Fixes
+
+* do not return error on discovery job not found ([bd36089](https://github.com/mogenius/renovate-operator/commit/bd36089d98d3d4f2f0091ae3950ebd74ef92d318))
+
 ## [1.2.1](https://github.com/mogenius/renovate-operator/compare/1.2.0...1.2.1) (2025-09-15)
 
 
