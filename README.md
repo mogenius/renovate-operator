@@ -68,7 +68,6 @@ controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 ```
 
 ## Todo`s
-- Should we integrate a dedicated "DiscoverySchedule" 
 - API Endpoint to trigger a renovate run for a specific project
 
 
