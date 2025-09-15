@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/mogenius/renovate-operator/compare/1.1.0...1.2.0) (2025-09-15)
+
+
+### Features
+
+* adding a discovery button to the ui ([dd4db47](https://github.com/mogenius/renovate-operator/commit/dd4db47fa467870b36dbb16e1db72fc65b7c1e3a))
+
 # [1.1.0](https://github.com/mogenius/renovate-operator/compare/1.0.7...1.1.0) (2025-09-15)
 
 
