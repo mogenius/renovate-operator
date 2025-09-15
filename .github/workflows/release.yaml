@@ -193,7 +193,7 @@ jobs:
 
   helm-chart:
     needs: [prepare, build-amd64, build-arm64, build-arm64-linux, build-armv7, merge-images]
-    runs-on: self-hosted-ansible
+    runs-on: MEGA-FAST
     permissions:
       contents: read
       packages: write
