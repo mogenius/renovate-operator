@@ -8,9 +8,7 @@ import (
 func writeError(w http.ResponseWriter, err HttpResultError) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.StatusCode)
-	if err := json.NewEncoder(w).Encode(err); err != nil {
-		// noop
-	}
+	_ = json.NewEncoder(w).Encode(err)
 }
 
 type HttpResultError struct {

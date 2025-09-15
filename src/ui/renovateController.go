@@ -8,6 +8,7 @@ import (
 	crdmanager "renovate-operator/internal/crdManager"
 
 	"github.com/gorilla/mux"
+	"k8s.io/apimachinery/pkg/api/errors"
 )
 
 type RenovateJobInfo struct {
@@ -212,8 +213,13 @@ func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Reques
 	}
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err != nil {
-		internalServerError(w, err, "failed to get discovery job status")
-		return
+		if errors.IsNotFound(err) {
+			status = api.JobStatusScheduled
+		} else {
+			internalServerError(w, err, "failed to get discovery job status")
+			return
+		}
+
 	}
 
 	w.Header().Set("Content-Type", "application/json")
