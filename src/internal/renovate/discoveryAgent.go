@@ -19,13 +19,16 @@ import (
 
 type DiscoveryAgent interface {
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
+	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
 
 type discoveryAgent struct {
 	client client.Client
 	logger logr.Logger
 	scheme *runtime.Scheme
-	syncer map[string]*sync.Mutex
+	syncer map[string]*sync.RWMutex
 }
 
 func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger) DiscoveryAgent {
@@ -33,21 +36,12 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		client: client,
 		logger: logger,
 		scheme: scheme,
-		syncer: make(map[string]*sync.Mutex),
+		syncer: make(map[string]*sync.RWMutex),
 	}
 }
 
 func (e discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	// lock based on the renovatejob
 	name := job.Fullname()
-	lock := e.syncer[name]
-	if lock == nil {
-		lock = &sync.Mutex{}
-		e.syncer[name] = lock
-	}
-
-	lock.Lock()
-	defer lock.Unlock()
 
 	e.logger.Info("Discovering projects for RenovateJob", "job", name)
 	return e.discoverIntern(ctx, job)
@@ -55,30 +49,50 @@ func (e discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]s
 
 func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	// 1. Create the discovery job - replaces existing job
-	existingDiscoveryJob, err := e.createOrReplaceDiscoveryJob(ctx, *job)
+	_, err := e.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or get discovery job: %w", err)
 	}
 
+	return e.WaitForDiscoveryJob(ctx, job)
+}
+
+func (e discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	// lock based on the renovatejob
+	name := job.Fullname()
+	lock := e.syncer[name]
+	if lock == nil {
+		lock = &sync.RWMutex{}
+		e.syncer[name] = lock
+	}
+	lock.RLock()
+	defer lock.RUnlock()
+
 	// 2. Wait for discovery job completion
 	for {
-		if existingDiscoveryJob.Status.Succeeded > 0 {
-			break
-		}
-		time.Sleep(5 * time.Second) // Wait before checking again
-		err = e.client.Get(ctx, types.NamespacedName{
-			Name:      existingDiscoveryJob.Name,
-			Namespace: existingDiscoveryJob.Namespace,
-		}, existingDiscoveryJob)
+		time.Sleep(5 * time.Second)
+		status, err := e.GetDiscoveryJobStatus(ctx, job)
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to get discovery job status: %w", err)
 		}
-		if existingDiscoveryJob.Status.Failed > 0 {
-			return nil, fmt.Errorf("discovery job %s failed", existingDiscoveryJob.Name)
+		if status == api.JobStatusCompleted {
+			break
+		}
+		if status == api.JobStatusFailed {
+			return nil, fmt.Errorf("discovery job failed")
 		}
 	}
 
 	// 3. Extract discovered projects from stdout
+	existingDiscoveryJob := &batchv1.Job{}
+	err := e.client.Get(ctx, types.NamespacedName{
+		Name:      job.Name + "-discovery",
+		Namespace: job.Namespace,
+	}, existingDiscoveryJob)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get discovery job status: %w", err)
+	}
 	projects, err := e.getDiscoveredProjectsFromJobLogs(ctx, e.client, existingDiscoveryJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
@@ -88,7 +102,45 @@ func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJo
 	return projects, nil
 }
 
-func (e *discoveryAgent) createOrReplaceDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
+// GetDiscoveryJobStatus implements DiscoveryAgent.
+func (e discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+	// lock based on the renovatejob
+	name := job.Fullname()
+	lock := e.syncer[name]
+	if lock == nil {
+		lock = &sync.RWMutex{}
+		e.syncer[name] = lock
+	}
+	lock.RLock()
+	defer lock.RUnlock()
+
+	existingDiscoveryJob := &batchv1.Job{}
+	err := e.client.Get(ctx, types.NamespacedName{
+		Name:      job.Name + "-discovery",
+		Namespace: job.Namespace,
+	}, existingDiscoveryJob)
+	if err != nil {
+		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job status: %w", err)
+	}
+	if existingDiscoveryJob.Status.Failed > 0 {
+		return api.JobStatusFailed, nil
+	}
+	if existingDiscoveryJob.Status.Succeeded > 0 {
+		return api.JobStatusCompleted, nil
+	}
+	return api.JobStatusRunning, nil
+}
+func (e discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
+	// lock based on the renovatejob
+	name := renovateJob.Fullname()
+	lock := e.syncer[name]
+	if lock == nil {
+		lock = &sync.RWMutex{}
+		e.syncer[name] = lock
+	}
+	lock.Lock()
+	defer lock.Unlock()
+
 	discoveryJob := newDiscoveryJob(&renovateJob)
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return &batchv1.Job{}, fmt.Errorf("failed to set controller reference: %w", err)

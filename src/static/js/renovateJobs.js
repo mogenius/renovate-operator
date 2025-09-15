@@ -7,7 +7,7 @@ async function loadTables() {
         const jobsList = await jobsRes.json();
         if (typeof jobsList !== 'object' || jobsList === null) throw new Error('Invalid jobs response');
 
-        const sortedJobs = jobsList.sort((a,b) => (a.name || '').localeCompare(b.name || ''))
+        const sortedJobs = jobsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
         for (const jobData of sortedJobs) {
             // Body
             const tbody = document.createElement('tbody');
@@ -51,10 +51,34 @@ async function loadTables() {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadTables();
-    // setInterval(loadTables, 30000); // reload every 30 seconds
+    setInterval(loadTables, 30000); // reload every 30 seconds
 });
 
-
+async function updateDiscoveryButton(discoveryBtn, jobData) {
+    try {
+        const res = await fetch(`/api/v1/discovery/status?renovate=${encodeURIComponent(jobData.name)}&namespace=${encodeURIComponent(jobData.namespace)}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'running') {
+                discoveryBtn.disabled = true;
+                discoveryBtn.textContent = 'Discovery Running...';
+                discoveryBtn.style.backgroundColor = '#2196f3';
+            } else {
+                discoveryBtn.disabled = false;
+                discoveryBtn.textContent = 'Run Discovery';
+                discoveryBtn.style.backgroundColor = '';
+            }
+        } else {
+            discoveryBtn.disabled = false;
+            discoveryBtn.textContent = 'Run Discovery';
+            discoveryBtn.style.backgroundColor = '';
+        }
+    } catch (e) {
+        discoveryBtn.disabled = false;
+        discoveryBtn.textContent = 'Run Discovery';
+        discoveryBtn.style.backgroundColor = '';
+    }
+}
 function createTableSection(jobData, tbody) {
     const section = document.createElement('details');
     section.classList.add(`${jobData.name}-${jobData.namespace}`)
@@ -63,6 +87,46 @@ function createTableSection(jobData, tbody) {
 
     const caption = document.createElement('summary')
     caption.innerText = `${jobData.name} - ${jobData.namespace}`;
+
+    const discoveryBtn = document.createElement('button')
+    discoveryBtn.textContent = 'Run Discovery';
+    updateDiscoveryButton(discoveryBtn, jobData);
+
+
+    discoveryBtn.onclick = async () => {
+        discoveryBtn.disabled = true;
+        discoveryBtn.textContent = 'Running...';
+        try {
+            const res = await fetch('/api/v1/discovery/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    renovateJob: jobData.name,
+                    namespace: jobData.namespace,
+                })
+            });
+            if (res.ok) {
+                discoveryBtn.textContent = 'Discovery Started!';
+                discoveryBtn.style.backgroundColor = '#4caf50';
+                // Reload tables after successful trigger
+                setTimeout(loadTables, 500);
+            } else {
+                discoveryBtn.textContent = 'Failed';
+                discoveryBtn.style.backgroundColor = '#f44336';
+            }
+        } catch (e) {
+            discoveryBtn.textContent = 'Error';
+            discoveryBtn.style.backgroundColor = '#f44336';
+        }
+        setTimeout(() => {
+            discoveryBtn.textContent = 'Run Discovery';
+            discoveryBtn.style.backgroundColor = '';
+        }, 2000);
+    }
+
+    caption.appendChild(discoveryBtn)
     section.appendChild(caption)
 
     const table = document.createElement('table')
