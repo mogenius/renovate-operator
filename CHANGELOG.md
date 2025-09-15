@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/mogenius/renovate-operator/compare/1.2.0...1.2.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* improve http error messages ([5f903df](https://github.com/mogenius/renovate-operator/commit/5f903dfdc7a575752192aa6c755acec8cae1f92c))
+
 # [1.2.0](https://github.com/mogenius/renovate-operator/compare/1.1.0...1.2.0) (2025-09-15)
 
 
