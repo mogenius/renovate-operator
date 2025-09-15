@@ -28,14 +28,14 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	renovateJobs, err := s.manager.ListRenovateJobs(r.Context())
 	if err != nil {
-		http.Error(w, "failed to load renovatejobs", http.StatusBadRequest)
+		internalServerError(w, err, "failed to load renovatejobs")
 		return
 	}
 	result := make([]RenovateJobInfo, 0)
 	for _, job := range renovateJobs {
 		projects, err := s.manager.GetProjectsForRenovateJob(r.Context(), job)
 		if err != nil {
-			http.Error(w, "failed to load projects", http.StatusBadRequest)
+			internalServerError(w, err, "failed to load projects")
 			return
 		}
 		result = append(result, RenovateJobInfo{
@@ -62,7 +62,7 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 		project,
 	)
 	if err != nil {
-		http.Error(w, "failed to get logs for project", http.StatusBadRequest)
+		internalServerError(w, err, "failed to get logs for project")
 		return
 	}
 
@@ -113,12 +113,12 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 	// Expect application/json or form values
 	params, err := getRenovateJsonBody(r)
 	if err != nil {
-		http.Error(w, "failed to parse request body", http.StatusBadRequest)
+		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
 	if params.name == "" || params.namespace == "" || params.project == "" {
-		http.Error(w, "Missing parameters", http.StatusBadRequest)
+		badRequestError(w, err, "Missing parameters")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to run Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalServerError(w, err, "failed to run Renovate for project")
 		return
 	}
 
@@ -144,36 +144,36 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {
 	params, err := getRenovateJsonBody(r)
 	if err != nil {
-		http.Error(w, "failed to parse request body", http.StatusBadRequest)
+		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
 	if params.name == "" || params.namespace == "" {
-		http.Error(w, "Missing parameters", http.StatusBadRequest)
+		badRequestError(w, err, "missing parameters")
 		return
 	}
 	ctx := r.Context()
 
 	job, err := s.manager.GetRenovateJob(ctx, params.name, params.namespace)
 	if err != nil || job == nil {
-		http.Error(w, "failed to get renovate job", http.StatusBadRequest)
+		internalServerError(w, err, "failed to get renovate job")
 		return
 	}
 	// discovery mus only run once
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err != nil {
-		http.Error(w, "failed to get discovery job status", http.StatusBadRequest)
+		internalServerError(w, err, "failed to get discovery job status")
 		return
 	}
 	if status == api.JobStatusRunning {
-		http.Error(w, "discovery job already running", http.StatusBadRequest)
+		badRequestError(w, err, "discovery job already running")
 		return
 	}
 
 	_, err = s.discovery.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalServerError(w, err, "failed to create discovery job")
 		return
 	}
 	go func() {
@@ -207,12 +207,12 @@ func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Reques
 
 	job, err := s.manager.GetRenovateJob(ctx, renovate, namespace)
 	if err != nil || job == nil {
-		http.Error(w, "failed to get renovate job", http.StatusBadRequest)
+		internalServerError(w, err, "failed to get renovate job")
 		return
 	}
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err != nil {
-		http.Error(w, "failed to get discovery job status", http.StatusBadRequest)
+		internalServerError(w, err, "failed to get discovery job status")
 		return
 	}
 
