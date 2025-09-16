@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/mogenius/renovate-operator/compare/1.2.2...1.2.3) (2025-09-16)
+
+
+### Bug Fixes
+
+* display errors in discovery jobs ([ffe460f](https://github.com/mogenius/renovate-operator/commit/ffe460f6cf7e5617dc1fe0a7ec4fda589216f5de))
+
 ## [1.2.2](https://github.com/mogenius/renovate-operator/compare/1.2.1...1.2.2) (2025-09-15)
 
 
