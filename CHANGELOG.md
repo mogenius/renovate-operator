@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/mogenius/renovate-operator/compare/1.2.3...1.2.4) (2025-09-17)
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.25 ([#9](https://github.com/mogenius/renovate-operator/issues/9)) ([ebb0fb3](https://github.com/mogenius/renovate-operator/commit/ebb0fb36f2c8f1e4577f10a2913ac98045f88e52))
+
 ## [1.2.3](https://github.com/mogenius/renovate-operator/compare/1.2.2...1.2.3) (2025-09-16)
 
 
