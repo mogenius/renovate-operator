@@ -1,3 +1,10 @@
+## [1.2.7](https://github.com/mogenius/renovate-operator/compare/1.2.6...1.2.7) (2025-09-18)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-logr/logr to v1.4.3 ([f6e74d5](https://github.com/mogenius/renovate-operator/commit/f6e74d5edcf8332290e6e4e37fc169e5780d14d7))
+
 ## [1.2.6](https://github.com/mogenius/renovate-operator/compare/1.2.5...1.2.6) (2025-09-18)
 
 
