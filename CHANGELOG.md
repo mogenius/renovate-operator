@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/mogenius/renovate-operator/compare/1.2.8...1.3.0) (2025-09-19)
+
+
+### Features
+
+* applying naming best practices to the helm chart ([4c6aba7](https://github.com/mogenius/renovate-operator/commit/4c6aba781eb692e7286ff2964395ce95438efedc))
+
 ## [1.2.8](https://github.com/mogenius/renovate-operator/compare/1.2.7...1.2.8) (2025-09-18)
 
 
