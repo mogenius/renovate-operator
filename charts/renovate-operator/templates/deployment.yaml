@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: renovate-operator
+  name: {{ include "renovate-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: renovate-operator
+      app: {{ include "renovate-operator.fullname" . }}
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}
+        app: {{ include "renovate-operator.fullname" . }}
     spec:
-      serviceAccountName: renovate-operator
+      serviceAccountName: {{ include "renovate-operator.serviceAccountName" . }}
       {{- with .Values.securityContext.pod }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -32,4 +32,5 @@ spec:
           {{- end }}
           ports:
             - containerPort: 8081
+              name: http
               protocol: TCP

@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: renovate-operator-role
+  name: {{ include "renovate-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
 rules:
   # Allow get, list, update on renovatejobs

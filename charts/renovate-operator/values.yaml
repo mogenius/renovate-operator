@@ -1,11 +1,15 @@
+# -- override the fullname of created resources
+fullnameOverride: ""
+
 image:
   registry: ghcr.io
   repository: mogenius/renovate-operator
+  # -- tag of the renovate-operator, if empty .Chart.AppVersion is used
   tag: ~
   pullPolicy: "IfNotPresent"
 
 ingress:
-  # -- whether to enable the ingress for the otlp service
+  # -- whether to enable the ingress renovate-operator
   enabled: false
   # -- the ingressclassname for the ingress, default: nginx
   ingressClassName: "nginx"
@@ -22,8 +26,10 @@ ingress:
   annotations: {}
 
 rbac:
+  # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
   ownNamespaceOnly: false
 
+# -- security context for the pod and containers
 securityContext:
   pod:
     runAsUser: 1000
@@ -43,3 +49,9 @@ securityContext:
     allowPrivilegeEscalation: false
 
 resources: {}
+
+serviceAccount:
+  # -- name of the serviceaccount, if not set a name is generated using the fullname template
+  name: ~
+  # -- whether a serviceaccount should be created
+  create: true

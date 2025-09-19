@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: renovate-operator-role
+  name: {{ include "renovate-operator.fullname" . }}
 rules:
   # Allow get, list, update on renovatejobs
   - apiGroups: ["renovate-operator.mogenius.com"]

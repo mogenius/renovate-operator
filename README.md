@@ -15,7 +15,7 @@ But what if you want to run renovate on your own Hardware? What if you are runni
 If you are already running Kubernetes, this project might be for you.
 
 ### How it works
-1. At the definied time of your schedule,a renovate discovery job is started
+1. At the defined time of your schedule,a renovate discovery job is started
 2. After the discovery finished you will be able to see al your discovered projects in the ui
 3. All projects are now being set to be scheduled
 4. Every 10 seconds the operator checks for schedules projects and starts a new renovate job
@@ -66,10 +66,6 @@ spec:
 ```
 controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 ```
-
-## Todo`s
-- API Endpoint to trigger a renovate run for a specific project
-
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
