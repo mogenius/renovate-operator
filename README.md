@@ -21,6 +21,8 @@ If you are already running Kubernetes, this project might be for you.
 4. Every 10 seconds the operator checks for schedules projects and starts a new renovate job
 5. Only as many jobs as defined in `spec.parallelism` are getting executed at the same time
 
+![Example Screenshot of the renovate-operator ui.](/docs/example.png)
+
 ## Installation 
 ### Helm
 ```sh
