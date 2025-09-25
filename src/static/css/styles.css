@@ -1,12 +1,18 @@
 /* styles.css */
-
+*{
+    --primary-color: #3460db;
+    --primary-color-accent: #3498db;
+    --background-color: #1e1e2f;
+    --background-color-accent: #2b2b40;
+    --text-color: #e0e0e0;
+}
 /* --- Global Layout --- */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #1e1e2f; /* Dark background */
-    color: #e0e0e0;            /* Light text */
+    background-color: var(--background-color); /* Dark background */
+    color: var(--text-color);                  /* Light text */
     line-height: 1.5;
 }
 
@@ -14,7 +20,7 @@ h1 {
     text-align: center;
     margin: 2rem 0;
     font-size: 2.5rem;
-    color: #f5f6fa;
+    color: var(--text-color);
 }
 
 /* --- Container --- */
@@ -29,7 +35,7 @@ h1 {
 
 /* --- Collapsible Sections --- */
 details {
-    background-color: #2b2b40;
+    background-color: var(--background-color-accent);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     overflow: hidden;
@@ -42,8 +48,8 @@ summary {
     font-size: 1.2rem;
     font-weight: 600;
     padding: 1rem 1.25rem;
-    background-color: #3498db;
-    color: #fff;
+    background-color: var(--primary-color);
+    color: var(--text-color);
     user-select: none;
     list-style: none; /* remove default disclosure triangle in some browsers */
 }
@@ -75,7 +81,7 @@ thead th {
     text-align: left;
     padding: 0.75rem 1rem;
     background-color: #34495e;
-    color: #fff;
+    color: var(--text-color);
     font-weight: 600;
 }
 
@@ -96,27 +102,15 @@ tbody td {
     vertical-align: middle;
 }
 
-/* --- Name column --- */
-td.name div {
-    font-weight: 500;
-    color: #ecf0f1;
-}
-
-/* --- Status column --- */
-td.status div {
-    padding: 0.25rem 0.6rem;
-    border-radius: 4px;
-    font-weight: 500;
-    display: inline-block;
-    text-align: center;
-    min-width: 90px;
+td.status{
+    font-weight: bold;
 }
 
 /* Status colors */
-td.status.scheduled div { background-color: #f39c12; color: #fff; }
-td.status.running div   { background-color: #2980b9; color: #fff; }
-td.status.completed div { background-color: #27ae60; color: #fff; }
-td.status.failed div    { background-color: #c0392b; color: #fff; }
+td.status.scheduled div { color: #f39c12; }
+td.status.running div   { color: #2980b9; }
+td.status.completed div { color: #27ae60; }
+td.status.failed div    { color: #c0392b; }
 
 /* --- Actions column (button + link) --- */
 td:last-child {
@@ -130,8 +124,8 @@ td:last-child {
 button,
 a {
     appearance: none;
-    background-color: #3498db;
-    color: #fff;
+    background-color: var(--primary-color);
+    color: var(--text-color);
     text-decoration: none;
     display: inline-block;
     padding: 0.5rem 1rem;
@@ -148,7 +142,7 @@ a {
 /* Hover */
 button:hover,
 a:hover {
-    background-color: #2980b9;
+    background-color: var(--primary-color-accent);
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     transform: translateY(-2px);
 }
@@ -156,7 +150,7 @@ a:hover {
 /* Active */
 button:active,
 a:active {
-    background-color: #1f6391;
+    background-color: var(--primary-color-accent);
     transform: translateY(0);
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
@@ -168,6 +162,35 @@ button:disabled {
     opacity: 0.6;
     transform: none;
     box-shadow: none;
+}
+
+.discovery-btn{
+    color: var(--primary-color);
+    background-color: var(--text-color);
+    margin-left: 20px;
+}
+
+.discovery-btn:hover{
+    color: var(--primary-color-accent);
+    background-color: var(--text-color);
+}
+
+.log-btn{
+    height: 40px;
+    margin: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    align-content: center;
+}
+.trigger-btn{
+    height: 40px;
+    margin: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 8px;
+    padding-bottom: 8px;
 }
 
 /* --- Responsive --- */
@@ -198,7 +221,7 @@ button:disabled {
     tbody td::before {
         content: attr(data-label);
         font-weight: bold;
-        color: #f5f6fa;
+        color: var(--text-color);
     }
 
     td:last-child {

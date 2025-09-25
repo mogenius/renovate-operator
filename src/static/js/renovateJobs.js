@@ -89,6 +89,7 @@ function createTableSection(jobData, tbody) {
     caption.innerText = `${jobData.name} - ${jobData.namespace}`;
 
     const discoveryBtn = document.createElement('button')
+    discoveryBtn.classList.add('discovery-btn');
     discoveryBtn.textContent = 'Run Discovery';
     updateDiscoveryButton(discoveryBtn, jobData);
 
@@ -166,6 +167,7 @@ function getStatusRowItem(projectStatus) {
 function getActionRowItem(projectStatus, jobData) {
     const actionTd = document.createElement('td');
     const btn = document.createElement('button');
+    btn.classList.add('trigger-btn');
     btn.textContent = 'Trigger';
     btn.onclick = async () => {
         btn.disabled = true;
@@ -204,6 +206,7 @@ function getActionRowItem(projectStatus, jobData) {
     actionTd.appendChild(btn);
 
     const logRedirect = document.createElement('a')
+    logRedirect.classList.add('log-btn');
     logRedirect.href = `/api/v1/logs?renovate=${encodeURIComponent(jobData.name)}&namespace=${encodeURIComponent(jobData.namespace)}&project=${encodeURIComponent(projectStatus.name)}`
     logRedirect.target = "_blank"
     logRedirect.innerText = "Logs"
