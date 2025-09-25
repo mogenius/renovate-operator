@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/mogenius/renovate-operator/compare/1.3.0...1.3.1) (2025-09-25)
+
+
+### Bug Fixes
+
+* a few little ui refinements ([e75c86e](https://github.com/mogenius/renovate-operator/commit/e75c86ec4c1a71419067339d0d93eb4516fa40ca))
+
 # [1.3.0](https://github.com/mogenius/renovate-operator/compare/1.2.8...1.3.0) (2025-09-19)
 
 
