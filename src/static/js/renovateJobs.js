@@ -1,24 +1,29 @@
 async function loadTables() {
     const container = document.getElementById('tables-container');
-    container.innerHTML = '';
     try {
         const jobsRes = await fetch('/api/v1/renovatejobs');
         if (!jobsRes.ok) throw new Error('Failed to fetch renovate jobs');
         const jobsList = await jobsRes.json();
         if (typeof jobsList !== 'object' || jobsList === null) throw new Error('Invalid jobs response');
 
-        const sortedJobs = jobsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        const sortedJobs = jobsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        // Build a map of existing sections for in-place updates
+        const existingSections = new Map();
+        for (const s of container.querySelectorAll('details.renovatejob')) {
+            // class names are `${name}-${namespace}` as used in createTableSection
+            const key = s.className.split(' ').find(c => c !== 'renovatejob');
+            if (key) existingSections.set(key, s);
+        }
+
         for (const jobData of sortedJobs) {
-            // Body
-            const tbody = document.createElement('tbody');
+            const key = `${jobData.name}-${jobData.namespace}`;
+            const existing = existingSections.get(key);
+
+            // Create fresh tbody for diffing rows
+            const newTbody = document.createElement('tbody');
             if (Array.isArray(jobData.projects)) {
-                // Sort projects by status: running, scheduled, failed, completed
-                const statusOrder = {
-                    running: 0,
-                    scheduled: 1,
-                    failed: 2,
-                    completed: 3
-                };
+                const statusOrder = { running: 0, scheduled: 1, failed: 2, completed: 3 };
                 const sortedProjects = [...jobData.projects].sort((a, b) => {
                     const aStatus = (a.status || '').toLowerCase();
                     const bStatus = (b.status || '').toLowerCase();
@@ -29,20 +34,49 @@ async function loadTables() {
                 });
                 for (const projectStatus of sortedProjects) {
                     const row = document.createElement('tr');
-
-                    row.appendChild(getNameRowItem(projectStatus))
-                    row.appendChild(getStatusRowItem(projectStatus))
+                    row.appendChild(getNameRowItem(projectStatus));
+                    row.appendChild(getStatusRowItem(projectStatus));
                     row.appendChild(getActionRowItem(projectStatus, jobData));
-                    tbody.appendChild(row);
+                    newTbody.appendChild(row);
                 }
             } else {
-                // fallback: no projects
                 const row = document.createElement('tr');
                 row.innerHTML = `<td>${jobData.name}</td><td>${jobData.namespace}</td><td>-</td><td>-</td><td></td>`;
-                tbody.appendChild(row);
+                newTbody.appendChild(row);
             }
-            const section = createTableSection(jobData, tbody)
-            container.appendChild(section);
+
+            if (existing) {
+                // Update caption (summary) text if changed
+                const summary = existing.querySelector('summary');
+                const expectedCaption = `${jobData.name} - ${jobData.namespace}`;
+                if (summary && summary.firstChild && summary.firstChild.nodeValue !== expectedCaption) {
+                    summary.firstChild.nodeValue = expectedCaption;
+                }
+
+                // Replace only the tbody in the existing table to avoid flicker
+                const table = existing.querySelector('table');
+                if (table) {
+                    const oldTbody = table.querySelector('tbody');
+                    if (oldTbody) table.replaceChild(newTbody, oldTbody);
+                    else table.appendChild(newTbody);
+                }
+
+                // Update discovery button state asynchronously
+                const discoveryBtn = existing.querySelector('button.discovery-btn');
+                if (discoveryBtn) updateDiscoveryButton(discoveryBtn, jobData);
+
+                // remove from map to mark as handled
+                existingSections.delete(key);
+            } else {
+                // create new section
+                const section = createTableSection(jobData, newTbody);
+                container.appendChild(section);
+            }
+        }
+
+        // Remove any sections that no longer exist in the data
+        for (const s of existingSections.values()) {
+            s.remove();
         }
     } catch (err) {
         container.innerHTML = `<p style="color:red;">${err.message}</p>`;
