@@ -6,6 +6,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
+	"renovate-operator/internal/utils"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -153,7 +154,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 		renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
 	} else {
 		projectStatus := renovateJob.Status.Projects[index]
-		projectStatus.Status = status
+		projectStatus.Status = utils.GetUpdateStatusForProject(projectStatus.Status, status)
 		renovateJob.Status.Projects[index] = projectStatus
 	}
 	_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
@@ -172,7 +173,7 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 		p := renovateJob.Status.Projects[i]
 
 		if fn(p) {
-			p.Status = status
+			p.Status = utils.GetUpdateStatusForProject(p.Status, status)
 			renovateJob.Status.Projects[i] = p
 		}
 	}
