@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/mogenius/renovate-operator/compare/1.3.1...1.3.2) (2025-10-19)
+
+
+### Bug Fixes
+
+* **deps:** update dependency go to v1.25.3 ([2efa2df](https://github.com/mogenius/renovate-operator/commit/2efa2df2df62900c7d52c325e41397a41d05bae5))
+
 ## [1.3.1](https://github.com/mogenius/renovate-operator/compare/1.3.0...1.3.1) (2025-09-25)
 
 
