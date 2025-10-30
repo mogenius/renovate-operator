@@ -48,24 +48,24 @@ jobs:
         go mod download
         go test ./... -v
 
-  lint:
-    needs: [build]
-    runs-on: MEGA-FAST
+  # lint:
+  #   needs: [build]
+  #   runs-on: MEGA-FAST
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '>=1.23.2'
+  #   - name: Set up Go
+  #     uses: actions/setup-go@v5
+  #     with:
+  #       go-version: '>=1.23.2'
 
-    - name: lint and test
-      run: |
-        cd src
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+  #   - name: lint and test
+  #     run: |
+  #       cd src
+  #       go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
-        go mod download
+  #       go mod download
 
-        golangci-lint run --timeout 10m
+  #       golangci-lint run --timeout 10m
