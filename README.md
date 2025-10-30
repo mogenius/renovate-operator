@@ -9,27 +9,28 @@
 
 With tools like [Mend Renovate][2] you can easily use renovate for free.
 
-
-But what if you want to run renovate on your own Hardware? What if you are running a private Gitlab Instance? Or just want better control over the scheduling of your renovate executions?
+But what if you want to run renovate on your own hardware? What if you are running a private GitLab instance? Or just want better control over the scheduling of your renovate executions?
 
 If you are already running Kubernetes, this project might be for you.
 
 ### How it works
-1. At the defined time of your schedule,a renovate discovery job is started
-2. After the discovery finished you will be able to see al your discovered projects in the ui
+
+1. At the defined time of your schedule, a renovate discovery job is started
+2. After the discovery finished, you will be able to see all your discovered projects in the UI
 3. All projects are now being set to be scheduled
 4. Every 10 seconds the operator checks for schedules projects and starts a new renovate job
 5. Only as many jobs as defined in `spec.parallelism` are getting executed at the same time
 
-![Example Screenshot of the renovate-operator ui.](/docs/example.png)
+![Example Screenshot of the renovate-operator UI.](/docs/example.png)
 
-## Installation 
+## Installation
+
 ### Helm
+
 ```sh
-helm repo add mogenius https://helm.mogenius.com/public
-helm repo update mogenius
-helm upgrade -i renovate-operator mogenius/renovate-operator -n renovate-operator --create-namespace --wait
-``` 
+helm repo add mogenius https://helm.mogenius.com/public --force-update
+helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-operator --create-namespace --wait
+```
 
 ## Examples
 
@@ -64,8 +65,10 @@ spec:
 ```
 
 ## Developement
+
 ### Generate CRDs
-```
+
+```sh
 controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 ```
 
