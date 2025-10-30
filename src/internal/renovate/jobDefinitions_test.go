@@ -12,6 +12,88 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func TestSecurityContextHelpers(t *testing.T) {
+	var spec api.RenovateJobSpec
+
+	podCtx := getPodSecurityContext(spec)
+	if podCtx == nil || podCtx.RunAsUser == nil {
+		t.Fatalf("expected default pod security context set")
+	}
+
+	contCtx := getContainerSecurityContext(spec)
+	if contCtx == nil || contCtx.RunAsUser == nil {
+		t.Fatalf("expected default container security context set")
+	}
+
+	// ServiceAccount token default
+	if got := getAutoMountServiceAccountToken(spec); got == nil || *got != false {
+		t.Fatalf("expected default automount false, got %v", got)
+	}
+
+	if name := getServiceAccountName(spec); name != "" {
+		t.Fatalf("expected empty service account name, got %s", name)
+	}
+}
+
+func TestNewJobs_BasicFields(t *testing.T) {
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec: api.RenovateJobSpec{
+			Image: "my-image",
+		},
+	}
+
+	// set config module for JOB_TIMEOUT_SECONDS
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "123"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+	dj := newDiscoveryJob(job)
+	if dj == nil {
+		t.Fatalf("expected discovery job not nil")
+	}
+	if dj.Spec.Template.Spec.Containers[0].Image != "my-image" {
+		t.Fatalf("expected image set in discovery job")
+	}
+	if dj.Spec.ActiveDeadlineSeconds == nil || *dj.Spec.ActiveDeadlineSeconds != int64(123) {
+		t.Fatalf("expected active deadline seconds set from config, got %v", dj.Spec.ActiveDeadlineSeconds)
+	}
+
+	rj := newRenovateJob(job, "proj")
+	if rj == nil {
+		t.Fatalf("expected renovate job not nil")
+	}
+	if rj.Spec.Template.Spec.Containers[0].Image != "my-image" {
+		t.Fatalf("expected image set in renovate job")
+	}
+}
+
+func TestNewJobs_WithSecretRefAndMeta(t *testing.T) {
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec: api.RenovateJobSpec{
+			Image:     "img",
+			SecretRef: "sref",
+			Metadata: &api.RenovateJobMetadata{
+				Labels: map[string]string{"a": "b"},
+			},
+		},
+	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+	dj := newDiscoveryJob(job)
+	envFrom := dj.Spec.Template.Spec.Containers[0].EnvFrom
+	if len(envFrom) == 0 || envFrom[0].SecretRef == nil || envFrom[0].SecretRef.Name != "sref" {
+		t.Fatalf("expected envFrom SecretRef set in discovery job")
+	}
+	if dj.Spec.Template.Labels["a"] != "b" {
+		t.Fatalf("expected metadata labels applied to discovery job")
+	}
+
+}
+
 func TestNewDiscoveryJob(t *testing.T) {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{

@@ -116,8 +116,12 @@ func (s *scheduler) GetNextRun(name string) time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.entries[name]; ok {
-		entry := s.cronManager.Entries()[entry.entryId]
-		return entry.Next
+		// Find the entry with matching ID
+		for _, cronEntry := range s.cronManager.Entries() {
+			if cronEntry.ID == entry.entryId {
+				return cronEntry.Next
+			}
+		}
 	}
 	return time.Time{} // return zero time if not found
 }

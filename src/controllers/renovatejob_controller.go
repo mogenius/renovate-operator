@@ -25,7 +25,7 @@ type RenovateJobReconciler struct {
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithName("renovatejob-controller")
-	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.NamespacedName.Name, req.NamespacedName.Namespace)
+	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
 
 	if err == nil {
 		// renovatejob object read without problem -> create the schedule
@@ -33,7 +33,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
 		// renovatejob cannot be found -> delete the schedule
-		name := req.NamespacedName.Name + "-" + req.NamespacedName.Namespace
+		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {

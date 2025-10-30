@@ -17,6 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// discoverySleep is a package-level hook so tests can override waiting behavior.
+var discoverySleep = time.Sleep
+
 type DiscoveryAgent interface {
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
@@ -29,18 +32,26 @@ type discoveryAgent struct {
 	logger logr.Logger
 	scheme *runtime.Scheme
 	syncer map[string]*sync.RWMutex
+	// allow tests to override how logs are extracted
+	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
+	// allow tests to override how status is checked
+	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 }
 
 func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger) DiscoveryAgent {
-	return discoveryAgent{
+	da := &discoveryAgent{
 		client: client,
 		logger: logger,
 		scheme: scheme,
 		syncer: make(map[string]*sync.RWMutex),
 	}
+	// default to the internal implementation
+	da.getDiscoveredProjectsFromJobLogsFn = da.getDiscoveredProjectsFromJobLogs
+	da.getDiscoveryJobStatusFn = da.getDiscoveryJobStatusInternal
+	return da
 }
 
-func (e discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	name := job.Fullname()
 
 	e.logger.Info("Discovering projects for RenovateJob", "job", name)
@@ -57,21 +68,11 @@ func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJo
 	return e.WaitForDiscoveryJob(ctx, job)
 }
 
-func (e discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	// lock based on the renovatejob
-	name := job.Fullname()
-	lock := e.syncer[name]
-	if lock == nil {
-		lock = &sync.RWMutex{}
-		e.syncer[name] = lock
-	}
-	lock.RLock()
-	defer lock.RUnlock()
-
+func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	// 2. Wait for discovery job completion
 	for {
-		time.Sleep(5 * time.Second)
-		status, err := e.GetDiscoveryJobStatus(ctx, job)
+		discoverySleep(5 * time.Second)
+		status, err := e.getDiscoveryJobStatusFn(ctx, job)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get discovery job status: %w", err)
@@ -93,7 +94,7 @@ func (e discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renova
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovery job status: %w", err)
 	}
-	projects, err := e.getDiscoveredProjectsFromJobLogs(ctx, e.client, existingDiscoveryJob)
+	projects, err := e.getDiscoveredProjectsFromJobLogsFn(ctx, e.client, existingDiscoveryJob)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
 	}
@@ -103,7 +104,12 @@ func (e discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renova
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
-func (e discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+	return e.getDiscoveryJobStatusFn(ctx, job)
+}
+
+// getDiscoveryJobStatusInternal is the internal implementation of GetDiscoveryJobStatus.
+func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	// lock based on the renovatejob
 	name := job.Fullname()
 	lock := e.syncer[name]
@@ -130,7 +136,7 @@ func (e discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.Reno
 	}
 	return api.JobStatusRunning, nil
 }
-func (e discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
+func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
 	// lock based on the renovatejob
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
