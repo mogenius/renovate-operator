@@ -1,6 +1,9 @@
 name: GO lint & test
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
