@@ -46,7 +46,7 @@ jobs:
       run: |
         cd src
         go mod download
-        go test ./...
+        go test ./... -v
 
   lint:
     needs: [build]
