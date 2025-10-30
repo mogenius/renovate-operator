@@ -44,8 +44,10 @@ func TestNewJobs_BasicFields(t *testing.T) {
 	}
 
 	// set config module for JOB_TIMEOUT_SECONDS
-	config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "123"}})
-
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "123"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
 	dj := newDiscoveryJob(job)
 	if dj == nil {
 		t.Fatalf("expected discovery job not nil")
@@ -77,8 +79,10 @@ func TestNewJobs_WithSecretRefAndMeta(t *testing.T) {
 			},
 		},
 	}
-	config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
-
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
 	dj := newDiscoveryJob(job)
 	envFrom := dj.Spec.Template.Spec.Containers[0].EnvFrom
 	if len(envFrom) == 0 || envFrom[0].SecretRef == nil || envFrom[0].SecretRef.Name != "sref" {

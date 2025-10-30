@@ -7,8 +7,9 @@ import (
 
 func TestInitializeAndGetValue(t *testing.T) {
 	// ensure env is clean
-	os.Unsetenv("SOME_KEY")
-
+	if err := os.Unsetenv("SOME_KEY"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 	defs := []ConfigItemDescription{
 		{Key: "SOME_KEY", Optional: true, Default: "default-value"},
 		{Key: "REQUIRED_KEY", Optional: false, Default: "req-default"},
@@ -20,7 +21,9 @@ func TestInitializeAndGetValue(t *testing.T) {
 	}
 
 	// set required env and re-init
-	os.Setenv("REQUIRED_KEY", "set-value")
+	if err := os.Setenv("REQUIRED_KEY", "set-value"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	if err := InitializeConfigModule(defs); err != nil {
 		t.Fatalf("unexpected error initializing config: %v", err)
 	}

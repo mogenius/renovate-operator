@@ -34,7 +34,12 @@ func TestHandleCssStyles_DefaultFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	defer os.Chdir(oldWd)
+
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Logf("failed to restore working dir: %v", err)
+		}
+	}()
 
 	// Create static directory structure
 	staticDir := filepath.Join(tempDir, "static", "css")
@@ -92,7 +97,11 @@ func TestHandleCssStyles_FileNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	defer os.Chdir(oldWd)
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Logf("failed to restore working dir: %v", err)
+		}
+	}()
 
 	err = os.Chdir(tempDir)
 	if err != nil {
@@ -129,7 +138,11 @@ func TestHandleFavicon_DefaultFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	defer os.Chdir(oldWd)
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Logf("failed to restore working dir: %v", err)
+		}
+	}()
 
 	// Create static directory structure
 	staticDir := filepath.Join(tempDir, "static")
@@ -188,7 +201,11 @@ func TestHandleFavicon_FileNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	defer os.Chdir(oldWd)
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Logf("failed to restore working dir: %v", err)
+		}
+	}()
 
 	err = os.Chdir(tempDir)
 	if err != nil {

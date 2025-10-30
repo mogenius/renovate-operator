@@ -14,19 +14,28 @@ import (
 )
 
 func TestGetJobTimeoutSeconds_DefaultAndEnv(t *testing.T) {
-	os.Unsetenv("JOB_TIMEOUT_SECONDS")
+	if err := os.Unsetenv("JOB_TIMEOUT_SECONDS"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
+	if err := os.Unsetenv("JOB_TIMEOUT_SECONDS"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 	// initialize config module with default description used by getJobTimeoutSeconds
-	config.InitializeConfigModule([]config.ConfigItemDescription{
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1800"},
 	})
-
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
 	if v := getJobTimeoutSeconds(); v == nil || *v != int64(1800) {
 		t.Fatalf("expected default timeout 1800, got %v", v)
 	}
 
-	os.Setenv("JOB_TIMEOUT_SECONDS", "600")
+	if err := os.Setenv("JOB_TIMEOUT_SECONDS", "600"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	// re-init so config reads env
-	config.InitializeConfigModule([]config.ConfigItemDescription{
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1800"},
 	})
 

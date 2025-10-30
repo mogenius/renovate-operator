@@ -68,6 +68,9 @@ func TestInitializeStaticClientProvider(t *testing.T) {
 		if config == nil {
 			t.Error("ClientConfig should not be nil")
 		}
+		if config == nil {
+			t.Fatal("config is nil")
+		}
 		if config.Host != "https://test-cluster" {
 			t.Errorf("Expected host 'https://test-cluster', got '%s'", config.Host)
 		}
