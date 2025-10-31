@@ -73,13 +73,26 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Development
 
+### Running Tests
+
+Run the test suite:
+```sh
+go test -v ./...
+```
+
+### Code Quality
+
+Run golangci-lint locally:
+```sh
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+golangci-lint run
+```
+
 ### Generate CRDs
 
 ```sh
 controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 ```
-
-
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
