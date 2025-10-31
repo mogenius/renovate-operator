@@ -64,6 +64,13 @@ spec:
     kubernetes.io/hostname: server-1
 ```
 
+## Contributing
+<a href="https://github.com/mogenius/renovate-operator/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=mogenius/renovate-operator" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
 ## Development
 
 ### Generate CRDs
@@ -71,6 +78,8 @@ spec:
 ```sh
 controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
 ```
+
+
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
