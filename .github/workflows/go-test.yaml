@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: MEGA-FAST
+    runs-on: self-hosted
 
     steps:
     - name: Checkout code
@@ -31,7 +31,7 @@ jobs:
         go build ./...
   test:
     needs: [build]
-    runs-on: MEGA-FAST
+    runs-on: self-hosted
 
     steps:
     - name: Checkout code
@@ -50,7 +50,7 @@ jobs:
 
   lint:
     needs: [build]
-    runs-on: MEGA-FAST
+    runs-on: self-hosted
 
     steps:
     - name: Checkout code

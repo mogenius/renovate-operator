@@ -12,7 +12,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: self-hosted-ansible
+    runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -158,7 +158,7 @@ jobs:
 
   merge-images:
     needs: [build-amd64, build-arm64, build-arm64-linux, build-armv7, prepare]
-    runs-on: self-hosted-ansible
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
@@ -194,7 +194,7 @@ jobs:
 
   helm-chart:
     needs: [prepare, build-amd64, build-arm64, build-arm64-linux, build-armv7, merge-images]
-    runs-on: MEGA-FAST
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
