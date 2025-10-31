@@ -17,10 +17,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+/*
+DiscoveryAgent is the interface for discovering projects for a RenovateJob CRD.
+*/
 type DiscoveryAgent interface {
+	// Discover runs the discovery process for the given RenovateJob CRD and returns the list of discovered projects.
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	// Only create and start the discovery job, do not wait for completion.
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
+	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	// WaitForDiscoveryJob waits for the discovery job to complete and returns the list of discovered projects.
 	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
 

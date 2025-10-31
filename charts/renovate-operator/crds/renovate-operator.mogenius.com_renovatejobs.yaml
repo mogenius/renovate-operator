@@ -39,8 +39,11 @@ spec:
             description: RenovateJobSpec defines the desired state of RenovateJob
             properties:
               discoveryFilter:
+                description: Filter to select which projects to process
                 type: string
               extraEnv:
+                description: Additional environment variables to set in the renovate
+                  container
                 items:
                   description: EnvVar represents an environment variable present in
                     a Container.
@@ -197,9 +200,10 @@ spec:
                   type: object
                 type: array
               image:
+                description: Renovate Docker image to use
                 type: string
               metadata:
-                description: metadata that shall be applied to the resulting pod
+                description: Metadata that shall be applied to the resulting pod
                 properties:
                   annotations:
                     additionalProperties:
@@ -213,12 +217,14 @@ spec:
               nodeSelector:
                 additionalProperties:
                   type: string
+                description: Node selector for scheduling the resulting pod
                 type: object
               parallelism:
+                description: Maximum number of projects to process in parallel
                 format: int32
                 type: integer
               resources:
-                description: ResourceRequirements describes the compute resource requirements.
+                description: Resource requirements for the renovate container
                 properties:
                   claims:
                     description: |-
@@ -277,11 +283,13 @@ spec:
                     type: object
                 type: object
               schedule:
+                description: Cron schedule in standard cron format
                 type: string
               secretRef:
+                description: Reference to the secret containing the renovate config
                 type: string
               securityContext:
-                description: security context for either the pod or the container
+                description: Security context for the resulting pod and container
                 properties:
                   container:
                     description: |-
@@ -715,8 +723,8 @@ spec:
                     type: object
                 type: object
               serviceAccount:
-                description: configuration regarding serviceaccounts for the resulting
-                  pod
+                description: Settings for the serviceaccount the renovate pod should
+                  use
                 properties:
                   automountServiceAccountToken:
                     type: boolean
@@ -733,6 +741,7 @@ spec:
             properties:
               projects:
                 items:
+                  description: Status of a single project within a RenovateJob
                   properties:
                     lastRun:
                       format: date-time

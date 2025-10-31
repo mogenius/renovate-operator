@@ -9,12 +9,22 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+/*
+Scheduler is the interface for scheduling periodic tasks using cron expressions.
+It allows adding, removing, and querying scheduled tasks.
+*/
 type Scheduler interface {
+	// Starts the scheduler.
 	Start()
+	// Stops the scheduler.
 	Stop()
+	// Adds a new schedule with the given cron expression, name, and function to execute.
 	AddSchedule(expr string, name string, fn func()) error
+	// Adds a new schedule, replacing any existing schedule with the same name.
 	AddScheduleReplaceExisting(expr string, name string, fn func()) error
+	// Removes a schedule by name.
 	RemoveSchedule(name string)
+	// Gets the next run time for a schedule by name.
 	GetNextRun(name string) time.Time
 }
 

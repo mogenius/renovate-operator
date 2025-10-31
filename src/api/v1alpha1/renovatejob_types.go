@@ -15,16 +15,27 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 type RenovateJobSpec struct {
-	Schedule        string                      `json:"schedule"`
-	Image           string                      `json:"image,omitempty"`
-	DiscoveryFilter string                      `json:"discoveryFilter"`
-	SecretRef       string                      `json:"secretRef,omitempty"`
-	ExtraEnv        []corev1.EnvVar             `json:"extraEnv,omitempty"`
-	Parallelism     int32                       `json:"parallelism"`
-	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
-	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
-	ServiceAccount  *RenovateJobServiceAccount  `json:"serviceAccount,omitempty"`
-	Metadata        *RenovateJobMetadata        `json:"metadata,omitempty"`
+	// Cron schedule in standard cron format
+	Schedule string `json:"schedule"`
+	// Renovate Docker image to use
+	Image string `json:"image,omitempty"`
+	// Filter to select which projects to process
+	DiscoveryFilter string `json:"discoveryFilter"`
+	// Reference to the secret containing the renovate config
+	SecretRef string `json:"secretRef,omitempty"`
+	// Additional environment variables to set in the renovate container
+	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+	// Maximum number of projects to process in parallel
+	Parallelism int32 `json:"parallelism"`
+	// Resource requirements for the renovate container
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	// Node selector for scheduling the resulting pod
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Settings for the serviceaccount the renovate pod should use
+	ServiceAccount *RenovateJobServiceAccount `json:"serviceAccount,omitempty"`
+	// Metadata that shall be applied to the resulting pod
+	Metadata *RenovateJobMetadata `json:"metadata,omitempty"`
+	// Security context for the resulting pod and container
 	SecurityContext *RenovateJobSecurityContext `json:"securityContext,omitempty"`
 }
 
@@ -46,6 +57,9 @@ type RenovateJobMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+/*
+Status of a single project within a RenovateJob
+*/
 type ProjectStatus struct {
 	Name    string                `json:"name"`
 	LastRun metav1.Time           `json:"lastRun"`

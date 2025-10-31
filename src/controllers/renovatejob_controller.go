@@ -17,6 +17,10 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 )
 
+/*
+Reconciler for RenovateJob resources
+Watching for create/update/delete events and managing the schedules accordingly
+*/
 type RenovateJobReconciler struct {
 	Discovery renovate.DiscoveryAgent
 	Manager   crdManager.RenovateJobManager
