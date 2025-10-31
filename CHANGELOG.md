@@ -1,3 +1,10 @@
+## [1.3.4](https://github.com/mogenius/renovate-operator/compare/1.3.3...1.3.4) (2025-10-31)
+
+
+### Bug Fixes
+
+* adding golang tests ([54621a7](https://github.com/mogenius/renovate-operator/commit/54621a7c0eb4bcb563bd7965bd52f806803d2703))
+
 ## [1.3.3](https://github.com/mogenius/renovate-operator/compare/1.3.2...1.3.3) (2025-10-27)
 
 
