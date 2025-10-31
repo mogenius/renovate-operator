@@ -12,14 +12,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+/*
+RenovateJobManager is the interface for managing RenovateJob CRDs.
+It provides methods to list, get, and update RenovateJob CRDs and their associated projects.
+This should be the only component interacting with RenovateJob CRDs directly.
+*/
 type RenovateJobManager interface {
+	// ListRenovateJobs lists all RenovateJob CRDs in the cluster.
 	ListRenovateJobs(ctx context.Context) ([]RenovateJobIdentifier, error)
+	// GetRenovateJob retrieves a specific RenovateJob CRD by name and namespace.
 	GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error)
+	// GetProjectsForRenovateJob retrieves all projects associated with a specific RenovateJob CRD.
 	GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error)
+	// UpdateProjectStatus updates the status of a specific project within a RenovateJob CRD.
 	UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	// UpdateProjectStatusBatched updates the status of multiple projects within a RenovateJob CRD based on a filter function.
 	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
+	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
 	ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error
+	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
 }
 
@@ -64,14 +77,12 @@ func (r *renovateJobManager) globalManagerLock(readonly bool) func() {
 	}
 }
 
-// GetRenovateJob implements RenovateJobManager.
 func (r *renovateJobManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
 	defer r.globalManagerLock(true)()
 
 	return loadRenovateJob(ctx, name, namespace, r.client)
 }
 
-// GetProjectsByStatus implements RenovateJobManager.
 func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error) {
 	defer r.globalManagerLock(true)()
 
@@ -91,7 +102,6 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 	return result, nil
 }
 
-// GetProjectsForRenovateJob implements RenovateJobManager.
 func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error) {
 	defer r.globalManagerLock(true)()
 
@@ -109,7 +119,6 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 	return result, nil
 }
 
-// ListRenovateJobs implements RenovateJobManager.
 func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJobIdentifier, error) {
 	defer r.globalManagerLock(true)()
 
@@ -130,7 +139,6 @@ func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJo
 	return result, nil
 }
 
-// UpdateProjectStatus implements RenovateJobManager.
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {
 	defer r.globalManagerLock(false)()
 
@@ -182,7 +190,6 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	return err
 }
 
-// ReconcileProjects implements RenovateJobManager.
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error {
 	defer r.globalManagerLock(false)()
 
