@@ -1,3 +1,17 @@
+# [1.4.0](https://github.com/mogenius/renovate-operator/compare/1.3.4...1.4.0) (2025-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update k8s.io/utils digest to bc988d5 ([57f0071](https://github.com/mogenius/renovate-operator/commit/57f00719cb32f63b3aeee052cade9fb782e52bc1))
+* remove the need to overwrite sleep function for tests ([62e0186](https://github.com/mogenius/renovate-operator/commit/62e01861ca71f98907505ebea23915aa40e75532))
+
+
+### Features
+
+* smoothing ui updates and removing flicker ([becf09d](https://github.com/mogenius/renovate-operator/commit/becf09db357f5b026575599e08ad1a1e2df607dd))
+* validate status changes for projects ([cbb2843](https://github.com/mogenius/renovate-operator/commit/cbb2843c73ed4421a5ef1e09c007db6e14796049))
+
 ## [1.3.4](https://github.com/mogenius/renovate-operator/compare/1.3.3...1.3.4) (2025-10-31)
 
 
