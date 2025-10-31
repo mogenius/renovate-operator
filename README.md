@@ -64,7 +64,7 @@ spec:
     kubernetes.io/hostname: server-1
 ```
 
-## Developement
+## Development
 
 ### Generate CRDs
 
