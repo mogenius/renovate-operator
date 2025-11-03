@@ -17,6 +17,7 @@ import (
 	"renovate-operator/internal/renovate"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
+	"renovate-operator/webhook"
 
 	"k8s.io/client-go/rest"
 )
@@ -47,6 +48,23 @@ func main() {
 				}
 				return nil
 			},
+		},
+		{
+			Key:      "WEBHOOK_SERVER_PORT",
+			Optional: true,
+			Default:  "8082",
+			Validate: func(value string) error {
+				_, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("'WEBHOOK_SERVER_PORT' needs to be an integer: %s", err.Error())
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "WEBHOOK_SERVER_ENABLED",
+			Optional: true,
+			Default:  "false",
 		},
 		{
 			Key:      "DELETE_SUCCESSFULL_JOBS",
@@ -112,6 +130,11 @@ func main() {
 
 	uiServer := ui.NewServer(jobMgr, discovery, ctrl.Log.WithName("ui-server"), health)
 	uiServer.Run()
+
+	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
+		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
+		webhookServer.Run()
+	}
 
 	err = (&controllers.RenovateJobReconciler{
 		Scheduler: cronManager,

@@ -2,12 +2,15 @@ package crdmanager
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"sync"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
 	"renovate-operator/internal/utils"
 
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,6 +37,8 @@ type RenovateJobManager interface {
 	ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error
 	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
+	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
+	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
 }
 
 type renovateJobManager struct {
@@ -250,4 +255,42 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 	logs, err := getLastJobLog(ctx, client, executorJob)
 
 	return logs, err
+}
+
+func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error) {
+	defer r.globalManagerLock(true)()
+
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return false, err
+	}
+
+	if renovateJob.Spec.Webhook == nil ||
+		renovateJob.Spec.Webhook.Authentication == nil ||
+		!renovateJob.Spec.Webhook.Authentication.Enabled {
+		// Webhook authentication is not enabled
+		return false, nil
+	}
+
+	secret := &corev1.Secret{}
+	err = r.client.Get(ctx, client.ObjectKey{
+		Name:      renovateJob.Spec.Webhook.Authentication.SecretRef.Name,
+		Namespace: job.Namespace,
+	}, secret)
+	if err != nil {
+		return false, err
+	}
+
+	authData, exists := secret.Data[renovateJob.Spec.Webhook.Authentication.SecretRef.Key]
+	if !exists {
+		return false, nil
+	}
+
+	allTokens := string(authData)
+	tokens := strings.Split(allTokens, ",")
+	if slices.Contains(tokens, token) {
+		return true, nil
+	}
+
+	return false, nil
 }

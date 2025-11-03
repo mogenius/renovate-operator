@@ -60,6 +60,10 @@ func (f *fakeManager) GetLogsForProject(ctx context.Context, job crdManager.Reno
 	return "", fmt.Errorf("not implemented")
 }
 
+func (f *fakeManager) IsWebhookTokenValid(ctx context.Context, job crdManager.RenovateJobIdentifier, token string) (bool, error) {
+	return true, nil
+}
+
 type fakeDiscovery struct {
 	discoverFn func(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
