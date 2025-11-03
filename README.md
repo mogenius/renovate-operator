@@ -32,6 +32,10 @@ helm repo add mogenius https://helm.mogenius.com/public --force-update
 helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-operator --create-namespace --wait
 ```
 
+## Documentation
+- [Webhook API](./docs/webhook.md)
+
+
 ## Examples
 
 ```yaml

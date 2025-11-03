@@ -37,6 +37,8 @@ type RenovateJobSpec struct {
 	Metadata *RenovateJobMetadata `json:"metadata,omitempty"`
 	// Security context for the resulting pod and container
 	SecurityContext *RenovateJobSecurityContext `json:"securityContext,omitempty"`
+	// Configuration for webhooks to trigger renovate runs
+	Webhook *RenovateWebhook `json:"webhook,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
@@ -49,6 +51,24 @@ type RenovateJobServiceAccount struct {
 type RenovateJobSecurityContext struct {
 	Pod       *corev1.PodSecurityContext `json:"pod,omitempty"`
 	Container *corev1.SecurityContext    `json:"container,omitempty"`
+}
+
+// configuration for webhooks that can be used to trigger renovate runs
+type RenovateWebhook struct {
+	Enabled        bool                 `json:"enabled"`
+	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
+}
+
+// authentication configuration for webhooks
+type RenovateWebhookAuth struct {
+	Enabled   bool                        `json:"enabled"`
+	SecretRef *RenovateSecretKeyReference `json:"secretRef,omitempty"`
+}
+
+// reference to a secret and key
+type RenovateSecretKeyReference struct {
+	Name string `json:"name,omitempty"`
+	Key  string `json:"key,omitempty"`
 }
 
 // metadata that shall be applied to the resulting pod

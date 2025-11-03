@@ -731,6 +731,30 @@ spec:
                   name:
                     type: string
                 type: object
+              webhook:
+                description: Configuration for webhooks to trigger renovate runs
+                properties:
+                  authentication:
+                    description: authentication configuration for webhooks
+                    properties:
+                      enabled:
+                        type: boolean
+                      secretRef:
+                        description: reference to a secret and key
+                        properties:
+                          key:
+                            type: string
+                          name:
+                            type: string
+                        type: object
+                    required:
+                    - enabled
+                    type: object
+                  enabled:
+                    type: boolean
+                required:
+                - enabled
+                type: object
             required:
             - discoveryFilter
             - parallelism
