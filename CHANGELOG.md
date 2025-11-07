@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/mogenius/renovate-operator/compare/1.4.0...1.4.1) (2025-11-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency go to v1.25.4 ([acbff09](https://github.com/mogenius/renovate-operator/commit/acbff09cd306110aa159140d1ce17ed6ee713e15))
+
 # [1.4.0](https://github.com/mogenius/renovate-operator/compare/1.3.4...1.4.0) (2025-10-31)
 
 
