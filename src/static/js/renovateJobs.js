@@ -1,251 +1,207 @@
-async function loadTables() {
-    const container = document.getElementById('tables-container');
-    try {
-        const jobsRes = await fetch('/api/v1/renovatejobs');
-        if (!jobsRes.ok) throw new Error('Failed to fetch renovate jobs');
-        const jobsList = await jobsRes.json();
-        if (typeof jobsList !== 'object' || jobsList === null) throw new Error('Invalid jobs response');
+document.addEventListener('alpine:init', () => {
+    Alpine.store('toastStore', {
+        toasts: [],
+        nextId: 1,
 
-        const sortedJobs = jobsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        addToast(type, title, message = '', duration = 3000) {
+            const id = this.nextId++;
+            const toast = { id, type, title, message, visible: true };
+            this.toasts.push(toast);
+            setTimeout(() => this.removeToast(id), duration);
+        },
 
-        // Build a map of existing sections for in-place updates
-        const existingSections = new Map();
-        for (const s of container.querySelectorAll('details.renovatejob')) {
-            // class names are `${name}-${namespace}` as used in createTableSection
-            const key = s.className.split(' ').find(c => c !== 'renovatejob');
-            if (key) existingSections.set(key, s);
-        }
-
-        for (const jobData of sortedJobs) {
-            const key = `${jobData.name}-${jobData.namespace}`;
-            const existing = existingSections.get(key);
-
-            // Create fresh tbody for diffing rows
-            const newTbody = document.createElement('tbody');
-            if (Array.isArray(jobData.projects)) {
-                const statusOrder = { running: 0, scheduled: 1, failed: 2, completed: 3 };
-                const sortedProjects = [...jobData.projects].sort((a, b) => {
-                    const aStatus = (a.status || '').toLowerCase();
-                    const bStatus = (b.status || '').toLowerCase();
-                    const aOrder = statusOrder.hasOwnProperty(aStatus) ? statusOrder[aStatus] : 99;
-                    const bOrder = statusOrder.hasOwnProperty(bStatus) ? statusOrder[bStatus] : 99;
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    return (a.name || '').localeCompare(b.name || '');
-                });
-                for (const projectStatus of sortedProjects) {
-                    const row = document.createElement('tr');
-                    row.appendChild(getNameRowItem(projectStatus));
-                    row.appendChild(getStatusRowItem(projectStatus));
-                    row.appendChild(getActionRowItem(projectStatus, jobData));
-                    newTbody.appendChild(row);
-                }
-            } else {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td>${jobData.name}</td><td>${jobData.namespace}</td><td>-</td><td>-</td><td></td>`;
-                newTbody.appendChild(row);
+        removeToast(id) {
+            const index = this.toasts.findIndex(t => t.id === id);
+            if (index !== -1) {
+                this.toasts[index].visible = false;
+                setTimeout(() => {
+                    this.toasts = this.toasts.filter(t => t.id !== id);
+                }, 300);
             }
+        },
 
-            if (existing) {
-                // Update caption (summary) text if changed
-                const summary = existing.querySelector('summary');
-                const expectedCaption = `${jobData.name} - ${jobData.namespace}`;
-                if (summary && summary.firstChild && summary.firstChild.nodeValue !== expectedCaption) {
-                    summary.firstChild.nodeValue = expectedCaption;
-                }
+        success(title, message = '') {
+            this.addToast('success', title, message);
+        },
 
-                // Replace only the tbody in the existing table to avoid flicker
-                const table = existing.querySelector('table');
-                if (table) {
-                    const oldTbody = table.querySelector('tbody');
-                    if (oldTbody) table.replaceChild(newTbody, oldTbody);
-                    else table.appendChild(newTbody);
-                }
+        error(title, message = '') {
+            this.addToast('error', title, message);
+        },
 
-                // Update discovery button state asynchronously
-                const discoveryBtn = existing.querySelector('button.discovery-btn');
-                if (discoveryBtn) updateDiscoveryButton(discoveryBtn, jobData);
-
-                // remove from map to mark as handled
-                existingSections.delete(key);
-            } else {
-                // create new section
-                const section = createTableSection(jobData, newTbody);
-                container.appendChild(section);
-            }
+        info(title, message = '') {
+            this.addToast('info', title, message);
         }
-
-        // Remove any sections that no longer exist in the data
-        for (const s of existingSections.values()) {
-            s.remove();
-        }
-    } catch (err) {
-        container.innerHTML = `<p style="color:red;">${err.message}</p>`;
-    }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    loadTables();
-    setInterval(loadTables, 30000); // reload every 30 seconds
+    });
 });
 
-async function updateDiscoveryButton(discoveryBtn, jobData) {
-    try {
-        const res = await fetch(`/api/v1/discovery/status?renovate=${encodeURIComponent(jobData.name)}&namespace=${encodeURIComponent(jobData.namespace)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'running') {
-                discoveryBtn.disabled = true;
-                discoveryBtn.textContent = 'Discovery Running...';
-                discoveryBtn.style.backgroundColor = '#2196f3';
-            } else {
-                discoveryBtn.disabled = false;
-                discoveryBtn.textContent = 'Run Discovery';
-                discoveryBtn.style.backgroundColor = '';
+function dashboardStore() {
+    return {
+        jobs: [],
+        loading: true,
+        error: null,
+        stats: {
+            scheduled: 0,
+            running: 0,
+            completed: 0,
+            failed: 0
+        },
+
+        init() {
+            this.loadJobs();
+            setInterval(() => this.loadJobs(), 30000);
+        },
+
+        async loadJobs() {
+            try {
+                this.loading = true;
+                this.error = null;
+
+                const response = await fetch('/api/v1/renovatejobs');
+                if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch jobs`);
+
+                const data = await response.json();
+                if (typeof data !== 'object' || data === null) throw new Error('Invalid response format');
+
+                this.jobs = Array.isArray(data) ? data.sort((a, b) =>
+                    (a.name || '').localeCompare(b.name || '')
+                ) : [];
+
+                for (const job of this.jobs) {
+                    await this.updateDiscoveryStatus(job);
+                    if (Array.isArray(job.projects)) {
+                        job.projects = this.sortProjects(job.projects);
+                    }
+                }
+
+                this.calculateStats();
+            } catch (err) {
+                console.error('Error loading jobs:', err);
+                this.error = err.message;
+                Alpine.store('toastStore').error('Failed to load jobs', err.message);
+            } finally {
+                this.loading = false;
             }
-        } else {
-            discoveryBtn.disabled = false;
-            discoveryBtn.textContent = 'Run Discovery';
-            discoveryBtn.style.backgroundColor = '';
-        }
-    } catch (e) {
-        discoveryBtn.disabled = false;
-        discoveryBtn.textContent = 'Run Discovery';
-        discoveryBtn.style.backgroundColor = '';
-    }
-}
-function createTableSection(jobData, tbody) {
-    const section = document.createElement('details');
-    section.classList.add(`${jobData.name}-${jobData.namespace}`)
-    section.classList.add('renovatejob')
-    section.open = true
+        },
 
-    const caption = document.createElement('summary')
-    caption.innerText = `${jobData.name} - ${jobData.namespace}`;
-
-    const discoveryBtn = document.createElement('button')
-    discoveryBtn.classList.add('discovery-btn');
-    discoveryBtn.textContent = 'Run Discovery';
-    updateDiscoveryButton(discoveryBtn, jobData);
-
-
-    discoveryBtn.onclick = async () => {
-        discoveryBtn.disabled = true;
-        discoveryBtn.textContent = 'Running...';
-        try {
-            const res = await fetch('/api/v1/discovery/start', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    renovateJob: jobData.name,
-                    namespace: jobData.namespace,
-                })
+        sortProjects(projects) {
+            const statusOrder = { running: 0, scheduled: 1, failed: 2, completed: 3 };
+            return [...projects].sort((a, b) => {
+                const aStatus = (a.status || '').toLowerCase();
+                const bStatus = (b.status || '').toLowerCase();
+                const aOrder = statusOrder.hasOwnProperty(aStatus) ? statusOrder[aStatus] : 99;
+                const bOrder = statusOrder.hasOwnProperty(bStatus) ? statusOrder[bStatus] : 99;
+                if (aOrder !== bOrder) return aOrder - bOrder;
+                return (a.name || '').localeCompare(b.name || '');
             });
-            if (res.ok) {
-                discoveryBtn.textContent = 'Discovery Started!';
-                discoveryBtn.style.backgroundColor = '#4caf50';
-                // Reload tables after successful trigger
-                setTimeout(loadTables, 500);
-            } else {
-                discoveryBtn.textContent = 'Failed';
-                discoveryBtn.style.backgroundColor = '#f44336';
+        },
+
+        calculateStats() {
+            this.stats = { scheduled: 0, running: 0, completed: 0, failed: 0 };
+            for (const job of this.jobs) {
+                if (Array.isArray(job.projects)) {
+                    for (const project of job.projects) {
+                        const status = (project.status || '').toLowerCase();
+                        if (this.stats.hasOwnProperty(status)) {
+                            this.stats[status]++;
+                        }
+                    }
+                }
             }
-        } catch (e) {
-            discoveryBtn.textContent = 'Error';
-            discoveryBtn.style.backgroundColor = '#f44336';
-        }
-        setTimeout(() => {
-            discoveryBtn.textContent = 'Run Discovery';
-            discoveryBtn.style.backgroundColor = '';
-        }, 2000);
-    }
+        },
 
-    caption.appendChild(discoveryBtn)
-    section.appendChild(caption)
-
-    const table = document.createElement('table')
-    section.appendChild(table)
-
-    const thead = document.createElement('thead');
-    thead.innerHTML = `<tr><th>Project</th><th>Status</th><th>Action</th></tr>`;
-    table.appendChild(thead);
-    table.appendChild(tbody);
-
-    return section
-}
-
-function getNameRowItem(projectStatus) {
-    const div = document.createElement("div")
-    div.innerText = projectStatus.name || '-'
-
-    const td = document.createElement("td")
-    td.appendChild(div)
-    td.classList.add("name")
-    return td
-}
-
-function getStatusRowItem(projectStatus) {
-
-    const div = document.createElement("div")
-    div.innerText = projectStatus.status || '-'
-
-    const td = document.createElement("td")
-    td.appendChild(div)
-    td.classList.add("status");
-    td.classList.add(projectStatus.status);
-
-    return td
-}
-
-function getActionRowItem(projectStatus, jobData) {
-    const actionTd = document.createElement('td');
-    const btn = document.createElement('button');
-    btn.classList.add('trigger-btn');
-    btn.textContent = 'Trigger';
-    btn.onclick = async () => {
-        btn.disabled = true;
-        btn.textContent = 'Triggering...';
-        try {
-            const res = await fetch('/api/v1/renovate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    renovateJob: jobData.name,
-                    namespace: jobData.namespace,
-                    project: projectStatus.name
-                })
-            });
-            if (res.ok) {
-                btn.textContent = 'Triggered!';
-                btn.style.backgroundColor = '#4caf50';
-                // Reload tables after successful trigger
-                setTimeout(loadTables, 500);
-            } else {
-                btn.textContent = 'Failed';
-                btn.style.backgroundColor = '#f44336';
+        async updateDiscoveryStatus(job) {
+            try {
+                const response = await fetch(
+                    `/api/v1/discovery/status?renovate=${encodeURIComponent(job.name)}&namespace=${encodeURIComponent(job.namespace)}`
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    job.discoveryRunning = data.status === 'running';
+                } else {
+                    job.discoveryRunning = false;
+                }
+            } catch (err) {
+                job.discoveryRunning = false;
             }
-        } catch (e) {
-            btn.textContent = 'Error';
-            btn.style.backgroundColor = '#f44336';
+        },
+
+        async runDiscovery(job) {
+            if (job.discoveryRunning) return;
+
+            job.discoveryRunning = true;
+
+            try {
+                const response = await fetch('/api/v1/discovery/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renovateJob: job.name,
+                        namespace: job.namespace,
+                    })
+                });
+
+                if (response.ok) {
+                    Alpine.store('toastStore').success(
+                        'Discovery Started',
+                        `Discovery job for ${job.name} has been triggered`
+                    );
+                    setTimeout(() => this.loadJobs(), 1000);
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Failed to start discovery');
+                }
+            } catch (err) {
+                console.error('Error running discovery:', err);
+                job.discoveryRunning = false;
+                Alpine.store('toastStore').error('Discovery Failed', err.message);
+            }
+        },
+
+        async triggerRenovate(job, project) {
+            if (project.triggering) return;
+
+            project.triggering = true;
+
+            try {
+                const response = await fetch('/api/v1/renovate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renovateJob: job.name,
+                        namespace: job.namespace,
+                        project: project.name
+                    })
+                });
+
+                if (response.ok) {
+                    Alpine.store('toastStore').success(
+                        'Renovate Triggered',
+                        `Job triggered for ${project.name}`
+                    );
+                    setTimeout(() => this.loadJobs(), 1000);
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Failed to trigger renovate');
+                }
+            } catch (err) {
+                console.error('Error triggering renovate:', err);
+                Alpine.store('toastStore').error('Trigger Failed', err.message);
+            } finally {
+                project.triggering = false;
+            }
         }
-        setTimeout(() => {
-            btn.disabled = false;
-            btn.textContent = 'Trigger';
-            btn.style.backgroundColor = '';
-        }, 2000);
     };
-    actionTd.appendChild(btn);
-
-    const logRedirect = document.createElement('a')
-    logRedirect.classList.add('log-btn');
-    logRedirect.href = `/api/v1/logs?renovate=${encodeURIComponent(jobData.name)}&namespace=${encodeURIComponent(jobData.namespace)}&project=${encodeURIComponent(projectStatus.name)}`
-    logRedirect.target = "_blank"
-    logRedirect.innerText = "Logs"
-
-    actionTd.appendChild(logRedirect)
-
-    return actionTd
 }
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('toastStore', () => ({
+        get toasts() {
+            return Alpine.store('toastStore').toasts;
+        },
+        removeToast(id) {
+            Alpine.store('toastStore').removeToast(id);
+        }
+    }));
+
+    Alpine.data('dashboardStore', dashboardStore);
+});
