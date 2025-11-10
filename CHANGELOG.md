@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/mogenius/renovate-operator/compare/1.4.1...1.5.0) (2025-11-10)
+
+
+### Features
+
+* adding webhook api with authentication ([db9bd07](https://github.com/mogenius/renovate-operator/commit/db9bd079b904ecda43d77b302f48d25ce590debd))
+
 ## [1.4.1](https://github.com/mogenius/renovate-operator/compare/1.4.0...1.4.1) (2025-11-07)
 
 
