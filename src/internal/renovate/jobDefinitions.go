@@ -12,7 +12,13 @@ import (
 
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
-	predefinedEnvVars := []v1.EnvVar{}
+	predefinedEnvVars := []v1.EnvVar{
+		{
+			Name:  "NODE_NO_WARNINGS",
+			Value: "1",
+		},
+	}
+
 	if job.Spec.DiscoveryFilter != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_FILTER",
