@@ -6,15 +6,17 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"time"
 
 	"github.com/gorilla/mux"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
 type RenovateJobInfo struct {
-	Name      string                             `json:"name"`
-	Namespace string                             `json:"namespace"`
-	Projects  []crdmanager.RenovateProjectStatus `json:"projects"`
+	Name         string                             `json:"name"`
+	Namespace    string                             `json:"namespace"`
+	NextSchedule time.Time                          `json:"nextSchedule"`
+	Projects     []crdmanager.RenovateProjectStatus `json:"projects"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -40,9 +42,10 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result = append(result, RenovateJobInfo{
-			Name:      job.Name,
-			Namespace: job.Namespace,
-			Projects:  projects,
+			Name:         job.Name,
+			Namespace:    job.Namespace,
+			NextSchedule: s.scheduler.GetNextRun(job.Fullname()),
+			Projects:     projects,
 		})
 	}
 
