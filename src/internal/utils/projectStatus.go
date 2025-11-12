@@ -24,8 +24,8 @@ func GetUpdateStatusForProject(projectStatus *api.ProjectStatus, desiredStatus a
 
 func validateProjectStatusScheduled(projectStatus *api.ProjectStatus) *api.ProjectStatus {
 	// cannot schedule a project that is currently running
-	if projectStatus.Status == api.JobStatusRunning {
-		projectStatus.Status = api.JobStatusRunning
+	if projectStatus.Status != api.JobStatusRunning {
+		projectStatus.Status = api.JobStatusScheduled
 	}
 	return projectStatus
 }
