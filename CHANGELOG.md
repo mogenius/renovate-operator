@@ -1,3 +1,10 @@
+## [1.6.4](https://github.com/mogenius/renovate-operator/compare/1.6.3...1.6.4) (2025-11-12)
+
+
+### Bug Fixes
+
+* cannot set failed project to be scheduled ([b8bd04c](https://github.com/mogenius/renovate-operator/commit/b8bd04c22f69b727a8b9f15d8f7a70935a296d0d))
+
 ## [1.6.3](https://github.com/mogenius/renovate-operator/compare/1.6.2...1.6.3) (2025-11-12)
 
 
