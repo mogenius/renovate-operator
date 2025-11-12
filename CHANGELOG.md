@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/mogenius/renovate-operator/compare/1.5.1...1.6.0) (2025-11-12)
+
+
+### Features
+
+* adding the ability to set autodiscovery topics ([6cb940e](https://github.com/mogenius/renovate-operator/commit/6cb940eda47c7f06d17fd04f5741961c7fc59c1c))
+
 ## [1.5.1](https://github.com/mogenius/renovate-operator/compare/1.5.0...1.5.1) (2025-11-12)
 
 
