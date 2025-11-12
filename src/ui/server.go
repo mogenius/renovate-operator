@@ -9,6 +9,7 @@ import (
 	"renovate-operator/health"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/scheduler"
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
@@ -17,17 +18,19 @@ import (
 type Server struct {
 	manager   crdmanager.RenovateJobManager
 	discovery renovate.DiscoveryAgent
+	scheduler scheduler.Scheduler
 	logger    logr.Logger
 	server    *http.Server
 	health    health.HealthCheck
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, logger logr.Logger, health health.HealthCheck) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck) *Server {
 	return &Server{
 		manager:   manager,
 		logger:    logger,
 		health:    health,
 		discovery: discovery,
+		scheduler: scheduler,
 	}
 }
 

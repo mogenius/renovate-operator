@@ -140,7 +140,7 @@ func main() {
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 	cronManager.Start()
 
-	uiServer := ui.NewServer(jobMgr, discovery, ctrl.Log.WithName("ui-server"), health)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
