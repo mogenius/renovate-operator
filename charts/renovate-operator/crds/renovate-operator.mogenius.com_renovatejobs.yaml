@@ -38,6 +38,9 @@ spec:
           spec:
             description: RenovateJobSpec defines the desired state of RenovateJob
             properties:
+              discoverTopics:
+                description: Topics to discover projects from
+                type: string
               discoveryFilter:
                 description: Filter to select which projects to process
                 type: string
@@ -756,7 +759,6 @@ spec:
                 - enabled
                 type: object
             required:
-            - discoveryFilter
             - parallelism
             - schedule
             type: object

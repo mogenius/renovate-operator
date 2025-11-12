@@ -25,6 +25,12 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			Value: job.Spec.DiscoveryFilter,
 		})
 	}
+	if job.Spec.DiscoverTopics != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_AUTODISCOVER_TOPICS",
+			Value: job.Spec.DiscoverTopics,
+		})
+	}
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
