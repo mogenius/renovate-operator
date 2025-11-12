@@ -39,6 +39,8 @@ spec:
               value: {{ .Values.config.defaultJobActiveDeadlineSeconds | quote }}
             - name: JOB_BACKOFF_LIMIT
               value: {{ .Values.config.defaultJobBackoffLimit | quote }}
+            - name: DELETE_SUCCESSFULL_JOBS
+              value: {{ .Values.config.deleteSuccessfullJobs | quote }}
             - name: SERVER_PORT
               value: "8081"
             {{- if .Values.webhook.enabled }}

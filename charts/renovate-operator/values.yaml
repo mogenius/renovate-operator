@@ -14,6 +14,8 @@ config:
   defaultJobBackoffLimit: 1
   # -- default active deadline seconds for renovate jobs
   defaultJobActiveDeadlineSeconds: 1800
+  # -- whether to delete successfully finished renovate jobs (will loose logs)
+  deleteSuccessfullJobs: false
 
 ingress:
   # -- whether to enable the ingress renovate-operator
