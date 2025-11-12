@@ -31,7 +31,7 @@ type Scheduler interface {
 type scheduler struct {
 	cronManager *cron.Cron
 	entries     map[string]schedulerEntry
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	health      health.HealthCheck
 	logger      logr.Logger
 }
@@ -48,7 +48,7 @@ func NewScheduler(logger logr.Logger, health health.HealthCheck) Scheduler {
 		cronManager: cronManager,
 		entries:     make(map[string]schedulerEntry),
 		health:      health,
-		mu:          sync.Mutex{},
+		mu:          sync.RWMutex{},
 		logger:      logger,
 	}
 }
@@ -84,8 +84,8 @@ func (s *scheduler) AddSchedule(expr string, name string, fn func()) error {
 	// setting health status
 	s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 		e.Scheduler[name] = health.SingleSchedulerHealth{
-			Name: name,
-			// NextRun:   s.GetNextRun(name),
+			Name:      name,
+			NextRun:   s.getNextRunInternal(name),
 			Schedule:  expr,
 			IsRunning: true,
 		}
@@ -123,8 +123,12 @@ func (s *scheduler) RemoveSchedule(name string) {
 }
 
 func (s *scheduler) GetNextRun(name string) time.Time {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.getNextRunInternal(name)
+}
+
+func (s *scheduler) getNextRunInternal(name string) time.Time {
 	if entry, ok := s.entries[name]; ok {
 		// Find the entry with matching ID
 		for _, cronEntry := range s.cronManager.Entries() {
@@ -141,8 +145,8 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 	return func() {
 		s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
-				Name: key,
-				// NextRun:   s.GetNextRun(key),
+				Name:      key,
+				NextRun:   s.getNextRunInternal(key),
 				Schedule:  schedule,
 				IsRunning: true,
 			}
@@ -151,8 +155,8 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 
 		defer s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
-				Name: key,
-				// NextRun:   s.GetNextRun(key),
+				Name:      key,
+				NextRun:   s.getNextRunInternal(key),
 				Schedule:  schedule,
 				IsRunning: false,
 			}
