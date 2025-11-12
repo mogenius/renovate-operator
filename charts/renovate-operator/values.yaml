@@ -8,6 +8,13 @@ image:
   tag: ~
   pullPolicy: "IfNotPresent"
 
+
+config:
+  # -- default backoff limit for renovate jobs
+  defaultJobBackoffLimit: 1
+  # -- default active deadline seconds for renovate jobs
+  defaultJobActiveDeadlineSeconds: 1800
+
 ingress:
   # -- whether to enable the ingress renovate-operator
   enabled: false
