@@ -1,3 +1,11 @@
+## [1.5.1](https://github.com/mogenius/renovate-operator/compare/1.5.0...1.5.1) (2025-11-12)
+
+
+### Bug Fixes
+
+* adding next run back to health check ([4d28a91](https://github.com/mogenius/renovate-operator/commit/4d28a910c8d666bc686ce8421fceb6b88e23234d))
+* do not print node warnings in discovery to retain parsability ([b7e6993](https://github.com/mogenius/renovate-operator/commit/b7e6993dca1ede5b95f5846661b83ab984fd2a60))
+
 # [1.5.0](https://github.com/mogenius/renovate-operator/compare/1.4.1...1.5.0) (2025-11-10)
 
 
