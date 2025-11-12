@@ -162,11 +162,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	}
 	// discovery mus only run once
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
-	if err != nil {
-		internalServerError(w, err, "failed to get discovery job status")
-		return
-	}
-	if status == api.JobStatusRunning {
+	if err == nil && status == api.JobStatusRunning {
 		badRequestError(w, err, "discovery job already running")
 		return
 	}
