@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/mogenius/renovate-operator/compare/1.6.0...1.6.1) (2025-11-12)
+
+
+### Bug Fixes
+
+* do not fail to start discovery if no discovery exists ([32c46e0](https://github.com/mogenius/renovate-operator/commit/32c46e0a5eb70dc0b0f71117c0cad00da06ca16b))
+
 # [1.6.0](https://github.com/mogenius/renovate-operator/compare/1.5.1...1.6.0) (2025-11-12)
 
 
