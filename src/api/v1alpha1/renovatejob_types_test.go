@@ -90,8 +90,14 @@ func TestRenovateJob_ExecutorJobName(t *testing.T) {
 		{
 			name:    "project with multiple slashes and underscores",
 			jobName: "job",
-			project: "github.com/org/repo_name",
-			want:    "job-github.com-org-repo-name",
+			project: "org/repo_name",
+			want:    "job-org-repo-name",
+		},
+		{
+			name:    "complex project name",
+			jobName: "renovate",
+			project: "Org/.github",
+			want:    "renovate-org--github",
 		},
 	}
 
