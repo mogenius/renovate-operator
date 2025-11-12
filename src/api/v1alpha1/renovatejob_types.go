@@ -20,7 +20,9 @@ type RenovateJobSpec struct {
 	// Renovate Docker image to use
 	Image string `json:"image,omitempty"`
 	// Filter to select which projects to process
-	DiscoveryFilter string `json:"discoveryFilter"`
+	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
+	// Topics to discover projects from
+	DiscoverTopics string `json:"discoverTopics,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container
