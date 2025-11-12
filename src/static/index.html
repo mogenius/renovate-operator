@@ -8,9 +8,14 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script
-      defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
     ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script>
       tailwind.config = {
@@ -31,411 +36,726 @@
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body class="bg-gray-50 text-gray-900">
-    <div
-      x-data="toastStore"
-      class="fixed top-4 right-4 z-50 space-y-2"
-      x-show="toasts.length > 0"
-      x-transition
-    >
-      <template x-for="toast in toasts" :key="toast.id">
-        <div
-          class="toast-notification"
-          :class="{
-               'toast-success': toast.type === 'success',
-               'toast-error': toast.type === 'error',
-               'toast-info': toast.type === 'info'
-             }"
-          x-show="toast.visible"
-          x-transition:enter="transition ease-out duration-300"
-          x-transition:enter-start="opacity-0 transform translate-x-full"
-          x-transition:enter-end="opacity-100 transform translate-x-0"
-          x-transition:leave="transition ease-in duration-200"
-          x-transition:leave-start="opacity-100 transform translate-x-0"
-          x-transition:leave-end="opacity-0 transform translate-x-full"
-        >
-          <div class="flex items-start gap-3">
-            <div class="toast-icon" x-show="toast.type === 'success'">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fill-rule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </div>
-            <div class="toast-icon" x-show="toast.type === 'error'">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fill-rule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </div>
-            <div class="toast-icon" x-show="toast.type === 'info'">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fill-rule="evenodd"
-                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </div>
-            <div class="flex-1">
-              <p class="font-semibold text-sm" x-text="toast.title"></p>
-              <p
-                class="text-xs mt-1 opacity-90"
-                x-text="toast.message"
-                x-show="toast.message"
-              ></p>
-            </div>
-            <button
-              @click="removeToast(toast.id)"
-              class="text-current opacity-60 hover:opacity-100 transition"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fill-rule="evenodd"
-                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </template>
-    </div>
+    <div id="root"></div>
 
-    <header class="bg-white border-b border-gray-200 mb-6">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div
-          class="flex flex-col md:flex-row md:items-center md:justify-between gap-6"
-        >
-          <div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Renovate Operator</h1>
-            <p class="text-gray-600 text-sm">
-              Automated dependency updates for your repositories
-            </p>
-          </div>
+    <script type="text/babel">
+      const { useState, useEffect, useCallback } = React;
 
-          <div x-data="dashboardStore" class="flex items-center gap-4">
-            <div
-              class="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                Scheduled
+      function Toast({ toast, onClose }) {
+        const getToastClasses = (type) => {
+          const base =
+            "min-w-[300px] max-w-[400px] p-4 rounded-lg shadow-xl backdrop-blur-sm border border-white/20 text-white";
+          const gradients = {
+            success: "bg-gradient-to-br from-success/95 to-success/85",
+            error: "bg-gradient-to-br from-error/95 to-error/85",
+            info: "bg-gradient-to-br from-primary/95 to-primary/85",
+          };
+          return `${base} ${gradients[type]}`;
+        };
+
+        return (
+          <div className={getToastClasses(toast.type)}>
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                {toast.type === "success" && (
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
+                {toast.type === "error" && (
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
+                {toast.type === "info" && (
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
               </div>
-              <div
-                class="text-3xl font-bold text-warning"
-                x-text="stats.scheduled"
-              ></div>
-            </div>
-            <div
-              class="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                Running
+              <div className="flex-1">
+                <p className="font-semibold text-sm">{toast.title}</p>
+                {toast.message && (
+                  <p className="text-xs mt-1 opacity-90">{toast.message}</p>
+                )}
               </div>
-              <div
-                class="text-3xl font-bold text-primary"
-                x-text="stats.running"
-              ></div>
+              <button
+                onClick={() => onClose(toast.id)}
+                className="text-current opacity-60 hover:opacity-100 transition"
+                aria-label="Close notification"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
             </div>
-            <div
-              class="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                Completed
+          </div>
+        );
+      }
+
+      function ToastContainer({ toasts, onRemove }) {
+        if (toasts.length === 0) return null;
+
+        return (
+          <div className="fixed top-4 right-4 z-50 space-y-3">
+            {toasts.map((toast) => (
+              <div
+                key={toast.id}
+                style={{
+                  animation: toast.removing
+                    ? "slideOut 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards"
+                    : "slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
+                }}
+              >
+                <Toast toast={toast} onClose={onRemove} />
               </div>
-              <div
-                class="text-3xl font-bold text-success"
-                x-text="stats.completed"
-              ></div>
-            </div>
+            ))}
           </div>
-        </div>
-      </div>
-    </header>
+        );
+      }
 
-    <main
-      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8"
-      x-data="dashboardStore"
-    >
-      <div x-show="loading && jobs.length === 0" class="space-y-6">
-        <div class="skeleton-card" x-show="loading">
-          <div class="skeleton-header"></div>
-          <div class="skeleton-body">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-          </div>
-        </div>
-        <div class="skeleton-card">
-          <div class="skeleton-header"></div>
-          <div class="skeleton-body">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-          </div>
-        </div>
-      </div>
+      function App() {
+        const [jobs, setJobs] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState(null);
+        const [stats, setStats] = useState({
+          scheduled: 0,
+          running: 0,
+          completed: 0,
+          failed: 0,
+        });
+        const [toasts, setToasts] = useState([]);
+        const [nextToastId, setNextToastId] = useState(1);
 
-      <div
-        x-show="error && !loading"
-        class="bg-error/10 border border-error/20 rounded-lg p-6 text-center"
-      >
-        <svg
-          class="w-12 h-12 text-error mx-auto mb-4"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-            clip-rule="evenodd"
-          />
-        </svg>
-        <h3 class="text-lg font-semibold text-error mb-2">
-          Failed to load jobs
-        </h3>
-        <p class="text-gray-600 mb-4" x-text="error"></p>
-        <button
-          @click="loadJobs"
-          class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
-        >
-          Retry
-        </button>
-      </div>
+        const addToast = useCallback(
+          (type, title, message = "", duration = 5000) => {
+            const id = nextToastId;
+            setNextToastId((prev) => prev + 1);
+            const toast = { id, type, title, message, removing: false };
+            setToasts((prev) => [...prev, toast]);
+            setTimeout(() => removeToast(id), duration);
+          },
+          [nextToastId]
+        );
 
-      <div x-show="!loading || jobs.length > 0" class="space-y-6">
-        <template x-for="job in jobs" :key="job.name + '-' + job.namespace">
-          <div class="card-beam" x-data="{ open: true }">
+        const removeToast = (id) => {
+          setToasts((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, removing: true } : t))
+          );
+          setTimeout(() => {
+            setToasts((prev) => prev.filter((t) => t.id !== id));
+          }, 400);
+        };
+
+        const calculateStats = (jobsList) => {
+          const newStats = {
+            scheduled: 0,
+            running: 0,
+            completed: 0,
+            failed: 0,
+          };
+          jobsList.forEach((job) => {
+            if (Array.isArray(job.projects)) {
+              job.projects.forEach((project) => {
+                const status = (project.status || "").toLowerCase();
+                if (newStats.hasOwnProperty(status)) {
+                  newStats[status]++;
+                }
+              });
+            }
+          });
+          return newStats;
+        };
+
+        const sortProjects = (projects) => {
+          const statusOrder = {
+            running: 0,
+            scheduled: 1,
+            failed: 2,
+            completed: 3,
+          };
+          return [...projects].sort((a, b) => {
+            const aStatus = (a.status || "").toLowerCase();
+            const bStatus = (b.status || "").toLowerCase();
+            const aOrder = statusOrder.hasOwnProperty(aStatus)
+              ? statusOrder[aStatus]
+              : 99;
+            const bOrder = statusOrder.hasOwnProperty(bStatus)
+              ? statusOrder[bStatus]
+              : 99;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+            return (a.name || "").localeCompare(b.name || "");
+          });
+        };
+
+        const loadJobs = useCallback(async () => {
+          try {
+            setLoading(true);
+            setError(null);
+
+            const response = await fetch("/api/v1/renovatejobs");
+            if (!response.ok)
+              throw new Error(`HTTP ${response.status}: Failed to fetch jobs`);
+
+            const data = await response.json();
+            if (typeof data !== "object" || data === null)
+              throw new Error("Invalid response format");
+
+            let jobsList = Array.isArray(data)
+              ? data.sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+              : [];
+
+            for (const job of jobsList) {
+              job.discoveryRunning = false;
+              if (Array.isArray(job.projects)) {
+                job.projects = sortProjects(job.projects);
+                job.projects.forEach((project) => {
+                  project.triggering = false;
+                });
+              }
+            }
+
+            setJobs(jobsList);
+            setStats(calculateStats(jobsList));
+          } catch (err) {
+            console.error("Error loading jobs:", err);
+            setError(err.message);
+            addToast("error", "Failed to load jobs", err.message);
+          } finally {
+            setLoading(false);
+          }
+        }, [addToast]);
+
+        const runDiscovery = async (job) => {
+          if (job.discoveryRunning) return;
+
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.name === job.name && j.namespace === job.namespace
+                ? { ...j, discoveryRunning: true }
+                : j
+            )
+          );
+
+          try {
+            const response = await fetch("/api/v1/discovery/start", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                renovateJob: job.name,
+                namespace: job.namespace,
+              }),
+            });
+
+            if (response.ok) {
+              addToast(
+                "success",
+                "Discovery Started",
+                `Discovery job for ${job.name} has been triggered`
+              );
+              setTimeout(() => {
+                setJobs((prev) =>
+                  prev.map((j) =>
+                    j.name === job.name && j.namespace === job.namespace
+                      ? { ...j, discoveryRunning: false }
+                      : j
+                  )
+                );
+              }, 2000);
+            } else {
+              const errorText = await response.text();
+              throw new Error(errorText || "Failed to start discovery");
+            }
+          } catch (err) {
+            console.error("Error running discovery:", err);
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.name === job.name && j.namespace === job.namespace
+                  ? { ...j, discoveryRunning: false }
+                  : j
+              )
+            );
+            addToast("error", "Discovery Failed", err.message);
+          }
+        };
+
+        const triggerRenovate = async (job, project) => {
+          if (project.triggering) return;
+
+          setJobs((prev) =>
+            prev.map((j) => {
+              if (j.name === job.name && j.namespace === job.namespace) {
+                return {
+                  ...j,
+                  projects: j.projects.map((p) =>
+                    p.name === project.name ? { ...p, triggering: true } : p
+                  ),
+                };
+              }
+              return j;
+            })
+          );
+
+          try {
+            const response = await fetch("/api/v1/renovate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                renovateJob: job.name,
+                namespace: job.namespace,
+                project: project.name,
+              }),
+            });
+
+            if (response.ok) {
+              addToast(
+                "success",
+                "Renovate Triggered",
+                `Job triggered for ${project.name}`
+              );
+            } else {
+              const errorText = await response.text();
+              throw new Error(errorText || "Failed to trigger renovate");
+            }
+          } catch (err) {
+            console.error("Error triggering renovate:", err);
+            addToast("error", "Trigger Failed", err.message);
+          } finally {
+            setJobs((prev) =>
+              prev.map((j) => {
+                if (j.name === job.name && j.namespace === job.namespace) {
+                  return {
+                    ...j,
+                    projects: j.projects.map((p) =>
+                      p.name === project.name ? { ...p, triggering: false } : p
+                    ),
+                  };
+                }
+                return j;
+              })
+            );
+          }
+        };
+
+        useEffect(() => {
+          loadJobs();
+          const interval = setInterval(loadJobs, 30000);
+          return () => clearInterval(interval);
+        }, [loadJobs]);
+
+        return (
+          <>
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+            <header className="bg-white border-b border-gray-200 mb-6">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                  <div>
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                      Renovate Operator
+                    </h1>
+                    <p className="text-gray-600 text-sm">
+                      Automated dependency updates for your repositories
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                        Scheduled
+                      </div>
+                      <div className="text-3xl font-bold text-warning">
+                        {loading ? "—" : stats.scheduled}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                        Running
+                      </div>
+                      <div className="text-3xl font-bold text-primary">
+                        {loading ? "—" : stats.running}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                        Completed
+                      </div>
+                      <div className="text-3xl font-bold text-success">
+                        {loading ? "—" : stats.completed}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+              {loading && jobs.length === 0 && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm animate-pulse">
+                    <div className="h-8 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded-lg mb-4 skeleton-header"></div>
+                    <div className="flex flex-col gap-3">
+                      <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded skeleton-line"></div>
+                      <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded skeleton-line"></div>
+                      <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded skeleton-line"></div>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm animate-pulse">
+                    <div className="h-8 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded-lg mb-4 skeleton-header"></div>
+                    <div className="flex flex-col gap-3">
+                      <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded skeleton-line"></div>
+                      <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] rounded skeleton-line"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {error && !loading && (
+                <div className="bg-error/10 border border-error/20 rounded-lg p-6 text-center">
+                  <svg
+                    className="w-12 h-12 text-error mx-auto mb-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-error mb-2">
+                    Failed to load jobs
+                  </h3>
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <button
+                    onClick={loadJobs}
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                    aria-label="Retry loading jobs"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {(!loading || jobs.length > 0) && (
+                <div className="space-y-6">
+                  {jobs.map((job) => (
+                    <JobCard
+                      key={`${job.name}-${job.namespace}`}
+                      job={job}
+                      onRunDiscovery={runDiscovery}
+                      onTriggerRenovate={triggerRenovate}
+                    />
+                  ))}
+
+                  {jobs.length === 0 && !loading && !error && (
+                    <div className="text-center py-12">
+                      <svg
+                        className="w-16 h-16 text-gray-400 mx-auto mb-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                        />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                        No Renovate Jobs Found
+                      </h3>
+                      <p className="text-gray-500">
+                        Create a RenovateJob resource to get started.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </main>
+          </>
+        );
+      }
+
+      function JobCard({ job, onRunDiscovery, onTriggerRenovate }) {
+        const [open, setOpen] = useState(true);
+
+        const getBadgeClass = (status) => {
+          const base =
+            "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium";
+          switch (status) {
+            case "scheduled":
+              return `${base} bg-warning/10 text-warning`;
+            case "running":
+              return `${base} bg-primary/10 text-primary`;
+            case "completed":
+              return `${base} bg-success/10 text-success`;
+            case "failed":
+              return `${base} bg-error/10 text-error`;
+            default:
+              return `${base} bg-primary/10 text-primary`;
+          }
+        };
+
+        return (
+          <div className="relative bg-white rounded-lg overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200">
             <div
-              class="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
-              @click="open = !open"
+              className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+              onClick={() => setOpen(!open)}
             >
-              <div class="flex items-center gap-4">
+              <div className="flex items-center gap-4">
                 <button
-                  class="transform transition-transform duration-200"
-                  :class="{ 'rotate-90': open }"
+                  className={`transform transition-transform duration-200 ${
+                    open ? "rotate-90" : ""
+                  }`}
+                  aria-label={
+                    open ? "Collapse job details" : "Expand job details"
+                  }
+                  aria-hidden="true"
                 >
                   <svg
-                    class="w-5 h-5 text-gray-500"
+                    className="w-5 h-5 text-gray-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
+                    aria-hidden="true"
                   >
                     <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
                       d="M9 5l7 7-7 7"
                     />
                   </svg>
                 </button>
                 <div>
-                  <h2
-                    class="text-xl font-bold text-gray-900"
-                    x-text="job.name"
-                  ></h2>
-                  <p class="text-sm text-gray-500">
-                    Namespace:
-                    <span class="font-mono" x-text="job.namespace"></span>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {job.name}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    Namespace:{" "}
+                    <span className="font-mono">{job.namespace}</span>
                   </p>
                 </div>
               </div>
 
               <button
-                @click.stop="runDiscovery(job)"
-                :disabled="job.discoveryRunning"
-                class="btn-primary flex items-center gap-2"
-                :class="{ 'btn-loading': job.discoveryRunning }"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRunDiscovery(job);
+                }}
+                disabled={job.discoveryRunning}
+                className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center gap-2 ${
+                  job.discoveryRunning ? "btn-loading" : ""
+                }`}
+                aria-label={
+                  job.discoveryRunning
+                    ? "Discovery running"
+                    : `Run discovery for ${job.name}`
+                }
               >
                 <svg
-                  class="w-4 h-4"
-                  :class="{ 'animate-spin': job.discoveryRunning }"
+                  className={`w-4 h-4 ${
+                    job.discoveryRunning ? "animate-spin" : ""
+                  }`}
                   fill="currentColor"
                   viewBox="0 0 20 20"
                 >
                   <path
-                    fill-rule="evenodd"
+                    fillRule="evenodd"
                     d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                    clip-rule="evenodd"
+                    clipRule="evenodd"
                   />
                 </svg>
-                <span
-                  x-text="job.discoveryRunning ? 'Running...' : 'Run Discovery'"
-                ></span>
+                <span>
+                  {job.discoveryRunning ? "Running..." : "Run Discovery"}
+                </span>
               </button>
             </div>
 
-            <div
-              x-show="open"
-              x-transition:enter="transition ease-out duration-200"
-              x-transition:enter-start="opacity-0 transform -translate-y-2"
-              x-transition:enter-end="opacity-100 transform translate-y-0"
-              class="border-t border-gray-200 bg-gray-50"
-            >
-              <div class="hidden md:block overflow-x-auto">
-                <table class="w-full">
-                  <thead class="bg-white border-b border-gray-200">
-                    <tr>
-                      <th
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Project
-                      </th>
-                      <th
-                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Status
-                      </th>
-                      <th
-                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody class="bg-white divide-y divide-gray-200">
-                    <template
-                      x-for="project in job.projects || []"
-                      :key="project.name"
-                    >
-                      <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-6 py-4">
-                          <span
-                            class="font-medium text-gray-900"
-                            x-text="project.name"
-                          ></span>
-                        </td>
-                        <td class="px-6 py-4">
-                          <span
-                            class="badge"
-                            :class="{
-                                  'badge-warning': project.status === 'scheduled',
-                                  'badge-default': project.status === 'running',
-                                  'badge-success': project.status === 'completed',
-                                  'badge-error': project.status === 'failed'
-                                }"
-                            x-text="project.status || '-'"
-                          ></span>
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                          <div class="flex items-center justify-end gap-2">
-                            <button
-                              @click="triggerRenovate(job, project)"
-                              :disabled="project.triggering"
-                              class="btn-sm btn-primary"
-                              :class="{ 'btn-loading': project.triggering }"
-                            >
-                              <span
-                                x-text="project.triggering ? 'Triggering...' : 'Trigger'"
-                              ></span>
-                            </button>
-                            <a
-                              :href="`/api/v1/logs?renovate=${encodeURIComponent(job.name)}&namespace=${encodeURIComponent(job.namespace)}&project=${encodeURIComponent(project.name)}`"
-                              target="_blank"
-                              class="btn-sm btn-secondary"
-                            >
-                              Logs
-                            </a>
-                          </div>
-                        </td>
+            {open && (
+              <div className="border-t border-gray-200 bg-gray-50">
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-white border-b border-gray-200">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Project
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
-                    </template>
-                    <tr x-show="!job.projects || job.projects.length === 0">
-                      <td
-                        colspan="3"
-                        class="px-6 py-8 text-center text-gray-500"
-                      >
-                        No projects found. Run discovery to find projects.
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {job.projects && job.projects.length > 0 ? (
+                        job.projects.map((project) => (
+                          <tr
+                            key={project.name}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            <td className="px-6 py-4">
+                              <span className="font-medium text-gray-900">
+                                {project.name}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={getBadgeClass(project.status)}>
+                                {project.status || "-"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() =>
+                                    onTriggerRenovate(job, project)
+                                  }
+                                  disabled={project.triggering}
+                                  className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${
+                                    project.triggering ? "btn-loading" : ""
+                                  }`}
+                                  aria-label={
+                                    project.triggering
+                                      ? "Triggering renovate"
+                                      : `Trigger renovate for ${project.name}`
+                                  }
+                                >
+                                  <span>
+                                    {project.triggering
+                                      ? "Triggering..."
+                                      : "Trigger"}
+                                  </span>
+                                </button>
+                                <a
+                                  href={`/api/v1/logs?renovate=${encodeURIComponent(
+                                    job.name
+                                  )}&namespace=${encodeURIComponent(
+                                    job.namespace
+                                  )}&project=${encodeURIComponent(
+                                    project.name
+                                  )}`}
+                                  target="_blank"
+                                  className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block"
+                                  aria-label={`View logs for ${project.name}`}
+                                >
+                                  Logs
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan="3"
+                            className="px-6 py-8 text-center text-gray-500"
+                          >
+                            No projects found. Run discovery to find projects.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
-              <div class="md:hidden bg-white divide-y divide-gray-200">
-                <template
-                  x-for="project in job.projects || []"
-                  :key="project.name"
-                >
-                  <div class="p-4 space-y-3">
-                    <div class="flex items-start justify-between">
-                      <p
-                        class="font-medium text-gray-900"
-                        x-text="project.name"
-                      ></p>
-                      <span
-                        class="badge ml-2"
-                        :class="{
-                              'badge-warning': project.status === 'scheduled',
-                              'badge-default': project.status === 'running',
-                              'badge-success': project.status === 'completed',
-                              'badge-error': project.status === 'failed'
-                            }"
-                        x-text="project.status || '-'"
-                      ></span>
+                <div className="md:hidden bg-white divide-y divide-gray-200">
+                  {job.projects && job.projects.length > 0 ? (
+                    job.projects.map((project) => (
+                      <div key={project.name} className="p-4 space-y-3">
+                        <div className="flex items-start justify-between">
+                          <p className="font-medium text-gray-900">
+                            {project.name}
+                          </p>
+                          <span
+                            className={`ml-2 ${getBadgeClass(project.status)}`}
+                          >
+                            {project.status || "-"}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => onTriggerRenovate(job, project)}
+                            disabled={project.triggering}
+                            className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all flex-1 ${
+                              project.triggering ? "btn-loading" : ""
+                            }`}
+                            aria-label={
+                              project.triggering
+                                ? "Triggering renovate"
+                                : `Trigger renovate for ${project.name}`
+                            }
+                          >
+                            <span>
+                              {project.triggering ? "Triggering..." : "Trigger"}
+                            </span>
+                          </button>
+                          <a
+                            href={`/api/v1/logs?renovate=${encodeURIComponent(
+                              job.name
+                            )}&namespace=${encodeURIComponent(
+                              job.namespace
+                            )}&project=${encodeURIComponent(project.name)}`}
+                            target="_blank"
+                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block flex-1 text-center"
+                            aria-label={`View logs for ${project.name}`}
+                          >
+                            Logs
+                          </a>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      No projects found. Run discovery to find projects.
                     </div>
-                    <div class="flex gap-2">
-                      <button
-                        @click="triggerRenovate(job, project)"
-                        :disabled="project.triggering"
-                        class="btn-sm btn-primary flex-1"
-                        :class="{ 'btn-loading': project.triggering }"
-                      >
-                        <span
-                          x-text="project.triggering ? 'Triggering...' : 'Trigger'"
-                        ></span>
-                      </button>
-                      <a
-                        :href="`/api/v1/logs?renovate=${encodeURIComponent(job.name)}&namespace=${encodeURIComponent(job.namespace)}&project=${encodeURIComponent(project.name)}`"
-                        target="_blank"
-                        class="btn-sm btn-secondary flex-1 text-center"
-                      >
-                        Logs
-                      </a>
-                    </div>
-                  </div>
-                </template>
-                <div
-                  x-show="!job.projects || job.projects.length === 0"
-                  class="p-8 text-center text-gray-500"
-                >
-                  No projects found. Run discovery to find projects.
+                  )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
-        </template>
+        );
+      }
 
-        <div
-          x-show="jobs.length === 0 && !loading && !error"
-          class="text-center py-12"
-        >
-          <svg
-            class="w-16 h-16 text-gray-400 mx-auto mb-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-            />
-          </svg>
-          <h3 class="text-lg font-semibold text-gray-700 mb-2">
-            No Renovate Jobs Found
-          </h3>
-          <p class="text-gray-500">
-            Create a RenovateJob resource to get started.
-          </p>
-        </div>
-      </div>
-    </main>
-
-    <script src="js/renovateJobs.js"></script>
+      ReactDOM.render(<App />, document.getElementById("root"));
+    </script>
   </body>
 </html>

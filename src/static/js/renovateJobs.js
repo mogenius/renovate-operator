@@ -32,10 +32,8 @@ document.addEventListener('alpine:init', () => {
             this.addToast('info', title, message);
         }
     });
-});
 
-function dashboardStore() {
-    return {
+    Alpine.store('dashboard', {
         jobs: [],
         loading: true,
         error: null,
@@ -70,6 +68,9 @@ function dashboardStore() {
                     await this.updateDiscoveryStatus(job);
                     if (Array.isArray(job.projects)) {
                         job.projects = this.sortProjects(job.projects);
+                        for (const project of job.projects) {
+                            project.triggering = false;
+                        }
                     }
                 }
 
@@ -190,18 +191,7 @@ function dashboardStore() {
                 project.triggering = false;
             }
         }
-    };
-}
+    });
 
-document.addEventListener('alpine:init', () => {
-    Alpine.data('toastStore', () => ({
-        get toasts() {
-            return Alpine.store('toastStore').toasts;
-        },
-        removeToast(id) {
-            Alpine.store('toastStore').removeToast(id);
-        }
-    }));
-
-    Alpine.data('dashboardStore', dashboardStore);
+    Alpine.store('dashboard').init();
 });
