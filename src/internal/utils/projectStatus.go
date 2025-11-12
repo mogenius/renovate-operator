@@ -2,51 +2,55 @@ package utils
 
 import (
 	api "renovate-operator/api/v1alpha1"
+
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // GetUpdateStatusForProject determines the new status for a project based on its current status and the desired status update.
-func GetUpdateStatusForProject(currentStatus, desiredStatus api.RenovateProjectStatus) api.RenovateProjectStatus {
+func GetUpdateStatusForProject(projectStatus *api.ProjectStatus, desiredStatus api.RenovateProjectStatus) *api.ProjectStatus {
 	switch desiredStatus {
 	case api.JobStatusScheduled:
-		return validateProjectStatusScheduled(currentStatus)
+		return validateProjectStatusScheduled(projectStatus)
 	case api.JobStatusRunning:
-		return validateProjectStatusRunning(currentStatus)
+		return validateProjectStatusRunning(projectStatus)
 	case api.JobStatusCompleted:
-		return validateProjectStatusCompleted(currentStatus)
+		return validateProjectStatusCompleted(projectStatus)
 	case api.JobStatusFailed:
-		return validateProjectStatusFailed(currentStatus)
+		return validateProjectStatusFailed(projectStatus)
 	default:
-		return desiredStatus
+		return projectStatus
 	}
 }
 
-func validateProjectStatusScheduled(currentStatus api.RenovateProjectStatus) api.RenovateProjectStatus {
+func validateProjectStatusScheduled(projectStatus *api.ProjectStatus) *api.ProjectStatus {
 	// cannot schedule a project that is currently running
-	if currentStatus == api.JobStatusRunning {
-		return api.JobStatusRunning
+	if projectStatus.Status == api.JobStatusRunning {
+		projectStatus.Status = api.JobStatusRunning
 	}
-	return api.JobStatusScheduled
+	return projectStatus
 }
 
-func validateProjectStatusRunning(currentStatus api.RenovateProjectStatus) api.RenovateProjectStatus {
+func validateProjectStatusRunning(projectStatus *api.ProjectStatus) *api.ProjectStatus {
 	// can only set a project to running if it is currently scheduled
-	if currentStatus == api.JobStatusScheduled {
-		return api.JobStatusRunning
+	if projectStatus.Status == api.JobStatusScheduled {
+		projectStatus.Status = api.JobStatusRunning
 	}
-	return currentStatus
+	return projectStatus
 }
 
-func validateProjectStatusCompleted(currentStatus api.RenovateProjectStatus) api.RenovateProjectStatus {
+func validateProjectStatusCompleted(projectStatus *api.ProjectStatus) *api.ProjectStatus {
 	// can only set a running project to completed
-	if currentStatus == api.JobStatusRunning {
-		return api.JobStatusCompleted
+	if projectStatus.Status == api.JobStatusRunning {
+		projectStatus.Status = api.JobStatusCompleted
+		projectStatus.LastRun = v1.Now()
 	}
-	return currentStatus
+	return projectStatus
 }
-func validateProjectStatusFailed(currentStatus api.RenovateProjectStatus) api.RenovateProjectStatus {
+func validateProjectStatusFailed(projectStatus *api.ProjectStatus) *api.ProjectStatus {
 	// can only set a running project to failed
-	if currentStatus == api.JobStatusRunning {
-		return api.JobStatusFailed
+	if projectStatus.Status == api.JobStatusRunning {
+		projectStatus.Status = api.JobStatusFailed
+		projectStatus.LastRun = v1.Now()
 	}
-	return currentStatus
+	return projectStatus
 }

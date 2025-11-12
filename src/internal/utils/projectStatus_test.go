@@ -47,9 +47,16 @@ func TestGetUpdateStatusForProject(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetUpdateStatusForProject(tt.currentStatus, tt.desiredStatus)
-			if result != tt.expectedStatus {
-				t.Errorf("expected status %v, got %v in %v", tt.expectedStatus, result, tt.name)
+			proj := &api.ProjectStatus{
+				Name:   "test-project",
+				Status: tt.currentStatus,
+			}
+			result := GetUpdateStatusForProject(proj, tt.desiredStatus)
+			if result == nil {
+				t.Fatalf("resulting project status is nil for %s", tt.name)
+			}
+			if result.Status != tt.expectedStatus {
+				t.Errorf("%s: expected status %v, got %v", tt.name, tt.expectedStatus, result.Status)
 			}
 		})
 	}
