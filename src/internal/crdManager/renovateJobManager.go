@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
@@ -58,7 +59,7 @@ func (in *RenovateJobIdentifier) Fullname() string {
 type RenovateProjectStatus struct {
 	Name    string                    `json:"name"`
 	Status  api.RenovateProjectStatus `json:"status"`
-	LastRun v1.Time                   `json:"lastRun,omitempty"`
+	LastRun time.Time                 `json:"lastRun,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client) RenovateJobManager {
@@ -102,7 +103,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 			result = append(result, RenovateProjectStatus{
 				Name:    project.Name,
 				Status:  project.Status,
-				LastRun: project.LastRun,
+				LastRun: project.LastRun.Time,
 			})
 		}
 	}
@@ -121,7 +122,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 		result = append(result, RenovateProjectStatus{
 			Name:    project.Name,
 			Status:  project.Status,
-			LastRun: project.LastRun,
+			LastRun: project.LastRun.Time,
 		})
 	}
 	return result, nil
