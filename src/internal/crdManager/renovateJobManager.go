@@ -56,8 +56,9 @@ func (in *RenovateJobIdentifier) Fullname() string {
 }
 
 type RenovateProjectStatus struct {
-	Name   string                    `json:"name"`
-	Status api.RenovateProjectStatus `json:"status"`
+	Name    string                    `json:"name"`
+	Status  api.RenovateProjectStatus `json:"status"`
+	LastRun v1.Time                   `json:"lastRun,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client) RenovateJobManager {
@@ -99,8 +100,9 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 	for _, project := range renovateJob.Status.Projects {
 		if project.Status == status {
 			result = append(result, RenovateProjectStatus{
-				Name:   project.Name,
-				Status: project.Status,
+				Name:    project.Name,
+				Status:  project.Status,
+				LastRun: project.LastRun,
 			})
 		}
 	}
@@ -117,8 +119,9 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 	result := make([]RenovateProjectStatus, 0)
 	for _, project := range renovateJob.Status.Projects {
 		result = append(result, RenovateProjectStatus{
-			Name:   project.Name,
-			Status: project.Status,
+			Name:    project.Name,
+			Status:  project.Status,
+			LastRun: project.LastRun,
 		})
 	}
 	return result, nil
@@ -167,8 +170,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 		renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
 	} else {
 		projectStatus := renovateJob.Status.Projects[index]
-		projectStatus.Status = utils.GetUpdateStatusForProject(projectStatus.Status, status)
-		renovateJob.Status.Projects[index] = projectStatus
+		renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
 	}
 	_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 	return err
@@ -186,8 +188,7 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 		p := renovateJob.Status.Projects[i]
 
 		if fn(p) {
-			p.Status = utils.GetUpdateStatusForProject(p.Status, status)
-			renovateJob.Status.Projects[i] = p
+			renovateJob.Status.Projects[i] = *utils.GetUpdateStatusForProject(&p, status)
 		}
 	}
 
