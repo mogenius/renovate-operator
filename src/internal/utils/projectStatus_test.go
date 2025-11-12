@@ -55,7 +55,7 @@ func TestGetUpdateStatusForProject(t *testing.T) {
 			if result == nil {
 				t.Fatalf("resulting project status is nil for %s", tt.name)
 			}
-			if result.Status != tt.expectedStatus {
+			if result != nil && result.Status != tt.expectedStatus {
 				t.Errorf("%s: expected status %v, got %v", tt.name, tt.expectedStatus, result.Status)
 			}
 		})
