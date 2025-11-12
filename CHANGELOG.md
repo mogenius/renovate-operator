@@ -1,3 +1,16 @@
+## [1.6.3](https://github.com/mogenius/renovate-operator/compare/1.6.2...1.6.3) (2025-11-12)
+
+
+### Bug Fixes
+
+* adding nextSchedule to renovatejobs request ([89bcace](https://github.com/mogenius/renovate-operator/commit/89bcace5da1cf7c8fad95e7b077faede33eb83c4))
+* adding settings for backofflimits ([1fb498b](https://github.com/mogenius/renovate-operator/commit/1fb498bb16ac0e4f58f2a61cccbe0a10c2b6f79b))
+* allow setting value wether successfull jobs should be deleted ([b0d91d7](https://github.com/mogenius/renovate-operator/commit/b0d91d76fd35abd101753424370159e98816ee54))
+* go test and golangci lint ([64e0791](https://github.com/mogenius/renovate-operator/commit/64e079136769d60611e09f4a8fb18016a21ac798))
+* if the job cannot be found it is considered failed ([8ff2558](https://github.com/mogenius/renovate-operator/commit/8ff255875250f9390b0298ea56d67619570c173b))
+* lastRun will now be propagated ([bcf26cb](https://github.com/mogenius/renovate-operator/commit/bcf26cb1cd0a5458267b852c89fa7371acff484b))
+* pass time.time and not kubernetes time ([cda7635](https://github.com/mogenius/renovate-operator/commit/cda76357a5b00833ce2dc95c4b474579e98a7c77))
+
 ## [1.6.2](https://github.com/mogenius/renovate-operator/compare/1.6.1...1.6.2) (2025-11-12)
 
 
