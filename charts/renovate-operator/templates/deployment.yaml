@@ -35,6 +35,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: JOB_TIMEOUT_SECONDS
+              value: {{ .Values.config.defaultJobActiveDeadlineSeconds | quote }}
+            - name: JOB_BACKOFF_LIMIT
+              value: {{ .Values.config.defaultJobBackoffLimit | quote }}
             - name: SERVER_PORT
               value: "8081"
             {{- if .Values.webhook.enabled }}

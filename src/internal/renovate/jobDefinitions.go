@@ -45,6 +45,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
+			BackoffLimit:          getJobBackOffLimit(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
@@ -107,6 +108,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
+			BackoffLimit:          getJobBackOffLimit(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
@@ -208,4 +210,13 @@ func getJobTimeoutSeconds() *int64 {
 		return ptr.To(int64(1800))
 	}
 	return ptr.To(val)
+}
+
+func getJobBackOffLimit() *int32 {
+	timeoutString := config.GetValue("JOB_BACKOFF_LIMIT")
+	val, err := strconv.ParseInt(timeoutString, 10, 64)
+	if err != nil {
+		return ptr.To(int32(1800))
+	}
+	return ptr.To(int32(val))
 }

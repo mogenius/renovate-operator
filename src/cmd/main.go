@@ -83,6 +83,18 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Key:      "JOB_BACKOFF_LIMIT",
+			Optional: true,
+			Default:  "1",
+			Validate: func(value string) error {
+				_, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return fmt.Errorf("'JOB_BACKOFF_LIMIT' needs to be an integer: %s", err.Error())
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
