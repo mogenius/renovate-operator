@@ -132,6 +132,7 @@ func (in *RenovateJob) ExecutorJobName(project string) string {
 	jobName := in.Name + "-" + project
 	jobName = strings.ReplaceAll(jobName, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
 	jobName = strings.ReplaceAll(jobName, "_", "-")
+	jobName = strings.ReplaceAll(jobName, ".", "-")
 	jobName = strings.ToLower(jobName) // Ensure lowercase for consistency
 	return jobName
 }
