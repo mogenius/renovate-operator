@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/mogenius/renovate-operator/compare/1.6.1...1.6.2) (2025-11-12)
+
+
+### Bug Fixes
+
+* do not create job names with . ([8885ee6](https://github.com/mogenius/renovate-operator/commit/8885ee6ca79ea868a9baa46516e90bfcf4d2cdb8))
+
 ## [1.6.1](https://github.com/mogenius/renovate-operator/compare/1.6.0...1.6.1) (2025-11-12)
 
 
