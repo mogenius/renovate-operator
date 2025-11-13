@@ -1,3 +1,10 @@
+## [1.6.5](https://github.com/mogenius/renovate-operator/compare/1.6.4...1.6.5) (2025-11-13)
+
+
+### Bug Fixes
+
+* reworks ui-layout ([aca7e68](https://github.com/mogenius/renovate-operator/commit/aca7e686330525ffa6a8637ec75f595e0da77f22))
+
 ## [1.6.4](https://github.com/mogenius/renovate-operator/compare/1.6.3...1.6.4) (2025-11-12)
 
 
