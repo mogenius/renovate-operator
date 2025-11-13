@@ -1,3 +1,10 @@
+## [1.6.6](https://github.com/mogenius/renovate-operator/compare/1.6.5...1.6.6) (2025-11-13)
+
+
+### Bug Fixes
+
+* added justfile to make development more convenient ([032a8cb](https://github.com/mogenius/renovate-operator/commit/032a8cb3b9eae5dda53eb4eff8576757c77c516b))
+
 ## [1.6.5](https://github.com/mogenius/renovate-operator/compare/1.6.4...1.6.5) (2025-11-13)
 
 
