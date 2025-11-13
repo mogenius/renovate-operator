@@ -1,9 +1,12 @@
-#####
-
 <div align="center">
     <img src="src/static/favicon.ico" width="90" />
     <h1 align="center">Renovate Operator</h1>
 </div>
+
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/mogenius)](https://artifacthub.io/packages/helm/mogenius/renovate-operator)
+![GitHub Release](https://img.shields.io/github/v/release/mogenius/renovate-operator)
+[![Build, Package, Release (Production)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml)
+---
 
 [Renovate][1] is one of, if not the leading tool for automated dependency updates.
 
@@ -34,7 +37,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 
 ## Documentation
 - [Webhook API](./docs/webhook.md)
-
+- [Autodiscovery](./docs/autodiscovery.md)
 
 ## Examples
 
