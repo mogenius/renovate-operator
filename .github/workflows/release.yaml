@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: develop
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-node@v6
@@ -43,7 +43,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: develop
+          ref: main
           fetch-depth: 0
 
       - name: Set up QEMU
@@ -100,58 +100,8 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:$VERSION-arm7
 
 
-  merge-images:
-    needs: [build-amd64, build-arm64, build-arm64-linux, build-armv7, prepare]
-    runs-on: self-hosted
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge images into a multi-arch manifest
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker manifest create ${{ env.IMAGE_NAME }}:$VERSION \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
-          docker manifest push ${{ env.IMAGE_NAME }}:$VERSION
-          docker manifest create ${{ env.IMAGE_NAME }}:latest \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
-          docker manifest push ${{ env.IMAGE_NAME }}:latest
-        
-
-      - name: Clean up Docker images
-        if: always()  # Auch bei Fehlern ausführen
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          # Entferne dangling images
-          docker image prune -f
-          
-          # Optional: Entferne auch die spezifischen Build-Images
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-amd64 || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm7 || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm64 || true
-          docker rmi ${{ env.IMAGE_NAME }}:latest || true
-
   helm-chart:
-    needs: [prepare, build-amd64, build-arm64, build-arm64-linux, build-armv7, merge-images]
+    needs: [prepare, build-and-push-docker]
     runs-on: self-hosted
     permissions:
       contents: read
