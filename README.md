@@ -40,7 +40,53 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Autodiscovery](./docs/autodiscovery.md)
 
 ## Examples
+### GitHub
+**RenovateJob Configuration for GitHub**
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  annotations:
+  name: renovate-github
+  namespace: renovate-operator
+spec:
+  discoveryFilter: ###GITHUB_USERNAME###/*
+  extraEnv:
+  - name: RENOVATE_PLATFORM
+    value: github
+  - name: RENOVATE_ENDPOINT
+    value: https://api.github.com/
+  - name: RENOVATE_ALLOW_PLUGINS
+    value: "true"
+  image: renovate/renovate:41.43.3
+  parallelism: 5
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  schedule: 0 * * * *
+  secretRef: renovate-secret
+```
+**Secret Configuration for GitHub**
 
+```yaml
+kind: Secret
+apiVersion: v1
+type: Opaque
+metadata:
+  name: renovate-secret
+  namespace: renovate-operator
+data:
+  GITHUB_COM_USER: USERNAME_BASE64_ENCODED
+  GITHUB_COM_TOKEN: GITHUB_TOKEN_VALUE_BASE64_ENCODED
+  RENOVATE_TOKEN: RENOVATE_TOKEN_VALUE_BASE64_ENCODED
+```
+**Make sure the GitHub App or Token used has the following permissions:**
+
+![Example Screenshot of the renovate-operator UI.](/docs/github_permissions.png)
+
+
+### Gitlab
 ```yaml
 apiVersion: renovate-operator.mogenius.com/v1alpha1
 kind: RenovateJob
