@@ -1,3 +1,12 @@
+## [1.6.9](https://github.com/mogenius/renovate-operator/compare/1.6.8...1.6.9) (2025-11-14)
+
+
+### Bug Fixes
+
+* added debug config for vscode ([a829862](https://github.com/mogenius/renovate-operator/commit/a829862a4e7ebd9d7e83863e0de8e6db7e90e770))
+* remove retry function ([5113880](https://github.com/mogenius/renovate-operator/commit/51138807990c4b016b7b72196906a5ef3c8465aa))
+* updated readme ([73a3460](https://github.com/mogenius/renovate-operator/commit/73a3460f5adbb79d7ae1def0cde8c2a75767b47a))
+
 ## [1.6.8](https://github.com/mogenius/renovate-operator/compare/1.6.7...1.6.8) (2025-11-14)
 
 
