@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "DEBUG MAIN GO",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "envFile": "${workspaceFolder}/.env",
+      "program": "${workspaceFolder}/src/cmd/main.go",
+      "asRoot": false,
+      "console": "integratedTerminal",
+    }
+  ]
+}
