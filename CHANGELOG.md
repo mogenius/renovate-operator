@@ -1,3 +1,11 @@
+## [1.6.8](https://github.com/mogenius/renovate-operator/compare/1.6.7...1.6.8) (2025-11-14)
+
+
+### Bug Fixes
+
+* add args for os and arch ([a5ba29a](https://github.com/mogenius/renovate-operator/commit/a5ba29a020ee12bb63444df349ae50019ad1dcac))
+* use github app to publish new releases ([916107f](https://github.com/mogenius/renovate-operator/commit/916107f87bf5a0a94df43beaf620703cc16dbd12))
+
 ## [1.6.7](https://github.com/mogenius/renovate-operator/compare/1.6.6...1.6.7) (2025-11-14)
 
 
