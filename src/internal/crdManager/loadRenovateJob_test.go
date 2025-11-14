@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/testhelpers"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,14 +40,10 @@ func TestLoadRenovateJob_NotFound(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	testhelpers.WithShortRetries(t, 1, 1, func() {
-		// inside this closure retries are shortened
-
-		_, err := loadRenovateJob(context.Background(), "missing", "default", cl)
-		if err == nil {
-			t.Fatalf("expected error when renovatejob not found")
-		}
-	})
+	_, err := loadRenovateJob(context.Background(), "missing", "default", cl)
+	if err == nil {
+		t.Fatalf("expected error when renovatejob not found")
+	}
 }
 
 func TestReloadRenovateJob(t *testing.T) {
