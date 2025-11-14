@@ -7,207 +7,101 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/mogenius/renovate-operator
+  REGISTRY: ghcr.io 
   DOCKERFILE: Dockerfile
   HELMNAME: "renovate-operator"
+  # HELMREPO: "mogenius/helm-k8s-manager"
 
 jobs:
   prepare:
-    runs-on: self-hosted-ansible
+    runs-on: [self-hosted, macbook]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: develop
           fetch-depth: 0
-          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/setup-node@v6
         with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 24
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-amd64:
-    needs: prepare
-    runs-on: [self-hosted, X64]
-    permissions:
-      contents: read
-      packages: write
+  build-and-push-docker:
+    name: Build Multi-arch Docker
+    needs: [prepare]
+    runs-on: [self-hosted, macbook]
 
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build AMD64 image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker build -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=amd64 -t ${{ env.IMAGE_NAME }}:$VERSION-amd64 .
-          
-      - name: Push AMD64-linux image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker push ${{ env.IMAGE_NAME }}:$VERSION-amd64
-
-
-  build-arm64-linux:
-    needs: prepare
-    runs-on: [self-hosted, ARM64]
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Check out code
+      - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: develop
           fetch-depth: 0
 
-      - name: Login to GitHub Container Registry
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ARM64-linux image
+      - name: Calculate version from git
+        id: git_version
         run: |
           VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker build --platform=linux/arm64 -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=arm64 -t ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux .
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Calculated version: $VERSION"
 
-      - name: Push AMD64-linux image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux
-        
-
-  build-arm64:
-    needs: prepare
-    runs-on: [self-hosted, ARM64]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
-          fetch-depth: 0
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push ARM64 image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker build -f ${{ env.DOCKERFILE }} --build-arg GOOS=linux --build-arg GOARCH=arm64 -t ${{ env.IMAGE_NAME }}:$VERSION-arm64 .
-      - name: Push ARM64 image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm64
-       
-
-  build-armv7:
-    needs: prepare
-    runs-on: [self-hosted, ARM64]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push ARMv7 image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker build -f ${{ env.DOCKERFILE }} --platform=linux/arm/v7 --build-arg GOOS=linux --build-arg GOARCH=arm --build-arg GOARM=7 -t ${{ env.IMAGE_NAME }}:$VERSION-arm7 .
-          
-      - name: Push ARMv7 image
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker push ${{ env.IMAGE_NAME }}:$VERSION-arm7
-
-
-  merge-images:
-    needs: [build-amd64, build-arm64, build-arm64-linux, build-armv7, prepare]
-    runs-on: self-hosted-ansible
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge images into a multi-arch manifest
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          docker manifest create ${{ env.IMAGE_NAME }}:$VERSION \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
-          docker manifest push ${{ env.IMAGE_NAME }}:$VERSION
-          docker manifest create ${{ env.IMAGE_NAME }}:latest \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-amd64 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm7 \
-              --amend ${{ env.IMAGE_NAME }}:$VERSION-arm64
-          docker manifest push ${{ env.IMAGE_NAME }}:latest
-        
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          build-args: |
+            VERSION=${{ steps.git_version.outputs.version }}
+            COMMIT_HASH=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+            BUILD_TIMESTAMP=${{ github.event.repository.updated_at }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.git_version.outputs.version }}
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.git_version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
+          provenance: false
 
       - name: Clean up Docker images
         if: always()  # Auch bei Fehlern ausführen
         run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
           # Entferne dangling images
           docker image prune -f
           
           # Optional: Entferne auch die spezifischen Build-Images
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-amd64 || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm64-linux || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm7 || true
-          docker rmi ${{ env.IMAGE_NAME }}:$VERSION-arm64 || true
+          docker rmi ${{ env.IMAGE_NAME }}:${{ steps.git_version.outputs.version }} || true
           docker rmi ${{ env.IMAGE_NAME }}:latest || true
 
+  
   helm-chart:
-    needs: [prepare, build-amd64, build-arm64, build-arm64-linux, build-armv7, merge-images]
+    needs: [prepare, build-and-push-docker]
     runs-on: MEGA-FAST
     permissions:
       contents: read
