@@ -17,13 +17,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// discoverySleep is a package-level hook so tests can override waiting behavior.
-var discoverySleep = time.Sleep
-
+/*
+DiscoveryAgent is the interface for discovering projects for a RenovateJob CRD.
+*/
 type DiscoveryAgent interface {
+	// Discover runs the discovery process for the given RenovateJob CRD and returns the list of discovered projects.
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	// Only create and start the discovery job, do not wait for completion.
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
+	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	// WaitForDiscoveryJob waits for the discovery job to complete and returns the list of discovered projects.
 	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
 
@@ -71,16 +75,17 @@ func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJo
 func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	// 2. Wait for discovery job completion
 	for {
-		discoverySleep(5 * time.Second)
 		status, err := e.getDiscoveryJobStatusFn(ctx, job)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get discovery job status: %w", err)
 		}
-		if status == api.JobStatusCompleted {
+
+		if status == api.JobStatusRunning {
+			time.Sleep(5 * time.Second)
+		} else if status == api.JobStatusCompleted {
 			break
-		}
-		if status == api.JobStatusFailed {
+		} else if status == api.JobStatusFailed {
 			return nil, fmt.Errorf("discovery job failed")
 		}
 	}

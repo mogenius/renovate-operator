@@ -1,9 +1,12 @@
-#####
-
 <div align="center">
     <img src="src/static/favicon.ico" width="90" />
     <h1 align="center">Renovate Operator</h1>
 </div>
+
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/mogenius)](https://artifacthub.io/packages/helm/mogenius/renovate-operator)
+![GitHub Release](https://img.shields.io/github/v/release/mogenius/renovate-operator)
+[![Build, Package, Release (Production)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml)
+---
 
 [Renovate][1] is one of, if not the leading tool for automated dependency updates.
 
@@ -31,6 +34,10 @@ If you are already running Kubernetes, this project might be for you.
 helm repo add mogenius https://helm.mogenius.com/public --force-update
 helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-operator --create-namespace --wait
 ```
+
+## Documentation
+- [Webhook API](./docs/webhook.md)
+- [Autodiscovery](./docs/autodiscovery.md)
 
 ## Examples
 
@@ -64,7 +71,29 @@ spec:
     kubernetes.io/hostname: server-1
 ```
 
-## Developement
+## Contributing
+<a href="https://github.com/mogenius/renovate-operator/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=mogenius/renovate-operator" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+## Development
+
+### Running Tests
+
+Run the test suite:
+```sh
+go test -v ./...
+```
+
+### Code Quality
+
+Run golangci-lint locally:
+```sh
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+golangci-lint run
+```
 
 ### Generate CRDs
 

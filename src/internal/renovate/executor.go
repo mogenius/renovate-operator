@@ -17,7 +17,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+/*
+RenovateExecutor is the interface that periodically executes RenovateJob CRDs.
+It checks the status of each project and starts new jobs as needed based on the specified parameters.
+*/
 type RenovateExecutor interface {
+	// Start begins the periodic execution of RenovateJob CRDs.
 	Start(ctx context.Context) error
 }
 

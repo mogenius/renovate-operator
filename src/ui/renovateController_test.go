@@ -12,19 +12,19 @@ import (
 
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // Mock RenovateJobManager
 type mockRenovateJobManager struct {
-	listRenovateJobsFunc        func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
+	listRenovateJobsFunc          func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
 	getProjectsForRenovateJobFunc func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
-	getLogsForProjectFunc       func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
-	updateProjectStatusFunc     func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
-	getRenovateJobFunc          func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFunc       func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error
+	getLogsForProjectFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
+	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	reconcileProjectsFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -88,6 +88,10 @@ func (m *mockRenovateJobManager) GetProjectsByStatus(ctx context.Context, job cr
 
 func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
 	return nil
+}
+
+func (m *mockRenovateJobManager) IsWebhookTokenValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error) {
+	return true, nil
 }
 
 func (m *mockRenovateJobManager) GetJob(jobId crdmanager.RenovateJobIdentifier, projectName string) (*batchv1.Job, error) {

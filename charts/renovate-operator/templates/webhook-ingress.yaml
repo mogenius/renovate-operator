@@ -1,0 +1,33 @@
+{{- if and .Values.webhook.ingress.enabled .Values.webhook.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.webhook.ingress.labels }}
+  labels:
+    {{- toYaml .Values.webhook.ingress.labels | nindent 4 }}
+  {{- end }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.webhook.ingress.ingressClassName }}
+    {{- if .Values.webhook.ingress.annotations }}
+    {{- toYaml .Values.webhook.ingress.annotations | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.webhook.ingress.ingressClassName }}
+  rules:
+    - host: {{ .Values.webhook.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "renovate-operator.fullname" . }}
+                port:
+                  name: webhook
+  {{- if .Values.webhook.ingress.tls }}
+  tls:
+  {{- toYaml .Values.webhook.ingress.tls | nindent 4 }}
+  {{ end }}
+{{- end }}

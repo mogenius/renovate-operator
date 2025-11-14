@@ -1,0 +1,15 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ include "renovate-operator.fullname" . }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.webhook.port }}
+      name: webhook
+      targetPort: webhook
+{{- end }}

@@ -8,6 +8,15 @@ image:
   tag: ~
   pullPolicy: "IfNotPresent"
 
+
+config:
+  # -- default backoff limit for renovate jobs
+  defaultJobBackoffLimit: 1
+  # -- default active deadline seconds for renovate jobs
+  defaultJobActiveDeadlineSeconds: 1800
+  # -- whether to delete successfully finished renovate jobs (will loose logs)
+  deleteSuccessfullJobs: false
+
 ingress:
   # -- whether to enable the ingress renovate-operator
   enabled: false
@@ -24,6 +33,27 @@ ingress:
   labels: {}
   # -- annotations to place on the ingress
   annotations: {}
+
+webhook:
+  enabled: false
+  port: 8082
+  ingress:
+    # -- whether to enable the ingress for the webhook server
+    enabled: false
+    # -- the ingressclassname for the ingress, default: nginx
+    ingressClassName: "nginx"
+    # -- the host the ingress should lsiten for
+    host: ~
+    # -- tls configuration to be applied on the ingress
+    tls: []
+      # - hosts:
+      #     - webhook.renovate.example.com
+      #   secretName: webhook-renovate-tls
+    # -- labels to place on the ingress
+    labels: {}
+    # -- annotations to place on the ingress
+    annotations: {}
+
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding

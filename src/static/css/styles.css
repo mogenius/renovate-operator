@@ -1,230 +1,90 @@
-/* styles.css */
-*{
-    --primary-color: #3460db;
-    --primary-color-accent: #3498db;
-    --background-color: #1e1e2f;
-    --background-color-accent: #2b2b40;
-    --text-color: #e0e0e0;
-}
-/* --- Global Layout --- */
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: var(--background-color); /* Dark background */
-    color: var(--text-color);                  /* Light text */
-    line-height: 1.5;
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
-h1 {
-    text-align: center;
-    margin: 2rem 0;
-    font-size: 2.5rem;
-    color: var(--text-color);
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-/* --- Container --- */
-#tables-container {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem; /* space between renovatejob sections */
-    padding: 0 1.5rem 3rem;
-    max-width: 1200px;
-    margin: 0 auto;
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-/* --- Collapsible Sections --- */
-details {
-    background-color: var(--background-color-accent);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    overflow: hidden;
-    transition: all 0.25s ease;
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%) scale(0.95);
+  }
 }
 
-/* Summary (header for each group) */
-summary {
-    cursor: pointer;
-    font-size: 1.2rem;
-    font-weight: 600;
-    padding: 1rem 1.25rem;
-    background-color: var(--primary-color);
-    color: var(--text-color);
-    user-select: none;
-    list-style: none; /* remove default disclosure triangle in some browsers */
+.skeleton-header {
+  animation: shimmer-slide 2s infinite;
 }
 
-/* Custom disclosure indicator */
-summary::marker,
-summary::-webkit-details-marker {
-    display: none; /* hide default arrow */
+.skeleton-line {
+  animation: shimmer-slide 2s infinite;
 }
 
-summary::before {
-    content: "▸";
-    display: inline-block;
-    margin-right: 0.5rem;
-    transition: transform 0.25s ease;
+.skeleton-line:nth-child(2) {
+  width: 80%;
 }
 
-details[open] summary::before {
-    transform: rotate(90deg);
+.skeleton-line:nth-child(3) {
+  width: 60%;
 }
 
-/* --- Tables --- */
-table {
-    width: 100%;
-    border-collapse: collapse;
+.btn-loading {
+  position: relative;
+  color: transparent;
 }
 
-thead th {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    background-color: #34495e;
-    color: var(--text-color);
-    font-weight: 600;
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  top: 50%;
+  left: 50%;
+  margin-left: -0.5rem;
+  margin-top: -0.5rem;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
 }
 
-tbody tr {
-    border-bottom: 1px solid #444;
+::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
 }
 
-tbody tr:last-child {
-    border-bottom: none;
+::-webkit-scrollbar-track {
+  background: #f9fafb;
 }
 
-tbody tr:nth-child(even) {
-    background-color: #26263a;
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 0.25rem;
 }
 
-tbody td {
-    padding: 0.75rem 1rem;
-    vertical-align: middle;
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
-td.status{
-    font-weight: bold;
-}
-
-/* Status colors */
-td.status.scheduled div { color: #f39c12; }
-td.status.running div   { color: #2980b9; }
-td.status.completed div { color: #27ae60; }
-td.status.failed div    { color: #c0392b; }
-
-/* --- Actions column (button + link) --- */
-td:last-child {
-    display: flex;
-    gap: 0.5rem;           /* spacing between Trigger + Logs */
-    justify-content: flex-start;
-    align-items: center;
-}
-
-/* --- Buttons and Links --- */
-button,
-a {
-    appearance: none;
-    background-color: var(--primary-color);
-    color: var(--text-color);
-    text-decoration: none;
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    border: none;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.25s ease, transform 0.1s ease, box-shadow 0.25s ease;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    text-align: center;
-}
-
-/* Hover */
-button:hover,
-a:hover {
-    background-color: var(--primary-color-accent);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    transform: translateY(-2px);
-}
-
-/* Active */
-button:active,
-a:active {
-    background-color: var(--primary-color-accent);
-    transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
-/* Disabled */
-button:disabled {
-    background-color: #555;
-    cursor: not-allowed;
-    opacity: 0.6;
-    transform: none;
-    box-shadow: none;
-}
-
-.discovery-btn{
-    color: var(--primary-color);
-    background-color: var(--text-color);
-    margin-left: 20px;
-}
-
-.discovery-btn:hover{
-    color: var(--primary-color-accent);
-    background-color: var(--text-color);
-}
-
-.log-btn{
-    height: 40px;
-    margin: 0;
-    padding-left: 16px;
-    padding-right: 16px;
-    padding-top: 0px;
-    padding-bottom: 0px;
-    align-content: center;
-}
-.trigger-btn{
-    height: 40px;
-    margin: 0;
-    padding-left: 16px;
-    padding-right: 16px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-}
-
-/* --- Responsive --- */
-@media (max-width: 768px) {
-    table, thead, tbody, th, td, tr {
-        display: block;
-    }
-
-    thead {
-        display: none;
-    }
-
-    tbody tr {
-        margin-bottom: 1rem;
-        border: 1px solid #444;
-        border-radius: 6px;
-        overflow: hidden;
-        padding: 0.5rem;
-        background-color: #2b2b40;
-    }
-
-    tbody td {
-        display: flex;
-        justify-content: space-between;
-        padding: 0.5rem;
-    }
-
-    tbody td::before {
-        content: attr(data-label);
-        font-weight: bold;
-        color: var(--text-color);
-    }
-
-    td:last-child {
-        justify-content: flex-start;
-    }
+@media print {
+  button {
+    display: none;
+  }
 }

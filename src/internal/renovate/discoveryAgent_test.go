@@ -3,7 +3,6 @@ package renovate
 import (
 	"context"
 	"testing"
-	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
@@ -94,10 +93,6 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&batchv1.Job{}).Build()
 
 	da := NewDiscoveryAgent(scheme, c, testLogger).(*discoveryAgent)
-
-	// override discoverySleep to avoid waiting
-	discoverySleep = func(d time.Duration) {}
-	defer func() { discoverySleep = time.Sleep }()
 
 	// override log extraction to return a deterministic list
 	da.getDiscoveredProjectsFromJobLogsFn = func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error) {

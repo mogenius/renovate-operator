@@ -22,6 +22,9 @@ func getJobStatus(name string, namespace string, cient client.Client) (api.Renov
 		Namespace: namespace,
 	}, job)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			return api.JobStatusFailed, nil
+		}
 		return api.JobStatusFailed, fmt.Errorf("failed to get job %s/%s: %w", namespace, name, err)
 	}
 

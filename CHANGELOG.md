@@ -1,3 +1,101 @@
+## [1.6.6](https://github.com/mogenius/renovate-operator/compare/1.6.5...1.6.6) (2025-11-13)
+
+
+### Bug Fixes
+
+* added justfile to make development more convenient ([032a8cb](https://github.com/mogenius/renovate-operator/commit/032a8cb3b9eae5dda53eb4eff8576757c77c516b))
+
+## [1.6.5](https://github.com/mogenius/renovate-operator/compare/1.6.4...1.6.5) (2025-11-13)
+
+
+### Bug Fixes
+
+* reworks ui-layout ([aca7e68](https://github.com/mogenius/renovate-operator/commit/aca7e686330525ffa6a8637ec75f595e0da77f22))
+
+## [1.6.4](https://github.com/mogenius/renovate-operator/compare/1.6.3...1.6.4) (2025-11-12)
+
+
+### Bug Fixes
+
+* cannot set failed project to be scheduled ([b8bd04c](https://github.com/mogenius/renovate-operator/commit/b8bd04c22f69b727a8b9f15d8f7a70935a296d0d))
+
+## [1.6.3](https://github.com/mogenius/renovate-operator/compare/1.6.2...1.6.3) (2025-11-12)
+
+
+### Bug Fixes
+
+* adding nextSchedule to renovatejobs request ([89bcace](https://github.com/mogenius/renovate-operator/commit/89bcace5da1cf7c8fad95e7b077faede33eb83c4))
+* adding settings for backofflimits ([1fb498b](https://github.com/mogenius/renovate-operator/commit/1fb498bb16ac0e4f58f2a61cccbe0a10c2b6f79b))
+* allow setting value wether successfull jobs should be deleted ([b0d91d7](https://github.com/mogenius/renovate-operator/commit/b0d91d76fd35abd101753424370159e98816ee54))
+* go test and golangci lint ([64e0791](https://github.com/mogenius/renovate-operator/commit/64e079136769d60611e09f4a8fb18016a21ac798))
+* if the job cannot be found it is considered failed ([8ff2558](https://github.com/mogenius/renovate-operator/commit/8ff255875250f9390b0298ea56d67619570c173b))
+* lastRun will now be propagated ([bcf26cb](https://github.com/mogenius/renovate-operator/commit/bcf26cb1cd0a5458267b852c89fa7371acff484b))
+* pass time.time and not kubernetes time ([cda7635](https://github.com/mogenius/renovate-operator/commit/cda76357a5b00833ce2dc95c4b474579e98a7c77))
+
+## [1.6.2](https://github.com/mogenius/renovate-operator/compare/1.6.1...1.6.2) (2025-11-12)
+
+
+### Bug Fixes
+
+* do not create job names with . ([8885ee6](https://github.com/mogenius/renovate-operator/commit/8885ee6ca79ea868a9baa46516e90bfcf4d2cdb8))
+
+## [1.6.1](https://github.com/mogenius/renovate-operator/compare/1.6.0...1.6.1) (2025-11-12)
+
+
+### Bug Fixes
+
+* do not fail to start discovery if no discovery exists ([32c46e0](https://github.com/mogenius/renovate-operator/commit/32c46e0a5eb70dc0b0f71117c0cad00da06ca16b))
+
+# [1.6.0](https://github.com/mogenius/renovate-operator/compare/1.5.1...1.6.0) (2025-11-12)
+
+
+### Features
+
+* adding the ability to set autodiscovery topics ([6cb940e](https://github.com/mogenius/renovate-operator/commit/6cb940eda47c7f06d17fd04f5741961c7fc59c1c))
+
+## [1.5.1](https://github.com/mogenius/renovate-operator/compare/1.5.0...1.5.1) (2025-11-12)
+
+
+### Bug Fixes
+
+* adding next run back to health check ([4d28a91](https://github.com/mogenius/renovate-operator/commit/4d28a910c8d666bc686ce8421fceb6b88e23234d))
+* do not print node warnings in discovery to retain parsability ([b7e6993](https://github.com/mogenius/renovate-operator/commit/b7e6993dca1ede5b95f5846661b83ab984fd2a60))
+
+# [1.5.0](https://github.com/mogenius/renovate-operator/compare/1.4.1...1.5.0) (2025-11-10)
+
+
+### Features
+
+* adding webhook api with authentication ([db9bd07](https://github.com/mogenius/renovate-operator/commit/db9bd079b904ecda43d77b302f48d25ce590debd))
+
+## [1.4.1](https://github.com/mogenius/renovate-operator/compare/1.4.0...1.4.1) (2025-11-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency go to v1.25.4 ([acbff09](https://github.com/mogenius/renovate-operator/commit/acbff09cd306110aa159140d1ce17ed6ee713e15))
+
+# [1.4.0](https://github.com/mogenius/renovate-operator/compare/1.3.4...1.4.0) (2025-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update k8s.io/utils digest to bc988d5 ([57f0071](https://github.com/mogenius/renovate-operator/commit/57f00719cb32f63b3aeee052cade9fb782e52bc1))
+* remove the need to overwrite sleep function for tests ([62e0186](https://github.com/mogenius/renovate-operator/commit/62e01861ca71f98907505ebea23915aa40e75532))
+
+
+### Features
+
+* smoothing ui updates and removing flicker ([becf09d](https://github.com/mogenius/renovate-operator/commit/becf09db357f5b026575599e08ad1a1e2df607dd))
+* validate status changes for projects ([cbb2843](https://github.com/mogenius/renovate-operator/commit/cbb2843c73ed4421a5ef1e09c007db6e14796049))
+
+## [1.3.4](https://github.com/mogenius/renovate-operator/compare/1.3.3...1.3.4) (2025-10-31)
+
+
+### Bug Fixes
+
+* adding golang tests ([54621a7](https://github.com/mogenius/renovate-operator/commit/54621a7c0eb4bcb563bd7965bd52f806803d2703))
+
 ## [1.3.3](https://github.com/mogenius/renovate-operator/compare/1.3.2...1.3.3) (2025-10-27)
 
 

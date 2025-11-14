@@ -30,7 +30,31 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: JOB_TIMEOUT_SECONDS
+              value: {{ .Values.config.defaultJobActiveDeadlineSeconds | quote }}
+            - name: JOB_BACKOFF_LIMIT
+              value: {{ .Values.config.defaultJobBackoffLimit | quote }}
+            - name: DELETE_SUCCESSFULL_JOBS
+              value: {{ .Values.config.deleteSuccessfullJobs | quote }}
+            - name: SERVER_PORT
+              value: "8081"
+            {{- if .Values.webhook.enabled }}
+            - name: WEBHOOK_SERVER_PORT
+              value: {{ .Values.webhook.port | quote }}
+            - name: WEBHOOK_SERVER_ENABLED
+              value: "true"
+            {{- end }}
           ports:
             - containerPort: 8081
               name: http
               protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - containerPort: {{ .Values.webhook.port }}
+              name: webhook
+              protocol: TCP
+            {{- end }}

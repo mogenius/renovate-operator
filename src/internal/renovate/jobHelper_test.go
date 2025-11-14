@@ -102,8 +102,8 @@ func TestGetJobStatus(t *testing.T) {
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 		status, err := getJobStatus("non-existing", "test-ns", client)
-		if err == nil {
-			t.Error("getJobStatus should return error for non-existing job")
+		if err != nil {
+			t.Error("getJobStatus should not return error for non-existing job")
 		}
 		if status != api.JobStatusFailed {
 			t.Errorf("expected status %v for error case, got %v", api.JobStatusFailed, status)
