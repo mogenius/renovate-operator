@@ -3,7 +3,6 @@ package crdmanager
 import (
 	"context"
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/utils"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -12,9 +11,7 @@ import (
 // Tests can override this variable to avoid using client.Status().Update with the
 // controller-runtime fake client.
 var updateRenovateJobStatusFn = func(ctx context.Context, renovateJob *api.RenovateJob, client client.Client) (*api.RenovateJob, error) {
-	err := utils.Retry(utils.DefaultRetryAttempts, utils.DefaultRetrySleep, func() error {
-		return client.Status().Update(ctx, renovateJob)
-	})
+	err := client.Status().Update(ctx, renovateJob)
 	if err != nil {
 		return nil, err
 	}

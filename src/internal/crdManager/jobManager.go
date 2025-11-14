@@ -3,7 +3,6 @@ package crdmanager
 import (
 	"context"
 	"fmt"
-	"renovate-operator/internal/utils"
 	"sort"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -16,45 +15,38 @@ import (
 
 func GetJob(ctx context.Context, client crclient.Client, jobName string, namespace string) (*batchv1.Job, error) {
 	job := &batchv1.Job{}
-	err := utils.Retry(utils.DefaultRetryAttempts, utils.DefaultRetrySleep, func() error {
-		return client.Get(ctx, types.NamespacedName{
-			Name:      jobName,
-			Namespace: namespace,
-		}, job)
-	})
+	err := client.Get(ctx, types.NamespacedName{
+		Name:      jobName,
+		Namespace: namespace,
+	}, job)
 	return job, err
 }
 
 func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
-
-	return utils.Retry(utils.DefaultRetryAttempts, utils.DefaultRetrySleep, func() error {
-		// First, delete all pods owned by the job
-		var podList corev1.PodList
-		err := client.List(
-			ctx,
-			&podList,
-			crclient.InNamespace(job.Namespace),
-			crclient.MatchingLabels{"job-name": job.Name},
-		)
-		if err != nil {
-			fmt.Printf("failed to list pods for job %s: %v\n", job.Name, err)
-		} else {
-			for _, pod := range podList.Items {
-				err := client.Delete(ctx, &pod)
-				if err != nil {
-					fmt.Printf("failed to delete pod %s: %v\n", pod.Name, err)
-				}
+	// First, delete all pods owned by the job
+	var podList corev1.PodList
+	err := client.List(
+		ctx,
+		&podList,
+		crclient.InNamespace(job.Namespace),
+		crclient.MatchingLabels{"job-name": job.Name},
+	)
+	if err != nil {
+		fmt.Printf("failed to list pods for job %s: %v\n", job.Name, err)
+	} else {
+		for _, pod := range podList.Items {
+			err := client.Delete(ctx, &pod)
+			if err != nil {
+				fmt.Printf("failed to delete pod %s: %v\n", pod.Name, err)
 			}
 		}
-		// Then, delete the job itself
-		return client.Delete(ctx, job)
-	})
+	}
+	// Then, delete the job itself
+	return client.Delete(ctx, job)
 }
 
 func CreateJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
-	return utils.Retry(utils.DefaultRetryAttempts, utils.DefaultRetrySleep, func() error {
-		return client.Create(ctx, job)
-	})
+	return client.Create(ctx, job)
 }
 
 func getLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job) (string, error) {
