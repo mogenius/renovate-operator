@@ -14,11 +14,21 @@ env:
 jobs:
   prepare:
     runs-on: self-hosted
+    permissions:
+      contents: write
     steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_SECRET }}
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           ref: main
+          token: ${{ steps.generate-token.outputs.token }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6
@@ -28,7 +38,7 @@ jobs:
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
 
   build-and-push-docker:
     name: Build Multi-arch Docker
@@ -99,14 +109,20 @@ jobs:
     needs: [prepare, build-and-push-docker]
     runs-on: self-hosted
     permissions:
-      contents: read
-      packages: write
+      contents: write
     steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_SECRET }}
+
       - name: Check out code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Configure Git
         run: |
