@@ -1,3 +1,10 @@
+## [1.6.7](https://github.com/mogenius/renovate-operator/compare/1.6.6...1.6.7) (2025-11-14)
+
+
+### Bug Fixes
+
+* new multi-arch workflow ([00404f8](https://github.com/mogenius/renovate-operator/commit/00404f8e7451c6a704aa5465af8aa426b524091f))
+
 ## [1.6.6](https://github.com/mogenius/renovate-operator/compare/1.6.5...1.6.6) (2025-11-13)
 
 
