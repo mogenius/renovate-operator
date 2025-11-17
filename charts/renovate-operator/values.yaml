@@ -28,7 +28,7 @@ ingress:
   tls: []
     # - hosts:
     #     - renovate.example.com
-    #   secretName: arenovate-tls
+    #   secretName: renovate-tls
   # -- labels to place on the ingress
   labels: {}
   # -- annotations to place on the ingress
