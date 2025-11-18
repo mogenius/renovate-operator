@@ -1,3 +1,19 @@
+# [1.7.0](https://github.com/mogenius/renovate-operator/compare/1.6.9...1.7.0) (2025-11-18)
+
+
+### Bug Fixes
+
+* adapt tests to reflect new api behaviour ([4877ff5](https://github.com/mogenius/renovate-operator/commit/4877ff5eae61a678698ae19b76345dd85267c53c))
+* add cronExpression to renovatejobs api ([577240e](https://github.com/mogenius/renovate-operator/commit/577240e0d7f896a0578d502d652f7b4c8cbd3159))
+* also apply restrictions to trigger to mobile view ([e2cab77](https://github.com/mogenius/renovate-operator/commit/e2cab773e20b004c653b6e55c09707c0617ab453))
+* block triggering already scheduled projects ([fb4677a](https://github.com/mogenius/renovate-operator/commit/fb4677a414ee9ccc1f669f7bf1c6b20f6b4535f6))
+* deactivate buttons for running jobs ([59f38e8](https://github.com/mogenius/renovate-operator/commit/59f38e89e8cebbd1584478d53ed5816445a0bc8e))
+
+
+### Features
+
+* modernize UI with logo, live countdown, and layout stability fixes ([8343397](https://github.com/mogenius/renovate-operator/commit/8343397e8654da581a33e8b6a4b6107ecf73eef8))
+
 ## [1.6.9](https://github.com/mogenius/renovate-operator/compare/1.6.8...1.6.9) (2025-11-14)
 
 
