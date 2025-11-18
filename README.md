@@ -81,7 +81,7 @@ data:
   GITHUB_COM_TOKEN: GITHUB_TOKEN_VALUE_BASE64_ENCODED
   RENOVATE_TOKEN: RENOVATE_TOKEN_VALUE_BASE64_ENCODED
 ```
-**Go to [GitHub Fine-grained PAT]([./docs/webhook.md](https://github.com/settings/personal-access-tokens)) and add a PAT with the following minimum permissions:**
+**Go to [GitHub Fine-grained PAT](https://github.com/settings/personal-access-tokens) and add a PAT with the following minimum permissions:**
 
 ![Example Screenshot of the renovate-operator UI.](/docs/github_permissions.png)
 
