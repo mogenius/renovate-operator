@@ -847,7 +847,7 @@
                                   onClick={() =>
                                     onTriggerRenovate(job, project)
                                   }
-                                  disabled={project.triggering || project.status === "running"}
+                                  disabled={project.triggering || project.status === "running" || project.status === "scheduled"}
                                   className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all w-[90px] ${
                                     project.triggering ? "btn-loading" : ""
                                   }`}
