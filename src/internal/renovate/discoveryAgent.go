@@ -73,6 +73,18 @@ func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJo
 }
 
 func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
+	if err == nil {
+		tries := 3
+		for err == nil {
+			time.Sleep(1 * time.Second)
+			_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
+			tries--
+			if tries <= 0 {
+				return fmt.Errorf("failed to delete existing discovery job")
+			}
+		}
+	}
 	// 2. Wait for discovery job completion
 	for {
 		status, err := e.getDiscoveryJobStatusFn(ctx, job)
@@ -130,9 +142,26 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 		Name:      job.Name + "-discovery",
 		Namespace: job.Namespace,
 	}, existingDiscoveryJob)
-	if err != nil {
-		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job status: %w", err)
+
+	// retry getting the job if not found
+	if err != nil && errors.IsNotFound(err) {
+		time.Sleep(1 * time.Second)
+
+		tries := 5
+		for errors.IsNotFound(err) {
+			tries--
+			if tries <= 0 {
+				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
+			}
+			err = e.client.Get(ctx, types.NamespacedName{
+				Name:      job.Name + "-discovery",
+				Namespace: job.Namespace,
+			}, existingDiscoveryJob)
+		}
+	} else if err != nil {
+		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job: %w", err)
 	}
+
 	if existingDiscoveryJob.Status.Failed > 0 {
 		return api.JobStatusFailed, nil
 	}
