@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/mogenius/renovate-operator/compare/1.7.3...1.7.4) (2025-11-18)
+
+
+### Bug Fixes
+
+* compile error and discovery ([9cdce47](https://github.com/mogenius/renovate-operator/commit/9cdce4761b3c24752716349da86f361d897c7844))
+
 ## [1.7.3](https://github.com/mogenius/renovate-operator/compare/1.7.2...1.7.3) (2025-11-18)
 
 
