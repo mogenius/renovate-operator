@@ -73,18 +73,6 @@ func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJo
 }
 
 func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
-	if err == nil {
-		tries := 3
-		for err == nil {
-			time.Sleep(1 * time.Second)
-			_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
-			tries--
-			if tries <= 0 {
-				return fmt.Errorf("failed to delete existing discovery job")
-			}
-		}
-	}
 	// 2. Wait for discovery job completion
 	for {
 		status, err := e.getDiscoveryJobStatusFn(ctx, job)
