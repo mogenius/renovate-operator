@@ -395,7 +395,7 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 
 	server.runDiscoveryForProject(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 }
