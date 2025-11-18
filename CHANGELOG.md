@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/mogenius/renovate-operator/compare/1.7.1...1.7.2) (2025-11-18)
+
+
+### Bug Fixes
+
+* wait for discoveryjob deletion ([a797a8b](https://github.com/mogenius/renovate-operator/commit/a797a8b9a9f3e46b7a7a7bd4df5a3f640b7ab21c))
+
 ## [1.7.1](https://github.com/mogenius/renovate-operator/compare/1.7.0...1.7.1) (2025-11-18)
 
 
