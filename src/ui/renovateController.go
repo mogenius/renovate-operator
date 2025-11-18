@@ -13,10 +13,11 @@ import (
 )
 
 type RenovateJobInfo struct {
-	Name         string                             `json:"name"`
-	Namespace    string                             `json:"namespace"`
-	NextSchedule time.Time                          `json:"nextSchedule"`
-	Projects     []crdmanager.RenovateProjectStatus `json:"projects"`
+	Name           string                             `json:"name"`
+	Namespace      string                             `json:"namespace"`
+	CronExpression string                             `json:"cronExpression"`
+	NextSchedule   time.Time                          `json:"nextSchedule"`
+	Projects       []crdmanager.RenovateProjectStatus `json:"projects"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -36,16 +37,23 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]RenovateJobInfo, 0)
 	for _, job := range renovateJobs {
+		renovateJob, err := s.manager.GetRenovateJob(r.Context(), job.Name, job.Namespace)
+		if err != nil {
+			internalServerError(w, err, "failed to load renovatejob")
+			return
+		}
+
 		projects, err := s.manager.GetProjectsForRenovateJob(r.Context(), job)
 		if err != nil {
 			internalServerError(w, err, "failed to load projects")
 			return
 		}
 		result = append(result, RenovateJobInfo{
-			Name:         job.Name,
-			Namespace:    job.Namespace,
-			NextSchedule: s.scheduler.GetNextRun(job.Fullname()),
-			Projects:     projects,
+			Name:           job.Name,
+			Namespace:      job.Namespace,
+			NextSchedule:   s.scheduler.GetNextRun(job.Fullname()),
+			Projects:       projects,
+			CronExpression: renovateJob.Spec.Schedule,
 		})
 	}
 
