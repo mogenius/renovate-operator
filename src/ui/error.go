@@ -11,6 +11,16 @@ func writeError(w http.ResponseWriter, err HttpResultError) {
 	_ = json.NewEncoder(w).Encode(err)
 }
 
+type SuccessResult struct {
+	Message string `json:"message"`
+}
+
+func writeSuccess(w http.ResponseWriter, result SuccessResult) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(result)
+}
+
 type HttpResultError struct {
 	Message    string
 	StatusCode int

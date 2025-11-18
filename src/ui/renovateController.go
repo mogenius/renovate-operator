@@ -13,11 +13,12 @@ import (
 )
 
 type RenovateJobInfo struct {
-	Name           string                             `json:"name"`
-	Namespace      string                             `json:"namespace"`
-	CronExpression string                             `json:"cronExpression"`
-	NextSchedule   time.Time                          `json:"nextSchedule"`
-	Projects       []crdmanager.RenovateProjectStatus `json:"projects"`
+	Name            string                             `json:"name"`
+	Namespace       string                             `json:"namespace"`
+	CronExpression  string                             `json:"cronExpression"`
+	NextSchedule    time.Time                          `json:"nextSchedule"`
+	DiscoveryStatus api.RenovateProjectStatus          `json:"discoveryStatus"`
+	Projects        []crdmanager.RenovateProjectStatus `json:"projects"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -43,17 +44,27 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				discoveryStatus = api.JobStatusScheduled
+			} else {
+				// it might not be failed, but we dont want to block the whole response
+				discoveryStatus = api.JobStatusFailed
+			}
+		}
 		projects, err := s.manager.GetProjectsForRenovateJob(r.Context(), job)
 		if err != nil {
 			internalServerError(w, err, "failed to load projects")
 			return
 		}
 		result = append(result, RenovateJobInfo{
-			Name:           job.Name,
-			Namespace:      job.Namespace,
-			NextSchedule:   s.scheduler.GetNextRun(job.Fullname()),
-			Projects:       projects,
-			CronExpression: renovateJob.Spec.Schedule,
+			Name:            job.Name,
+			Namespace:       job.Namespace,
+			NextSchedule:    s.scheduler.GetNextRun(job.Fullname()),
+			Projects:        projects,
+			CronExpression:  renovateJob.Spec.Schedule,
+			DiscoveryStatus: discoveryStatus,
 		})
 	}
 
@@ -149,7 +160,7 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
 	s.logger.Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
 }
 
@@ -174,7 +185,8 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	// discovery mus only run once
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err == nil && status == api.JobStatusRunning {
-		badRequestError(w, err, "discovery job already running")
+		// discovery job is already running
+		writeSuccess(w, SuccessResult{Message: "discovery job is already running"})
 		return
 	}
 
@@ -203,7 +215,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		}
 	}()
 
-	w.WriteHeader(http.StatusOK)
+	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 }
 
