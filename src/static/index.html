@@ -284,6 +284,7 @@
         });
         const [toasts, setToasts] = useState([]);
         const [nextToastId, setNextToastId] = useState(1);
+        const [discoveryStatus, setDiscoveryStatus] = useState("idle");
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -383,6 +384,18 @@
             setLoading(false);
           }
         }, [addToast]);
+
+        const checkDiscoveryStatus = useCallback(async () => {
+          try {
+            const response = await fetch("/api/v1/discovery/status");
+            if (response.ok) {
+              const data = await response.json();
+              setDiscoveryStatus(data.status || "idle");
+            }
+          } catch (err) {
+            console.error("Error checking discovery status:", err);
+          }
+        }, []);
 
         const runDiscovery = async (job) => {
           if (job.discoveryRunning) return;
@@ -488,9 +501,14 @@
 
         useEffect(() => {
           loadJobs();
-          const interval = setInterval(loadJobs, 30000);
-          return () => clearInterval(interval);
-        }, [loadJobs]);
+          checkDiscoveryStatus();
+          const jobsInterval = setInterval(loadJobs, 30000);
+          const statusInterval = setInterval(checkDiscoveryStatus, 5000);
+          return () => {
+            clearInterval(jobsInterval);
+            clearInterval(statusInterval);
+          };
+        }, [loadJobs, checkDiscoveryStatus]);
 
         return (
           <>
@@ -518,6 +536,14 @@
                   </div>
 
                   <div className="flex items-center gap-4">
+                    <div className="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                        Failed
+                      </div>
+                      <div className="text-3xl font-bold text-error">
+                        {loading ? "—" : stats.failed}
+                      </div>
+                    </div>
                     <div className="bg-white rounded-lg border border-gray-200 px-6 py-3 shadow-sm hover:shadow-md transition-shadow">
                       <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
                         Scheduled
@@ -604,6 +630,7 @@
                       job={job}
                       onRunDiscovery={runDiscovery}
                       onTriggerRenovate={triggerRenovate}
+                      discoveryStatus={discoveryStatus}
                     />
                   ))}
 
@@ -847,7 +874,11 @@
                                   onClick={() =>
                                     onTriggerRenovate(job, project)
                                   }
-                                  disabled={project.triggering || project.status === "running" || project.status === "scheduled"}
+                                  disabled={
+                                    project.triggering ||
+                                    project.status === "running" ||
+                                    project.status === "scheduled"
+                                  }
                                   className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all w-[90px] ${
                                     project.triggering ? "btn-loading" : ""
                                   }`}
@@ -920,7 +951,11 @@
                         <div className="flex gap-2">
                           <button
                             onClick={() => onTriggerRenovate(job, project)}
-                            disabled={project.triggering || project.status === "running" || project.status === "scheduled"}
+                            disabled={
+                              project.triggering ||
+                              project.status === "running" ||
+                              project.status === "scheduled"
+                            }
                             className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all w-[110px] ${
                               project.triggering ? "btn-loading" : ""
                             }`}
