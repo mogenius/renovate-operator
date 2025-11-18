@@ -190,7 +190,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err = s.discovery.CreateDiscoveryJob(ctx, *job)
+	err = s.discovery.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 		internalServerError(w, err, "failed to create discovery job")

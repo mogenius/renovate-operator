@@ -24,7 +24,7 @@ type DiscoveryAgent interface {
 	// Discover runs the discovery process for the given RenovateJob CRD and returns the list of discovered projects.
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
 	// Only create and start the discovery job, do not wait for completion.
-	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
+	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 	// WaitForDiscoveryJob waits for the discovery job to complete and returns the list of discovered projects.
@@ -64,7 +64,7 @@ func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]
 
 func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	// 1. Create the discovery job - replaces existing job
-	_, err := e.CreateDiscoveryJob(ctx, *job)
+	err := e.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or get discovery job: %w", err)
 	}
@@ -141,7 +141,7 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	}
 	return api.JobStatusRunning, nil
 }
-func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
+func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
 	// lock based on the renovatejob
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
@@ -154,7 +154,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 
 	discoveryJob := newDiscoveryJob(&renovateJob)
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
-		return &batchv1.Job{}, fmt.Errorf("failed to set controller reference: %w", err)
+		return fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	// check if the job exists, if so, delete it
@@ -166,13 +166,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	// Create the discovery job
 	err = crdManager.CreateJob(ctx, e.client, discoveryJob)
 	if err != nil {
-		return &batchv1.Job{}, fmt.Errorf("failed to create discovery job: %w", err)
+		return fmt.Errorf("failed to create discovery job: %w", err)
 	}
-
-	// Reload the job to ensure we have the latest state
-	existingJob, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
-	if err != nil {
-		return &batchv1.Job{}, fmt.Errorf("failed to get existing discovery job: %w", err)
-	}
-	return existingJob, nil
+	return nil
 }

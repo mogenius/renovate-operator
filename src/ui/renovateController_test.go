@@ -109,7 +109,7 @@ func (m *mockRenovateJobManager) DeleteJob(jobId crdmanager.RenovateJobIdentifie
 // Mock DiscoveryAgent
 type mockDiscoveryAgent struct {
 	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
-	createDiscoveryJobFunc    func(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error)
+	createDiscoveryJobFunc    func(ctx context.Context, renovateJob api.RenovateJob) error
 	waitForDiscoveryJobFunc   func(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
 
@@ -124,11 +124,11 @@ func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api
 	return api.JobStatusScheduled, nil
 }
 
-func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
+func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
 	if m.createDiscoveryJobFunc != nil {
 		return m.createDiscoveryJobFunc(ctx, renovateJob)
 	}
-	return &batchv1.Job{}, nil
+	return nil
 }
 
 func (m *mockDiscoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {

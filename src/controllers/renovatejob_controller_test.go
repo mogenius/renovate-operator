@@ -10,7 +10,6 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 
 	"github.com/go-logr/logr"
-	batchv1 "k8s.io/api/batch/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -74,8 +73,8 @@ func (f *fakeDiscovery) Discover(ctx context.Context, job *api.RenovateJob) ([]s
 	}
 	return []string{}, nil
 }
-func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (*batchv1.Job, error) {
-	return nil, fmt.Errorf("not implemented")
+func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
+	return fmt.Errorf("not implemented")
 }
 func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
