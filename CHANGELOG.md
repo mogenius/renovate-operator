@@ -1,3 +1,10 @@
+## [1.7.3](https://github.com/mogenius/renovate-operator/compare/1.7.2...1.7.3) (2025-11-18)
+
+
+### Bug Fixes
+
+* wait for the discovery job to appear ([b7b008c](https://github.com/mogenius/renovate-operator/commit/b7b008cca170427c3de56c2e90c62c51ca509925))
+
 ## [1.7.2](https://github.com/mogenius/renovate-operator/compare/1.7.1...1.7.2) (2025-11-18)
 
 
