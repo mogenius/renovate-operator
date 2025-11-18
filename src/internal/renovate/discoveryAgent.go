@@ -161,6 +161,20 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	existingJob, err := crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
 	if err == nil || !errors.IsNotFound(err) {
 		_ = crdManager.DeleteJob(ctx, e.client, existingJob)
+
+		// wait until the job is deleted
+		_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
+		if err == nil {
+			tries := 3
+			for err == nil {
+				time.Sleep(1 * time.Second)
+				_, err = crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
+				tries--
+				if tries <= 0 {
+					return fmt.Errorf("failed to delete existing discovery job")
+				}
+			}
+		}
 	}
 
 	// Create the discovery job
