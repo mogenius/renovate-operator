@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/mogenius/renovate-operator/compare/1.7.0...1.7.1) (2025-11-18)
+
+
+### Bug Fixes
+
+* remove unnecessary load for discovery job ([91afdc5](https://github.com/mogenius/renovate-operator/commit/91afdc5dd2cc2cc2a8b0e3f8138f8e149e37859a))
+
 # [1.7.0](https://github.com/mogenius/renovate-operator/compare/1.6.9...1.7.0) (2025-11-18)
 
 
