@@ -1,11 +1,13 @@
 <div align="center">
-    <img src="src/static/favicon.ico" width="90" />
-    <h1 align="center">Renovate Operator</h1>
+    <img src="src/static/assets/logo.png" alt="Renovate Operator Logo" width="290">
 </div>
+
+<br>
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/mogenius)](https://artifacthub.io/packages/helm/mogenius/renovate-operator)
 ![GitHub Release](https://img.shields.io/github/v/release/mogenius/renovate-operator)
 [![Build, Package, Release (Production)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/mogenius/renovate-operator/actions/workflows/release.yaml)
+
 ---
 
 [Renovate][1] is one of, if not the leading tool for automated dependency updates.
@@ -36,12 +38,16 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 ```
 
 ## Documentation
+
 - [Webhook API](./docs/webhook.md)
 - [Autodiscovery](./docs/autodiscovery.md)
 
 ## Examples
+
 ### GitHub
+
 **RenovateJob Configuration for GitHub**
+
 ```yaml
 apiVersion: renovate-operator.mogenius.com/v1alpha1
 kind: RenovateJob
@@ -52,12 +58,12 @@ metadata:
 spec:
   discoveryFilter: ###GITHUB_USERNAME###/*
   extraEnv:
-  - name: RENOVATE_PLATFORM
-    value: github
-  - name: RENOVATE_ENDPOINT
-    value: https://api.github.com/
-  - name: RENOVATE_ALLOW_PLUGINS
-    value: "true"
+    - name: RENOVATE_PLATFORM
+      value: github
+    - name: RENOVATE_ENDPOINT
+      value: https://api.github.com/
+    - name: RENOVATE_ALLOW_PLUGINS
+      value: "true"
   image: renovate/renovate:41.43.3
   parallelism: 5
   resources:
@@ -67,6 +73,7 @@ spec:
   schedule: 0 * * * *
   secretRef: renovate-secret
 ```
+
 **Secret Configuration for GitHub**
 
 ```yaml
@@ -81,12 +88,13 @@ data:
   GITHUB_COM_TOKEN: GITHUB_TOKEN_VALUE_BASE64_ENCODED
   RENOVATE_TOKEN: RENOVATE_TOKEN_VALUE_BASE64_ENCODED
 ```
+
 **Go to [GitHub Fine-grained PAT](https://github.com/settings/personal-access-tokens) and add a PAT with the following minimum permissions:**
 
 ![Example Screenshot of the renovate-operator UI.](/docs/github_permissions.png)
 
-
 ### Gitlab
+
 ```yaml
 apiVersion: renovate-operator.mogenius.com/v1alpha1
 kind: RenovateJob
@@ -118,6 +126,7 @@ spec:
 ```
 
 ## Contributing
+
 <a href="https://github.com/mogenius/renovate-operator/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=mogenius/renovate-operator" />
 </a>
@@ -129,6 +138,7 @@ Made with [contrib.rocks](https://contrib.rocks).
 ### Running Tests
 
 Run the test suite:
+
 ```sh
 go test -v ./...
 ```
@@ -136,6 +146,7 @@ go test -v ./...
 ### Code Quality
 
 Run golangci-lint locally:
+
 ```sh
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 golangci-lint run
