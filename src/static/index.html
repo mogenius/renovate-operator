@@ -284,7 +284,6 @@
         });
         const [toasts, setToasts] = useState([]);
         const [nextToastId, setNextToastId] = useState(1);
-        const [discoveryStatus, setDiscoveryStatus] = useState("idle");
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -384,18 +383,6 @@
             setLoading(false);
           }
         }, [addToast]);
-
-        const checkDiscoveryStatus = useCallback(async () => {
-          try {
-            const response = await fetch("/api/v1/discovery/status");
-            if (response.ok) {
-              const data = await response.json();
-              setDiscoveryStatus(data.status || "idle");
-            }
-          } catch (err) {
-            console.error("Error checking discovery status:", err);
-          }
-        }, []);
 
         const runDiscovery = async (job) => {
           if (job.discoveryRunning) return;
@@ -501,14 +488,9 @@
 
         useEffect(() => {
           loadJobs();
-          checkDiscoveryStatus();
-          const jobsInterval = setInterval(loadJobs, 30000);
-          const statusInterval = setInterval(checkDiscoveryStatus, 5000);
-          return () => {
-            clearInterval(jobsInterval);
-            clearInterval(statusInterval);
-          };
-        }, [loadJobs, checkDiscoveryStatus]);
+          const interval = setInterval(loadJobs, 30000);
+          return () => clearInterval(interval);
+        }, [loadJobs]);
 
         return (
           <>
@@ -630,7 +612,6 @@
                       job={job}
                       onRunDiscovery={runDiscovery}
                       onTriggerRenovate={triggerRenovate}
-                      discoveryStatus={discoveryStatus}
                     />
                   ))}
 
@@ -665,12 +646,7 @@
         );
       }
 
-      function JobCard({
-        job,
-        onRunDiscovery,
-        onTriggerRenovate,
-        discoveryStatus,
-      }) {
+      function JobCard({ job, onRunDiscovery, onTriggerRenovate }) {
         const [open, setOpen] = useState(true);
 
         const getBadgeClass = (status) => {
@@ -786,25 +762,19 @@
                     e.stopPropagation();
                     onRunDiscovery(job);
                   }}
-                  disabled={
-                    job.discoveryRunning || discoveryStatus === "running"
-                  }
+                  disabled={job.discoveryRunning}
                   className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center gap-2 w-[155px] ${
-                    job.discoveryRunning || discoveryStatus === "running"
-                      ? "btn-loading"
-                      : ""
+                    job.discoveryRunning ? "btn-loading" : ""
                   }`}
                   aria-label={
-                    job.discoveryRunning || discoveryStatus === "running"
+                    job.discoveryRunning
                       ? "Discovery running"
                       : `Run discovery for ${job.name}`
                   }
                 >
                   <svg
                     className={`w-4 h-4 ${
-                      job.discoveryRunning || discoveryStatus === "running"
-                        ? "animate-spin"
-                        : ""
+                      job.discoveryRunning ? "animate-spin" : ""
                     }`}
                     fill="currentColor"
                     viewBox="0 0 20 20"
@@ -816,9 +786,7 @@
                     />
                   </svg>
                   <span>
-                    {job.discoveryRunning || discoveryStatus === "running"
-                      ? "Running..."
-                      : "Run Discovery"}
+                    {job.discoveryRunning ? "Running..." : "Run Discovery"}
                   </span>
                 </button>
               </div>
