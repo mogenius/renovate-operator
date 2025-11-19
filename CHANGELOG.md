@@ -1,3 +1,10 @@
+## [1.7.5](https://github.com/mogenius/renovate-operator/compare/1.7.4...1.7.5) (2025-11-19)
+
+
+### Bug Fixes
+
+* add missing discoveryStatus state and polling ([80c4d2a](https://github.com/mogenius/renovate-operator/commit/80c4d2a5a787fc6a1de6425d7c4d04f53659bffa))
+
 ## [1.7.4](https://github.com/mogenius/renovate-operator/compare/1.7.3...1.7.4) (2025-11-18)
 
 
