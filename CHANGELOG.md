@@ -1,3 +1,10 @@
+## [1.7.6](https://github.com/mogenius/renovate-operator/compare/1.7.5...1.7.6) (2025-11-21)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.22.4 ([ca092f6](https://github.com/mogenius/renovate-operator/commit/ca092f64f5654d2267b003420ed5f34e6a31a92f))
+
 ## [1.7.5](https://github.com/mogenius/renovate-operator/compare/1.7.4...1.7.5) (2025-11-19)
 
 
