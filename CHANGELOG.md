@@ -1,3 +1,10 @@
+## [1.7.7](https://github.com/mogenius/renovate-operator/compare/1.7.6...1.7.7) (2025-11-21)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes packages to v0.34.2 ([cbc5e10](https://github.com/mogenius/renovate-operator/commit/cbc5e10ff1603569d9e07275487311c8f92c8011))
+
 ## [1.7.6](https://github.com/mogenius/renovate-operator/compare/1.7.5...1.7.6) (2025-11-21)
 
 
