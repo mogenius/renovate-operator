@@ -1,3 +1,10 @@
+## [1.7.8](https://github.com/mogenius/renovate-operator/compare/1.7.7...1.7.8) (2025-11-25)
+
+
+### Bug Fixes
+
+* ran go mod tidy ([6deff25](https://github.com/mogenius/renovate-operator/commit/6deff2545a1d0c5a443434a2beec24957ffa0989))
+
 ## [1.7.7](https://github.com/mogenius/renovate-operator/compare/1.7.6...1.7.7) (2025-11-21)
 
 
