@@ -41,6 +41,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 
 - [Webhook API](./docs/webhook.md)
 - [Autodiscovery](./docs/autodiscovery.md)
+- [Using a config.js](./docs/extra-volumes.md)
 
 ## Examples
 

@@ -7,9 +7,35 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+)
+
+var (
+	defaultPodSecurityContext = &v1.PodSecurityContext{
+		RunAsUser:    ptr.To(int64(12021)),
+		RunAsGroup:   ptr.To(int64(12021)),
+		FSGroup:      ptr.To(int64(12021)),
+		RunAsNonRoot: ptr.To(true),
+		SeccompProfile: &v1.SeccompProfile{
+			Type: v1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+
+	defaultContainerSecurityContext = &v1.SecurityContext{
+		RunAsUser:                ptr.To(int64(12021)),
+		RunAsGroup:               ptr.To(int64(12021)),
+		RunAsNonRoot:             ptr.To(true),
+		ReadOnlyRootFilesystem:   ptr.To(false),
+		Privileged:               ptr.To(false),
+		AllowPrivilegeEscalation: ptr.To(false),
+		SeccompProfile: &v1.SeccompProfile{
+			Type: v1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
 )
 
 func TestSecurityContextHelpers(t *testing.T) {
@@ -34,89 +60,40 @@ func TestSecurityContextHelpers(t *testing.T) {
 		t.Fatalf("expected empty service account name, got %s", name)
 	}
 }
-
-func TestNewJobs_BasicFields(t *testing.T) {
+func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
 		Spec: api.RenovateJobSpec{
-			Image: "my-image",
-		},
-	}
-
-	// set config module for JOB_TIMEOUT_SECONDS
-	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "123"}})
-	if err != nil {
-		t.Fatalf("expected to initialize config module without error, got %v", err)
-	}
-	dj := newDiscoveryJob(job)
-	if dj == nil {
-		t.Fatalf("expected discovery job not nil")
-	}
-	if dj.Spec.Template.Spec.Containers[0].Image != "my-image" {
-		t.Fatalf("expected image set in discovery job")
-	}
-	if dj.Spec.ActiveDeadlineSeconds == nil || *dj.Spec.ActiveDeadlineSeconds != int64(123) {
-		t.Fatalf("expected active deadline seconds set from config, got %v", dj.Spec.ActiveDeadlineSeconds)
-	}
-
-	rj := newRenovateJob(job, "proj")
-	if rj == nil {
-		t.Fatalf("expected renovate job not nil")
-	}
-	if rj.Spec.Template.Spec.Containers[0].Image != "my-image" {
-		t.Fatalf("expected image set in renovate job")
-	}
-}
-
-func TestNewJobs_WithSecretRefAndMeta(t *testing.T) {
-	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
-		Spec: api.RenovateJobSpec{
-			Image:     "img",
-			SecretRef: "sref",
+			Image:           "img",
+			SecretRef:       "sref",
+			DiscoveryFilter: "org/*",
+			DiscoverTopics:  "renovate",
 			Metadata: &api.RenovateJobMetadata{
 				Labels: map[string]string{"a": "b"},
 			},
-		},
-	}
-	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
-	if err != nil {
-		t.Fatalf("expected to initialize config module without error, got %v", err)
-	}
-	dj := newDiscoveryJob(job)
-	envFrom := dj.Spec.Template.Spec.Containers[0].EnvFrom
-	if len(envFrom) == 0 || envFrom[0].SecretRef == nil || envFrom[0].SecretRef.Name != "sref" {
-		t.Fatalf("expected envFrom SecretRef set in discovery job")
-	}
-	if dj.Spec.Template.Labels["a"] != "b" {
-		t.Fatalf("expected metadata labels applied to discovery job")
-	}
-
-}
-
-func TestNewDiscoveryJob(t *testing.T) {
-	err := config.InitializeConfigModule([]config.ConfigItemDescription{
-		{
-			Key:      "JOB_TIMEOUT_SECONDS",
-			Optional: true,
-			Default:  "1800",
-		},
-	})
-	if err != nil {
-		t.Errorf("expected to initialize config module without error, got %v", err)
-	}
-
-	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "testjob",
-			Namespace: "default",
-		},
-		Spec: api.RenovateJobSpec{
-			Image:           "renovate:latest",
-			DiscoveryFilter: "org/*",
-			SecretRef:       "mysecret",
-			ExtraEnv: []v1.EnvVar{
-				{Name: "FOO", Value: "BAR"},
+			ExtraVolumes: []v1.Volume{
+				{
+					Name: "extra-vol",
+					VolumeSource: v1.VolumeSource{
+						EmptyDir: &v1.EmptyDirVolumeSource{},
+					},
+				},
+			},
+			ExtraVolumeMounts: []v1.VolumeMount{
+				{
+					Name:      "extra-vol",
+					MountPath: "/extra",
+				},
+			},
+			ServiceAccount: &api.RenovateJobServiceAccount{
+				AutomountServiceAccountToken: ptr.To(true),
+				Name:                         "test",
+			},
+			NodeSelector: map[string]string{"disktype": "ssd"},
+			ImagePullSecrets: []v1.LocalObjectReference{
+				{
+					Name: "my-pull-secret",
+				},
 			},
 			Resources: v1.ResourceRequirements{
 				Limits: v1.ResourceList{
@@ -124,50 +101,67 @@ func TestNewDiscoveryJob(t *testing.T) {
 					v1.ResourceMemory: resource.MustParse("128Mi"),
 				},
 			},
+			SecurityContext: &api.RenovateJobSecurityContext{
+				Pod: &v1.PodSecurityContext{
+					RunAsUser: ptr.To(int64(15000)),
+				},
+				Container: &v1.SecurityContext{
+					RunAsUser: ptr.To(int64(16000)),
+				},
+			},
 		},
 	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
 
-	got := newDiscoveryJob(job)
-	if got.Name != "testjob-discovery" {
-		t.Errorf("expected job name %q, got %q", "testjob-discovery", got.Name)
-	}
-	if got.Namespace != "default" {
-		t.Errorf("expected namespace %q, got %q", "default", got.Namespace)
-	}
-	container := got.Spec.Template.Spec.Containers[0]
-	if container.Image != "renovate:latest" {
-		t.Errorf("expected image %q, got %q", "renovate:latest", container.Image)
-	}
-	found := false
-	for _, env := range container.Env {
-		if env.Name == "RENOVATE_AUTODISCOVER_FILTER" && env.Value == "org/*" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("RENOVATE_AUTODISCOVER_FILTER env var not found or incorrect")
-	}
-	found = false
-	for _, env := range container.Env {
-		if env.Name == "FOO" && env.Value == "BAR" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("ExtraEnv FOO=BAR not found")
-	}
-	if len(container.EnvFrom) != 1 || container.EnvFrom[0].SecretRef == nil || container.EnvFrom[0].SecretRef.Name != "mysecret" {
-		t.Errorf("expected secretRef mysecret, got %+v", container.EnvFrom)
-	}
-	if got.Spec.Template.Spec.RestartPolicy != v1.RestartPolicyOnFailure {
-		t.Errorf("expected RestartPolicyOnFailure, got %v", got.Spec.Template.Spec.RestartPolicy)
-	}
-	if len(got.Spec.Template.Spec.Volumes) != 1 || got.Spec.Template.Spec.Volumes[0].Name != "tmp" {
-		t.Errorf("expected tmp volume, got %+v", got.Spec.Template.Spec.Volumes)
-	}
+	// test discovery job
+	dj := newDiscoveryJob(job)
+	djContainer := expectContainer(t, dj)
+	// basic fields
+	expectJobName(t, dj, "rj-discovery")
+	expectJobNamespace(t, dj, "ns")
+	expectLabels(t, dj, map[string]string{"a": "b"})
+	expectImage(t, djContainer, "img")
+	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
+	expectActiveDeadlineSeconds(t, dj, 10)
+	// env vars
+	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
+	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
+	expectEnvFromSecret(t, djContainer, "sref")
+	// volumes
+	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
+	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
+	// other
+	expectServiceAccountSettings(t, dj, "test", ptr.To(true))
+	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectNodeSelector(t, dj, map[string]string{"disktype": "ssd"})
+	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
+
+	// test renovate job
+	rj := newRenovateJob(job, "proj")
+	rjContainer := expectContainer(t, rj)
+	// basic fields
+	expectJobName(t, rj, "rj-proj")
+	expectJobNamespace(t, rj, "ns")
+	expectLabels(t, rj, map[string]string{"a": "b"})
+	expectImage(t, rjContainer, "img")
+	expectRestartPolicy(t, rj, v1.RestartPolicyOnFailure)
+	expectActiveDeadlineSeconds(t, rj, 10)
+	// env vars
+	expectEnvFromSecret(t, rjContainer, "sref")
+	// volumes
+	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
+	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
+	// other
+	expectServiceAccountSettings(t, rj, "test", ptr.To(true))
+	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectNodeSelector(t, rj, map[string]string{"disktype": "ssd"})
+	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 }
 
-func TestNewDiscoveryJob_NoFilterOrSecret(t *testing.T) {
+func TestNewJob_WithoutSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "nofilter",
@@ -177,57 +171,208 @@ func TestNewDiscoveryJob_NoFilterOrSecret(t *testing.T) {
 			Image: "renovate:dev",
 		},
 	}
-	got := newDiscoveryJob(job)
-	container := got.Spec.Template.Spec.Containers[0]
-	for _, env := range container.Env {
+	// test discovery job
+	dj := newDiscoveryJob(job)
+	djContainer := expectContainer(t, dj)
+	// basic fields
+	expectJobName(t, dj, "nofilter-discovery")
+	expectJobNamespace(t, dj, "ns")
+	expectImage(t, djContainer, "renovate:dev")
+
+	// no env vars
+	for _, env := range djContainer.Env {
 		if env.Name == "RENOVATE_AUTODISCOVER_FILTER" {
 			t.Errorf("did not expect RENOVATE_AUTODISCOVER_FILTER env var")
 		}
+
+		if env.Name == "RENOVATE_AUTODISCOVER_TOPICS" {
+			t.Errorf("did not expect RENOVATE_AUTODISCOVER_TOPICS env var")
+		}
 	}
-	if len(container.EnvFrom) != 0 {
-		t.Errorf("expected no EnvFrom, got %+v", container.EnvFrom)
+	if len(djContainer.EnvFrom) != 0 {
+		t.Errorf("expected no EnvFrom, got %+v", djContainer.EnvFrom)
+	}
+
+	// volumes
+	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
+	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}})
+
+	expectServiceAccountSettings(t, dj, "", ptr.To(false))
+	expectSecurityContext(t, dj, djContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
+	expectNodeSelector(t, dj, nil)
+	expectImagePullSecrets(t, dj, nil)
+
+	// test renovate job
+	rj := newRenovateJob(job, "myproj")
+	rjContainer := expectContainer(t, rj)
+	// basic fields
+	expectJobName(t, rj, "nofilter-myproj")
+	expectJobNamespace(t, rj, "ns")
+	expectImage(t, rjContainer, "renovate:dev")
+
+	// no env vars
+	if len(rjContainer.EnvFrom) != 0 {
+		t.Errorf("expected no EnvFrom, got %+v", rjContainer.EnvFrom)
+	}
+
+	// volumes
+	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
+	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}})
+
+	expectServiceAccountSettings(t, rj, "", ptr.To(false))
+	expectSecurityContext(t, rj, rjContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
+	expectNodeSelector(t, rj, nil)
+	expectImagePullSecrets(t, rj, nil)
+}
+
+// ##### HELPERS #####
+func expectContainer(t *testing.T, job *batchv1.Job) *v1.Container {
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 1 {
+		t.Fatalf("expected exactly one container in job")
+	}
+	return &containers[0]
+}
+
+func expectVolumeMounts(t *testing.T, container *v1.Container, expectedMounts []v1.VolumeMount) {
+	if len(container.VolumeMounts) != len(expectedMounts) {
+		t.Fatalf("expected %d volume mounts, got %d", len(expectedMounts), len(container.VolumeMounts))
+	}
+	for _, expected := range expectedMounts {
+		found := false
+		for _, actual := range container.VolumeMounts {
+			if actual.Name == expected.Name && actual.MountPath == expected.MountPath {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected volume mount %s at %s not found", expected.Name, expected.MountPath)
+		}
+	}
+}
+func expectVolumes(t *testing.T, job *batchv1.Job, expectedVolumes []v1.Volume) {
+	if len(job.Spec.Template.Spec.Volumes) != len(expectedVolumes) {
+		t.Fatalf("expected %d volumes, got %d", len(expectedVolumes), len(job.Spec.Template.Spec.Volumes))
+	}
+	for _, expected := range expectedVolumes {
+		found := false
+		for _, actual := range job.Spec.Template.Spec.Volumes {
+			if actual.Name == expected.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected volume %s not found", expected.Name)
+		}
 	}
 }
 
-func TestNewRenovateJob(t *testing.T) {
-	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "execjob",
-			Namespace: "renovate-ns",
-		},
-		Spec: api.RenovateJobSpec{
-			Image: "renovate:prod",
-			ExtraEnv: []v1.EnvVar{
-				{Name: "BAR", Value: "BAZ"},
-			},
-		},
+func expectJobName(t *testing.T, job *batchv1.Job, expectedName string) {
+	if job.Name != expectedName {
+		t.Fatalf("expected job name %s, got %s", expectedName, job.Name)
 	}
-	project := "my/repo"
-	expectedName := job.ExecutorJobName(project)
-	got := newRenovateJob(job, project)
-	if got.Name != expectedName {
-		t.Errorf("expected job name %q, got %q", expectedName, got.Name)
+}
+
+func expectJobNamespace(t *testing.T, job *batchv1.Job, expectedNamespace string) {
+	if job.Namespace != expectedNamespace {
+		t.Fatalf("expected job namespace %s, got %s", expectedNamespace, job.Namespace)
 	}
-	if got.Namespace != "renovate-ns" {
-		t.Errorf("expected namespace %q, got %q", "renovate-ns", got.Namespace)
+}
+
+func expectEnvFromSecret(t *testing.T, container *v1.Container, expectedSecret string) {
+	envFrom := container.EnvFrom
+	if len(envFrom) == 0 || envFrom[0].SecretRef == nil || envFrom[0].SecretRef.Name != expectedSecret {
+		t.Fatalf("expected envFrom SecretRef %s, got %+v", expectedSecret, envFrom)
 	}
-	container := got.Spec.Template.Spec.Containers[0]
-	if container.Image != "renovate:prod" {
-		t.Errorf("expected image %q, got %q", "renovate:prod", container.Image)
-	}
-	if !reflect.DeepEqual(container.Command, []string{"renovate"}) {
-		t.Errorf("expected command [renovate], got %v", container.Command)
-	}
-	if !reflect.DeepEqual(container.Args, []string{"--base-dir", "/tmp", project}) {
-		t.Errorf("expected args [%s], got %v", project, container.Args)
-	}
-	found := false
-	for _, env := range container.Env {
-		if env.Name == "BAR" && env.Value == "BAZ" {
-			found = true
+}
+
+func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]string) {
+	for k, v := range expectedLabels {
+		if job.Spec.Template.Labels[k] != v {
+			t.Fatalf("expected template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
 		}
 	}
-	if !found {
-		t.Errorf("ExtraEnv BAR=BAZ not found")
+}
+
+func expectImage(t *testing.T, container *v1.Container, expectedImage string) {
+	if container.Image != expectedImage {
+		t.Fatalf("expected image %s, got %s", expectedImage, container.Image)
+	}
+}
+
+func expectEnvVar(t *testing.T, container *v1.Container, name, expectedValue string) {
+	for _, env := range container.Env {
+		if env.Name == name {
+			if env.Value != expectedValue {
+				t.Fatalf("expected env var %s=%s, got %s", name, expectedValue, env.Value)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected env var %s not found", name)
+}
+
+func expectRestartPolicy(t *testing.T, job *batchv1.Job, expectedPolicy v1.RestartPolicy) {
+	if job.Spec.Template.Spec.RestartPolicy != expectedPolicy {
+		t.Fatalf("expected restart policy %s, got %s", expectedPolicy, job.Spec.Template.Spec.RestartPolicy)
+	}
+}
+
+func expectActiveDeadlineSeconds(t *testing.T, job *batchv1.Job, expectedSeconds int64) {
+	if job.Spec.ActiveDeadlineSeconds == nil || *job.Spec.ActiveDeadlineSeconds != expectedSeconds {
+		t.Fatalf("expected active deadline seconds %d, got %v", expectedSeconds, job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func expectServiceAccountSettings(t *testing.T, job *batchv1.Job, expectedName string, expectedAutoMount *bool) {
+	if job.Spec.Template.Spec.ServiceAccountName != expectedName {
+		t.Fatalf("expected service account name %s, got %s", expectedName, job.Spec.Template.Spec.ServiceAccountName)
+	}
+	if job.Spec.Template.Spec.AutomountServiceAccountToken == nil && expectedAutoMount != nil {
+		t.Fatalf("expected automount service account token %v, got nil", *expectedAutoMount)
+	}
+	if job.Spec.Template.Spec.AutomountServiceAccountToken != nil && expectedAutoMount == nil {
+		t.Fatalf("expected automount service account token nil, got %v", *job.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+	if job.Spec.Template.Spec.AutomountServiceAccountToken != nil && expectedAutoMount != nil && *job.Spec.Template.Spec.AutomountServiceAccountToken != *expectedAutoMount {
+		t.Fatalf("expected automount service account token %v, got %v", *expectedAutoMount, *job.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+}
+
+func expectNodeSelector(t *testing.T, job *batchv1.Job, expectedSelector map[string]string) {
+	if len(job.Spec.Template.Spec.NodeSelector) != len(expectedSelector) {
+		t.Fatalf("expected node selector %v, got %v", expectedSelector, job.Spec.Template.Spec.NodeSelector)
+	}
+	for k, v := range expectedSelector {
+		if job.Spec.Template.Spec.NodeSelector[k] != v {
+			t.Fatalf("expected node selector %s=%s, got %s", k, v, job.Spec.Template.Spec.NodeSelector[k])
+		}
+	}
+}
+
+func expectImagePullSecrets(t *testing.T, job *batchv1.Job, expectedSecrets []v1.LocalObjectReference) {
+	if len(job.Spec.Template.Spec.ImagePullSecrets) != len(expectedSecrets) {
+		t.Fatalf("expected image pull secrets %v, got %v", expectedSecrets, job.Spec.Template.Spec.ImagePullSecrets)
+	}
+	for i, sec := range expectedSecrets {
+		if job.Spec.Template.Spec.ImagePullSecrets[i].Name != sec.Name {
+			t.Fatalf("expected image pull secret %s, got %s", sec.Name, job.Spec.Template.Spec.ImagePullSecrets[i].Name)
+		}
+	}
+}
+
+func expectSecurityContext(t *testing.T, job *batchv1.Job, container *v1.Container, expectedPodCtx *v1.PodSecurityContext, expectedContCtx *v1.SecurityContext) {
+	t.Helper()
+
+	podCtx := job.Spec.Template.Spec.SecurityContext
+	if !reflect.DeepEqual(podCtx, expectedPodCtx) {
+		t.Fatalf("pod security context mismatch:\nexpected: %+v\ngot:      %+v", expectedPodCtx, podCtx)
+	}
+
+	contCtx := container.SecurityContext
+	if !reflect.DeepEqual(contCtx, expectedContCtx) {
+		t.Fatalf("container security context mismatch:\nexpected: %+v\ngot:      %+v", expectedContCtx, contCtx)
 	}
 }
