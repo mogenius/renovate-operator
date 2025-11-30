@@ -42,6 +42,23 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			},
 		})
 	}
+
+	volumes := []v1.Volume{
+		{
+			Name: "tmp",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{},
+			},
+		},
+	}
+
+	volumeMounts := []v1.VolumeMount{
+		{
+			Name:      "tmp",
+			MountPath: "/tmp",
+		},
+	}
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
@@ -49,21 +66,17 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
+					ImagePullSecrets:   job.Spec.ImagePullSecrets,
 					Containers: []v1.Container{
 						{
-							Name:      "discovery",
-							Command:   []string{"/bin/sh", "-c"},
-							Args:      []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json && cat /tmp/repos.json || cat /tmp/logs.json"},
-							Image:     job.Spec.Image,
-							Env:       append(predefinedEnvVars, job.Spec.ExtraEnv...),
-							EnvFrom:   envFromSecrets,
-							Resources: job.Spec.Resources,
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "tmp",
-									MountPath: "/tmp",
-								},
-							},
+							Name:            "discovery",
+							Command:         []string{"/bin/sh", "-c"},
+							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json && cat /tmp/repos.json || cat /tmp/logs.json"},
+							Image:           job.Spec.Image,
+							Env:             append(predefinedEnvVars, job.Spec.ExtraEnv...),
+							EnvFrom:         envFromSecrets,
+							Resources:       job.Spec.Resources,
+							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -71,14 +84,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
 					NodeSelector:                 job.Spec.NodeSelector,
-					Volumes: []v1.Volume{
-						{
-							Name: "tmp",
-							VolumeSource: v1.VolumeSource{
-								EmptyDir: &v1.EmptyDirVolumeSource{},
-							},
-						},
-					},
+					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
 				},
 			},
 		},
@@ -105,6 +111,22 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		})
 	}
 
+	volumes := []v1.Volume{
+		{
+			Name: "tmp",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{},
+			},
+		},
+	}
+
+	volumeMounts := []v1.VolumeMount{
+		{
+			Name:      "tmp",
+			MountPath: "/tmp",
+		},
+	}
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
@@ -112,21 +134,17 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName: getServiceAccountName(job.Spec),
+					ImagePullSecrets:   job.Spec.ImagePullSecrets,
 					Containers: []v1.Container{
 						{
-							Name:      "renovate",
-							Command:   []string{"renovate"},
-							Args:      []string{"--base-dir", "/tmp", project},
-							Image:     job.Spec.Image,
-							Env:       job.Spec.ExtraEnv,
-							EnvFrom:   envFromSecrets,
-							Resources: job.Spec.Resources,
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "tmp",
-									MountPath: "/tmp",
-								},
-							},
+							Name:            "renovate",
+							Command:         []string{"renovate"},
+							Args:            []string{"--base-dir", "/tmp", project},
+							Image:           job.Spec.Image,
+							Env:             job.Spec.ExtraEnv,
+							EnvFrom:         envFromSecrets,
+							Resources:       job.Spec.Resources,
+							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -134,14 +152,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
 					NodeSelector:                 job.Spec.NodeSelector,
-					Volumes: []v1.Volume{
-						{
-							Name: "tmp",
-							VolumeSource: v1.VolumeSource{
-								EmptyDir: &v1.EmptyDirVolumeSource{},
-							},
-						},
-					},
+					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
 				},
 			},
 		},

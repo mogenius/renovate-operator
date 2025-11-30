@@ -41,6 +41,12 @@ type RenovateJobSpec struct {
 	SecurityContext *RenovateJobSecurityContext `json:"securityContext,omitempty"`
 	// Configuration for webhooks to trigger renovate runs
 	Webhook *RenovateWebhook `json:"webhook,omitempty"`
+	// Additional volumes to mount in the renovate pods
+	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
+	// Additional volume mounts for the renovate pods
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+	// Image pull secrets for the renovate pods
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
