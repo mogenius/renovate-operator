@@ -1,3 +1,10 @@
+## [1.7.9](https://github.com/mogenius/renovate-operator/compare/1.7.8...1.7.9) (2025-12-03)
+
+
+### Bug Fixes
+
+* responsive accordion header layout with flex-wrap and removes second btn spinner ([cb3ed50](https://github.com/mogenius/renovate-operator/commit/cb3ed5027e06329365d8b9327c241212a3485836))
+
 ## [1.7.8](https://github.com/mogenius/renovate-operator/compare/1.7.7...1.7.8) (2025-11-25)
 
 
