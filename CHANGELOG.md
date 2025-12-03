@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/mogenius/renovate-operator/compare/1.7.9...1.8.0) (2025-12-03)
+
+
+### Features
+
+* adding the ability to add extra volumes ([71a4c5d](https://github.com/mogenius/renovate-operator/commit/71a4c5dab7f3153fb231033ba2433efc3d0bc3e8))
+
 ## [1.7.9](https://github.com/mogenius/renovate-operator/compare/1.7.8...1.7.9) (2025-12-03)
 
 
