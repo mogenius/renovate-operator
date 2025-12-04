@@ -90,6 +90,38 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				Name:                         "test",
 			},
 			NodeSelector: map[string]string{"disktype": "ssd"},
+			Tolerations: []v1.Toleration{
+				{
+					Key:      "key1",
+					Operator: v1.TolerationOpEqual,
+					Value:    "value1",
+					Effect:   v1.TaintEffectNoSchedule,
+				},
+			},
+			Affinity: &v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{
+							{
+								MatchExpressions: []v1.NodeSelectorRequirement{
+									{
+										Key:      "kubernetes.io/e2e-az-name",
+										Operator: v1.NodeSelectorOpIn,
+										Values:   []string{"e2e-az1", "e2e-az2"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			TopologySpreadConstraints: []v1.TopologySpreadConstraint{
+				{
+					MaxSkew:           1,
+					TopologyKey:       "kubernetes.io/hostname",
+					WhenUnsatisfiable: v1.ScheduleAnyway,
+				},
+			},
 			ImagePullSecrets: []v1.LocalObjectReference{
 				{
 					Name: "my-pull-secret",
@@ -136,8 +168,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// other
 	expectServiceAccountSettings(t, dj, "test", ptr.To(true))
 	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
-	expectNodeSelector(t, dj, map[string]string{"disktype": "ssd"})
 	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
+	// scheduling
+	expectAffinity(t, dj, job.Spec.Affinity)
+	expectNodeSelector(t, dj, map[string]string{"disktype": "ssd"})
+	expectTolerations(t, dj, job.Spec.Tolerations)
+	expectTopologySpreadConstraints(t, dj, job.Spec.TopologySpreadConstraints)
 
 	// test renovate job
 	rj := newRenovateJob(job, "proj")
@@ -157,8 +193,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// other
 	expectServiceAccountSettings(t, rj, "test", ptr.To(true))
 	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
-	expectNodeSelector(t, rj, map[string]string{"disktype": "ssd"})
 	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
+	// scheduling
+	expectAffinity(t, rj, job.Spec.Affinity)
+	expectNodeSelector(t, rj, map[string]string{"disktype": "ssd"})
+	expectTolerations(t, rj, job.Spec.Tolerations)
+	expectTopologySpreadConstraints(t, rj, job.Spec.TopologySpreadConstraints)
 }
 
 func TestNewJob_WithoutSettings(t *testing.T) {
@@ -171,6 +211,11 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 			Image: "renovate:dev",
 		},
 	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+
 	// test discovery job
 	dj := newDiscoveryJob(job)
 	djContainer := expectContainer(t, dj)
@@ -199,8 +244,13 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 
 	expectServiceAccountSettings(t, dj, "", ptr.To(false))
 	expectSecurityContext(t, dj, djContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
-	expectNodeSelector(t, dj, nil)
 	expectImagePullSecrets(t, dj, nil)
+
+	// scheduling
+	expectAffinity(t, dj, nil)
+	expectNodeSelector(t, dj, nil)
+	expectTolerations(t, dj, nil)
+	expectTopologySpreadConstraints(t, dj, nil)
 
 	// test renovate job
 	rj := newRenovateJob(job, "myproj")
@@ -221,8 +271,13 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 
 	expectServiceAccountSettings(t, rj, "", ptr.To(false))
 	expectSecurityContext(t, rj, rjContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
-	expectNodeSelector(t, rj, nil)
 	expectImagePullSecrets(t, rj, nil)
+
+	// scheduling
+	expectAffinity(t, rj, nil)
+	expectNodeSelector(t, rj, nil)
+	expectTolerations(t, rj, nil)
+	expectTopologySpreadConstraints(t, rj, nil)
 }
 
 // ##### HELPERS #####
@@ -374,5 +429,23 @@ func expectSecurityContext(t *testing.T, job *batchv1.Job, container *v1.Contain
 	contCtx := container.SecurityContext
 	if !reflect.DeepEqual(contCtx, expectedContCtx) {
 		t.Fatalf("container security context mismatch:\nexpected: %+v\ngot:      %+v", expectedContCtx, contCtx)
+	}
+}
+
+func expectAffinity(t *testing.T, job *batchv1.Job, expectedAffinity *v1.Affinity) {
+	if !reflect.DeepEqual(job.Spec.Template.Spec.Affinity, expectedAffinity) {
+		t.Fatalf("affinity mismatch:\nexpected: %+v\ngot:      %+v", expectedAffinity, job.Spec.Template.Spec.Affinity)
+	}
+}
+
+func expectTolerations(t *testing.T, job *batchv1.Job, expectedTolerations []v1.Toleration) {
+	if !reflect.DeepEqual(job.Spec.Template.Spec.Tolerations, expectedTolerations) {
+		t.Fatalf("tolerations mismatch:\nexpected: %+v\ngot:      %+v", expectedTolerations, job.Spec.Template.Spec.Tolerations)
+	}
+}
+
+func expectTopologySpreadConstraints(t *testing.T, job *batchv1.Job, expectedConstraints []v1.TopologySpreadConstraint) {
+	if !reflect.DeepEqual(job.Spec.Template.Spec.TopologySpreadConstraints, expectedConstraints) {
+		t.Fatalf("topology spread constraints mismatch:\nexpected: %+v\ngot:      %+v", expectedConstraints, job.Spec.Template.Spec.TopologySpreadConstraints)
 	}
 }

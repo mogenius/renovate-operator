@@ -31,6 +31,12 @@ type RenovateJobSpec struct {
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 	// Node selector for scheduling the resulting pod
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Affinity settings for scheduling the resulting pod
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	// Tolerations for scheduling the resulting pod
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// Topology spread constraints for scheduling the resulting pod
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
 	// Settings for the serviceaccount the renovate pod should use
 	ServiceAccount *RenovateJobServiceAccount `json:"serviceAccount,omitempty"`
 	// Metadata that shall be applied to the resulting pod
