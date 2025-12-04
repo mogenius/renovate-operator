@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/mogenius/renovate-operator/compare/1.8.0...1.8.1) (2025-12-04)
+
+
+### Bug Fixes
+
+* trim job names and add a hash ([dc68db3](https://github.com/mogenius/renovate-operator/commit/dc68db3c15cb12aaf7029339b00dd16905dd5ca7))
+
 # [1.8.0](https://github.com/mogenius/renovate-operator/compare/1.7.9...1.8.0) (2025-12-03)
 
 
