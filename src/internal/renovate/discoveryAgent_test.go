@@ -29,18 +29,18 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 
 	// running job
 	running := &batchv1.Job{}
-	running.Name = "job1-discovery"
+	running.Name = "job1-discovery-b6caabe5"
 	running.Namespace = "ns"
 
 	// failed job
 	failed := &batchv1.Job{}
-	failed.Name = "job2-discovery"
+	failed.Name = "job2-discovery-2e2a0d0f"
 	failed.Namespace = "ns"
 	failed.Status.Failed = 1
 
 	// succeeded job
 	succeeded := &batchv1.Job{}
-	succeeded.Name = "job3-discovery"
+	succeeded.Name = "job3-discovery-b42e63e1"
 	succeeded.Namespace = "ns"
 	succeeded.Status.Succeeded = 1
 
@@ -107,7 +107,7 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 
 	// create a RenovateJob and run Discover -> should create the job and return discovered projects
 	rj := &api.RenovateJob{}
-	rj.Name = "myjob"
+	rj.Name = "job1"
 	rj.Namespace = "ns"
 
 	projects, err := da.Discover(context.Background(), rj)
@@ -120,7 +120,7 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 
 	// ensure job exists in fake client
 	got := &batchv1.Job{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: "myjob-discovery", Namespace: "ns"}, got); err != nil {
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "job1-discovery-b6caabe5", Namespace: "ns"}, got); err != nil {
 		t.Fatalf("expected discovery job created: %v", err)
 	}
 }

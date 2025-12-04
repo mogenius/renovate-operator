@@ -5,6 +5,7 @@ import (
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/utils"
 	"sync"
 	"time"
 
@@ -93,7 +94,7 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 	// 3. Extract discovered projects from stdout
 	existingDiscoveryJob := &batchv1.Job{}
 	err := e.client.Get(ctx, types.NamespacedName{
-		Name:      job.Name + "-discovery",
+		Name:      utils.DiscoveryJobName(job),
 		Namespace: job.Namespace,
 	}, existingDiscoveryJob)
 	if err != nil {
@@ -127,7 +128,7 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 
 	existingDiscoveryJob := &batchv1.Job{}
 	err := e.client.Get(ctx, types.NamespacedName{
-		Name:      job.Name + "-discovery",
+		Name:      utils.DiscoveryJobName(job),
 		Namespace: job.Namespace,
 	}, existingDiscoveryJob)
 
@@ -142,7 +143,7 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
 			}
 			err = e.client.Get(ctx, types.NamespacedName{
-				Name:      job.Name + "-discovery",
+				Name:      utils.DiscoveryJobName(job),
 				Namespace: job.Namespace,
 			}, existingDiscoveryJob)
 		}
@@ -172,6 +173,15 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	discoveryJob := newDiscoveryJob(&renovateJob)
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return fmt.Errorf("failed to set controller reference: %w", err)
+	}
+
+	// LEGACY DiscoveryJob Name
+	// TODO: Delete Februrary 2026
+	legacyDiscoveryJobName := utils.LegacyDiscoveryJobName(&renovateJob)
+	// check if legacy job exists, if so, delete it
+	existingLegacyJob, err := crdManager.GetJob(ctx, e.client, legacyDiscoveryJobName, discoveryJob.Namespace)
+	if err == nil || !errors.IsNotFound(err) {
+		_ = crdManager.DeleteJob(ctx, e.client, existingLegacyJob)
 	}
 
 	// check if the job exists, if so, delete it

@@ -3,6 +3,7 @@ package renovate
 import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	"renovate-operator/internal/utils"
 	"strconv"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -89,7 +90,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			},
 		},
 	}
-	batchJob.Name = job.Name + "-discovery"
+	batchJob.Name = utils.DiscoveryJobName(job)
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
@@ -158,7 +159,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		},
 	}
 
-	batchJob.Name = job.ExecutorJobName(project)
+	batchJob.Name = utils.ExecutorJobName(job, project)
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels

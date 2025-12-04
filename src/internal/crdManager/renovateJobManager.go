@@ -241,7 +241,7 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 		return "failed to load renovate job", err
 	}
 
-	executorJobName := renovateJob.ExecutorJobName(project)
+	executorJobName := utils.ExecutorJobName(renovateJob, project)
 
 	executorJob, err := GetJob(ctx, r.client, executorJobName, job.Namespace)
 	if err != nil {
