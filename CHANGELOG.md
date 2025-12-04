@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/mogenius/renovate-operator/compare/1.8.1...1.9.0) (2025-12-04)
+
+
+### Features
+
+* adding more flexible scheduling options ([d4e2a67](https://github.com/mogenius/renovate-operator/commit/d4e2a674dd51b1c9d87f0ff5ab679216259f2eec))
+
 ## [1.8.1](https://github.com/mogenius/renovate-operator/compare/1.8.0...1.8.1) (2025-12-04)
 
 
