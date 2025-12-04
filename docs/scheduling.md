@@ -112,6 +112,9 @@ spec:
   image: renovate/renovate:41.43.3
   secretRef: "renovate-secret"
   parallelism: 5
+  metadata:
+    labels:
+      app: renovate
   affinity:
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -170,6 +173,9 @@ spec:
   image: renovate/renovate:41.43.3
   secretRef: "renovate-secret"
   parallelism: 5
+  metadata:
+    labels:
+      app: renovate
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: topology.kubernetes.io/zone
@@ -206,7 +212,10 @@ spec:
   image: renovate/renovate:41.43.3
   secretRef: "renovate-secret"
   parallelism: 3
-  
+  metadata:
+    labels:
+      app: renovate
+      
   # Simple node selection
   nodeSelector:
     disktype: ssd
