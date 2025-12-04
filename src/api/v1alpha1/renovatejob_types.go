@@ -4,8 +4,6 @@
 package v1alpha1
 
 import (
-	"strings"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -131,16 +129,6 @@ func (in *RenovateJob) DeepCopyObject() runtime.Object {
 // unique name for a renovatejob ${name}-${namespace}
 func (in *RenovateJob) Fullname() string {
 	return in.Name + "-" + in.Namespace
-}
-
-// jobname for the executor job for a project. normalized for kubernetes resourcenames
-func (in *RenovateJob) ExecutorJobName(project string) string {
-	jobName := in.Name + "-" + project
-	jobName = strings.ReplaceAll(jobName, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
-	jobName = strings.ReplaceAll(jobName, "_", "-")
-	jobName = strings.ReplaceAll(jobName, ".", "-")
-	jobName = strings.ToLower(jobName) // Ensure lowercase for consistency
-	return jobName
 }
 
 type RenovateJobList struct {

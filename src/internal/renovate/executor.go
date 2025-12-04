@@ -10,8 +10,10 @@ import (
 	"time"
 
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -176,7 +178,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 
 		// Job is running -> verify thats true
 		case api.JobStatusRunning:
-			newStatus, err := getJobStatus(renovateJob.ExecutorJobName(project.Name), renovateJob.Namespace, e.client)
+			newStatus, err := getJobStatus(utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace, e.client)
 			if err != nil {
 				return err
 			}
@@ -191,7 +193,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				// if DELETE_SUCCESSFULL_JOBS is set -> delete the job
 				deleteSuccessfullJobs := config.GetValue("DELETE_SUCCESSFULL_JOBS")
 				if newStatus == api.JobStatusCompleted && deleteSuccessfullJobs == "true" {
-					err = deleteJob(renovateJob.ExecutorJobName(project.Name), renovateJob.Namespace, e.client)
+					err = deleteJob(utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace, e.client)
 					if err != nil {
 						return err
 					}
@@ -206,6 +208,15 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				job := newRenovateJob(renovateJob, project.Name)
 				if err := controllerutil.SetControllerReference(renovateJob, job, e.scheme); err != nil {
 					return fmt.Errorf("failed to set controller reference: %w", err)
+				}
+
+				// LEGACY ExecutorJob Name
+				// TODO: Delete Februrary 2026
+				legacyExecutorJobName := utils.LegacyExecutorJobName(renovateJob, project.Name)
+				// check if legacy job exists, if so, delete it
+				existingLegacyJob, err := crdManager.GetJob(ctx, e.client, legacyExecutorJobName, renovateJob.Namespace)
+				if err == nil || !errors.IsNotFound(err) {
+					_ = crdManager.DeleteJob(ctx, e.client, existingLegacyJob)
 				}
 
 				// Check if the job already exists

@@ -120,7 +120,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	dj := newDiscoveryJob(job)
 	djContainer := expectContainer(t, dj)
 	// basic fields
-	expectJobName(t, dj, "rj-discovery")
+	expectJobName(t, dj, "rj-discovery-6987b484")
 	expectJobNamespace(t, dj, "ns")
 	expectLabels(t, dj, map[string]string{"a": "b"})
 	expectImage(t, djContainer, "img")
@@ -143,7 +143,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	rj := newRenovateJob(job, "proj")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
-	expectJobName(t, rj, "rj-proj")
+	expectJobName(t, rj, "rj-proj-701b9b0a")
 	expectJobNamespace(t, rj, "ns")
 	expectLabels(t, rj, map[string]string{"a": "b"})
 	expectImage(t, rjContainer, "img")
@@ -175,7 +175,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	dj := newDiscoveryJob(job)
 	djContainer := expectContainer(t, dj)
 	// basic fields
-	expectJobName(t, dj, "nofilter-discovery")
+	expectJobName(t, dj, "nofilter-discovery-3006fe8c")
 	expectJobNamespace(t, dj, "ns")
 	expectImage(t, djContainer, "renovate:dev")
 
@@ -206,7 +206,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	rj := newRenovateJob(job, "myproj")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
-	expectJobName(t, rj, "nofilter-myproj")
+	expectJobName(t, rj, "nofilter-myproj-496e220d")
 	expectJobNamespace(t, rj, "ns")
 	expectImage(t, rjContainer, "renovate:dev")
 
