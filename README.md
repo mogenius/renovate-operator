@@ -32,6 +32,16 @@ If you are already running Kubernetes, this project might be for you.
 
 ### Helm
 
+#### Option 1: OCI Registry
+
+```sh
+helm -n renovate-operator upgrade --install renovate-operator \
+  oci://ghcr.io/mogenius/helm-charts/renovate-operator \
+  --create-namespace --wait
+```
+
+#### Option 2: Helm Repository
+
 ```sh
 helm repo add mogenius https://helm.mogenius.com/public --force-update
 helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-operator --create-namespace --wait
