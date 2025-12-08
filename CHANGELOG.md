@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/mogenius/renovate-operator/compare/1.9.0...1.10.0) (2025-12-08)
+
+
+### Features
+
+* add OCI registry support with cosign signing for Helm charts ([af667b6](https://github.com/mogenius/renovate-operator/commit/af667b68fe15fd1e76a62b15a1d1f7a9e739467a)), closes [#52](https://github.com/mogenius/renovate-operator/issues/52)
+
 # [1.9.0](https://github.com/mogenius/renovate-operator/compare/1.8.1...1.9.0) (2025-12-04)
 
 
