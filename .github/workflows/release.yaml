@@ -7,7 +7,7 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/mogenius/renovate-operator
-  REGISTRY: ghcr.io 
+  REGISTRY: ghcr.io
   DOCKERFILE: Dockerfile
   HELMNAME: "renovate-operator"
 
@@ -98,18 +98,18 @@ jobs:
           provenance: false
 
       - name: Clean up Docker images
-        if: always()  # Also run in case of errors
+        if: always() # Also run in case of errors
         run: |
           # Entferne dangling images
           docker image prune -f
-          
-
 
   helm-chart:
     needs: [prepare, build-and-push-docker]
     runs-on: self-hosted
     permissions:
       contents: write
+      packages: write
+      id-token: write
     steps:
       - name: Generate a token
         id: generate-token
@@ -128,15 +128,18 @@ jobs:
         run: |
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          
+
       - name: Install Helm
         uses: azure/setup-helm@v4.3.1
         id: install
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.0.0
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '>=1.23.2'
+          go-version: ">=1.23.2"
 
       - name: Run helm-docs
         uses: losisin/helm-docs-github-action@v1.6.2
@@ -166,12 +169,28 @@ jobs:
 
             git add charts/renovate-operator/crds
 
+            echo "Packaging Helm chart"
             helm package -d /tmp/ ./charts/renovate-operator
+
+            echo "Pushing to Helm repository"
             curl -XPOST -L -k --data-binary "@/tmp/${{ env.HELMNAME }}-$VERSION.tgz" https://${{ secrets.MO_HELMUSER }}:${{ secrets.MO_HELMPASS }}@helm.mogenius.com/api/public/charts
 
+            echo "Pushing to OCI registry"
+            echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+            CHART_DIGEST=$(helm push /tmp/${{ env.HELMNAME }}-$VERSION.tgz oci://ghcr.io/${{ github.repository_owner }}/helm-charts 2>&1 | grep "Digest: sha256:" | awk '{print $2}')
+
+            if [ -z "$CHART_DIGEST" ]; then
+              echo "Failed to extract chart digest"
+              exit 1
+            fi
+            echo "Chart digest: $CHART_DIGEST"
+
+            echo "Signing Helm chart with cosign"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io --username ${{ github.actor }} --password-stdin
+            cosign sign --yes ghcr.io/${{ github.repository_owner }}/helm-charts/${{ env.HELMNAME }}@${CHART_DIGEST}
+
             git commit -m "chore: update Chart.yaml and documentation for version $VERSION [skip ci]"
-            
+
             git pull --rebase
             git push origin main
           fi
-   
