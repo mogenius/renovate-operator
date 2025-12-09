@@ -49,93 +49,15 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 
 ## Documentation
 
-- [Webhook API](./docs/webhook.md)
+- Platforms
+  - [GitLab](./docs/platforms/gitlab.md)
+  - [GitHub PAT](./docs/platforms/github-pat.md)
+  - [GitHub App - External Secrets Operator](./docs/platforms/github-app-eso.md)
+  - Native GitHub App Support - We are still working on that
 - [Autodiscovery](./docs/autodiscovery.md)
+- [Webhook API](./docs/webhook.md)
 - [Using a config.js](./docs/extra-volumes.md)
 - [Scheduling](./docs/scheduling.md)
-
-## Examples
-
-### GitHub
-
-**RenovateJob Configuration for GitHub**
-
-```yaml
-apiVersion: renovate-operator.mogenius.com/v1alpha1
-kind: RenovateJob
-metadata:
-  annotations:
-  name: renovate-github
-  namespace: renovate-operator
-spec:
-  discoveryFilter: ###GITHUB_USERNAME###/*
-  extraEnv:
-    - name: RENOVATE_PLATFORM
-      value: github
-    - name: RENOVATE_ENDPOINT
-      value: https://api.github.com/
-    - name: RENOVATE_ALLOW_PLUGINS
-      value: "true"
-  image: renovate/renovate:41.43.3
-  parallelism: 5
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  schedule: 0 * * * *
-  secretRef: renovate-secret
-```
-
-**Secret Configuration for GitHub**
-
-```yaml
-kind: Secret
-apiVersion: v1
-type: Opaque
-metadata:
-  name: renovate-secret
-  namespace: renovate-operator
-data:
-  GITHUB_COM_USER: USERNAME_BASE64_ENCODED
-  GITHUB_COM_TOKEN: GITHUB_TOKEN_VALUE_BASE64_ENCODED
-  RENOVATE_TOKEN: RENOVATE_TOKEN_VALUE_BASE64_ENCODED
-```
-
-**Go to [GitHub Fine-grained PAT](https://github.com/settings/personal-access-tokens) and add a PAT with the following minimum permissions:**
-
-![Example Screenshot of the renovate-operator UI.](/docs/github_permissions.png)
-
-### Gitlab
-
-```yaml
-apiVersion: renovate-operator.mogenius.com/v1alpha1
-kind: RenovateJob
-metadata:
-  name: renovate-group1
-  namespace: renovate-operator
-spec:
-  schedule: "0 * * * *"
-  discoveryFilter: "Group1/*"
-  image: renovate/renovate:41.43.3 # renovate
-  secretRef: "renovate-secret"
-  extraEnv:
-    - name: RENOVATE_ENDPOINT
-      value: "https://gitlab.company.com"
-    - name: RENOVATE_PLATFORM
-      value: "gitlab"
-    - name: RENOVATE_ALLOW_PLUGINS
-      value: "true"
-  parallelism: 1
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
-      cpu: "500m"
-      memory: "1Gi"
-  nodeSelector:
-    kubernetes.io/hostname: server-1
-```
 
 ## Contributing
 
