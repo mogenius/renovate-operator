@@ -3,6 +3,7 @@ package renovate
 import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	"renovate-operator/github"
 	"renovate-operator/internal/utils"
 	"strconv"
 
@@ -39,6 +40,15 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			SecretRef: &v1.SecretEnvSource{
 				LocalObjectReference: v1.LocalObjectReference{
 					Name: job.Spec.SecretRef,
+				},
+			},
+		})
+	}
+	if job.Spec.GithubAppReference != nil {
+		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
+			SecretRef: &v1.SecretEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: github.GetNameForGithubAppSecret(job),
 				},
 			},
 		})
@@ -110,6 +120,15 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			SecretRef: &v1.SecretEnvSource{
 				LocalObjectReference: v1.LocalObjectReference{
 					Name: job.Spec.SecretRef,
+				},
+			},
+		})
+	}
+	if job.Spec.GithubAppReference != nil {
+		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
+			SecretRef: &v1.SecretEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: github.GetNameForGithubAppSecret(job),
 				},
 			},
 		})
