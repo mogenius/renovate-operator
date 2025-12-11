@@ -5,6 +5,7 @@ import (
 	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	"renovate-operator/github"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 	"strconv"
@@ -46,6 +47,16 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	}
 	if job.Spec.ExtraEnvFrom != nil {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
+	}
+
+	if job.Spec.GithubAppReference != nil {
+		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
+			SecretRef: &v1.SecretEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: github.GetNameForGithubAppSecret(job),
+				},
+			},
+		})
 	}
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
@@ -116,6 +127,16 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	}
 	if job.Spec.ExtraEnvFrom != nil {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
+	}
+
+	if job.Spec.GithubAppReference != nil {
+		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
+			SecretRef: &v1.SecretEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: github.GetNameForGithubAppSecret(job),
+				},
+			},
+		})
 	}
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
