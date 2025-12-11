@@ -1,4 +1,12 @@
-# GitHub App using External Secrets Operator
+# GitHub App — External Secrets Operator
+
+If you haven't created your GitHub App yet: [GitHub App Setup](./github-app-setup.md)
+
+Looking for the native (no ESO dependency) approach instead? [GitHub App — Native Integration](./github-app-native.md)
+
+---
+
+## 1. Configure the RenovateJob
 
 **RenovateJob Configuration for GitHub**
 
@@ -27,7 +35,7 @@ spec:
   secretRef: renovate-secret
 ```
 
-**Secret Configuration for GitHub App**
+## 2. Configure the Secrets
 
 ```yaml
 # 1. fetch GitHub App Private Key from Secrets Manager

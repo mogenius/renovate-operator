@@ -7,6 +7,7 @@ import (
 	"net/url"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/gitProviderClients/forgejoProvider"
+	"renovate-operator/github"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
@@ -47,6 +48,7 @@ type RenovateJobReconciler struct {
 	Scheduler      scheduler.Scheduler
 	K8sClient      client.Client
 	webhookSyncers map[string]*webhookSyncerEntry
+	GithubApp      github.GithubAppToken
 }
 
 type webhookSyncerEntry struct {
@@ -71,9 +73,13 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookSyncer(ctx, logger, renovateJob)
 		createScheduler(logger, renovateJob, r)
+		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
+			logger.Error(err, "failed to ensure github app token")
+		}
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
 		// renovatejob cannot be found -> delete the schedule
+		// the github app token secret is owned by the RenovateJob and cleaned up by Kubernetes GC
 		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
 		delete(r.webhookSyncers, name)

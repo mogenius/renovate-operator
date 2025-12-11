@@ -67,6 +67,9 @@ type RenovateJobSpec struct {
 	// Configuration for the scratch volume
 	// +optional
 	ScratchVolume *RenovateJobScratchVolume `json:"scratchVolume,omitempty"`
+	// Reference to a Github App for authentication, this will automatically mount a secret with
+	// RENOVATE_TOKEN
+	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -92,6 +95,13 @@ type RenovateJobScratchVolume struct {
 type RenovateJobServiceAccount struct {
 	AutomountServiceAccountToken *bool  `json:"automountServiceAccountToken,omitempty"`
 	Name                         string `json:"name,omitempty"`
+}
+
+type GithubAppReference struct {
+	SecretName              string `json:"secretName"`
+	AppIdSecretKey          string `json:"appIdSecretKey"`
+	InstallationIdSecretKey string `json:"installationIdSecretKey"`
+	PemSecretKey            string `json:"pemSecretKey"`
 }
 
 // security context for either the pod or the container
