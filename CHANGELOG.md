@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/mogenius/renovate-operator/compare/1.10.0...1.10.1) (2025-12-11)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes packages to v0.34.3 ([575fcf4](https://github.com/mogenius/renovate-operator/commit/575fcf4fdceaadd4ab54c9d90650490d80b0fcb2))
+
 # [1.10.0](https://github.com/mogenius/renovate-operator/compare/1.9.0...1.10.0) (2025-12-08)
 
 
