@@ -10,7 +10,7 @@ import (
 // jobname for the executor job for a project. normalized for kubernetes resourcenames
 func ExecutorJobName(in *api.RenovateJob, project string) string {
 	fullName := in.Name + "-" + project
-	fullName = kubernetesCompatibleName(fullName)
+	fullName = KubernetesCompatibleName(fullName)
 
 	// Generate hash of the full name
 	hash := sha256.Sum256([]byte(fullName))
@@ -24,7 +24,7 @@ func ExecutorJobName(in *api.RenovateJob, project string) string {
 	return fullName + "-" + hashStr
 }
 
-func kubernetesCompatibleName(name string) string {
+func KubernetesCompatibleName(name string) string {
 	name = strings.ReplaceAll(name, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ReplaceAll(name, ".", "-")
@@ -34,7 +34,7 @@ func kubernetesCompatibleName(name string) string {
 
 func DiscoveryJobName(in *api.RenovateJob) string {
 	baseName := in.Name
-	baseName = kubernetesCompatibleName(baseName)
+	baseName = KubernetesCompatibleName(baseName)
 
 	fullName := baseName + "-discovery"
 
