@@ -19,6 +19,7 @@ import (
 	"renovate-operator/config"
 	"renovate-operator/controllers"
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
+	"renovate-operator/github"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/kvstore"
@@ -480,6 +481,8 @@ func main() {
 		ls,
 	)
 
+	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
 	go func() {
@@ -496,6 +499,7 @@ func main() {
 		Manager:   jobMgr,
 		Discovery: discovery,
 		K8sClient: mgr.GetClient(),
+		GithubApp: githubAppToken,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

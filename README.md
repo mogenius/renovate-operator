@@ -40,10 +40,10 @@ Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel
 1. At the defined time of your schedule, a renovate discovery job is started
 2. After the discovery finished, you will be able to see all your discovered projects in the UI
 3. All projects are now being set to be scheduled
-4. Every 10 seconds the operator checks for schedules projects and starts a new renovate job
+4. Every 10 seconds the operator checks for scheduled projects and starts a new renovate job
 5. Only as many jobs as defined in `spec.parallelism` are getting executed at the same time
 
-![Example Screenshot of the renovate-operator UI.](/docs/example.png)
+![Example Screenshot of the renovate-operator UI.](/docs/assets/ui-example.png)
 
 ## Installation
 
@@ -70,7 +70,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
   - [GitLab](./docs/platforms/gitlab.md)
   - [GitHub PAT](./docs/platforms/github-pat.md)
   - [GitHub App - External Secrets Operator](./docs/platforms/github-app-eso.md)
-  - Native GitHub App Support - We are still working on that
+  - [GitHub App - Native (Beta)](./docs/platforms/github-app-native.md)
   - _Azure DevOps, Bitbucket, Gitea, Forgejo, and others: configure via `extraEnv`_ ([see Renovate platform docs](./docs/platforms/generic.md))
 - [Autodiscovery](./docs/autodiscovery.md)
 - Webhook API
@@ -84,6 +84,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Metrics](./docs/metrics.md)
 - [PR Activity](./docs/pr-activity.md)
 - [Authentication](./docs/auth.md)
+- [Valkey / Redis Cache](./docs/valkey.md)
 
 ## Contributing
 
@@ -95,38 +96,29 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Development
 
-**Running the operator**
+**Running the operator locally**
 
-Needs `KUBECONFIG` variable exported with the path to your local kube-config and a context you want to use.
-```sh
-just run
-```
+Prerequisites: [`just`](https://github.com/casey/just) must be installed.
+
+1. Export `KUBECONFIG` with the **absolute path** to your kubeconfig — `~` is not expanded, so use `$HOME` or the full path:
+   ```sh
+   export KUBECONFIG=/Users/yourname/.kube/config
+   # or
+   export KUBECONFIG=$HOME/.kube/config
+   ```
+2. Start the operator against the current context in that kubeconfig:
+   ```sh
+   just run
+   ```
 
 **Running Tests**
 
-Run the test-suite using just:
-
-```sh
-just test-unit
-```
-
-Run golangci-lint using just:
-
-```sh
-just golangci-lint
-```
-
-Run all checks (tests + linters):
-
-```sh
-just check
-```
-
-**Generate CRDs**
-
-```sh
-just generate
-```
+| Command              | Description                      |
+|----------------------|----------------------------------|
+| `just test-unit`     | Run the unit test suite          |
+| `just golangci-lint` | Run the linter                   |
+| `just check`         | Run all checks (tests + linters) |
+| `just generate`      | Regenerate CRDs                  |
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/

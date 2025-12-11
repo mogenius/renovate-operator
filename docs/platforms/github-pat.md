@@ -44,4 +44,4 @@ data:
 
 **Go to [GitHub Fine-grained PAT](https://github.com/settings/personal-access-tokens) and add a PAT with the following minimum permissions:**
 
-![Example Screenshot of the renovate-operator UI.](/docs/github_permissions.png)
+![Example Screenshot of the renovate-operator UI.](/docs/assets/github-permissions.png)
