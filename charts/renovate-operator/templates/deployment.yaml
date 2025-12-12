@@ -43,6 +43,16 @@ spec:
               value: {{ .Values.config.deleteSuccessfullJobs | quote }}
             - name: SERVER_PORT
               value: "8081"
+            {{- if or .Values.rbac.ownNamespaceOnly .Values.rbac.watchNamespace }}
+            - name: WATCH_NAMESPACE
+              {{- if .Values.rbac.watchNamespace }}
+              value: {{ .Values.rbac.watchNamespace | quote }}
+              {{- else }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+              {{- end }}
+            {{- end }}
             {{- if .Values.webhook.enabled }}
             - name: WEBHOOK_SERVER_PORT
               value: {{ .Values.webhook.port | quote }}
