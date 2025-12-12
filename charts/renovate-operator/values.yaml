@@ -57,7 +57,10 @@ webhook:
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
+  # -- when enabled, the operator will only watch resources in the namespace it is deployed to
   ownNamespaceOnly: false
+  # -- optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true)
+  watchNamespace: ""
 
 # -- security context for the pod and containers
 securityContext:

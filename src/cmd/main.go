@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	api "renovate-operator/api/v1alpha1"
@@ -95,6 +96,10 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Key:      "WATCH_NAMESPACE",
+			Optional: true,
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -103,10 +108,14 @@ func main() {
 
 	ctrl.SetLogger(zap.New())
 
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	watchNamespace := config.GetValue("WATCH_NAMESPACE")
+	mgrOptions := ctrl.Options{
 		Scheme:         nil,
 		LeaderElection: false,
-	})
+		Cache:          cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
+	}
+
+	mgr, err := ctrl.NewManager(cfg, mgrOptions)
 	assert.NoError(err, "failed to create new manager")
 
 	// Register the RenovateJob types with the scheme
