@@ -51,12 +51,21 @@ type RenovateJobSpec struct {
 	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 	// Image pull secrets for the renovate pods
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
 type RenovateJobServiceAccount struct {
 	AutomountServiceAccountToken *bool  `json:"automountServiceAccountToken,omitempty"`
 	Name                         string `json:"name,omitempty"`
+}
+
+type GithubAppReference struct {
+	SecretName              string `json:"secretName"`
+	AppIdSecretKey          string `json:"appIdSecretKey"`
+	InstallationIdSecretKey string `json:"installationIdSecretKey"`
+	PemSecretKey            string `json:"pemSecretKey"`
 }
 
 // security context for either the pod or the container

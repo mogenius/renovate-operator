@@ -3,6 +3,7 @@ package controllers
 import (
 	context "context"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/github"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/scheduler"
 	"time"
@@ -25,6 +26,7 @@ type RenovateJobReconciler struct {
 	Discovery renovate.DiscoveryAgent
 	Manager   crdManager.RenovateJobManager
 	Scheduler scheduler.Scheduler
+	GithubApp github.TokenRenewalWorker
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -34,11 +36,13 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err == nil {
 		// renovatejob object read without problem -> create the schedule
 		createScheduler(logger, renovateJob, r)
+		r.GithubApp.CreateOrUpdateWorker(renovateJob)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
 		// renovatejob cannot be found -> delete the schedule
 		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
+		r.GithubApp.DeleteWorker(req.Name, req.Namespace)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
 		logger.Error(err, "Failed to get RenovateJob")
