@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/mogenius/renovate-operator/compare/1.11.0...1.12.0) (2025-12-13)
+
+
+### Features
+
+* package local dependencies instead of relying on CDNs ([167c6a1](https://github.com/mogenius/renovate-operator/commit/167c6a16dc0020f98cb76a8888098dd001f929bc))
+
 # [1.11.0](https://github.com/mogenius/renovate-operator/compare/1.10.1...1.11.0) (2025-12-13)
 
 
