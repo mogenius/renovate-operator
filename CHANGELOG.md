@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/mogenius/renovate-operator/compare/1.10.1...1.11.0) (2025-12-13)
+
+
+### Features
+
+* watch namespaces only ([225047a](https://github.com/mogenius/renovate-operator/commit/225047ae286a9334f9d84d82b10265c3addcac7c))
+
 ## [1.10.1](https://github.com/mogenius/renovate-operator/compare/1.10.0...1.10.1) (2025-12-11)
 
 
