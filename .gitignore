@@ -33,3 +33,5 @@ go.work.sum
 # .vscode/
 
 dist/
+
+*.min.js

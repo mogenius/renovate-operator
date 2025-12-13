@@ -7,8 +7,8 @@ default:
     just --list --unsorted
 
 # Run the application with flags similar to the production build
-run: build
-    dist/native/renovate-operator
+run: build jsInstall
+    cd src && ../dist/native/renovate-operator
 
 # Build a native binary with flags similar to the production build
 build: generate
@@ -84,3 +84,17 @@ test-unit: generate
 # Execute golangci-lint
 golangci-lint: generate
     cd src && go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run '--fast=false' --sort-results '--max-same-issues=0' '--timeout=1h' ./...
+
+
+# Install JS dependencies
+jsInstall:
+    mkdir -p src/static/js
+    echo "Downloading Tailwind CSS..."
+    curl -s -L -o src/static/js/tailwind.min.js "https://cdn.tailwindcss.com"
+    echo "Downloading React..."
+    curl -s -L -o src/static/js/react.production.min.js "https://unpkg.com/react@18/umd/react.production.min.js"
+    echo "Downloading React-DOM..."
+    curl -s -L -o src/static/js/react-dom.production.min.js "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    echo "Downloading Babel Standalone..."
+    curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone/babel.min.js"
+    echo "All JavaScript dependencies downloaded successfully!"
