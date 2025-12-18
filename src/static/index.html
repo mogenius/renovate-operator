@@ -43,7 +43,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useEffect, useCallback } = React;
+      const { useState, useEffect, useCallback, useMemo } = React;
 
       const formatTimeAgo = (timestamp) => {
         const now = new Date();
@@ -319,27 +319,6 @@
           return newStats;
         };
 
-        const sortProjects = (projects) => {
-          const statusOrder = {
-            running: 0,
-            scheduled: 1,
-            failed: 2,
-            completed: 3,
-          };
-          return [...projects].sort((a, b) => {
-            const aStatus = (a.status || "").toLowerCase();
-            const bStatus = (b.status || "").toLowerCase();
-            const aOrder = statusOrder.hasOwnProperty(aStatus)
-              ? statusOrder[aStatus]
-              : 99;
-            const bOrder = statusOrder.hasOwnProperty(bStatus)
-              ? statusOrder[bStatus]
-              : 99;
-            if (aOrder !== bOrder) return aOrder - bOrder;
-            return (a.name || "").localeCompare(b.name || "");
-          });
-        };
-
         const loadJobs = useCallback(async () => {
           try {
             setLoading(true);
@@ -360,7 +339,6 @@
             for (const job of jobsList) {
               job.discoveryRunning = job.discoveryStatus === "running";
               if (Array.isArray(job.projects)) {
-                job.projects = sortProjects(job.projects);
                 job.projects.forEach((project) => {
                   project.triggering = false;
                 });
@@ -640,8 +618,69 @@
         );
       }
 
+      function getSortedProjects(projects, sortConfig) {
+        if (!projects || projects.length === 0) {
+          return [];
+        }
+
+        const sortedProjects = [...projects];
+
+        if (sortConfig.key) {
+          sortedProjects.sort((a, b) => {
+            let aValue = a[sortConfig.key];
+            let bValue = b[sortConfig.key];
+
+            // Handle null/undefined values
+            if (!aValue && !bValue) return 0;
+            if (!aValue) return sortConfig.direction === "asc" ? 1 : -1;
+            if (!bValue) return sortConfig.direction === "asc" ? -1 : 1;
+
+            // Special handling for status (custom order)
+            if (sortConfig.key === "status") {
+              const statusOrder = {
+                running: 0,
+                scheduled: 1,
+                failed: 2,
+                completed: 3,
+              };
+              aValue = statusOrder[aValue.toLowerCase()] ?? 99;
+              bValue = statusOrder[bValue.toLowerCase()] ?? 99;
+            }
+
+            // Special handling for lastRun (date comparison)
+            if (sortConfig.key === "lastRun") {
+              aValue = new Date(aValue).getTime();
+              bValue = new Date(bValue).getTime();
+            }
+
+            // String comparison
+            if (typeof aValue === "string" && typeof bValue === "string") {
+              return sortConfig.direction === "asc"
+                ? aValue.localeCompare(bValue)
+                : bValue.localeCompare(aValue);
+            }
+
+            // Numeric comparison
+            if (aValue < bValue) {
+              return sortConfig.direction === "asc" ? -1 : 1;
+            }
+            if (aValue > bValue) {
+              return sortConfig.direction === "asc" ? 1 : -1;
+            }
+            return 0;
+          });
+        }
+
+        return sortedProjects;
+      };
+
       function JobCard({ job, onRunDiscovery, onTriggerRenovate }) {
         const [open, setOpen] = useState(true);
+        const [sortConfig, setSortConfig] = useState({
+          key: "status",
+          direction: "asc",
+        });
+        const sortedProjects = useMemo(() => getSortedProjects(job.projects, sortConfig), [job.projects, sortConfig]);
 
         const getBadgeClass = (status) => {
           const base =
@@ -658,6 +697,64 @@
             default:
               return `${base} bg-primary/10 text-primary`;
           }
+        };
+
+        const handleSort = (key) => {
+          let direction = "asc";
+          if (sortConfig.key === key && sortConfig.direction === "asc") {
+            direction = "desc";
+          }
+          setSortConfig({ key, direction });
+        };
+
+        const SortIcon = ({ columnKey }) => {
+          if (sortConfig.key !== columnKey) {
+            return (
+              <svg
+                className="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                />
+              </svg>
+            );
+          }
+
+          return sortConfig.direction === "asc" ? (
+            <svg
+              className="w-4 h-4 text-primary"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 15l7-7 7 7"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="w-4 h-4 text-primary"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          );
         };
 
         return (
@@ -789,14 +886,32 @@
                   <table className="w-full">
                     <thead className="bg-white border-b border-gray-200">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Project
+                        <th
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 select-none"
+                          onClick={() => handleSort("name")}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>Project</span>
+                            <SortIcon columnKey="name" />
+                          </div>
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
+                        <th
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 select-none"
+                          onClick={() => handleSort("status")}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>Status</span>
+                            <SortIcon columnKey="status" />
+                          </div>
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Last Run
+                        <th
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-50 select-none"
+                          onClick={() => handleSort("lastRun")}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>Last Run</span>
+                            <SortIcon columnKey="lastRun" />
+                          </div>
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
@@ -805,7 +920,7 @@
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {job.projects && job.projects.length > 0 ? (
-                        job.projects.map((project) => (
+                        sortedProjects.map((project) => (
                           <tr
                             key={project.name}
                             className="hover:bg-gray-50 transition-colors"
@@ -885,7 +1000,7 @@
 
                 <div className="md:hidden bg-white divide-y divide-gray-200">
                   {job.projects && job.projects.length > 0 ? (
-                    job.projects.map((project) => (
+                    sortedProjects.map((project) => (
                       <div key={project.name} className="p-4 space-y-3">
                         <div className="flex items-start justify-between">
                           <div>
