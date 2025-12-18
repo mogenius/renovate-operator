@@ -1,6 +1,24 @@
 {{- with .Values.route }}
 {{- range $routeName, $routeConfig := . }}
 {{- if (default true $routeConfig.enabled) }}
+{{- $rules := $routeConfig.rules }}
+{{- if not $rules }}
+{{- $backendRefs := list (dict
+    "name" (include "renovate-operator.fullname" $)
+    "port" 8081
+    "weight" 1
+) }}
+{{- if $.Values.webhook.enabled }}
+{{- $backendRefs = append $backendRefs (dict
+    "name" (printf "%s-webhook" (include "renovate-operator.fullname" $))
+    "port" $.Values.webhook.port
+    "weight" 1
+) }}
+{{- end }}
+{{- $rules = list (dict "backendRefs" $backendRefs) }}
+{{- end }}
+
+
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: {{ $routeConfig.kind | default "HTTPRoute" }}
@@ -10,43 +28,38 @@ metadata:
   labels:
     app: {{ include "renovate-operator.fullname" $ }}
     {{- with $routeConfig.labels }}
-    {{- toYaml . | nindent 2 }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
   annotations:
-  {{- with (default dict $routeConfig.annotations) }}
+    {{- with (default dict $routeConfig.annotations) }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
+
 spec:
   {{- if $routeConfig.parentRefs }}
   parentRefs:
     {{- toYaml $routeConfig.parentRefs | nindent 4 }}
   {{- end }}
+
   {{- if $routeConfig.hostnames }}
   hostnames:
     {{- range $routeConfig.hostnames }}
     - {{ tpl . $ | quote }}
     {{- end }}
   {{- end }}
-  {{- if $routeConfig.rules }}
   rules:
-    {{- range $ruleIndex, $rule := $routeConfig.rules }}
-    - {{- if $rule.name }}
+    {{- range $ruleIndex, $rule := $rules }}
+    - backendRefs:
+        {{- toYaml $rule.backendRefs | nindent 8 }}
+      {{- if $rule.filters }}
+      {{- if $rule.name }}
       name: {{ $rule.name | quote }}
       {{- end }}
       {{- if $rule.matches }}
       matches:
         {{- toYaml $rule.matches | nindent 8 }}
       {{- end }}
-      {{- if $rule.backendRefs }}
-      backendRefs:
-        {{- toYaml $rule.backendRefs | nindent 8 }}
-      {{- else }}
-      backendRefs:
-        - name: {{ include "renovate-operator.fullname" $ }}
-          port: 8081
-          weight: 1
-      {{- end }}
-      {{- if $rule.filters }}
+
       filters:
         {{- toYaml $rule.filters | nindent 8 }}
       {{- end }}
@@ -55,6 +68,7 @@ spec:
         {{- toYaml $rule.timeouts | nindent 8 }}
       {{- end }}
     {{- end }}
-  {{- end }}
+
+{{- end }}
 {{- end }}
 {{- end }}

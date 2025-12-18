@@ -42,7 +42,7 @@ route:
   {}
   # main:
   #   # -- Enables or disables the route
-  #   enabled: false
+  #   enabled: true
 
   #   # -- Set the route kind
   #   # Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute
@@ -90,7 +90,7 @@ route:
   #       timeouts: {}
 
 webhook:
-  enabled: false
+  enabled: true
   port: 8082
   ingress:
     # -- whether to enable the ingress for the webhook server
