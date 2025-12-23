@@ -13,6 +13,7 @@ import (
 	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/controllers"
+	"renovate-operator/github"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
@@ -157,10 +158,14 @@ func main() {
 		webhookServer.Run()
 	}
 
+	githubAppToken := github.NewGitHubAppTokenCreator(mgr.GetClient())
+	githubAppWorker := github.StartTokenRenewalWorker(ctx, ctrl.Log.WithName("github-token-renewal-worker"), githubAppToken, mgr.GetClient())
+
 	err = (&controllers.RenovateJobReconciler{
 		Scheduler: cronManager,
 		Manager:   jobMgr,
 		Discovery: discovery,
+		GithubApp: githubAppWorker,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
