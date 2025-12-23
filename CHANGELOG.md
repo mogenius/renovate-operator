@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/mogenius/renovate-operator/compare/1.12.0...1.13.0) (2025-12-23)
+
+
+### Features
+
+* adding sorting to columns ([7eed40c](https://github.com/mogenius/renovate-operator/commit/7eed40caf48d446fbf77dbbfa529dc47b4657455))
+
 # [1.12.0](https://github.com/mogenius/renovate-operator/compare/1.11.0...1.12.0) (2025-12-13)
 
 
