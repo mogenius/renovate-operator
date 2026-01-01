@@ -2,6 +2,9 @@ package crdmanager
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -40,6 +43,8 @@ type RenovateJobManager interface {
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
+	// IsWebhookSignatureValid checks if the provided signature is valid for the webhook of the specified RenovateJob CRD.
+	IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error)
 }
 
 type renovateJobManager struct {
@@ -259,6 +264,26 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 	return logs, err
 }
 
+func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	secret := &corev1.Secret{}
+	err := r.client.Get(ctx, client.ObjectKey{
+		Name:      job.Spec.Webhook.Authentication.SecretRef.Name,
+		Namespace: job.Namespace,
+	}, secret)
+	if err != nil {
+		return nil, err
+	}
+
+	authData, exists := secret.Data[job.Spec.Webhook.Authentication.SecretRef.Key]
+	if !exists {
+		return nil, fmt.Errorf("secret key %s not found in secret %s", job.Spec.Webhook.Authentication.SecretRef.Key, job.Spec.Webhook.Authentication.SecretRef.Name)
+	}
+
+	allTokens := string(authData)
+	tokens := strings.Split(allTokens, ",")
+	return tokens, nil
+}
+
 func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error) {
 	defer r.globalManagerLock(true)()
 
@@ -273,26 +298,50 @@ func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job Renova
 		// Webhook authentication is not enabled
 		return false, nil
 	}
-
-	secret := &corev1.Secret{}
-	err = r.client.Get(ctx, client.ObjectKey{
-		Name:      renovateJob.Spec.Webhook.Authentication.SecretRef.Name,
-		Namespace: job.Namespace,
-	}, secret)
+	tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
 	if err != nil {
 		return false, err
 	}
-
-	authData, exists := secret.Data[renovateJob.Spec.Webhook.Authentication.SecretRef.Key]
-	if !exists {
-		return false, nil
-	}
-
-	allTokens := string(authData)
-	tokens := strings.Split(allTokens, ",")
 	if slices.Contains(tokens, token) {
 		return true, nil
 	}
 
 	return false, nil
+}
+
+func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+	defer r.globalManagerLock(true)()
+
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return false, err
+	}
+
+	if renovateJob.Spec.Webhook == nil ||
+		renovateJob.Spec.Webhook.Authentication == nil ||
+		!renovateJob.Spec.Webhook.Authentication.Enabled {
+		// Webhook authentication is not enabled
+		return false, nil
+	}
+
+	tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
+	if err != nil {
+		return false, err
+	}
+	for _, token := range tokens {
+		expectedSignature := computeHMAC256(body, token)
+
+		if hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func computeHMAC256(message []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(message)
+	expectedMAC := mac.Sum(nil)
+	return "sha256=" + fmt.Sprintf("%x", expectedMAC)
 }

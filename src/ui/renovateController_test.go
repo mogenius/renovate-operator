@@ -93,7 +93,9 @@ func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context,
 func (m *mockRenovateJobManager) IsWebhookTokenValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error) {
 	return true, nil
 }
-
+func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+	return true, nil
+}
 func (m *mockRenovateJobManager) GetJob(jobId crdmanager.RenovateJobIdentifier, projectName string) (*batchv1.Job, error) {
 	return nil, nil
 }
