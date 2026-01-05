@@ -1,0 +1,32 @@
+{{- if and .Values.webhook.route.enabled .Values.webhook.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.webhook.route.labels }}
+  labels:
+    {{- toYaml .Values.webhook.route.labels | nindent 4 }}
+  {{- end }}
+  {{- if .Values.webhook.route.annotations }}
+  annotations:
+    {{- toYaml .Values.webhook.route.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.webhook.route.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.webhook.route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "renovate-operator.fullname" . }}
+          port: {{ .Values.webhook.port }}
+{{- end }}

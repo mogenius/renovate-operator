@@ -1,0 +1,32 @@
+{{- if .Values.route.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.route.labels }}
+  labels:
+    {{- toYaml .Values.route.labels | nindent 4 }}
+  {{- end }}
+  {{- if .Values.route.annotations }}
+  annotations:
+    {{- toYaml .Values.route.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.route.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "renovate-operator.fullname" . }}
+          port: 8081
+{{- end }}
