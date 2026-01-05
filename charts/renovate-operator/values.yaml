@@ -34,6 +34,19 @@ ingress:
   # -- annotations to place on the ingress
   annotations: {}
 
+# -- HTTPRoute for the operator web ui
+route:
+  # -- whether to enable the HTTPRoute
+  enabled: false
+  # -- annotations to place on the HTTPRoute
+  annotations: {}
+  # -- labels to place on the HTTPRoute
+  labels: {}
+  # -- hostnames to place on the HTTPRoute
+  hostnames: []
+  # -- parentRefs to place on the HTTPRoute
+  parentRefs: []
+
 webhook:
   enabled: false
   port: 8082
@@ -53,6 +66,18 @@ webhook:
     labels: {}
     # -- annotations to place on the ingress
     annotations: {}
+  # -- HTTPRoute for the webhook server
+  route:
+    # -- whether to enable the HTTPRoute
+    enabled: false
+    # -- annotations to place on the HTTPRoute
+    annotations: {}
+    # -- labels to place on the HTTPRoute
+    labels: {}
+    # -- hostnames to place on the HTTPRoute
+    hostnames: []
+    # -- parentRefs to place on the HTTPRoute
+    parentRefs: []
 
 
 rbac:
