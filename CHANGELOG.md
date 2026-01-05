@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/mogenius/renovate-operator/compare/1.14.0...1.15.0) (2026-01-05)
+
+
+### Features
+
+* **ui:** add dark theme ([0bdb4c0](https://github.com/mogenius/renovate-operator/commit/0bdb4c03bb9fef00227226bd05d5638a553fc5d7))
+
 # [1.14.0](https://github.com/mogenius/renovate-operator/compare/1.13.2...1.14.0) (2026-01-05)
 
 
