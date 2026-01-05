@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/mogenius/renovate-operator/compare/1.13.2...1.14.0) (2026-01-05)
+
+
+### Features
+
+* adding gateway api support ([5804f9b](https://github.com/mogenius/renovate-operator/commit/5804f9bd345aa8726d91a48a683659fc76239094))
+
 ## [1.13.2](https://github.com/mogenius/renovate-operator/compare/1.13.1...1.13.2) (2026-01-04)
 
 
