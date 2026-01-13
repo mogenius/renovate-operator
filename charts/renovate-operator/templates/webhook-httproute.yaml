@@ -27,6 +27,6 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: {{ include "renovate-operator.fullname" . }}
+        - name: {{ include "renovate-operator.fullname" . }}-webhook
           port: {{ .Values.webhook.port }}
 {{- end }}
