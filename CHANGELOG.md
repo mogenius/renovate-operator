@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/mogenius/renovate-operator/compare/1.16.0...1.16.1) (2026-01-13)
+
+
+### Bug Fixes
+
+* point webhook route and ingress to the right service ([85a26f9](https://github.com/mogenius/renovate-operator/commit/85a26f94d01f9146785965e395a3cadf2487eba6))
+
 # [1.16.0](https://github.com/mogenius/renovate-operator/compare/1.15.0...1.16.0) (2026-01-13)
 
 
