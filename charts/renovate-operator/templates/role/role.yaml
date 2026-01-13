@@ -24,4 +24,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get", "list"]
+
+  # Allow reading secrets for webhook token and github app integration
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
 {{- end }}
