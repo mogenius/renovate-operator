@@ -1,3 +1,10 @@
+## [1.16.2](https://github.com/mogenius/renovate-operator/compare/1.16.1...1.16.2) (2026-01-13)
+
+
+### Bug Fixes
+
+* allow the operator to read webhook integration tokens ([15efd4c](https://github.com/mogenius/renovate-operator/commit/15efd4ce84065d06aa8a901db8e7c02e33ef2166))
+
 ## [1.16.1](https://github.com/mogenius/renovate-operator/compare/1.16.0...1.16.1) (2026-01-13)
 
 
