@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/mogenius/renovate-operator/compare/1.15.0...1.16.0) (2026-01-13)
+
+
+### Features
+
+* adding provider specific webhooks ([f2db773](https://github.com/mogenius/renovate-operator/commit/f2db773b10b085d50b73e4352ad26d40569993bd))
+
 # [1.15.0](https://github.com/mogenius/renovate-operator/compare/1.14.0...1.15.0) (2026-01-05)
 
 
