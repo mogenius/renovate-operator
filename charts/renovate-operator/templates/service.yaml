@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "renovate-operator.fullname" . }}
+spec:
+  selector:
+    app: {{ include "renovate-operator.fullname" . }}
+  ports:
+    - protocol: TCP
+      port: 8081
+      name: http
+      targetPort: http
+    {{- if .Values.webhook.enabled }}
+    - protocol: TCP
+      port: {{ .Values.webhook.port }}
+      name: webhook
+      targetPort: webhook
+    {{- end }}
+    {{- if or .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+    - protocol: TCP
+      port: 8080
+      name: metrics
+      targetPort: metrics
+    {{- end }}

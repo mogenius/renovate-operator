@@ -23,7 +23,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "renovate-operator.fullname" . }}-webhook
+                name: {{ include "renovate-operator.fullname" . }}
                 port:
                   name: webhook
   {{- if .Values.webhook.ingress.tls }}

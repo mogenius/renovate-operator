@@ -16,11 +16,14 @@ import (
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
 	"renovate-operator/webhook"
 
 	"k8s.io/client-go/rest"
+
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 func adaptKubeConfig(cfg *rest.Config) {
@@ -107,6 +110,8 @@ func main() {
 	adaptKubeConfig(cfg)
 
 	ctrl.SetLogger(zap.New())
+
+	metricStore.Register(ctrlmetrics.Registry)
 
 	watchNamespace := config.GetValue("WATCH_NAMESPACE")
 	mgrOptions := ctrl.Options{
