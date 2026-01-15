@@ -113,3 +113,9 @@ serviceAccount:
   name: ~
   # -- whether a serviceaccount should be created
   create: true
+
+metrics:
+  enabled: false
+  serviceMonitor:
+    # -- whether to create a ServiceMonitor for the operator metrics
+    enabled: false

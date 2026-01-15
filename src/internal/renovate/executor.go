@@ -6,6 +6,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/health"
+	"renovate-operator/metricStore"
 	"sync"
 	"time"
 
@@ -183,6 +184,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				return err
 			}
 			if newStatus != api.JobStatusRunning {
+				metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
 				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newStatus)
 				// one project less is currently running
 				runningProjects--
