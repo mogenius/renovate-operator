@@ -49,13 +49,9 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	namespace := r.URL.Query().Get("namespace")
-	if namespace == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace query parameter"})
-		return
-	}
 	job := r.URL.Query().Get("job")
-	if job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing job query parameter"})
+	if namespace == "" || job == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace or job query parameter"})
 		return
 	}
 
