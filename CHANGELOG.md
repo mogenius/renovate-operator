@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/mogenius/renovate-operator/compare/1.16.2...1.17.0) (2026-01-16)
+
+
+### Features
+
+* adding basic infrastructure for adding metrics ([e7e6300](https://github.com/mogenius/renovate-operator/commit/e7e6300145b4615de1d80cb4ce15eb99d14c1ac5))
+
 ## [1.16.2](https://github.com/mogenius/renovate-operator/compare/1.16.1...1.16.2) (2026-01-13)
 
 
