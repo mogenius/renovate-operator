@@ -1,3 +1,10 @@
+## [1.17.1](https://github.com/mogenius/renovate-operator/compare/1.17.0...1.17.1) (2026-01-16)
+
+
+### Bug Fixes
+
+* rename labels to not colide with default prometheus labels ([a859693](https://github.com/mogenius/renovate-operator/commit/a8596936b1c51b424057a5a4422867a8d4735f3d))
+
 # [1.17.0](https://github.com/mogenius/renovate-operator/compare/1.16.2...1.17.0) (2026-01-16)
 
 
