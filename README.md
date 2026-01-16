@@ -61,6 +61,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
   - [GitHub](./docs/webhooks/github.md)
 - [Using a config.js](./docs/extra-volumes.md)
 - [Scheduling](./docs/scheduling.md)
+- [Metrics](./docs/metrics.md)
 
 ## Contributing
 
@@ -72,27 +73,37 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Development
 
-### Running Tests
+**Running the operator**
 
-Run the test suite:
-
+Needs `KUBECONFIG` variable exported with the path to your local kube-config and a context you want to use.
 ```sh
-go test -v ./...
+just run
 ```
 
-### Code Quality
+**Running Tests**
 
-Run golangci-lint locally:
+Run the test-suite using just:
 
 ```sh
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-golangci-lint run
+just test-unit
 ```
 
-### Generate CRDs
+Run golangci-lint using just:
 
 ```sh
-controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+just golangci-lint
+```
+
+Run all checks (tests + linters):
+
+```sh
+just check
+```
+
+**Generate CRDs**
+
+```sh
+just generate
 ```
 
 [1]: https://github.com/renovatebot/renovate
