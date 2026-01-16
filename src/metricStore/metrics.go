@@ -11,7 +11,7 @@ var (
 			Name: "renovate_operator_project_executions_total",
 			Help: "Total number of executed Renovate projects",
 		},
-		[]string{"namespace", "job", "project", "status"})
+		[]string{"renovate-namespace", "renovate-job", "project", "status"})
 )
 
 func Register(registry ctrlmetrics.RegistererGatherer) {
