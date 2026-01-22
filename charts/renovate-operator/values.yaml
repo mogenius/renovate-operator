@@ -122,8 +122,8 @@ metrics:
   dashboard:
     # -- whether to create a Grafana dashboard for the operator metrics
     enabled: false
-    annotations:
+    annotations: {}
+    labels:
       grafana_dashboard: "1"
-    labels: {}
     # -- namespace to create the dashboard in, defaults to the release namespace
     namespace: ~
