@@ -16,3 +16,6 @@ jobs:
 
       - name: Run Helm lint
         run: helm lint ./charts/renovate-operator
+
+      - name: Run Helm template
+        run: helm template --set=metrics.dashboard.enabled=true ./charts/renovate-operator
