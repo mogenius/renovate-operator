@@ -1,3 +1,10 @@
+## [1.17.3](https://github.com/mogenius/renovate-operator/compare/1.17.2...1.17.3) (2026-01-22)
+
+
+### Bug Fixes
+
+* switched labels and annotations for grafana dashboard ([62731dc](https://github.com/mogenius/renovate-operator/commit/62731dc632f920903e7d9bdbd90a573aae637cd5))
+
 ## [1.17.2](https://github.com/mogenius/renovate-operator/compare/1.17.1...1.17.2) (2026-01-22)
 
 
