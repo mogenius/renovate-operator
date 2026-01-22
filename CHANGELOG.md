@@ -1,3 +1,10 @@
+## [1.17.2](https://github.com/mogenius/renovate-operator/compare/1.17.1...1.17.2) (2026-01-22)
+
+
+### Bug Fixes
+
+* adding missing grafana dashboard ([191ca05](https://github.com/mogenius/renovate-operator/commit/191ca05fba0043594f82ce40a81f3002161e94b3))
+
 ## [1.17.1](https://github.com/mogenius/renovate-operator/compare/1.17.0...1.17.1) (2026-01-16)
 
 
