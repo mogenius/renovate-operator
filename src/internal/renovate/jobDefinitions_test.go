@@ -143,7 +143,10 @@ func TestNewJobs_WithSettings(t *testing.T) {
 			},
 		},
 	}
-	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+		{Key: "JOB_TTL_SECONDS_AFTER_FINISHED", Optional: true, Default: "360"},
+	})
 	if err != nil {
 		t.Fatalf("expected to initialize config module without error, got %v", err)
 	}
@@ -154,10 +157,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// basic fields
 	expectJobName(t, dj, "rj-discovery-6987b484")
 	expectJobNamespace(t, dj, "ns")
-	expectLabels(t, dj, map[string]string{"a": "b"})
+	expectLabels(t, dj, map[string]string{"a": "b"}, "discovery", "rj-discovery-6987b484")
 	expectImage(t, djContainer, "img")
 	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, dj, 10)
+	expectTtlSecondsAfterFinished(t, dj, nil)
+
 	// env vars
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
@@ -181,10 +186,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// basic fields
 	expectJobName(t, rj, "rj-proj-701b9b0a")
 	expectJobNamespace(t, rj, "ns")
-	expectLabels(t, rj, map[string]string{"a": "b"})
+	expectLabels(t, rj, map[string]string{"a": "b"}, "executor", "rj-proj-701b9b0a")
 	expectImage(t, rjContainer, "img")
 	expectRestartPolicy(t, rj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, rj, 10)
+	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
+
 	// env vars
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
@@ -223,6 +230,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectJobName(t, dj, "nofilter-discovery-3006fe8c")
 	expectJobNamespace(t, dj, "ns")
 	expectImage(t, djContainer, "renovate:dev")
+	expectTtlSecondsAfterFinished(t, dj, nil)
 
 	// no env vars
 	for _, env := range djContainer.Env {
@@ -259,6 +267,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectJobName(t, rj, "nofilter-myproj-496e220d")
 	expectJobNamespace(t, rj, "ns")
 	expectImage(t, rjContainer, "renovate:dev")
+	expectTtlSecondsAfterFinished(t, rj, nil)
 
 	// no env vars
 	if len(rjContainer.EnvFrom) != 0 {
@@ -343,10 +352,19 @@ func expectEnvFromSecret(t *testing.T, container *v1.Container, expectedSecret s
 	}
 }
 
-func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]string) {
+func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]string, jobType, jobName string) {
 	for k, v := range expectedLabels {
 		if job.Spec.Template.Labels[k] != v {
 			t.Fatalf("expected template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
+		}
+	}
+	defaultLabels := map[string]string{
+		"renovate-operator.mogenius.com/job-type": jobType,
+		"renovate-operator.mogenius.com/job-name": jobName,
+	}
+	for k, v := range defaultLabels {
+		if job.Spec.Template.Labels[k] != v {
+			t.Fatalf("expected default template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
 		}
 	}
 }
@@ -378,6 +396,18 @@ func expectRestartPolicy(t *testing.T, job *batchv1.Job, expectedPolicy v1.Resta
 func expectActiveDeadlineSeconds(t *testing.T, job *batchv1.Job, expectedSeconds int64) {
 	if job.Spec.ActiveDeadlineSeconds == nil || *job.Spec.ActiveDeadlineSeconds != expectedSeconds {
 		t.Fatalf("expected active deadline seconds %d, got %v", expectedSeconds, job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func expectTtlSecondsAfterFinished(t *testing.T, job *batchv1.Job, expectedSeconds *int32) {
+	if job.Spec.TTLSecondsAfterFinished != nil && expectedSeconds == nil {
+		t.Fatalf("expected no TTL seconds after finished %d, got %v", expectedSeconds, job.Spec.TTLSecondsAfterFinished)
+	}
+	if job.Spec.TTLSecondsAfterFinished == nil && expectedSeconds != nil {
+		t.Fatalf("expected TTL seconds after finished %d, got nil", *expectedSeconds)
+	}
+	if job.Spec.TTLSecondsAfterFinished != nil && expectedSeconds != nil && *job.Spec.TTLSecondsAfterFinished != *expectedSeconds {
+		t.Fatalf("expected TTL seconds after finished %d, got %d", *expectedSeconds, *job.Spec.TTLSecondsAfterFinished)
 	}
 }
 

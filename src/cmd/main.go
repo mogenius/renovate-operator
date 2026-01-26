@@ -71,7 +71,7 @@ func main() {
 			Default:  "false",
 		},
 		{
-			Key:      "DELETE_SUCCESSFULL_JOBS",
+			Key:      "DELETE_SUCCESSFUL_JOBS",
 			Optional: true,
 			Default:  "false",
 		},
@@ -95,6 +95,21 @@ func main() {
 				_, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
 					return fmt.Errorf("'JOB_BACKOFF_LIMIT' needs to be an integer: %s", err.Error())
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "JOB_TTL_SECONDS_AFTER_FINISHED",
+			Optional: true,
+			Default:  "-1",
+			Validate: func(value string) error {
+				parsed, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return fmt.Errorf("'JOB_TTL_SECONDS_AFTER_FINISHED' needs to be an integer: %s", err.Error())
+				}
+				if parsed < -1 {
+					return fmt.Errorf("'JOB_TTL_SECONDS_AFTER_FINISHED' needs to be -1 or greater")
 				}
 				return nil
 			},

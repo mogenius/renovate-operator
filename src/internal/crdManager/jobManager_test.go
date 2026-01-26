@@ -136,3 +136,52 @@ func TestDeleteJob(t *testing.T) {
 		t.Error("Job should be deleted but still exists")
 	}
 }
+
+func TestDeleteJobWithWait(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	// Create a test job with a pod
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "test-ns",
+		},
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-ns",
+			Labels: map[string]string{
+				"job-name": "test-job",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "test",
+					Image: "test:latest",
+				},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job, pod).Build()
+
+	err := DeleteJobAndWaitForDeletion(context.Background(), client, job)
+	if err != nil {
+		t.Fatalf("DeleteJob returned error: %v", err)
+	}
+
+	// Verify job was deleted
+	_, err = GetJob(context.Background(), client, "test-job", "test-ns")
+	if err == nil {
+		t.Error("Job should be deleted but still exists")
+	}
+}

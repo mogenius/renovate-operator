@@ -179,10 +179,22 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 
 		// Job is running -> verify thats true
 		case api.JobStatusRunning:
-			newStatus, err := getJobStatus(utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace, e.client)
+			job, err := crdManager.GetJob(ctx, e.client, utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace)
+
+			var newStatus api.RenovateProjectStatus
 			if err != nil {
-				return err
+				if errors.IsNotFound(err) {
+					newStatus = api.JobStatusFailed
+				} else {
+					return err
+				}
+			} else {
+				newStatus, err = getJobStatus(job)
+				if err != nil {
+					return err
+				}
 			}
+
 			if newStatus != api.JobStatusRunning {
 				metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
 				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newStatus)
@@ -192,10 +204,10 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 					return err
 				}
 
-				// if DELETE_SUCCESSFULL_JOBS is set -> delete the job
-				deleteSuccessfullJobs := config.GetValue("DELETE_SUCCESSFULL_JOBS")
-				if newStatus == api.JobStatusCompleted && deleteSuccessfullJobs == "true" {
-					err = deleteJob(utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace, e.client)
+				// if DELETE_SUCCESSFUL_JOBS is set -> delete the job
+				deleteSuccessfulJobs := config.GetValue("DELETE_SUCCESSFUL_JOBS")
+				if newStatus == api.JobStatusCompleted && deleteSuccessfulJobs == "true" && job != nil {
+					err = crdManager.DeleteJob(ctx, e.client, job)
 					if err != nil {
 						return err
 					}
@@ -225,7 +237,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				existingJob, err := crdManager.GetJob(ctx, e.client, job.Name, job.Namespace)
 				// delete job if it exists
 				if err == nil {
-					err = crdManager.DeleteJob(ctx, e.client, existingJob)
+					err = crdManager.DeleteJobAndWaitForDeletion(ctx, e.client, existingJob)
 					if err != nil {
 						return fmt.Errorf("failed to delete existing RenovateJob for project %s: %w", project.Name, err)
 					}
