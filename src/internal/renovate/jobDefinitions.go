@@ -1,6 +1,7 @@
 package renovate
 
 import (
+	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/internal/utils"
@@ -66,8 +67,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			BackoffLimit:          getJobBackOffLimit(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
-					ServiceAccountName: getServiceAccountName(job.Spec),
-					ImagePullSecrets:   job.Spec.ImagePullSecrets,
+					ServiceAccountName:            getServiceAccountName(job.Spec),
+					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
 							Name:            "discovery",
@@ -96,9 +98,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	batchJob.Name = utils.DiscoveryJobName(job)
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
-		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
 	}
+	batchJob.Spec.Template.Labels = getJobLabels(job.Spec.Metadata, "discovery", batchJob.Name)
 	return batchJob
 }
 
@@ -133,12 +135,14 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
-			BackoffLimit:          getJobBackOffLimit(),
+			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
+			BackoffLimit:            getJobBackOffLimit(),
+			TTLSecondsAfterFinished: getJobTTLSecondsAfterFinished(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
-					ServiceAccountName: getServiceAccountName(job.Spec),
-					ImagePullSecrets:   job.Spec.ImagePullSecrets,
+					ServiceAccountName:            getServiceAccountName(job.Spec),
+					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
 							Name:            "renovate",
@@ -168,9 +172,9 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	batchJob.Name = utils.ExecutorJobName(job, project)
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
-		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
 	}
+	batchJob.Spec.Template.Labels = getJobLabels(job.Spec.Metadata, "executor", batchJob.Name)
 	return batchJob
 }
 
@@ -232,9 +236,33 @@ func getJobTimeoutSeconds() *int64 {
 
 func getJobBackOffLimit() *int32 {
 	timeoutString := config.GetValue("JOB_BACKOFF_LIMIT")
-	val, err := strconv.ParseInt(timeoutString, 10, 64)
+	val, err := strconv.ParseInt(timeoutString, 10, 32)
 	if err != nil {
 		return ptr.To(int32(1800))
 	}
 	return ptr.To(int32(val))
+}
+
+func getJobTTLSecondsAfterFinished() *int32 {
+	timeoutString := config.GetValue("JOB_TTL_SECONDS_AFTER_FINISHED")
+
+	if timeoutString == "-1" {
+		return nil
+	}
+	val, err := strconv.ParseInt(timeoutString, 10, 32)
+	if err != nil {
+		return nil
+	}
+	return ptr.To(int32(val))
+}
+
+func getJobLabels(metadata *api.RenovateJobMetadata, jobType, jobName string) map[string]string {
+	labels := map[string]string{
+		"renovate-operator.mogenius.com/job-type": jobType,
+		"renovate-operator.mogenius.com/job-name": jobName,
+	}
+	if metadata != nil {
+		maps.Copy(labels, metadata.Labels)
+	}
+	return labels
 }

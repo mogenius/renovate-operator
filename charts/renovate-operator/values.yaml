@@ -14,15 +14,17 @@ config:
   defaultJobBackoffLimit: 1
   # -- default active deadline seconds for renovate jobs
   defaultJobActiveDeadlineSeconds: 1800
-  # -- whether to delete successfully finished renovate jobs (will loose logs)
-  deleteSuccessfullJobs: false
+  # -- whether to delete successfully finished renovate jobs (will lose logs)
+  deleteSuccessfulJobs: false
+  # -- TTL for finished renovate jobs in seconds, -1 means they are kept forever
+  jobTTLSecondsAfterFinished: -1
 
 ingress:
   # -- whether to enable the ingress renovate-operator
   enabled: false
   # -- the ingressclassname for the ingress, default: nginx
   ingressClassName: "nginx"
-  # -- the host the ingress should lsiten for
+  # -- the host the ingress should listen for
   host: ~
   # -- tls configuration to be applied on the ingress
   tls: []

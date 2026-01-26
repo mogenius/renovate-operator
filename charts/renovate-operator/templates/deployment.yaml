@@ -39,8 +39,10 @@ spec:
               value: {{ .Values.config.defaultJobActiveDeadlineSeconds | quote }}
             - name: JOB_BACKOFF_LIMIT
               value: {{ .Values.config.defaultJobBackoffLimit | quote }}
-            - name: DELETE_SUCCESSFULL_JOBS
-              value: {{ .Values.config.deleteSuccessfullJobs | quote }}
+            - name: DELETE_SUCCESSFUL_JOBS
+              value: {{ .Values.config.deleteSuccessfulJobs | quote }}
+            - name: JOB_TTL_SECONDS_AFTER_FINISHED
+              value: {{ .Values.config.jobTTLSecondsAfterFinished | quote }}
             - name: SERVER_PORT
               value: "8081"
             {{- if or .Values.rbac.ownNamespaceOnly .Values.rbac.watchNamespace }}

@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -22,27 +25,43 @@ func GetJob(ctx context.Context, client crclient.Client, jobName string, namespa
 	return job, err
 }
 
-func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
-	// First, delete all pods owned by the job
-	var podList corev1.PodList
-	err := client.List(
+func DeleteJobAndWaitForDeletion(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
+	jobName := job.Name
+
+	policy := metav1.DeletePropagationForeground
+	err := client.Delete(ctx, job, &crclient.DeleteOptions{
+		PropagationPolicy: &policy})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete job %s: %w", jobName, err)
+	}
+
+	err = wait.PollUntilContextTimeout(
 		ctx,
-		&podList,
-		crclient.InNamespace(job.Namespace),
-		crclient.MatchingLabels{"job-name": job.Name},
+		200*time.Millisecond,
+		3*time.Second,
+		true,
+		func(ctx context.Context) (bool, error) {
+			_, err := GetJob(ctx, client, jobName, job.Namespace)
+			if errors.IsNotFound(err) {
+				return true, nil // job is gone
+			}
+			return false, err
+		},
 	)
 	if err != nil {
-		fmt.Printf("failed to list pods for job %s: %v\n", job.Name, err)
-	} else {
-		for _, pod := range podList.Items {
-			err := client.Delete(ctx, &pod)
-			if err != nil {
-				fmt.Printf("failed to delete pod %s: %v\n", pod.Name, err)
-			}
-		}
+		return fmt.Errorf("timed out waiting for job %s to be deleted", jobName)
 	}
-	// Then, delete the job itself
-	return client.Delete(ctx, job)
+	return nil
+}
+
+func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
+	policy := metav1.DeletePropagationBackground
+	err := client.Delete(ctx, job, &crclient.DeleteOptions{
+		PropagationPolicy: &policy})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete job %s: %w", job.Name, err)
+	}
+	return nil
 }
 
 func CreateJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
