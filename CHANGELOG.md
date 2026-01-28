@@ -1,3 +1,18 @@
+# [2.0.0](https://github.com/mogenius/renovate-operator/compare/1.17.3...2.0.0) (2026-01-28)
+
+
+* feat!: rework logic to delete jobs ([bde3f90](https://github.com/mogenius/renovate-operator/commit/bde3f900c8d62122a4515da440b7ebbd323f70b1))
+
+
+### Bug Fixes
+
+* ui wrapping for small displays ([cfbed93](https://github.com/mogenius/renovate-operator/commit/cfbed9319843003be9a7d2870a247a067feb2f4a))
+
+
+### BREAKING CHANGES
+
+* fixed typo in helm-values
+
 ## [1.17.3](https://github.com/mogenius/renovate-operator/compare/1.17.2...1.17.3) (2026-01-22)
 
 
