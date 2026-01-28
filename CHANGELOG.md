@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/mogenius/renovate-operator/compare/2.0.0...2.0.1) (2026-01-28)
+
+
+### Bug Fixes
+
+* replace discovery job logic with new job deletion logic ([7274b54](https://github.com/mogenius/renovate-operator/commit/7274b5484b20cb42aa84ae38f9166847d12d872c))
+
 # [2.0.0](https://github.com/mogenius/renovate-operator/compare/1.17.3...2.0.0) (2026-01-28)
 
 
