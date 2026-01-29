@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strconv"
 
@@ -121,10 +122,14 @@ func main() {
 	})
 	assert.NoError(err, "failed to initialize config module")
 
+	opts := zap.Options{}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
 	cfg := ctrl.GetConfigOrDie()
 	adaptKubeConfig(cfg)
 
-	ctrl.SetLogger(zap.New())
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	metricStore.Register(ctrlmetrics.Registry)
 

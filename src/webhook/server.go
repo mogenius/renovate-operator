@@ -92,7 +92,7 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	s.logger.Info("Successfully triggered Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
 }
 
 func (server *Server) authMiddleware(next http.Handler) http.Handler {

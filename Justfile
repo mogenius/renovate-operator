@@ -7,8 +7,8 @@ default:
     just --list --unsorted
 
 # Run the application with flags similar to the production build
-run: build jsInstall
-    cd src && ../dist/native/renovate-operator
+run *args: build jsInstall
+    cd src && ../dist/native/renovate-operator {{args}}
 
 # Build a native binary with flags similar to the production build
 build: generate
