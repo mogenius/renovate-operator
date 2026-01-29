@@ -35,14 +35,6 @@ func adaptKubeConfig(cfg *rest.Config) {
 func main() {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{
-			Key:      "CUSTOM_CSS_FILE_PATH",
-			Optional: true,
-		},
-		{
-			Key:      "CUSTOM_FAVICON_FILE_PATH",
-			Optional: true,
-		},
-		{
 			Key:      "SERVER_PORT",
 			Optional: true,
 			Default:  "8081",
