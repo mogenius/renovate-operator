@@ -116,6 +116,12 @@ serviceAccount:
   # -- whether a serviceaccount should be created
   create: true
 
+logging:
+  # -- log level for the operator, one of 'debug', 'info', 'error', 'panic'or any integer value > 0
+  level: "info"
+  # -- log format for the operator, one of: json, console
+  format: "json" 
+
 metrics:
   enabled: false
   serviceMonitor:

@@ -161,7 +161,7 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
-	s.logger.Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +216,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	}()
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
-	s.logger.Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 }
 
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {

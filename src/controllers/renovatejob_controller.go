@@ -52,13 +52,13 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	f := func() {
 		logger = logger.WithName(name)
 		ctx := context.Background()
-		logger.Info("Executing schedule for RenovateJob")
+		logger.V(2).Info("Executing schedule for RenovateJob")
 		projects, err := reconciler.Discovery.Discover(ctx, renovateJob)
 		if err != nil {
 			logger.Error(err, "Failed to discover projects for RenovateJob")
 			return
 		}
-		logger.Info("Successfully discovered projects", "count", len(projects))
+		logger.V(2).Info("Successfully discovered projects", "count", len(projects))
 
 		jobIdentifier := crdManager.RenovateJobIdentifier{
 			Name:      renovateJob.Name,
@@ -69,11 +69,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 			logger.Error(err, "failed to reconcile projects")
 			return
 		}
-		logger.Info("Successfully reconciled Projects")
-
-		a, _ := reconciler.Manager.GetRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace)
-
-		logger.Info("DEBUG", "count", len(a.Status.Projects))
+		logger.V(2).Info("Successfully reconciled Projects")
 
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
@@ -83,7 +79,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		if err != nil {
 			logger.Error(err, "failed to schedule projects")
 		}
-		logger.Info("Successfully scheduled RenovateJob")
+		logger.V(2).Info("Successfully scheduled RenovateJob")
 	}
 
 	// adding the schedule if it does not exist
@@ -93,7 +89,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		logger.Error(err, "Failed to add schedule for RenovateJob")
 		return
 	}
-	logger.Info("Added schedule for RenovateJob", "schedule", expr)
+	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
 }
 
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {

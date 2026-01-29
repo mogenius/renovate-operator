@@ -63,7 +63,7 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 			eHealth.Running = true
 			return eHealth
 		})
-
+		e.logger.Info("starting renovate executor loop")
 		for {
 			select {
 			case <-ctx.Done():
@@ -94,7 +94,7 @@ func (e *renovateExecutor) execute() error {
 	if err != nil {
 		return nil
 	}
-	e.logger.Info("Executing renovate loop for projects", "count", len(renovateJobs))
+	e.logger.V(2).Info("Executing renovate loop for projects", "count", len(renovateJobs))
 	for _, job := range renovateJobs {
 		err := e.executeRenovateJob(ctx, &job)
 		if err != nil {
@@ -143,7 +143,7 @@ func (e *renovateExecutor) executeRenovateJob(ctx context.Context, job *crdManag
 	}
 	defer unlock()
 
-	e.logger.Info("Executing RenovateJob", "job", name)
+	e.logger.V(2).Info("Executing RenovateJob", "job", name)
 
 	renovateJob, err := e.manager.GetRenovateJob(ctx, job.Name, job.Namespace)
 	if err != nil {

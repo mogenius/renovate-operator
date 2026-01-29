@@ -22,6 +22,9 @@ spec:
         - name: renovate-operator
           image: {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--zap-log-level={{ .Values.logging.level }}"
+            - "--zap-encoder={{ .Values.logging.format }}"
           {{- with .Values.securityContext.container }}
           securityContext:
             {{- toYaml . | nindent 12 }}

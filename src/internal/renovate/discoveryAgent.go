@@ -59,7 +59,7 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	name := job.Fullname()
 
-	e.logger.Info("Discovering projects for RenovateJob", "job", name)
+	e.logger.V(2).Info("Discovering projects for RenovateJob", "job", name)
 	return e.discoverIntern(ctx, job)
 }
 
@@ -104,7 +104,7 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
 	}
-	e.logger.Info("Discovered projects", "count", len(projects))
+	e.logger.V(2).Info("Discovered projects", "count", len(projects), "job", job.Fullname())
 
 	return projects, nil
 }
