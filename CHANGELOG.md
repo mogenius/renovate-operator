@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/mogenius/renovate-operator/compare/2.0.2...2.0.3) (2026-01-30)
+
+
+### Bug Fixes
+
+* adapt log levels to be less verbose by default ([40b7e16](https://github.com/mogenius/renovate-operator/commit/40b7e169350186975c1eb04cd60205aefee690fd))
+
 ## [2.0.2](https://github.com/mogenius/renovate-operator/compare/2.0.1...2.0.2) (2026-01-29)
 
 
