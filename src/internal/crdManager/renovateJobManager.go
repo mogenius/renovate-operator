@@ -13,6 +13,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
 	"renovate-operator/internal/utils"
+	"renovate-operator/metricStore"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -216,6 +217,20 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job Renovate
 		crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
 	}
 
+	// Build a set of new projects for quick lookup
+	newProjectSet := make(map[string]struct{}, len(projects))
+	for _, project := range projects {
+		newProjectSet[project] = struct{}{}
+	}
+
+	// Delete metrics for projects that are being removed
+	for projectName := range crdProjectSet {
+		if _, exists := newProjectSet[projectName]; !exists {
+			// Project is being removed, clean up its metrics
+			metricStore.DeleteProjectMetrics(job.Namespace, job.Name, projectName)
+		}
+	}
+
 	newProjects := make([]api.ProjectStatus, 0, len(projects))
 	for _, project := range projects {
 		if crdProject, exists := crdProjectSet[project]; exists {
@@ -259,7 +274,7 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 		return "failed to create client", err
 	}
 
-	logs, err := getLastJobLog(ctx, client, executorJob)
+	logs, err := GetLastJobLog(ctx, client, executorJob)
 
 	return logs, err
 }

@@ -68,7 +68,8 @@ func CreateJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	return client.Create(ctx, job)
 }
 
-func getLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job) (string, error) {
+// GetLastJobLog retrieves the logs from the most recent pod of a job
+func GetLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job) (string, error) {
 	ns := job.Namespace
 
 	// Use Job's label selector

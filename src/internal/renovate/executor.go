@@ -4,6 +4,7 @@ import (
 	context "context"
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/parser"
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
@@ -196,7 +198,27 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 			}
 
 			if newStatus != api.JobStatusRunning {
+				// Parse logs before potential job deletion to capture dependency issues
+				hasIssues := false
+				if job != nil {
+					cp := clientProvider.StaticClientProvider()
+					if clientset, err := cp.K8sClientSet(); err == nil {
+						if logs, err := crdManager.GetLastJobLog(ctx, clientset, job); err == nil {
+							parseResult := parser.ParseRenovateLogs(logs)
+							hasIssues = parseResult.HasIssues
+						} else {
+							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
+						}
+						} else {
+							e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
+					}
+				}
+
+				// Update metrics
+				metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
+				metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
 				metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
+
 				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newStatus)
 				// one project less is currently running
 				runningProjects--
