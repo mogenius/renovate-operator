@@ -16,6 +16,10 @@ import (
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := []v1.EnvVar{
 		{
+			Name:  "LOG_FORMAT",
+			Value: "json",
+		},
+		{
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
 		},
@@ -106,6 +110,14 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 
 // create a Job spec for renovate run on project...
 func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
+	// Default env vars - user can override via ExtraEnv since these are prepended
+	predefinedEnvVars := []v1.EnvVar{
+		{
+			Name:  "LOG_FORMAT",
+			Value: "json",
+		},
+	}
+
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
@@ -149,7 +161,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 							Command:         []string{"renovate"},
 							Args:            []string{"--base-dir", "/tmp", project},
 							Image:           job.Spec.Image,
-							Env:             job.Spec.ExtraEnv,
+							Env:             append(predefinedEnvVars, job.Spec.ExtraEnv...),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
 							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
