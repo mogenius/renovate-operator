@@ -1,3 +1,10 @@
+## [2.0.4](https://github.com/mogenius/renovate-operator/compare/2.0.3...2.0.4) (2026-02-04)
+
+
+### Bug Fixes
+
+* drop all capabilities for renovate jobs ([7df8b74](https://github.com/mogenius/renovate-operator/commit/7df8b74219b4d4bfd2abb946c72d1629657943b2))
+
 ## [2.0.3](https://github.com/mogenius/renovate-operator/compare/2.0.2...2.0.3) (2026-01-30)
 
 
