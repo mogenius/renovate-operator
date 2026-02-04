@@ -35,6 +35,9 @@ var (
 		SeccompProfile: &v1.SeccompProfile{
 			Type: v1.SeccompProfileTypeRuntimeDefault,
 		},
+		Capabilities: &v1.Capabilities{
+			Drop: []v1.Capability{"ALL"},
+		},
 	}
 )
 

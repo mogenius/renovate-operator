@@ -208,6 +208,9 @@ func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
 		ReadOnlyRootFilesystem:   ptr.To(false),
 		Privileged:               ptr.To(false),
 		AllowPrivilegeEscalation: ptr.To(false),
+		Capabilities: &v1.Capabilities{
+			Drop: []v1.Capability{"ALL"},
+		},
 	}
 }
 
