@@ -41,52 +41,6 @@ var (
 	}
 )
 
-func TestLogFormatCanBeOverridden(t *testing.T) {
-	err := config.InitializeConfigModule([]config.ConfigItemDescription{
-		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
-	})
-	if err != nil {
-		t.Fatalf("failed to initialize config: %v", err)
-	}
-
-	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
-		Spec: api.RenovateJobSpec{
-			Image: "renovate:latest",
-			ExtraEnv: []v1.EnvVar{
-				{Name: "LOG_FORMAT", Value: "text"},
-			},
-		},
-	}
-
-	// Test discovery job - user override should come after default
-	dj := newDiscoveryJob(job)
-	djContainer := &dj.Spec.Template.Spec.Containers[0]
-	// Find the last LOG_FORMAT env var (user override wins)
-	var lastLogFormat string
-	for _, env := range djContainer.Env {
-		if env.Name == "LOG_FORMAT" {
-			lastLogFormat = env.Value
-		}
-	}
-	if lastLogFormat != "text" {
-		t.Errorf("expected user override LOG_FORMAT=text to be last, got %s", lastLogFormat)
-	}
-
-	// Test executor job - user override should come after default
-	rj := newRenovateJob(job, "myproject")
-	rjContainer := &rj.Spec.Template.Spec.Containers[0]
-	lastLogFormat = ""
-	for _, env := range rjContainer.Env {
-		if env.Name == "LOG_FORMAT" {
-			lastLogFormat = env.Value
-		}
-	}
-	if lastLogFormat != "text" {
-		t.Errorf("expected user override LOG_FORMAT=text to be last, got %s", lastLogFormat)
-	}
-}
-
 func TestSecurityContextHelpers(t *testing.T) {
 	var spec api.RenovateJobSpec
 
@@ -132,6 +86,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				{
 					Name:      "extra-vol",
 					MountPath: "/extra",
+				},
+			},
+			ExtraEnv: []v1.EnvVar{
+				{
+					Name:  "LOG_FORMAT",
+					Value: "console",
 				},
 			},
 			ServiceAccount: &api.RenovateJobServiceAccount{
@@ -213,7 +173,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, dj, nil)
 
 	// env vars
-	expectEnvVar(t, djContainer, "LOG_FORMAT", "json")
+	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
 	expectEnvFromSecret(t, djContainer, "sref")
@@ -243,7 +203,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
 
 	// env vars
-	expectEnvVar(t, rjContainer, "LOG_FORMAT", "json")
+	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
