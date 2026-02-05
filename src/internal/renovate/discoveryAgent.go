@@ -175,15 +175,6 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
-	// LEGACY DiscoveryJob Name
-	// TODO: Delete Februrary 2026
-	legacyDiscoveryJobName := utils.LegacyDiscoveryJobName(&renovateJob)
-	// check if legacy job exists, if so, delete it
-	existingLegacyJob, err := crdManager.GetJob(ctx, e.client, legacyDiscoveryJobName, discoveryJob.Namespace)
-	if err == nil || !errors.IsNotFound(err) {
-		_ = crdManager.DeleteJob(ctx, e.client, existingLegacyJob)
-	}
-
 	// check if the job exists, if so, delete it
 	existingJob, err := crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
 	if err == nil || !errors.IsNotFound(err) {

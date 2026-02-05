@@ -209,8 +209,8 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 						} else {
 							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 						}
-						} else {
-							e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
+					} else {
+						e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
 					}
 				}
 
@@ -244,15 +244,6 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				job := newRenovateJob(renovateJob, project.Name)
 				if err := controllerutil.SetControllerReference(renovateJob, job, e.scheme); err != nil {
 					return fmt.Errorf("failed to set controller reference: %w", err)
-				}
-
-				// LEGACY ExecutorJob Name
-				// TODO: Delete Februrary 2026
-				legacyExecutorJobName := utils.LegacyExecutorJobName(renovateJob, project.Name)
-				// check if legacy job exists, if so, delete it
-				existingLegacyJob, err := crdManager.GetJob(ctx, e.client, legacyExecutorJobName, renovateJob.Namespace)
-				if err == nil || !errors.IsNotFound(err) {
-					_ = crdManager.DeleteJob(ctx, e.client, existingLegacyJob)
 				}
 
 				// Check if the job already exists
