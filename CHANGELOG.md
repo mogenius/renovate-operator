@@ -1,3 +1,11 @@
+## [2.1.1](https://github.com/mogenius/renovate-operator/compare/2.1.0...2.1.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* merge env vars to reolve warning with duplicate env vars ([d58d364](https://github.com/mogenius/renovate-operator/commit/d58d3641acc0b263f3675742d383f22746467992))
+* remove deletion of legacy jobs ([5277d85](https://github.com/mogenius/renovate-operator/commit/5277d8546db0998c19772b53135eba10453ccba0))
+
 # [2.1.0](https://github.com/mogenius/renovate-operator/compare/2.0.4...2.1.0) (2026-02-05)
 
 
