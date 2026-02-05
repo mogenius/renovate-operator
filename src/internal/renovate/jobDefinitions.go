@@ -80,7 +80,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 							Command:         []string{"/bin/sh", "-c"},
 							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json && cat /tmp/repos.json || cat /tmp/logs.json"},
 							Image:           job.Spec.Image,
-							Env:             append(predefinedEnvVars, job.Spec.ExtraEnv...),
+							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
 							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
@@ -161,7 +161,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 							Command:         []string{"renovate"},
 							Args:            []string{"--base-dir", "/tmp", project},
 							Image:           job.Spec.Image,
-							Env:             append(predefinedEnvVars, job.Spec.ExtraEnv...),
+							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
 							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
@@ -280,4 +280,27 @@ func getJobLabels(metadata *api.RenovateJobMetadata, jobType, jobName string) ma
 		maps.Copy(labels, metadata.Labels)
 	}
 	return labels
+}
+
+// mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv
+// If there are duplicate env var names, the one from extraEnv is used
+func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
+	// Create a map of env var names from extraEnv
+	extraNames := make(map[string]bool)
+	for _, env := range extraEnv {
+		extraNames[env.Name] = true
+	}
+
+	// Start with extraEnv (these take priority)
+	result := make([]v1.EnvVar, len(extraEnv))
+	copy(result, extraEnv)
+
+	// Add predefined vars that don't conflict
+	for _, env := range predefinedEnv {
+		if !extraNames[env.Name] {
+			result = append(result, env)
+		}
+	}
+
+	return result
 }
