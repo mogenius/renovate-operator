@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/mogenius/renovate-operator/compare/2.0.4...2.1.0) (2026-02-05)
+
+
+### Features
+
+* add metrics for Renovate job failures and dependency issues ([75a2f63](https://github.com/mogenius/renovate-operator/commit/75a2f63ca271becd490ae15dbdc8a0d7d12e4c6c))
+
 ## [2.0.4](https://github.com/mogenius/renovate-operator/compare/2.0.3...2.0.4) (2026-02-04)
 
 
