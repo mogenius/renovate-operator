@@ -36,13 +36,17 @@ jobs:
           node-version: 24
 
       - name: Semantic Release
+        id: semantic
         uses: cycjimmy/semantic-release-action@v4
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
 
   build-and-push-docker:
     name: Build Multi-arch Docker
     needs: [prepare]
+    if: needs.prepare.outputs.new_release_published == 'true'
     runs-on: [arc-runner-set-amd64]
 
     permissions:
@@ -99,6 +103,7 @@ jobs:
 
   helm-chart:
     needs: [prepare, build-and-push-docker]
+    if: needs.prepare.outputs.new_release_published == 'true'
     runs-on: [arc-runner-set-amd64]
     permissions:
       contents: write
@@ -115,6 +120,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token }}
 
@@ -139,6 +145,13 @@ jobs:
         uses: losisin/helm-docs-github-action@v1.6.2
         with:
           chart-search-root: charts/renovate-operator
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: package and push
         run: |
@@ -170,7 +183,6 @@ jobs:
             curl -XPOST -L -k --data-binary "@/tmp/${{ env.HELMNAME }}-$VERSION.tgz" https://${{ secrets.MO_HELMUSER }}:${{ secrets.MO_HELMPASS }}@helm.mogenius.com/api/public/charts
 
             echo "Pushing to OCI registry"
-            echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
             CHART_DIGEST=$(helm push /tmp/${{ env.HELMNAME }}-$VERSION.tgz oci://ghcr.io/${{ github.repository_owner }}/helm-charts 2>&1 | grep "Digest: sha256:" | awk '{print $2}')
 
             if [ -z "$CHART_DIGEST" ]; then
@@ -180,7 +192,6 @@ jobs:
             echo "Chart digest: $CHART_DIGEST"
 
             echo "Signing Helm chart with cosign"
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io --username ${{ github.actor }} --password-stdin
             cosign sign --yes ghcr.io/${{ github.repository_owner }}/helm-charts/${{ env.HELMNAME }}@${CHART_DIGEST}
 
             git commit -m "chore: update Chart.yaml and documentation for version $VERSION [skip ci]"
