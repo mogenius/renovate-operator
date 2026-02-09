@@ -17,6 +17,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -157,101 +158,104 @@ func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJo
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {
 	defer r.globalManagerLock(false)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
+		}
+		index := -1
+		for i := range renovateJob.Status.Projects {
+			projectStatus := renovateJob.Status.Projects[i]
+			if projectStatus.Name == project {
+				index = i
+				break
+			}
+		}
+		if index == -1 {
+			projectStatus := &api.ProjectStatus{
+				Name:   project,
+				Status: status,
+			}
+			renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
+		} else {
+			projectStatus := renovateJob.Status.Projects[index]
+			renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
+		}
+		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 		return err
-	}
-	index := -1
-	for i := range renovateJob.Status.Projects {
-		projectStatus := renovateJob.Status.Projects[i]
-		if projectStatus.Name == project {
-			index = i
-			break
-		}
-	}
-	if index == -1 {
-		projectStatus := &api.ProjectStatus{
-			Name:   project,
-			Status: status,
-		}
-		renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
-	} else {
-		projectStatus := renovateJob.Status.Projects[index]
-		renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
-	}
-	_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-	return err
+	})
 }
 
 func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {
 	defer r.globalManagerLock(false)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
-		return err
-	}
-
-	for i := range renovateJob.Status.Projects {
-		p := renovateJob.Status.Projects[i]
-
-		if fn(p) {
-			renovateJob.Status.Projects[i] = *utils.GetUpdateStatusForProject(&p, status)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
 		}
-	}
 
-	_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-	return err
+		for i := range renovateJob.Status.Projects {
+			p := renovateJob.Status.Projects[i]
+
+			if fn(p) {
+				renovateJob.Status.Projects[i] = *utils.GetUpdateStatusForProject(&p, status)
+			}
+		}
+
+		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
+		return err
+	})
 }
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error {
 	defer r.globalManagerLock(false)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
-		return err
-	}
-
-	// Build a set of current CRD projects
-	crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
-	for i, crdProject := range renovateJob.Status.Projects {
-		crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
-	}
-
-	// Build a set of new projects for quick lookup
-	newProjectSet := make(map[string]struct{}, len(projects))
-	for _, project := range projects {
-		newProjectSet[project] = struct{}{}
-	}
-
-	// Delete metrics for projects that are being removed
-	for projectName := range crdProjectSet {
-		if _, exists := newProjectSet[projectName]; !exists {
-			// Project is being removed, clean up its metrics
-			metricStore.DeleteProjectMetrics(job.Namespace, job.Name, projectName)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
 		}
-	}
 
-	newProjects := make([]api.ProjectStatus, 0, len(projects))
-	for _, project := range projects {
-		if crdProject, exists := crdProjectSet[project]; exists {
-			// add project that exist in the new project list
-			newProjects = append(newProjects, crdProject)
-		} else {
-			// add new project to the list
-			newProjects = append(newProjects, api.ProjectStatus{
-				Name:    project,
-				Status:  api.JobStatusScheduled,
-				LastRun: v1.Now(),
-			})
+		// Build a set of current CRD projects
+		crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
+		for i, crdProject := range renovateJob.Status.Projects {
+			crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
 		}
-	}
-	renovateJob.Status.Projects = newProjects
 
-	_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-	if err != nil {
+		// Build a set of new projects for quick lookup
+		newProjectSet := make(map[string]struct{}, len(projects))
+		for _, project := range projects {
+			newProjectSet[project] = struct{}{}
+		}
+
+		// Delete metrics for projects that are being removed
+		for projectName := range crdProjectSet {
+			if _, exists := newProjectSet[projectName]; !exists {
+				// Project is being removed, clean up its metrics
+				metricStore.DeleteProjectMetrics(job.Namespace, job.Name, projectName)
+			}
+		}
+
+		newProjects := make([]api.ProjectStatus, 0, len(projects))
+		for _, project := range projects {
+			if crdProject, exists := crdProjectSet[project]; exists {
+				// add project that exist in the new project list
+				newProjects = append(newProjects, crdProject)
+			} else {
+				// add new project to the list
+				newProjects = append(newProjects, api.ProjectStatus{
+					Name:    project,
+					Status:  api.JobStatusScheduled,
+					LastRun: v1.Now(),
+				})
+			}
+		}
+		renovateJob.Status.Projects = newProjects
+
+		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 		return err
-	}
-	return nil
+	})
 }
 
 func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error) {
