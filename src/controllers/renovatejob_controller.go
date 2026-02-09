@@ -49,11 +49,21 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconciler *RenovateJobReconciler) {
 	name := renovateJob.Fullname()
 	expr := renovateJob.Spec.Schedule
+	jobName := renovateJob.Name
+	jobNamespace := renovateJob.Namespace
 	f := func() {
 		logger = logger.WithName(name)
 		ctx := context.Background()
 		logger.V(2).Info("Executing schedule for RenovateJob")
-		projects, err := reconciler.Discovery.Discover(ctx, renovateJob)
+
+		// Re-fetch the RenovateJob to get the latest spec (e.g. updated container image)
+		currentJob, err := reconciler.Manager.GetRenovateJob(ctx, jobName, jobNamespace)
+		if err != nil {
+			logger.Error(err, "Failed to get current RenovateJob")
+			return
+		}
+
+		projects, err := reconciler.Discovery.Discover(ctx, currentJob)
 		if err != nil {
 			logger.Error(err, "Failed to discover projects for RenovateJob")
 			return
@@ -61,8 +71,8 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		logger.V(2).Info("Successfully discovered projects", "count", len(projects))
 
 		jobIdentifier := crdManager.RenovateJobIdentifier{
-			Name:      renovateJob.Name,
-			Namespace: renovateJob.Namespace,
+			Name:      jobName,
+			Namespace: jobNamespace,
 		}
 		err = reconciler.Manager.ReconcileProjects(ctx, jobIdentifier, projects)
 		if err != nil {

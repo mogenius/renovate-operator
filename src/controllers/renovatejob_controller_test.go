@@ -314,6 +314,53 @@ func TestCreateScheduler_UpdateProjectStatusBatchedError(t *testing.T) {
 	}
 }
 
+// Test: when the RenovateJob is updated after createScheduler, the scheduled function should use the fresh RenovateJob
+func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
+	var discoveredJob *api.RenovateJob
+
+	mgr := &fakeManager{}
+	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+		return nil
+	}
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+		return nil
+	}
+	// Return a RenovateJob with an updated image when re-fetched
+	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+		return &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+			Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:39"},
+		}, nil
+	}
+
+	disc := &fakeDiscovery{}
+	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+		discoveredJob = job
+		return []string{"p1"}, nil
+	}
+
+	sched := &fakeScheduler{}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
+	logger := logr.Discard()
+
+	// Create scheduler with old image
+	originalJob := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:38"},
+	}
+	createScheduler(logger, originalJob, reconciler)
+
+	// Execute the scheduled function — it should re-fetch and use the updated image
+	sched.storedFn()
+
+	if discoveredJob == nil {
+		t.Fatalf("expected Discover to be called")
+	}
+	if discoveredJob.Spec.Image != "renovate/renovate:39" {
+		t.Fatalf("expected discovery to use updated image 'renovate/renovate:39', got '%s'", discoveredJob.Spec.Image)
+	}
+}
+
 // Test: when Scheduler.AddScheduleReplaceExisting returns an error, createScheduler should not panic and should log the error
 func TestCreateScheduler_SchedulerAddError(t *testing.T) {
 	mgr := &fakeManager{}
