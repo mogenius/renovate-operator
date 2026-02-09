@@ -4,54 +4,81 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func GetJob(ctx context.Context, client crclient.Client, jobName string, namespace string) (*batchv1.Job, error) {
-	job := &batchv1.Job{}
-	err := client.Get(ctx, types.NamespacedName{
-		Name:      jobName,
-		Namespace: namespace,
-	}, job)
-	return job, err
+const (
+	JOB_LABEL_TYPE       = "renovate-operator.mogenius.com/job-type"
+	JOB_LABEL_NAME       = "renovate-operator.mogenius.com/job-name"
+	JOB_LABEL_GENERATION = "renovate-operator.mogenius.com/generation"
+)
+
+type JobType string
+
+const (
+	DiscoveryJobType JobType = "discovery"
+	ExecutorJobType  JobType = "executor"
+)
+
+type JobSelector struct {
+	JobName   string
+	JobType   JobType
+	Namespace string
 }
 
-func DeleteJobAndWaitForDeletion(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
-	jobName := job.Name
-
-	policy := metav1.DeletePropagationForeground
-	err := client.Delete(ctx, job, &crclient.DeleteOptions{
-		PropagationPolicy: &policy})
-	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("failed to delete job %s: %w", jobName, err)
-	}
-
-	err = wait.PollUntilContextTimeout(
-		ctx,
-		200*time.Millisecond,
-		3*time.Second,
-		true,
-		func(ctx context.Context) (bool, error) {
-			_, err := GetJob(ctx, client, jobName, job.Namespace)
-			if errors.IsNotFound(err) {
-				return true, nil // job is gone
-			}
-			return false, err
-		},
-	)
+// GetJobByLabel retrieves a single job matching the given labels.
+// Returns an error if no job is found.
+// If multiple jobs match, the most recently created one is returned.
+func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSelector) (*batchv1.Job, error) {
+	allJobs, err := GetJobsByLabel(ctx, client, selector)
 	if err != nil {
-		return fmt.Errorf("timed out waiting for job %s to be deleted", jobName)
+		return nil, err
 	}
-	return nil
+	if len(allJobs) == 0 {
+		return nil, errors.NewNotFound(batchv1.Resource("jobs"), selector.JobName)
+	}
+	// get the newest job in case there are multiple jobs for the same project (e.g. due to multiple executions)
+	var currentJob *batchv1.Job
+	var maxGen int64 = -1
+
+	for i := range allJobs {
+		genStr, exists := allJobs[i].Labels[JOB_LABEL_GENERATION]
+		var gen int64 = 0 // Default to 0 for missing/invalid labels
+		if exists {
+			parsedGen, err := strconv.ParseInt(genStr, 10, 64)
+			if err == nil {
+				gen = parsedGen
+			}
+		}
+		// Always select a job, prefer highest generation
+		if gen > maxGen || currentJob == nil {
+			maxGen = gen
+			currentJob = &allJobs[i]
+		}
+	}
+	return currentJob, nil
+}
+
+// Retrieve all Jobs by our standard labels
+func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSelector) ([]batchv1.Job, error) {
+
+	jobList := &batchv1.JobList{}
+	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels{
+		JOB_LABEL_NAME: selector.JobName,
+		JOB_LABEL_TYPE: string(selector.JobType),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing jobs with label %s: %w", selector.JobName, err)
+	}
+	return jobList.Items, nil
 }
 
 func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
@@ -63,9 +90,44 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	}
 	return nil
 }
+func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) error {
+	generation := fmt.Sprintf("%d", time.Now().Unix())
 
-func CreateJob(ctx context.Context, client crclient.Client, job *batchv1.Job) error {
-	return client.Create(ctx, job)
+	job.Labels[JOB_LABEL_GENERATION] = generation
+
+	// Create immediately - no deletion needed first
+	err := client.Create(ctx, job)
+	if err != nil {
+		return fmt.Errorf("creating job with generateName %s: %w", job.GenerateName, err)
+	}
+
+	go func() {
+		// Create a background context with a timeout
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		_ = cleanupOldGenerations(cleanupCtx, client, selector, generation)
+	}()
+
+	return nil
+}
+
+// Delete jobs that aren't the current generation
+func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector JobSelector, currentGen string) error {
+	allJobs, err := GetJobsByLabel(ctx, client, selector)
+	if err != nil {
+		return err
+	}
+
+	for _, job := range allJobs {
+		gen, exists := job.Labels[JOB_LABEL_GENERATION]
+
+		if !exists || gen != currentGen {
+			// This is an old generation - safe to delete
+			_ = DeleteJob(ctx, client, &job)
+		}
+	}
+	return nil
 }
 
 // GetLastJobLog retrieves the logs from the most recent pod of a job

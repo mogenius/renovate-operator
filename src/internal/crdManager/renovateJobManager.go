@@ -263,7 +263,11 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 
 	executorJobName := utils.ExecutorJobName(renovateJob, project)
 
-	executorJob, err := GetJob(ctx, r.client, executorJobName, job.Namespace)
+	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
+		JobName:   executorJobName,
+		JobType:   ExecutorJobType,
+		Namespace: job.Namespace,
+	})
 	if err != nil {
 		return "failed to get job", err
 	}

@@ -13,7 +13,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -92,13 +91,13 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 	}
 
 	// 3. Extract discovered projects from stdout
-	existingDiscoveryJob := &batchv1.Job{}
-	err := e.client.Get(ctx, types.NamespacedName{
-		Name:      utils.DiscoveryJobName(job),
+	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		JobName:   utils.DiscoveryJobName(job),
+		JobType:   crdManager.DiscoveryJobType,
 		Namespace: job.Namespace,
-	}, existingDiscoveryJob)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get discovery job status: %w", err)
+		return nil, fmt.Errorf("failed to get discovery job: %w", err)
 	}
 	projects, err := e.getDiscoveredProjectsFromJobLogsFn(ctx, e.client, existingDiscoveryJob)
 	if err != nil {
@@ -126,11 +125,11 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	lock.RLock()
 	defer lock.RUnlock()
 
-	existingDiscoveryJob := &batchv1.Job{}
-	err := e.client.Get(ctx, types.NamespacedName{
-		Name:      utils.DiscoveryJobName(job),
+	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		JobName:   utils.DiscoveryJobName(job),
+		JobType:   crdManager.DiscoveryJobType,
 		Namespace: job.Namespace,
-	}, existingDiscoveryJob)
+	})
 
 	// retry getting the job if not found
 	if err != nil && errors.IsNotFound(err) {
@@ -142,10 +141,11 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 			if tries <= 0 {
 				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
 			}
-			err = e.client.Get(ctx, types.NamespacedName{
-				Name:      utils.DiscoveryJobName(job),
+			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+				JobName:   utils.DiscoveryJobName(job),
+				JobType:   crdManager.DiscoveryJobType,
 				Namespace: job.Namespace,
-			}, existingDiscoveryJob)
+			})
 		}
 	} else if err != nil {
 		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job: %w", err)
@@ -175,17 +175,12 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
-	// check if the job exists, if so, delete it
-	existingJob, err := crdManager.GetJob(ctx, e.client, discoveryJob.Name, discoveryJob.Namespace)
-	if err == nil || !errors.IsNotFound(err) {
-		err = crdManager.DeleteJobAndWaitForDeletion(ctx, e.client, existingJob)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing discovery job: %w", err)
-		}
-	}
-
 	// Create the discovery job
-	err = crdManager.CreateJob(ctx, e.client, discoveryJob)
+	err := crdManager.CreateJobWithGeneration(ctx, e.client, discoveryJob, crdManager.JobSelector{
+		JobName:   utils.DiscoveryJobName(&renovateJob),
+		JobType:   crdManager.DiscoveryJobType,
+		Namespace: renovateJob.Namespace,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create discovery job: %w", err)
 	}

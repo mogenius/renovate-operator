@@ -181,7 +181,11 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 
 		// Job is running -> verify thats true
 		case api.JobStatusRunning:
-			job, err := crdManager.GetJob(ctx, e.client, utils.ExecutorJobName(renovateJob, project.Name), renovateJob.Namespace)
+			job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
+				JobType:   crdManager.ExecutorJobType,
+				Namespace: renovateJob.Namespace,
+			})
 
 			var newStatus api.RenovateProjectStatus
 			if err != nil {
@@ -246,17 +250,13 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 					return fmt.Errorf("failed to set controller reference: %w", err)
 				}
 
-				// Check if the job already exists
-				existingJob, err := crdManager.GetJob(ctx, e.client, job.Name, job.Namespace)
-				// delete job if it exists
-				if err == nil {
-					err = crdManager.DeleteJobAndWaitForDeletion(ctx, e.client, existingJob)
-					if err != nil {
-						return fmt.Errorf("failed to delete existing RenovateJob for project %s: %w", project.Name, err)
-					}
-				}
 				// recreate the job
-				if err := crdManager.CreateJob(ctx, e.client, job); err != nil {
+				err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
+					JobName:   utils.ExecutorJobName(renovateJob, project.Name),
+					JobType:   crdManager.ExecutorJobType,
+					Namespace: renovateJob.Namespace,
+				})
+				if err != nil {
 					return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
 				}
 				runningProjects++

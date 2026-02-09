@@ -22,13 +22,21 @@ func TestGetJob(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-job",
 			Namespace: "test-ns",
+			Labels: map[string]string{
+				JOB_LABEL_NAME: "test-job",
+				JOB_LABEL_TYPE: string(ExecutorJobType),
+			},
 		},
 	}
 
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
 
 	t.Run("existing job", func(t *testing.T) {
-		got, err := GetJob(context.Background(), client, "test-job", "test-ns")
+		got, err := GetJobByLabel(context.Background(), client, JobSelector{
+			JobName:   "test-job",
+			JobType:   ExecutorJobType,
+			Namespace: "test-ns",
+		})
 		if err != nil {
 			t.Fatalf("GetJob returned error: %v", err)
 		}
@@ -38,7 +46,11 @@ func TestGetJob(t *testing.T) {
 	})
 
 	t.Run("non-existing job", func(t *testing.T) {
-		_, err := GetJob(context.Background(), client, "non-existing", "test-ns")
+		_, err := GetJobByLabel(context.Background(), client, JobSelector{
+			JobName:   "non-existing",
+			JobType:   ExecutorJobType,
+			Namespace: "test-ns",
+		})
 		if err == nil {
 			t.Error("GetJob should return error for non-existing job")
 		}
@@ -57,6 +69,10 @@ func TestCreateJob(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "new-job",
 			Namespace: "test-ns",
+			Labels: map[string]string{
+				JOB_LABEL_NAME: "new-job",
+				JOB_LABEL_TYPE: string(ExecutorJobType),
+			},
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -73,13 +89,21 @@ func TestCreateJob(t *testing.T) {
 		},
 	}
 
-	err := CreateJob(context.Background(), client, job)
+	err := CreateJobWithGeneration(context.Background(), client, job, JobSelector{
+		JobName:   "new-job",
+		JobType:   ExecutorJobType,
+		Namespace: "test-ns",
+	})
 	if err != nil {
 		t.Fatalf("CreateJob returned error: %v", err)
 	}
 
 	// Verify job was created
-	got, err := GetJob(context.Background(), client, "new-job", "test-ns")
+	got, err := GetJobByLabel(context.Background(), client, JobSelector{
+		JobName:   "new-job",
+		JobType:   ExecutorJobType,
+		Namespace: "test-ns",
+	})
 	if err != nil {
 		t.Fatalf("Failed to get created job: %v", err)
 	}
@@ -110,7 +134,8 @@ func TestDeleteJob(t *testing.T) {
 			Name:      "test-pod",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				"job-name": "test-job",
+				JOB_LABEL_NAME: "test-job",
+				JOB_LABEL_TYPE: string(ExecutorJobType),
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -131,7 +156,11 @@ func TestDeleteJob(t *testing.T) {
 	}
 
 	// Verify job was deleted
-	_, err = GetJob(context.Background(), client, "test-job", "test-ns")
+	_, err = GetJobByLabel(context.Background(), client, JobSelector{
+		JobName:   "test-job",
+		JobType:   ExecutorJobType,
+		Namespace: "test-ns",
+	})
 	if err == nil {
 		t.Error("Job should be deleted but still exists")
 	}
@@ -159,7 +188,8 @@ func TestDeleteJobWithWait(t *testing.T) {
 			Name:      "test-pod",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				"job-name": "test-job",
+				JOB_LABEL_NAME: "test-job",
+				JOB_LABEL_TYPE: string(ExecutorJobType),
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -174,13 +204,17 @@ func TestDeleteJobWithWait(t *testing.T) {
 
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job, pod).Build()
 
-	err := DeleteJobAndWaitForDeletion(context.Background(), client, job)
+	err := DeleteJob(context.Background(), client, job)
 	if err != nil {
 		t.Fatalf("DeleteJob returned error: %v", err)
 	}
 
 	// Verify job was deleted
-	_, err = GetJob(context.Background(), client, "test-job", "test-ns")
+	_, err = GetJobByLabel(context.Background(), client, JobSelector{
+		JobName:   "test-job",
+		JobType:   ExecutorJobType,
+		Namespace: "test-ns",
+	})
 	if err == nil {
 		t.Error("Job should be deleted but still exists")
 	}

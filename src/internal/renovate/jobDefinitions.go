@@ -4,6 +4,7 @@ import (
 	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 	"strconv"
 
@@ -99,12 +100,17 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			},
 		},
 	}
-	batchJob.Name = utils.DiscoveryJobName(job)
+
+	jobName := utils.DiscoveryJobName(job)
+	batchJob.GenerateName = jobName
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
+		batchJob.Annotations = job.Spec.Metadata.Annotations
 	}
-	batchJob.Spec.Template.Labels = getJobLabels(job.Spec.Metadata, "discovery", batchJob.Name)
+	labels := getJobLabels(job.Spec.Metadata, crdmanager.DiscoveryJobType, jobName)
+	batchJob.Spec.Template.Labels = labels
+	batchJob.Labels = labels
 	return batchJob
 }
 
@@ -181,12 +187,16 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		},
 	}
 
-	batchJob.Name = utils.ExecutorJobName(job, project)
+	jobName := utils.ExecutorJobName(job, project)
+	batchJob.GenerateName = jobName
 	batchJob.Namespace = job.Namespace
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
+		batchJob.Annotations = job.Spec.Metadata.Annotations
 	}
-	batchJob.Spec.Template.Labels = getJobLabels(job.Spec.Metadata, "executor", batchJob.Name)
+	labels := getJobLabels(job.Spec.Metadata, crdmanager.ExecutorJobType, jobName)
+	batchJob.Labels = labels
+	batchJob.Spec.Template.Labels = labels
 	return batchJob
 }
 
@@ -271,10 +281,10 @@ func getJobTTLSecondsAfterFinished() *int32 {
 	return ptr.To(int32(val))
 }
 
-func getJobLabels(metadata *api.RenovateJobMetadata, jobType, jobName string) map[string]string {
+func getJobLabels(metadata *api.RenovateJobMetadata, jobType crdmanager.JobType, jobName string) map[string]string {
 	labels := map[string]string{
-		"renovate-operator.mogenius.com/job-type": jobType,
-		"renovate-operator.mogenius.com/job-name": jobName,
+		crdmanager.JOB_LABEL_TYPE: string(jobType),
+		crdmanager.JOB_LABEL_NAME: jobName,
 	}
 	if metadata != nil {
 		maps.Copy(labels, metadata.Labels)

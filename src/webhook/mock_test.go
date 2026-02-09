@@ -4,8 +4,6 @@ import (
 	"context"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
-
-	batchv1 "k8s.io/api/batch/v1"
 )
 
 // Mock RenovateJobManager for webhook integration tests
@@ -66,7 +64,4 @@ func (m *mockWebhookManager) GetProjectsByStatus(ctx context.Context, job crdman
 }
 func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
 	return nil
-}
-func (m *mockWebhookManager) GetJob(jobId crdmanager.RenovateJobIdentifier, projectName string) (*batchv1.Job, error) {
-	return nil, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	crdManager "renovate-operator/internal/crdManager"
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -166,7 +167,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// basic fields
 	expectJobName(t, dj, "rj-discovery-6987b484")
 	expectJobNamespace(t, dj, "ns")
-	expectLabels(t, dj, map[string]string{"a": "b"}, "discovery", "rj-discovery-6987b484")
+	expectLabels(t, dj, map[string]string{"a": "b"}, string(crdManager.DiscoveryJobType), "rj-discovery-6987b484")
 	expectImage(t, djContainer, "img")
 	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, dj, 10)
@@ -196,7 +197,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	// basic fields
 	expectJobName(t, rj, "rj-proj-701b9b0a")
 	expectJobNamespace(t, rj, "ns")
-	expectLabels(t, rj, map[string]string{"a": "b"}, "executor", "rj-proj-701b9b0a")
+	expectLabels(t, rj, map[string]string{"a": "b"}, string(crdManager.ExecutorJobType), "rj-proj-701b9b0a")
 	expectImage(t, rjContainer, "img")
 	expectRestartPolicy(t, rj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, rj, 10)
@@ -347,8 +348,11 @@ func expectVolumes(t *testing.T, job *batchv1.Job, expectedVolumes []v1.Volume) 
 }
 
 func expectJobName(t *testing.T, job *batchv1.Job, expectedName string) {
-	if job.Name != expectedName {
-		t.Fatalf("expected job name %s, got %s", expectedName, job.Name)
+	if job.GenerateName != expectedName {
+		t.Fatalf("expected job generate name %s, got %s", expectedName, job.GenerateName)
+	}
+	if job.Name != "" {
+		t.Fatalf("expected job name to be empty, got %s", job.Name)
 	}
 }
 
@@ -370,6 +374,9 @@ func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]stri
 		if job.Spec.Template.Labels[k] != v {
 			t.Fatalf("expected template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
 		}
+		if job.Labels[k] != v {
+			t.Fatalf("expected job label %s=%s, got %s", k, v, job.Labels[k])
+		}
 	}
 	defaultLabels := map[string]string{
 		"renovate-operator.mogenius.com/job-type": jobType,
@@ -378,6 +385,9 @@ func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]stri
 	for k, v := range defaultLabels {
 		if job.Spec.Template.Labels[k] != v {
 			t.Fatalf("expected default template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
+		}
+		if job.Labels[k] != v {
+			t.Fatalf("expected default job label %s=%s, got %s", k, v, job.Labels[k])
 		}
 	}
 }

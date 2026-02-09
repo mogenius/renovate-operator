@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
-	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -95,17 +94,6 @@ func (m *mockRenovateJobManager) IsWebhookTokenValid(ctx context.Context, job cr
 }
 func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	return true, nil
-}
-func (m *mockRenovateJobManager) GetJob(jobId crdmanager.RenovateJobIdentifier, projectName string) (*batchv1.Job, error) {
-	return nil, nil
-}
-
-func (m *mockRenovateJobManager) CreateJob(job *batchv1.Job) (*batchv1.Job, error) {
-	return nil, nil
-}
-
-func (m *mockRenovateJobManager) DeleteJob(jobId crdmanager.RenovateJobIdentifier, projectName string) error {
-	return nil
 }
 
 // Mock DiscoveryAgent

@@ -6,11 +6,11 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	crdManager "renovate-operator/internal/crdManager"
 
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -31,18 +31,29 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	running := &batchv1.Job{}
 	running.Name = "job1-discovery-b6caabe5"
 	running.Namespace = "ns"
+	running.Labels = map[string]string{
+		crdManager.JOB_LABEL_NAME: "job1-discovery-b6caabe5",
+		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+	}
 
 	// failed job
 	failed := &batchv1.Job{}
 	failed.Name = "job2-discovery-2e2a0d0f"
 	failed.Namespace = "ns"
 	failed.Status.Failed = 1
-
+	failed.Labels = map[string]string{
+		crdManager.JOB_LABEL_NAME: "job2-discovery-2e2a0d0f",
+		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+	}
 	// succeeded job
 	succeeded := &batchv1.Job{}
 	succeeded.Name = "job3-discovery-b42e63e1"
 	succeeded.Namespace = "ns"
 	succeeded.Status.Succeeded = 1
+	succeeded.Labels = map[string]string{
+		crdManager.JOB_LABEL_NAME: "job3-discovery-b42e63e1",
+		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
 
@@ -116,11 +127,5 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 	}
 	if len(projects) != 2 {
 		t.Fatalf("expected 2 projects, got %d", len(projects))
-	}
-
-	// ensure job exists in fake client
-	got := &batchv1.Job{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: "job1-discovery-b6caabe5", Namespace: "ns"}, got); err != nil {
-		t.Fatalf("expected discovery job created: %v", err)
 	}
 }
