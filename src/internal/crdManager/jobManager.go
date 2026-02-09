@@ -134,8 +134,9 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 func GetLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job) (string, error) {
 	ns := job.Namespace
 
-	// Use Job's label selector
-	selector := metav1.FormatLabelSelector(job.Spec.Selector)
+	// Use the controller-uid label that Kubernetes automatically adds to job pods
+	// This is more reliable than trying to format the label selector
+	selector := fmt.Sprintf("controller-uid=%s", job.UID)
 
 	pods, err := clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: selector,
