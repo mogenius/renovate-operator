@@ -19,6 +19,7 @@ import (
 // Mock RenovateJobManager
 type mockRenovateJobManager struct {
 	listRenovateJobsFunc          func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
+	listRenovateJobsFullFunc      func(ctx context.Context) ([]api.RenovateJob, error)
 	getProjectsForRenovateJobFunc func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
 	getLogsForProjectFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
 	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
@@ -29,6 +30,13 @@ type mockRenovateJobManager struct {
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
 	if m.listRenovateJobsFunc != nil {
 		return m.listRenovateJobsFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockRenovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	if m.listRenovateJobsFullFunc != nil {
+		return m.listRenovateJobsFullFunc(ctx)
 	}
 	return nil, nil
 }

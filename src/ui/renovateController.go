@@ -41,18 +41,14 @@ func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
-	renovateJobs, err := s.manager.ListRenovateJobs(r.Context())
+	renovateJobs, err := s.manager.ListRenovateJobsFull(r.Context())
 	if err != nil {
 		internalServerError(w, err, "failed to load renovatejobs")
 		return
 	}
 	result := make([]RenovateJobInfo, 0)
-	for _, job := range renovateJobs {
-		renovateJob, err := s.manager.GetRenovateJob(r.Context(), job.Name, job.Namespace)
-		if err != nil {
-			internalServerError(w, err, "failed to load renovatejob")
-			return
-		}
+	for i := range renovateJobs {
+		renovateJob := &renovateJobs[i]
 
 		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob)
 		if err != nil {
@@ -63,15 +59,24 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				discoveryStatus = api.JobStatusFailed
 			}
 		}
-		projects, err := s.manager.GetProjectsForRenovateJob(r.Context(), job)
-		if err != nil {
-			internalServerError(w, err, "failed to load projects")
-			return
+
+		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
+		for _, p := range renovateJob.Status.Projects {
+			projects = append(projects, crdmanager.RenovateProjectStatus{
+				Name:    p.Name,
+				Status:  p.Status,
+				LastRun: p.LastRun.Time,
+			})
+		}
+
+		jobIdentifier := crdmanager.RenovateJobIdentifier{
+			Name:      renovateJob.Name,
+			Namespace: renovateJob.Namespace,
 		}
 		result = append(result, RenovateJobInfo{
-			Name:            job.Name,
-			Namespace:       job.Namespace,
-			NextSchedule:    s.scheduler.GetNextRun(job.Fullname()),
+			Name:            renovateJob.Name,
+			Namespace:       renovateJob.Namespace,
+			NextSchedule:    s.scheduler.GetNextRun(jobIdentifier.Fullname()),
 			Projects:        projects,
 			CronExpression:  renovateJob.Spec.Schedule,
 			DiscoveryStatus: discoveryStatus,

@@ -46,6 +46,37 @@ func TestListRenovateJobs(t *testing.T) {
 	}
 }
 
+func TestListRenovateJobsFull(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+
+	j1 := makeJob("job1", "default", []api.ProjectStatus{{Name: "p1", Status: api.JobStatusRunning}})
+	j2 := makeJob("job2", "kube", nil)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
+
+	mgr := NewRenovateJobManager(cl)
+	ctx := context.Background()
+	list, err := mgr.ListRenovateJobsFull(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(list))
+	}
+	// Verify full data is returned (not just identifiers)
+	for _, job := range list {
+		if job.Spec.Schedule != "*/5 * * * *" {
+			t.Fatalf("expected schedule '*/5 * * * *', got '%s'", job.Spec.Schedule)
+		}
+		if job.Name == "job1" && len(job.Status.Projects) != 1 {
+			t.Fatalf("expected job1 to have 1 project, got %d", len(job.Status.Projects))
+		}
+	}
+}
+
 func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {

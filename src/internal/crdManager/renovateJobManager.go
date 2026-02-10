@@ -29,6 +29,8 @@ This should be the only component interacting with RenovateJob CRDs directly.
 type RenovateJobManager interface {
 	// ListRenovateJobs lists all RenovateJob CRDs in the cluster.
 	ListRenovateJobs(ctx context.Context) ([]RenovateJobIdentifier, error)
+	// ListRenovateJobsFull lists all RenovateJob CRDs in the cluster with full object data.
+	ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
 	// GetRenovateJob retrieves a specific RenovateJob CRD by name and namespace.
 	GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error)
 	// GetProjectsForRenovateJob retrieves all projects associated with a specific RenovateJob CRD.
@@ -153,6 +155,18 @@ func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJo
 	}
 
 	return result, nil
+}
+
+func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	defer r.globalManagerLock(true)()
+
+	var renovateJobs api.RenovateJobList
+	err := r.client.List(ctx, &renovateJobs)
+	if err != nil {
+		return nil, err
+	}
+
+	return renovateJobs.Items, nil
 }
 
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {

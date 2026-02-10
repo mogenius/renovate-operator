@@ -38,6 +38,9 @@ func (m *mockWebhookManager) IsWebhookSignatureValid(ctx context.Context, job cr
 func (m *mockWebhookManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
 	return nil, nil
 }
+func (m *mockWebhookManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return nil, nil
+}
 func (m *mockWebhookManager) GetProjectsForRenovateJob(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error) {
 	return nil, nil
 }

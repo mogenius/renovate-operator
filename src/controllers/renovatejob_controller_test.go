@@ -28,6 +28,9 @@ type fakeManager struct {
 func (f *fakeManager) ListRenovateJobs(ctx context.Context) ([]crdManager.RenovateJobIdentifier, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (f *fakeManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 func (f *fakeManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
 	if f.getFn != nil {
 		return f.getFn(ctx, name, namespace)
