@@ -22,15 +22,17 @@ type Server struct {
 	logger    logr.Logger
 	server    *http.Server
 	health    health.HealthCheck
+	version   string
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string) *Server {
 	return &Server{
 		manager:   manager,
 		logger:    logger,
 		health:    health,
 		discovery: discovery,
 		scheduler: scheduler,
+		version:   version,
 	}
 }
 

@@ -7,12 +7,13 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 ENV CGO_ENABLED=0
+ARG VERSION=dev
 
 COPY src/go.mod src/go.sum ./
 RUN go mod download
 COPY src .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
-    go build -trimpath -gcflags="all=-l" -ldflags="-s -w" -o renovate-operator ./cmd/main.go
+    go build -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
 
 FROM --platform=$BUILDPLATFORM alpine:latest as js-downloader
 WORKDIR /workspace

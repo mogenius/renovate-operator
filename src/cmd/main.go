@@ -27,6 +27,8 @@ import (
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
+var Version = "dev" // default version, will be overridden by ld build flag in Dockerfile
+
 func adaptKubeConfig(cfg *rest.Config) {
 	cfg.QPS = 50
 	cfg.Burst = 100
@@ -166,7 +168,7 @@ func main() {
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 	cronManager.Start()
 
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {

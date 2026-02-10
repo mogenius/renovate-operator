@@ -12,7 +12,9 @@ run *args: build jsInstall
 
 # Build a native binary with flags similar to the production build
 build: generate
-    cd src && go build -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/native/renovate-operator ./cmd/main.go
+    #!/usr/bin/env sh
+    VERSION=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "dev")
+    cd src && go build -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o ../dist/native/renovate-operator ./cmd/main.go
 
 # Build binaries for all targets
 build-all: build-linux-amd64 build-linux-arm64 build-linux-armv7

@@ -23,11 +23,21 @@ type RenovateJobInfo struct {
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
+	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
+}
+
+func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Version string `json:"version"`
+	}{
+		Version: s.version,
+	})
 }
 
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
