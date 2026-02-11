@@ -16,22 +16,22 @@ Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel
 
 ### Comparison with Mend Renovate CE
 
-| Feature | [Mend Renovate CE][2] | Renovate Operator |
-|:---|:---:|:---:|
-| Fully open source, no signup or license key | ❌ | ✅ |
-| Automated dependency updates | ✅ | ✅ |
-| Runs on your own infrastructure | ✅ | ✅ |
-| Auto-discovery | ✅ | ✅ |
-| Webhook API for on-demand runs | ✅ | ✅ |
-| Web UI | ❌ | ✅ |
-| Declarative cron scheduling via CRD | ❌ | ✅ |
-| Auto-discovery with group/topic filtering | ❌ | ✅ |
-| Per-project status tracking in-cluster | ❌ | ✅ |
-| Parallel execution with concurrency control | ❌ | ✅ |
-| Prometheus metrics & health checks | ✅ | ✅ |
-| Kubernetes-native pod scheduling | ❌ | ✅ |
-| Leader election for high availability | ❌ | ✅ |
-| Job lifecycle management (TTL, deadlines, retries) | ❌ | ✅ |
+| Feature | [Mend Renovate CLI][3]| [Mend Renovate Community Self-Hosted (aka "CE")][2] | Renovate Operator |
+|:---|:---:|:---:|:---:|
+| Fully open source, no signup or license key | ✅ | ❌ | ✅ |
+| Automated dependency updates | ✅ | ✅ | ✅ |
+| Runs on your own infrastructure | ✅ | ✅ | ✅ |
+| Auto-discovery | ✅ | ✅ | ✅ |
+| Webhook API for on-demand runs | ❌ | ✅ | ✅ |
+| Web UI | ❌ | ❌ | ✅ |
+| Declarative cron scheduling via CRD | ❌ | ❌ | ✅ |
+| Auto-discovery with group/topic filtering | ❌ | ❌ | ✅ |
+| Per-project status tracking in-cluster | ❌ | ❌ | ✅ |
+| Parallel execution with concurrency control | ❌ | ❌ | ✅ |
+| Prometheus metrics & health checks | ❌ | ✅ | ✅ |
+| Kubernetes-native pod scheduling | ❌ | ❌ | ✅ |
+| Leader election for high availability | ❌ | ❌ | ✅ |
+| Job lifecycle management (TTL, deadlines, retries) | ❌ | ❌ | ✅ |
 
 ### How it works
 
@@ -123,3 +123,4 @@ just generate
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
+[3]: https://docs.renovatebot.com/
