@@ -29,4 +29,11 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+  {{- if gt (int .Values.replicaCount) 1 }}
+  # Allow leader election via coordination leases
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "get", "update"]
+  {{- end }}
 {{- end }}

@@ -113,6 +113,14 @@ func main() {
 			Key:      "WATCH_NAMESPACE",
 			Optional: true,
 		},
+		{
+			Key:      "POD_NAMESPACE",
+			Optional: true,
+		},
+		{
+			Key:      "LEADER_ELECTION_ID",
+			Optional: true,
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -128,10 +136,14 @@ func main() {
 	metricStore.Register(ctrlmetrics.Registry)
 
 	watchNamespace := config.GetValue("WATCH_NAMESPACE")
+	leaderElectionID := config.GetValue("LEADER_ELECTION_ID")
 	mgrOptions := ctrl.Options{
-		Scheme:         nil,
-		LeaderElection: false,
-		Cache:          cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
+		Scheme:                        nil,
+		LeaderElection:                leaderElectionID != "",
+		LeaderElectionID:              leaderElectionID,
+		LeaderElectionNamespace:       config.GetValue("POD_NAMESPACE"),
+		LeaderElectionReleaseOnCancel: true,
+		Cache:                         cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
 	}
 
 	mgr, err := ctrl.NewManager(cfg, mgrOptions)
@@ -149,16 +161,6 @@ func main() {
 
 	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient())
 
-	executor := renovate.NewRenovateExecutor(
-		mgr.GetScheme(),
-		jobMgr,
-		mgr.GetClient(),
-		ctrl.Log.WithName("renovate-executor"),
-		health,
-	)
-	err = executor.Start(ctx)
-	assert.NoError(err, "failed to start executor")
-
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
 		mgr.GetClient(),
@@ -166,8 +168,8 @@ func main() {
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
-	cronManager.Start()
 
+	// UI and webhook servers run on all replicas
 	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version)
 	uiServer.Run()
 
@@ -175,6 +177,25 @@ func main() {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
 		webhookServer.Run()
 	}
+
+	executor := renovate.NewRenovateExecutor(
+		mgr.GetScheme(),
+		jobMgr,
+		mgr.GetClient(),
+		ctrl.Log.WithName("renovate-executor"),
+		health,
+	)
+
+	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
+	// When leadership is lost, controller-runtime cancels ctx and the process exits.
+	go func() {
+		<-mgr.Elected()
+		ctrl.Log.WithName("leader-election").Info("this instance is the leader, starting executor and scheduler")
+		cronManager.Start()
+		if err := executor.Start(ctx); err != nil {
+			ctrl.Log.WithName("leader-election").Error(err, "failed to start executor")
+		}
+	}()
 
 	err = (&controllers.RenovateJobReconciler{
 		Scheduler: cronManager,

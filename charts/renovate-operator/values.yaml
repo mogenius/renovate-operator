@@ -1,6 +1,9 @@
 # -- override the fullname of created resources
 fullnameOverride: ""
 
+# -- number of operator replicas. Leader election is enabled automatically when > 1
+replicaCount: 1
+
 image:
   registry: ghcr.io
   repository: mogenius/renovate-operator
