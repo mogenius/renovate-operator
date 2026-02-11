@@ -10,13 +10,28 @@
 
 ---
 
-[Renovate][1] is one of, if not the leading tool for automated dependency updates.
+# Renovate: The Kubernetes-Native Way
 
-With tools like [Mend Renovate][2] you can easily use renovate for free.
+Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel execution, auto-discovery, and a built-in UI. If you self-host Renovate and already run Kubernetes, this operator gives you the control and observability that plain self-hosted setups lack.
 
-But what if you want to run renovate on your own hardware? What if you are running a private GitLab instance? Or just want better control over the scheduling of your renovate executions?
+### Comparison with Mend Renovate CE
 
-If you are already running Kubernetes, this project might be for you.
+| Feature | [Mend Renovate CE][2] | Renovate Operator |
+|:---|:---:|:---:|
+| Fully open source, no signup or license key | ❌ | ✅ |
+| Automated dependency updates | ✅ | ✅ |
+| Runs on your own infrastructure | ✅ | ✅ |
+| Auto-discovery | ✅ | ✅ |
+| Webhook API for on-demand runs | ✅ | ✅ |
+| Web UI | ✅ | ✅ |
+| Declarative cron scheduling via CRD | ❌ | ✅ |
+| Auto-discovery with group/topic filtering | ❌ | ✅ |
+| Per-project status tracking in-cluster | ❌ | ✅ |
+| Parallel execution with concurrency control | ❌ | ✅ |
+| Prometheus metrics & health checks | ❌ | ✅ |
+| Kubernetes-native pod scheduling | ❌ | ✅ |
+| Leader election for high availability | ❌ | ✅ |
+| Job lifecycle management (TTL, deadlines, retries) | ❌ | ✅ |
 
 ### How it works
 
