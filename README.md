@@ -28,7 +28,7 @@ Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel
 | Auto-discovery with group/topic filtering | ❌ | ✅ |
 | Per-project status tracking in-cluster | ❌ | ✅ |
 | Parallel execution with concurrency control | ❌ | ✅ |
-| Prometheus metrics & health checks | ❌ | ✅ |
+| Prometheus metrics & health checks | ✅ | ✅ |
 | Kubernetes-native pod scheduling | ❌ | ✅ |
 | Leader election for high availability | ❌ | ✅ |
 | Job lifecycle management (TTL, deadlines, retries) | ❌ | ✅ |
