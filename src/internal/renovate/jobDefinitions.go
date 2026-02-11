@@ -79,7 +79,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json && cat /tmp/repos.json || cat /tmp/logs.json"},
+							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json 2>&1 && cat /tmp/repos.json || cat /tmp/logs.json"},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,

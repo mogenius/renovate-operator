@@ -1,12 +1,14 @@
 package renovate
 
 import (
+	"bufio"
 	"bytes"
 	context "context"
 	"encoding/json"
 	"fmt"
 	"renovate-operator/clientProvider"
 	"sort"
+	"strings"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,8 +21,8 @@ func (e *discoveryAgent) getDiscoveredProjectsFromJobLogs(ctx context.Context, c
 		return []string{}, fmt.Errorf("failed to get logs for job %s: %w", job.Name, err)
 	}
 
-	var discovered []string
-	if err := json.Unmarshal([]byte(logs), &discovered); err != nil {
+	discovered, err := parseDiscoveredProjects(logs)
+	if err != nil {
 		return []string{}, fmt.Errorf("failed to parse discovered projects from logs: %w", err)
 	}
 
@@ -32,6 +34,32 @@ func (e *discoveryAgent) getDiscoveredProjectsFromJobLogs(ctx context.Context, c
 	sort.Strings(discovered)
 
 	return discovered, nil
+}
+
+// parseDiscoveredProjects extracts the JSON string array from discovery pod logs.
+// It first tries to parse the entire log as JSON. If that fails (e.g. due to
+// stderr output mixed into the logs), it scans line by line for a valid JSON array.
+func parseDiscoveredProjects(logs string) ([]string, error) {
+	// Fast path: try parsing the entire log as a JSON array
+	var discovered []string
+	if err := json.Unmarshal([]byte(logs), &discovered); err == nil {
+		return discovered, nil
+	}
+
+	// Fallback: scan line by line for a JSON array (handles stderr mixed into logs)
+	scanner := bufio.NewScanner(strings.NewReader(logs))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if len(line) == 0 || line[0] != '[' {
+			continue
+		}
+		var lineDiscovered []string
+		if err := json.Unmarshal([]byte(line), &lineDiscovered); err == nil {
+			return lineDiscovered, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid JSON array found in discovery logs (%d bytes)", len(logs))
 }
 
 // getLatestSuccessfulPodLog fetches the logs from the latest successful pod for a job
