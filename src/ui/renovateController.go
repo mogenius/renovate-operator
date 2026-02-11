@@ -69,14 +69,10 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		jobIdentifier := crdmanager.RenovateJobIdentifier{
-			Name:      renovateJob.Name,
-			Namespace: renovateJob.Namespace,
-		}
 		result = append(result, RenovateJobInfo{
 			Name:            renovateJob.Name,
 			Namespace:       renovateJob.Namespace,
-			NextSchedule:    s.scheduler.GetNextRun(jobIdentifier.Fullname()),
+			NextSchedule:    s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
 			Projects:        projects,
 			CronExpression:  renovateJob.Spec.Schedule,
 			DiscoveryStatus: discoveryStatus,

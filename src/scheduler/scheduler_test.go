@@ -146,7 +146,7 @@ func TestGetNextRun(t *testing.T) {
 	}
 
 	// Get next run time
-	nextRun := s.GetNextRun("test-next")
+	nextRun := s.GetNextRunOnSchedule("* * * * *")
 	if nextRun.IsZero() {
 		t.Error("Next run time should not be zero for existing schedule")
 	}
@@ -154,12 +154,6 @@ func TestGetNextRun(t *testing.T) {
 	// Next run should be in the future
 	if !nextRun.After(time.Now()) {
 		t.Error("Next run should be in the future")
-	}
-
-	// Non-existent schedule should return zero time
-	zeroTime := s.GetNextRun("non-existent")
-	if !zeroTime.IsZero() {
-		t.Error("GetNextRun should return zero time for non-existent schedule")
 	}
 }
 

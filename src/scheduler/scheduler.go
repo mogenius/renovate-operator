@@ -24,8 +24,8 @@ type Scheduler interface {
 	AddScheduleReplaceExisting(expr string, name string, fn func()) error
 	// Removes a schedule by name.
 	RemoveSchedule(name string)
-	// Gets the next run time for a schedule by name.
-	GetNextRun(name string) time.Time
+	// Gets the next run time for a cron schedule expression.
+	GetNextRunOnSchedule(schedule string) time.Time
 }
 
 type scheduler struct {
@@ -85,7 +85,7 @@ func (s *scheduler) AddSchedule(expr string, name string, fn func()) error {
 	s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 		e.Scheduler[name] = health.SingleSchedulerHealth{
 			Name:      name,
-			NextRun:   s.getNextRunInternal(name),
+			NextRun:   s.GetNextRunOnSchedule(expr),
 			Schedule:  expr,
 			IsRunning: true,
 		}
@@ -120,24 +120,16 @@ func (s *scheduler) RemoveSchedule(name string) {
 		delete(e.Scheduler, name)
 		return e
 	})
+
 }
 
-func (s *scheduler) GetNextRun(name string) time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.getNextRunInternal(name)
-}
-
-func (s *scheduler) getNextRunInternal(name string) time.Time {
-	if entry, ok := s.entries[name]; ok {
-		// Find the entry with matching ID
-		for _, cronEntry := range s.cronManager.Entries() {
-			if cronEntry.ID == entry.entryId {
-				return cronEntry.Next
-			}
-		}
+func (s *scheduler) GetNextRunOnSchedule(schedule string) time.Time {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	sched, err := parser.Parse(schedule)
+	if err != nil {
+		return time.Time{}
 	}
-	return time.Time{} // return zero time if not found
+	return sched.Next(time.Now())
 }
 
 // execute the cron expression while also adapting the health status in this time
@@ -146,7 +138,7 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 		s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
 				Name:      key,
-				NextRun:   s.getNextRunInternal(key),
+				NextRun:   s.GetNextRunOnSchedule(schedule),
 				Schedule:  schedule,
 				IsRunning: true,
 			}
@@ -156,7 +148,7 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 		defer s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
 				Name:      key,
-				NextRun:   s.getNextRunInternal(key),
+				NextRun:   s.GetNextRunOnSchedule(schedule),
 				Schedule:  schedule,
 				IsRunning: false,
 			}
