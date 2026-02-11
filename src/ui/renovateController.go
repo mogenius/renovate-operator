@@ -63,9 +63,10 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {
 			projects = append(projects, crdmanager.RenovateProjectStatus{
-				Name:    p.Name,
-				Status:  p.Status,
-				LastRun: p.LastRun.Time,
+				Name:              p.Name,
+				Status:            p.Status,
+				LastRun:           p.LastRun.Time,
+				HasRenovateConfig: p.HasRenovateConfig,
 			})
 		}
 

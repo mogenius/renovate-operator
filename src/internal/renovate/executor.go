@@ -210,6 +210,13 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 						if logs, err := crdManager.GetLastJobLog(ctx, clientset, job); err == nil {
 							parseResult := parser.ParseRenovateLogs(logs)
 							hasIssues = parseResult.HasIssues
+
+							// Update config status based on log parsing
+							if parseResult.HasRenovateConfig != nil {
+								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.HasRenovateConfig); err != nil {
+									e.logger.Error(err, "failed to update config status", "project", project.Name)
+								}
+							}
 						} else {
 							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 						}

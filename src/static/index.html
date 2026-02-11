@@ -370,6 +370,7 @@
             running: 0,
             completed: 0,
             failed: 0,
+            noConfig: 0,
           };
           jobsList.forEach((job) => {
             if (Array.isArray(job.projects)) {
@@ -377,6 +378,9 @@
                 const status = (project.status || "").toLowerCase();
                 if (newStats.hasOwnProperty(status)) {
                   newStats[status]++;
+                }
+                if (project.hasRenovateConfig === false) {
+                  newStats.noConfig++;
                 }
               });
             }
@@ -607,6 +611,16 @@
                         {loading ? "—" : stats.completed}
                       </div>
                     </div>
+                    {stats.noConfig > 0 && (
+                      <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
+                        <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
+                          No Config
+                        </div>
+                        <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-400 dark:text-slate-500">
+                          {loading ? "—" : stats.noConfig}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -712,6 +726,13 @@
 
         if (sortConfig.key) {
           sortedProjects.sort((a, b) => {
+            // Always sort "no config" repos to the end
+            const aNoConfig = a.hasRenovateConfig === false;
+            const bNoConfig = b.hasRenovateConfig === false;
+            if (aNoConfig !== bNoConfig) {
+              return aNoConfig ? 1 : -1;
+            }
+
             let aValue = a[sortConfig.key];
             let bValue = b[sortConfig.key];
 
@@ -1008,12 +1029,19 @@
                         sortedProjects.map((project) => (
                           <tr
                             key={project.name}
-                            className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                            className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "opacity-60" : ""}`}
                           >
                             <td className="px-6 py-4">
-                              <span className="font-medium text-gray-900 dark:text-slate-100">
-                                {project.name}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-900 dark:text-slate-100">
+                                  {project.name}
+                                </span>
+                                {project.hasRenovateConfig === false && (
+                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300">
+                                    No Config
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4">
                               <span className={getBadgeClass(project.status)}>
@@ -1086,12 +1114,19 @@
                 <div className="md:hidden bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                   {job.projects && job.projects.length > 0 ? (
                     sortedProjects.map((project) => (
-                      <div key={project.name} className="p-4 space-y-3">
+                      <div key={project.name} className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "opacity-60" : ""}`}>
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-medium text-gray-900 dark:text-slate-100">
-                              {project.name}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-gray-900 dark:text-slate-100">
+                                {project.name}
+                              </p>
+                              {project.hasRenovateConfig === false && (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300">
+                                  No Config
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                               Last run:{" "}
                               {project.lastRun

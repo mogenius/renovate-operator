@@ -61,6 +61,9 @@ func (f *fakeManager) ReconcileProjects(ctx context.Context, job crdManager.Reno
 func (f *fakeManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
 	return "", fmt.Errorf("not implemented")
 }
+func (f *fakeManager) UpdateProjectConfigStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, hasConfig *bool) error {
+	return nil
+}
 
 func (f *fakeManager) IsWebhookTokenValid(ctx context.Context, job crdManager.RenovateJobIdentifier, token string) (bool, error) {
 	return true, nil

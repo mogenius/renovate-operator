@@ -76,6 +76,10 @@ func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId cr
 	return nil
 }
 
+func (m *mockRenovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, hasConfig *bool) error {
+	return nil
+}
+
 // Implement remaining interface methods as no-ops
 func (m *mockRenovateJobManager) LoadRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil

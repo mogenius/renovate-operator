@@ -43,6 +43,8 @@ type RenovateJobManager interface {
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
 	ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error
+	// UpdateProjectConfigStatus updates the HasRenovateConfig flag for a specific project.
+	UpdateProjectConfigStatus(ctx context.Context, project string, job RenovateJobIdentifier, hasConfig *bool) error
 	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
@@ -66,9 +68,10 @@ func (in *RenovateJobIdentifier) Fullname() string {
 }
 
 type RenovateProjectStatus struct {
-	Name    string                    `json:"name"`
-	Status  api.RenovateProjectStatus `json:"status"`
-	LastRun time.Time                 `json:"lastRun,omitempty"`
+	Name              string                    `json:"name"`
+	Status            api.RenovateProjectStatus `json:"status"`
+	LastRun           time.Time                 `json:"lastRun,omitempty"`
+	HasRenovateConfig *bool                     `json:"hasRenovateConfig,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client) RenovateJobManager {
@@ -110,9 +113,10 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 	for _, project := range renovateJob.Status.Projects {
 		if project.Status == status {
 			result = append(result, RenovateProjectStatus{
-				Name:    project.Name,
-				Status:  project.Status,
-				LastRun: project.LastRun.Time,
+				Name:              project.Name,
+				Status:            project.Status,
+				LastRun:           project.LastRun.Time,
+				HasRenovateConfig: project.HasRenovateConfig,
 			})
 		}
 	}
@@ -129,9 +133,10 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 	result := make([]RenovateProjectStatus, 0)
 	for _, project := range renovateJob.Status.Projects {
 		result = append(result, RenovateProjectStatus{
-			Name:    project.Name,
-			Status:  project.Status,
-			LastRun: project.LastRun.Time,
+			Name:              project.Name,
+			Status:            project.Status,
+			LastRun:           project.LastRun.Time,
+			HasRenovateConfig: project.HasRenovateConfig,
 		})
 	}
 	return result, nil
@@ -269,6 +274,25 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job Renovate
 
 		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 		return err
+	})
+}
+
+func (r *renovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, job RenovateJobIdentifier, hasConfig *bool) error {
+	defer r.globalManagerLock(false)()
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
+		}
+		for i := range renovateJob.Status.Projects {
+			if renovateJob.Status.Projects[i].Name == project {
+				renovateJob.Status.Projects[i].HasRenovateConfig = hasConfig
+				_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
+				return err
+			}
+		}
+		return nil
 	})
 }
 
