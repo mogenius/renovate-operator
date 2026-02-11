@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -136,6 +137,21 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 			name:          "run with warnings but no onboarding - has config",
 			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(true),
+		},
+		{
+			name:          "onboarded false in Repository finished line - no config",
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Repository finished","onboarded":false,"status":"onboarding"}`,
+			wantHasConfig: boolPtr(false),
+		},
+		{
+			name:          "onboarded false detected via raw fallback when line exceeds scanner buffer",
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR updated"}` + "\n" + `{"level":30,"cloned":true,"onboarded":false,"msg":"Repository finished"}`,
+			wantHasConfig: boolPtr(false),
+		},
+		{
+			name:          "real world: onboarded false with scanner-breaking stats line",
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"onboarded":false,"msg":"Repository finished"}`,
+			wantHasConfig: boolPtr(false),
 		},
 	}
 

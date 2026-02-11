@@ -370,7 +370,6 @@
             running: 0,
             completed: 0,
             failed: 0,
-            noConfig: 0,
           };
           jobsList.forEach((job) => {
             if (Array.isArray(job.projects)) {
@@ -378,9 +377,6 @@
                 const status = (project.status || "").toLowerCase();
                 if (newStats.hasOwnProperty(status)) {
                   newStats[status]++;
-                }
-                if (project.hasRenovateConfig === false) {
-                  newStats.noConfig++;
                 }
               });
             }
@@ -611,16 +607,6 @@
                         {loading ? "—" : stats.completed}
                       </div>
                     </div>
-                    {stats.noConfig > 0 && (
-                      <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                        <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                          No Config
-                        </div>
-                        <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-400 dark:text-slate-500">
-                          {loading ? "—" : stats.noConfig}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1029,16 +1015,16 @@
                         sortedProjects.map((project) => (
                           <tr
                             key={project.name}
-                            className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "opacity-60" : ""}`}
+                            className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
                           >
-                            <td className="px-6 py-4">
+                            <td className={`px-6 py-4 ${project.hasRenovateConfig === false ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-900 dark:text-slate-100">
+                                <span className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
                                 </span>
                                 {project.hasRenovateConfig === false && (
-                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300">
-                                    No Config
+                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                                    No Config (renovate not onboarded)
                                   </span>
                                 )}
                               </div>
@@ -1114,16 +1100,16 @@
                 <div className="md:hidden bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                   {job.projects && job.projects.length > 0 ? (
                     sortedProjects.map((project) => (
-                      <div key={project.name} className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "opacity-60" : ""}`}>
+                      <div key={project.name} className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-900 dark:text-slate-100">
+                              <p className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                 {project.name}
                               </p>
                               {project.hasRenovateConfig === false && (
-                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300">
-                                  No Config
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                                  No Config (renovate not onboarded)
                                 </span>
                               )}
                             </div>

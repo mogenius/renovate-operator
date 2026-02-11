@@ -66,6 +66,17 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		}
 	}
 
+	// Fallback: raw string search for onboarding signals.
+	// The line-by-line scanner may miss signals when log lines exceed the
+	// default buffer size (e.g. the "Repository finished" line with large stats).
+	// Renovate's "Repository finished" entry contains "onboarded":false when no config exists.
+	if !onboardingDetected {
+		if strings.Contains(logs, `"onboarded":false`) {
+			onboardingDetected = true
+			hasValidEntries = true
+		}
+	}
+
 	// Determine config status based on parsed logs
 	if hasValidEntries {
 		hasConfig := !onboardingDetected

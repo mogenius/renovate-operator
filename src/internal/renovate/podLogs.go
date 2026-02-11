@@ -77,7 +77,7 @@ func (e *discoveryAgent) getLatestSuccessfulPodLog(ctx context.Context, c client
 		}
 	}
 	if len(succeededPods) == 0 {
-		return "", nil // No successful pods yet
+		return "", fmt.Errorf("no successful pods found for job %s", job.Name)
 	}
 
 	// Sort by StartTime descending (latest first)
