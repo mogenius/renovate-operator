@@ -23,7 +23,7 @@ Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel
 | Runs on your own infrastructure | ✅ | ✅ |
 | Auto-discovery | ✅ | ✅ |
 | Webhook API for on-demand runs | ✅ | ✅ |
-| Web UI | ✅ | ✅ |
+| Web UI | ❌ | ✅ |
 | Declarative cron scheduling via CRD | ❌ | ✅ |
 | Auto-discovery with group/topic filtering | ❌ | ✅ |
 | Per-project status tracking in-cluster | ❌ | ✅ |
