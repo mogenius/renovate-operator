@@ -18,6 +18,11 @@ type renovateLogEntry struct {
 	Msg   string `json:"msg"`
 }
 
+type repositoryFinishedEntry struct {
+	Msg       string `json:"msg"`
+	Onboarded bool   `json:"onboarded"`
+}
+
 // ParseRenovateLogs parses Renovate JSON logs (NDJSON format) and detects warnings/errors
 // and whether the repository has a Renovate config file.
 // Returns HasIssues=true if any log entry has level >= 40 (WARN or ERROR).
@@ -57,23 +62,14 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			result.HasIssues = true
 		}
 
-		// Detect onboarding signals - Renovate logs these when no config file is found
-		if !onboardingDetected && entry.Msg != "" {
-			msgLower := strings.ToLower(entry.Msg)
-			if strings.Contains(msgLower, "onboarding") {
-				onboardingDetected = true
+		// Parse the "Repository finished" line which has the definitive status
+		if entry.Msg == "Repository finished" {
+			var finished repositoryFinishedEntry
+			if err := json.Unmarshal([]byte(line), &finished); err == nil {
+				if !finished.Onboarded {
+					onboardingDetected = true
+				}
 			}
-		}
-	}
-
-	// Fallback: raw string search for onboarding signals.
-	// The line-by-line scanner may miss signals when log lines exceed the
-	// default buffer size (e.g. the "Repository finished" line with large stats).
-	// Renovate's "Repository finished" entry contains "onboarded":false when no config exists.
-	if !onboardingDetected {
-		if strings.Contains(logs, `"onboarded":false`) {
-			onboardingDetected = true
-			hasValidEntries = true
 		}
 	}
 
