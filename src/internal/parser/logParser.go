@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"strings"
+
+	"k8s.io/utils/ptr"
 )
 
 // LogParseResult contains the result of parsing Renovate logs
@@ -20,7 +22,7 @@ type renovateLogEntry struct {
 
 type repositoryFinishedEntry struct {
 	Msg       string `json:"msg"`
-	Onboarded bool   `json:"onboarded"`
+	Onboarded *bool  `json:"onboarded,omitempty"`
 }
 
 // ParseRenovateLogs parses Renovate JSON logs (NDJSON format) and detects warnings/errors
@@ -39,9 +41,6 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		return result
 	}
 
-	hasValidEntries := false
-	onboardingDetected := false
-
 	scanner := bufio.NewScanner(strings.NewReader(logs))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -55,8 +54,6 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			continue
 		}
 
-		hasValidEntries = true
-
 		// Renovate log levels: 10=trace, 20=debug, 30=info, 40=warn, 50=error, 60=fatal
 		if entry.Level >= 40 {
 			result.HasIssues = true
@@ -66,17 +63,14 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		if entry.Msg == "Repository finished" {
 			var finished repositoryFinishedEntry
 			if err := json.Unmarshal([]byte(line), &finished); err == nil {
-				if !finished.Onboarded {
-					onboardingDetected = true
+				if finished.Onboarded == nil {
+					result.HasRenovateConfig = ptr.To(false)
+				} else {
+					result.HasRenovateConfig = finished.Onboarded
 				}
+
 			}
 		}
-	}
-
-	// Determine config status based on parsed logs
-	if hasValidEntries {
-		hasConfig := !onboardingDetected
-		result.HasRenovateConfig = &hasConfig
 	}
 
 	return result

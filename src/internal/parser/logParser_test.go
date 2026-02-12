@@ -94,9 +94,9 @@ func TestParseRenovateLogs(t *testing.T) {
 
 func TestParseRenovateLogsConfigDetection(t *testing.T) {
 	tests := []struct {
-		name             string
-		logs             string
-		wantHasConfig    *bool
+		name          string
+		logs          string
+		wantHasConfig *bool
 	}{
 		{
 			name:          "empty logs - unknown config status",
@@ -110,32 +110,32 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 		},
 		{
 			name:          "normal run without onboarding - has config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Dependency extraction complete"}` + "\n" + `{"level":30,"msg":"Repository finished"}`,
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Dependency extraction complete"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(true),
 		},
 		{
 			name:          "onboarding detected - no config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR is needed"}` + "\n" + `{"level":30,"msg":"Repository finished"}`,
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR is needed"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(false),
 		},
 		{
 			name:          "onboarding case insensitive",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"ONBOARDING branch created"}`,
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"ONBOARDING branch created"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(false),
 		},
 		{
 			name:          "onboarding in mixed case message",
-			logs:          `{"level":30,"msg":"Ensuring onboarding PR"}`,
+			logs:          `{"level":30,"msg":"Ensuring onboarding PR"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(false),
 		},
 		{
 			name:          "onboarding with warning - no config and has issues",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Onboarding PR needs update"}`,
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Onboarding PR needs update"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(false),
 		},
 		{
 			name:          "run with warnings but no onboarding - has config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"msg":"Repository finished"}`,
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
 			wantHasConfig: boolPtr(true),
 		},
 		{
@@ -150,8 +150,8 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 		},
 		{
 			name:          "real world: onboarded false with scanner-breaking stats line",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"cloned":true,"onboarded":false,"msg":"Repository finished"}`,
+			wantHasConfig: nil,
 		},
 	}
 
