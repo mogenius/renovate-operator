@@ -130,6 +130,8 @@ metrics:
   serviceMonitor:
     # -- whether to create a ServiceMonitor for the operator metrics
     enabled: false
+    # -- scrape interval for the ServiceMonitor, defaults to Prometheus global scrape interval
+    interval: ~
   dashboard:
     # -- whether to create a Grafana dashboard for the operator metrics
     enabled: false

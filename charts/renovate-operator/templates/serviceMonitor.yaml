@@ -8,6 +8,9 @@ spec:
   endpoints:
   - path: /metrics
     port: metrics
+    {{- with .Values.metrics.serviceMonitor.interval }}
+    interval: {{ . | quote }}
+    {{- end }}
   namespaceSelector:
     matchNames:
     - {{ .Release.Namespace }}
