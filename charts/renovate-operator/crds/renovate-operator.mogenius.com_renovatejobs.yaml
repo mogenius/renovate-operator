@@ -3080,6 +3080,25 @@ spec:
                   - name
                   type: object
                 type: array
+              githubAppReference:
+                description: |-
+                  Reference to a Github App for authentication, this will automatically mount a secret with
+                  RENOVATE_TOKEN, GITHUB_COM_TOKEN and GITHUB_COM_USER
+                properties:
+                  appIdSecretKey:
+                    type: string
+                  installationIdSecretKey:
+                    type: string
+                  pemSecretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - appIdSecretKey
+                - installationIdSecretKey
+                - pemSecretKey
+                - secretName
+                type: object
               image:
                 description: Renovate Docker image to use
                 type: string

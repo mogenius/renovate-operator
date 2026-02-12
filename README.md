@@ -68,7 +68,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
   - [GitLab](./docs/platforms/gitlab.md)
   - [GitHub PAT](./docs/platforms/github-pat.md)
   - [GitHub App - External Secrets Operator](./docs/platforms/github-app-eso.md)
-  - Native GitHub App Support - We are still working on that
+  - [GitHub App - Native](./docs/platforms/github-app-native.md)
 - [Autodiscovery](./docs/autodiscovery.md)
 - Webhook API
   - [Generic](./docs/webhooks/webhook.md)
