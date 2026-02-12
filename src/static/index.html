@@ -711,14 +711,7 @@
         const sortedProjects = [...projects];
 
         if (sortConfig.key) {
-          sortedProjects.sort((a, b) => {
-            // Always sort "no config" repos to the end
-            const aNoConfig = a.hasRenovateConfig === false;
-            const bNoConfig = b.hasRenovateConfig === false;
-            if (aNoConfig !== bNoConfig) {
-              return aNoConfig ? 1 : -1;
-            }
-
+          sortedProjects.sort((a, b) => {            
             let aValue = a[sortConfig.key];
             let bValue = b[sortConfig.key];
 
@@ -727,7 +720,6 @@
             if (!aValue) return sortConfig.direction === "asc" ? 1 : -1;
             if (!bValue) return sortConfig.direction === "asc" ? -1 : 1;
 
-            // Special handling for status (custom order)
             if (sortConfig.key === "status") {
               const statusOrder = {
                 running: 0,
@@ -735,8 +727,32 @@
                 failed: 2,
                 completed: 3,
               };
-              aValue = statusOrder[aValue.toLowerCase()] ?? 99;
-              bValue = statusOrder[bValue.toLowerCase()] ?? 99;
+              const aStatus = statusOrder[(a.status || "").toLowerCase()] ?? 99;
+              const bStatus = statusOrder[(b.status || "").toLowerCase()] ?? 99;
+              
+              // Primary: status
+              if (aStatus !== bStatus) {
+                return sortConfig.direction === "asc" 
+                  ? aStatus - bStatus 
+                  : bStatus - aStatus;
+              }
+              
+              // Secondary: onboarding state within same status
+              const aHasConfig = a.hasRenovateConfig;
+              const bHasConfig = b.hasRenovateConfig;
+              const aOnboarding = aHasConfig === true ? 0 : (aHasConfig === false ? 1 : 2);
+              const bOnboarding = bHasConfig === true ? 0 : (bHasConfig === false ? 1 : 2);
+              
+              if (aOnboarding !== bOnboarding) {
+                return sortConfig.direction === "asc"
+                  ? aOnboarding - bOnboarding
+                  : bOnboarding - aOnboarding;
+              }
+              
+              // Tertiary: name
+              const aName = (a.name || "").toLowerCase();
+              const bName = (b.name || "").toLowerCase();
+              return aName.localeCompare(bName);
             }
 
             // Special handling for lastRun (date comparison)
