@@ -151,7 +151,7 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 		{
 			name:          "real world: onboarded false with scanner-breaking stats line",
 			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"cloned":true,"onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: nil,
+			wantHasConfig: boolPtr(false),
 		},
 	}
 

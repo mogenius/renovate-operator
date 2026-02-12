@@ -42,6 +42,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(logs))
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
