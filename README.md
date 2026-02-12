@@ -14,6 +14,8 @@
 
 Run [Renovate][1] on your own infrastructure with CRD-based scheduling, parallel execution, auto-discovery, and a built-in UI. If you self-host Renovate and already run Kubernetes, this operator gives you the control and observability that plain self-hosted setups lack.
 
+**Supports all Renovate platforms:** GitHub, GitLab, Bitbucket, Azure DevOps, Gitea, and more. The operator works with any [platform supported by Renovate][4] - simply configure your credentials and platform settings via environment variables or secrets. Note that some platforms have additional operator-specific features like native webhook integrations for GitHub and GitLab.
+
 ### Comparison with Mend Renovate CE
 
 | Feature | [Mend Renovate CLI][3]| [Mend Renovate Community Self-Hosted (aka "CE")][2] | Renovate Operator |
@@ -64,11 +66,12 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 
 ## Documentation
 
-- Platforms
+- **Platform Setup**
   - [GitLab](./docs/platforms/gitlab.md)
   - [GitHub PAT](./docs/platforms/github-pat.md)
   - [GitHub App - External Secrets Operator](./docs/platforms/github-app-eso.md)
   - Native GitHub App Support - We are still working on that
+  - _Azure DevOps, Bitbucket, Gitea, Forgejo, and others: configure via `extraEnv`_ ([see Renovate platform docs](./docs/platforms/generic.md))
 - [Autodiscovery](./docs/autodiscovery.md)
 - Webhook API
   - [Generic](./docs/webhooks/webhook.md)
@@ -124,3 +127,4 @@ just generate
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
 [3]: https://docs.renovatebot.com/
+[4]: https://docs.renovatebot.com/modules/platform/
