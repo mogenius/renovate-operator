@@ -111,7 +111,16 @@ securityContext:
     privileged: false
     allowPrivilegeEscalation: false
 
+# -- resources for the operator pod
 resources: {}
+# -- nodeSelector for the operator pod
+nodeSelector: {}
+# -- tolerations for the operator pod
+tolerations: []
+# -- affinity for the operator pod
+affinity: {}
+# -- topologySpreadConstraints for the operator pod
+topologySpreadConstraints: []
 
 serviceAccount:
   # -- name of the serviceaccount, if not set a name is generated using the fullname template
