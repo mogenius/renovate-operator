@@ -10,6 +10,8 @@ image:
   # -- tag of the renovate-operator, if empty .Chart.AppVersion is used
   tag: ~
   pullPolicy: "IfNotPresent"
+  # -- imagePullSecrets for the operator pod
+  imagePullSecrets: []
 
 
 config:
