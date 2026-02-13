@@ -13,8 +13,11 @@ func isRenovateContent(description string) bool {
 		return true
 	}
 
-	// Dependency Dashboards created by Renovate contain this specific comment
+	// Dependency Dashboards created by Renovate contain these specific comments
 	if strings.Contains(description, "<!-- rebase-all-open-prs -->**Click on this checkbox to rebase all") {
+		return true
+	}
+	if strings.Contains(description, "<!-- approve-all-pending-prs -->\U0001f510 **Create all pending approval PRs at once** \U0001f510") {
 		return true
 	}
 	return false

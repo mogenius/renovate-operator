@@ -29,6 +29,11 @@ func TestRenovateCheckbox(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "valid dependency dashboard with approve-all-pending-prs checkbox",
+			current:  "Some update\n- [x] <!-- approve-all-pending-prs -->🔐 **Create all pending approval PRs at once** 🔐",
+			expected: true,
+		},
+		{
 			name:     "empty description",
 			current:  "",
 			expected: false,
