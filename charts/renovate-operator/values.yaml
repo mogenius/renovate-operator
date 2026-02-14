@@ -13,6 +13,11 @@ image:
   # -- imagePullSecrets for the operator pod
   imagePullSecrets: []
 
+deployment:
+  # -- additional annotations for the operator deployment
+  annotations: {}
+  # -- additional labels for the operator deployment
+  labels: {}
 
 config:
   # -- default backoff limit for renovate jobs
@@ -129,6 +134,10 @@ serviceAccount:
   name: ~
   # -- whether a serviceaccount should be created
   create: true
+  # -- annotations to add to the serviceaccount
+  annotations: {}
+  # -- labels to add to the serviceaccount
+  labels: {}
 
 logging:
   # -- log level for the operator, one of 'debug', 'info', 'error', 'panic'or any integer value > 0

@@ -3,6 +3,14 @@ kind: Deployment
 metadata:
   name: {{ include "renovate-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  {{- with .Values.deployment.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.deployment.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
