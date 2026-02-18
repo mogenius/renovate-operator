@@ -118,6 +118,11 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "IMAGE_PULL_SECRETS",
+			Optional: true,
+			Default:  "[]",
+		},
+		{
 			Key:      "LEADER_ELECTION_ID",
 			Optional: true,
 		},

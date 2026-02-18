@@ -303,6 +303,43 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectTopologySpreadConstraints(t, rj, nil)
 }
 
+func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+		{Key: "IMAGE_PULL_SECRETS", Optional: true, Default: `[{"name":"default-secret"}]`},
+	})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+
+	t.Run("default secret applied when spec has none", func(t *testing.T) {
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec:       api.RenovateJobSpec{Image: "img"},
+		}
+		dj := newDiscoveryJob(job)
+		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
+
+		rj := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "default-secret"}})
+	})
+
+	t.Run("spec and default secrets are combined", func(t *testing.T) {
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec: api.RenovateJobSpec{
+				Image:            "img",
+				ImagePullSecrets: []v1.LocalObjectReference{{Name: "spec-secret"}},
+			},
+		}
+		dj := newDiscoveryJob(job)
+		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+
+		rj := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+	})
+}
+
 // ##### HELPERS #####
 func expectContainer(t *testing.T, job *batchv1.Job) *v1.Container {
 	containers := job.Spec.Template.Spec.Containers

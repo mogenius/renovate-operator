@@ -1,6 +1,7 @@
 package renovate
 
 import (
+	"encoding/json"
 	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
@@ -73,7 +74,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
-					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
@@ -159,7 +160,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
-					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
@@ -290,6 +291,19 @@ func getJobLabels(metadata *api.RenovateJobMetadata, jobType crdmanager.JobType,
 		maps.Copy(labels, metadata.Labels)
 	}
 	return labels
+}
+
+// imagePullSecrets configured at the operator level via IMAGE_PULL_SECRETS env var
+func getDefaultImagePullSecrets() []v1.LocalObjectReference {
+	raw := config.GetValue("IMAGE_PULL_SECRETS")
+	if raw == "" || raw == "[]" {
+		return nil
+	}
+	var secrets []v1.LocalObjectReference
+	if err := json.Unmarshal([]byte(raw), &secrets); err != nil {
+		return nil
+	}
+	return secrets
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv

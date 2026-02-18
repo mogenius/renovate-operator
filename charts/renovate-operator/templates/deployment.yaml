@@ -74,6 +74,8 @@ spec:
               value: {{ .Values.config.deleteSuccessfulJobs | quote }}
             - name: JOB_TTL_SECONDS_AFTER_FINISHED
               value: {{ .Values.config.jobTTLSecondsAfterFinished | quote }}
+            - name: IMAGE_PULL_SECRETS
+              value: {{ .Values.image.imagePullSecrets | toJson | quote }}
             - name: SERVER_PORT
               value: "8081"
             {{- if or .Values.rbac.ownNamespaceOnly .Values.rbac.watchNamespace }}
