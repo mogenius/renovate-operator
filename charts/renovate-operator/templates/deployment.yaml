@@ -20,6 +20,13 @@ spec:
     metadata:
       labels:
         app: {{ include "renovate-operator.fullname" . }}
+        {{- with .Values.deployment.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.deployment.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       serviceAccountName: {{ include "renovate-operator.serviceAccountName" . }}
       {{- with .Values.securityContext.pod }}

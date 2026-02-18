@@ -18,6 +18,10 @@ deployment:
   annotations: {}
   # -- additional labels for the operator deployment
   labels: {}
+  # -- additional labels for the operator pods
+  podLabels: {}
+  # -- additional annotations for the operator pods
+  podAnnotations: {}
 
 config:
   # -- default backoff limit for renovate jobs
