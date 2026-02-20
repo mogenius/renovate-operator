@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"encoding/json"
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	"renovate-operator/health"
@@ -23,9 +24,10 @@ type Server struct {
 	server    *http.Server
 	health    health.HealthCheck
 	version   string
+	oidc      *OIDCAuth
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, oidc *OIDCAuth) *Server {
 	return &Server{
 		manager:   manager,
 		logger:    logger,
@@ -33,7 +35,29 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		discovery: discovery,
 		scheduler: scheduler,
 		version:   version,
+		oidc:      oidc,
 	}
+}
+
+func (s *Server) registerAuthRoutes(router *mux.Router) {
+	if s.oidc != nil {
+		router.HandleFunc("/auth/login", s.oidc.handleLogin).Methods("GET")
+		router.HandleFunc("/auth/callback", s.oidc.handleCallback).Methods("GET")
+		router.HandleFunc("/auth/logout", s.oidc.handleLogout).Methods("GET", "POST")
+	}
+
+	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
+}
+
+func (s *Server) getAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if s.oidc == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"enabled": false,
+		})
+		return
+	}
+	s.oidc.handleAuthStatus(w, r)
 }
 
 func (s *Server) Run() {
@@ -42,14 +66,20 @@ func (s *Server) Run() {
 
 	router := mux.NewRouter()
 
+	s.registerAuthRoutes(router)
 	s.registerApiV1Routes(router)
 	s.registerHealthRoutes(router)
 	s.registerUiRoutes(router)
 
+	var handler http.Handler = router
+	if s.oidc != nil {
+		handler = s.oidc.authMiddleware(router)
+	}
+
 	port := config.GetValue("SERVER_PORT")
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%s", port),
-		Handler: router,
+		Handler: handler,
 	}
 
 	s.server = server
