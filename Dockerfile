@@ -32,6 +32,7 @@ RUN mkdir -p src/static/js && \
 
 FROM scratch
 WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /workspace/renovate-operator /app/renovate-operator
 COPY --from=builder /workspace/static /app/static
 COPY --from=js-downloader /workspace/src/static/js /app/static/js

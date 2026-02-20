@@ -4,6 +4,7 @@ go 1.25.4
 
 require (
 	github.com/netresearch/go-cron v0.13.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
 	sigs.k8s.io/controller-runtime v0.23.1
@@ -11,6 +12,7 @@ require (
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -53,7 +55,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
+	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
