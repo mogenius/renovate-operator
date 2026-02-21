@@ -20,6 +20,9 @@ func isRenovateContent(description string) bool {
 	if strings.Contains(description, "<!-- approve-all-pending-prs -->\U0001f510 **Create all pending approval PRs at once** \U0001f510") {
 		return true
 	}
+	if strings.Contains(description, "<!-- approvePr-branch=") {
+		return true
+	}
 	return false
 }
 
