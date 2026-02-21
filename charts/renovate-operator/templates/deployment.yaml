@@ -103,6 +103,9 @@ spec:
             - name: LEADER_ELECTION_ID
               value: "{{ include "renovate-operator.fullname" . }}-leader"
             {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - containerPort: 8081
               name: http

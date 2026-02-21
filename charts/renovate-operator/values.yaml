@@ -124,6 +124,8 @@ securityContext:
 
 # -- resources for the operator pod
 resources: {}
+# -- extra environment variables for the operator container
+extraEnv: []
 # -- nodeSelector for the operator pod
 nodeSelector: {}
 # -- tolerations for the operator pod
