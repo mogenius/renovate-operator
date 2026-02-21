@@ -34,6 +34,11 @@ func TestRenovateCheckbox(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "valid dependency dashboard with approvePr-branch checkbox",
+			current:  "\n- [ ] <!-- approvePr-branch=renovate/renovate-skopeo-43.x -->chore(deps): update dependency renovate-skopeo to v43.29.2",
+			expected: true,
+		},
+		{
 			name:     "empty description",
 			current:  "",
 			expected: false,
