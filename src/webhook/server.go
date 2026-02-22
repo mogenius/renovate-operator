@@ -39,6 +39,7 @@ func (s *Server) Run() {
 	sub.HandleFunc("/schedule", s.runRenovate).Methods("POST")
 	sub.HandleFunc("/gitlab", s.gitLabWebhook).Methods("POST")
 	sub.HandleFunc("/github", s.githubWebhook).Methods("POST")
+	sub.HandleFunc("/forgejo", s.forgejoWebhook).Methods("POST")
 
 	port := config.GetValue("WEBHOOK_SERVER_PORT")
 
@@ -132,8 +133,11 @@ func (server *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Fallback to X-Hub-Signature-256 for GitHub compatibility
+		// Fallback to HMAC signature verification (GitHub, Forgejo)
 		signature := r.Header.Get("X-Hub-Signature-256")
+		if signature == "" {
+			signature = r.Header.Get("X-Forgejo-Signature")
+		}
 
 		if signature != "" {
 			valid, reason := server.validateSignature(r.Context(), r, namespace, job, signature)
