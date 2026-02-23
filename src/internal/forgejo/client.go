@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // Client is the interface for interacting with the Forgejo REST API.
@@ -67,7 +68,7 @@ func NewClient(baseURL, token string) Client {
 	return &client{
 		baseURL:    baseURL,
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
