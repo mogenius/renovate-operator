@@ -1,0 +1,148 @@
+package forgejo
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/go-logr/logr"
+)
+
+// WebhookSyncer manages webhook lifecycle on Forgejo repos tagged with a specific topic.
+type WebhookSyncer struct {
+	client       Client
+	webhookURL   string
+	authToken    string
+	events       []string
+	topic        string
+	logger       logr.Logger
+	managedRepos map[string]int64 // repo fullName -> webhook ID
+	mu           sync.Mutex
+}
+
+// NewWebhookSyncer creates a new WebhookSyncer.
+func NewWebhookSyncer(client Client, webhookURL, authToken, topic string, events []string, logger logr.Logger) *WebhookSyncer {
+	if len(events) == 0 {
+		events = []string{"issues", "pull_request"}
+	}
+	return &WebhookSyncer{
+		client:       client,
+		webhookURL:   webhookURL,
+		authToken:    authToken,
+		events:       events,
+		topic:        topic,
+		logger:       logger,
+		managedRepos: make(map[string]int64),
+	}
+}
+
+// RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
+func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Step 1: Search repos by topic
+	repos, err := s.client.SearchReposByTopic(ctx, s.topic)
+	if err != nil {
+		return fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+	}
+
+	// Step 2: Partition by admin permission
+	topicRepos := make(map[string]bool, len(repos))
+	adminRepos := make(map[string]Repository)
+	for _, repo := range repos {
+		topicRepos[repo.FullName] = true
+		if repo.Permissions != nil && repo.Permissions.Admin {
+			adminRepos[repo.FullName] = repo
+		} else {
+			s.logger.Info("skipping repo: no admin permission to manage webhooks", "repo", repo.FullName)
+		}
+	}
+
+	// Step 3: Ensure webhooks on admin repos
+	for fullName := range adminRepos {
+		parts := strings.SplitN(fullName, "/", 2)
+		if len(parts) != 2 {
+			s.logger.Error(fmt.Errorf("invalid repo full name: %s", fullName), "skipping repo")
+			continue
+		}
+		owner, repoName := parts[0], parts[1]
+
+		if err := s.ensureWebhook(ctx, owner, repoName, fullName); err != nil {
+			s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+			continue
+		}
+	}
+
+	// Step 4: Remove webhooks from repos that are no longer eligible
+	for fullName, hookID := range s.managedRepos {
+		if _, stillActive := adminRepos[fullName]; stillActive {
+			continue
+		}
+
+		// Repo still has the topic but we lost admin access — we can't delete the webhook
+		if topicRepos[fullName] {
+			s.logger.Error(fmt.Errorf("lost admin permission on repo that still has topic %q", s.topic),
+				"cannot remove webhook: admin permission required, please remove the webhook manually",
+				"repo", fullName, "hookID", hookID)
+			delete(s.managedRepos, fullName)
+			continue
+		}
+
+		parts := strings.SplitN(fullName, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repoName := parts[0], parts[1]
+
+		if err := s.client.DeleteRepoWebhook(ctx, owner, repoName, hookID); err != nil {
+			s.logger.Error(err, "failed to remove webhook", "repo", fullName)
+			continue
+		}
+
+		s.logger.Info("removed webhook from repo (no longer matches topic)", "repo", fullName)
+		delete(s.managedRepos, fullName)
+	}
+
+	return nil
+}
+
+func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {
+	hooks, err := s.client.ListRepoWebhooks(ctx, owner, repo)
+	if err != nil {
+		return fmt.Errorf("listing webhooks: %w", err)
+	}
+
+	// Check if our webhook already exists
+	for _, hook := range hooks {
+		if hook.Config.URL == s.webhookURL {
+			s.managedRepos[fullName] = hook.ID
+			return nil
+		}
+	}
+
+	// Create the webhook
+	cfg := WebhookConfig{
+		URL:         s.webhookURL,
+		ContentType: "json",
+	}
+	if s.authToken != "" {
+		cfg.AuthorizationHeader = "Bearer " + s.authToken
+	}
+	opts := CreateWebhookOptions{
+		Type:   "forgejo",
+		Config: cfg,
+		Events: s.events,
+		Active: true,
+	}
+
+	hook, err := s.client.CreateRepoWebhook(ctx, owner, repo, opts)
+	if err != nil {
+		return fmt.Errorf("creating webhook: %w", err)
+	}
+
+	s.managedRepos[fullName] = hook.ID
+	s.logger.Info("created webhook on repo", "repo", fullName, "hookID", hook.ID)
+	return nil
+}
