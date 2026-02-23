@@ -93,6 +93,20 @@
         }
       };
 
+      const formatLocalTime = (timestamp) => {
+        if (!timestamp) return "Never";
+        const date = new Date(timestamp);
+        return date.toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          timeZoneName: 'short'
+        });
+      };
+
       const formatCountdown = (timestamp) => {
         const now = new Date();
         const future = new Date(timestamp);
@@ -151,6 +165,87 @@
             )}
           </button>
         );
+      }
+
+      function useTooltip(project) {
+        const [isVisible, setIsVisible] = useState(false);
+        const containerRef = React.useRef(null);
+        const timeoutRef = React.useRef(null);
+
+        const handleMouseEnter = (e) => {
+          // Check if hovering over element with data-no-tooltip
+          if (e.target.closest('[data-no-tooltip]')) {
+            return;
+          }
+          
+          timeoutRef.current = setTimeout(() => {
+            setIsVisible(true);
+          }, 500); // 500ms delay before showing tooltip
+        };
+
+        const handleMouseMove = (e) => {
+          // Check if moved into element with data-no-tooltip
+          if (e.target.closest('[data-no-tooltip]')) {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
+            setIsVisible(false);
+          } else {
+            // Moved into a normal area - start tooltip if not already showing
+            if (!isVisible && !timeoutRef.current) {
+              timeoutRef.current = setTimeout(() => {
+                setIsVisible(true);
+                timeoutRef.current = null;
+              }, 500);
+            }
+          }
+        };
+
+        const handleMouseLeave = () => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+          }
+          setIsVisible(false);
+        };
+
+        useEffect(() => {
+          return () => {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+            }
+          };
+        }, []);
+
+        const tooltipElement = isVisible && project ? (
+          <div
+            className="fixed z-50 pointer-events-none border-0"
+            style={{
+              left: '50%',
+              top: containerRef.current ? 
+                `${containerRef.current.getBoundingClientRect().top - 12}px` : '0',
+              transform: 'translate(-50%, -100%)'
+            }}
+          >
+            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
+              <div className="font-medium mb-1 text-gray-100">Last Run</div>
+              <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
+                {formatLocalTime(project.lastRun)}
+              </div>
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0"></div>
+            </div>
+          </div>
+        ) : null;
+
+        return {
+          containerRef,
+          tooltipProps: {
+            onMouseEnter: handleMouseEnter,
+            onMouseMove: handleMouseMove,
+            onMouseLeave: handleMouseLeave,
+          },
+          tooltipElement
+        };
       }
 
       function Countdown({ nextSchedule }) {
@@ -1028,12 +1123,18 @@
                     </thead>
                     <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                       {job.projects && job.projects.length > 0 ? (
-                        sortedProjects.map((project) => (
-                          <tr
-                            key={project.name}
-                            className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
-                          >
-                            <td className={`px-6 py-4 ${project.hasRenovateConfig === false ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
+                        sortedProjects.map((project) => {
+                          const ProjectRow = () => {
+                            const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                            
+                            return (
+                              <>
+                                <tr
+                                  ref={containerRef}
+                                  {...tooltipProps}
+                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
+                                >
+                                  <td className={`px-6 py-4 ${project.hasRenovateConfig === false ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
                               <div className="flex items-center gap-2">
                                 <span className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
@@ -1057,7 +1158,7 @@
                                   : "Never"}
                               </span>
                             </td>
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-6 py-4 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() =>
@@ -1098,7 +1199,13 @@
                               </div>
                             </td>
                           </tr>
-                        ))
+                          {tooltipElement}
+                        </>
+                      );
+                    };
+                    
+                    return <ProjectRow key={project.name} />;
+                  })
                       ) : (
                         <tr>
                           <td
@@ -1115,9 +1222,18 @@
 
                 <div className="md:hidden bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                   {job.projects && job.projects.length > 0 ? (
-                    sortedProjects.map((project) => (
-                      <div key={project.name} className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
-                        <div className="flex items-start justify-between">
+                    sortedProjects.map((project) => {
+                      const ProjectCard = () => {
+                        const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                        
+                        return (
+                          <>
+                            <div 
+                              ref={containerRef}
+                              {...tooltipProps}
+                              className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
+                            >
+                          <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
                               <p className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
@@ -1142,7 +1258,7 @@
                             {project.status || "-"}
                           </span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2" data-no-tooltip="true">
                           <button
                             onClick={() => onTriggerRenovate(job, project)}
                             disabled={
@@ -1175,7 +1291,13 @@
                           </a>
                         </div>
                       </div>
-                    ))
+                      {tooltipElement}
+                    </>
+                  );
+                };
+                
+                return <ProjectCard key={project.name} />;
+              })
                   ) : (
                     <div className="p-8 text-center text-gray-500 dark:text-slate-400">
                       No projects found. Run discovery to find projects.
