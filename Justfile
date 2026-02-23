@@ -74,7 +74,7 @@ _install_controller_gen:
 
 # Execute go generate
 generate: _install_controller_gen
-    controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+    controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
 # Run tests and linters for quick iteration locally.
 check: generate golangci-lint test-unit
