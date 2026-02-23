@@ -60,10 +60,7 @@ func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
 
 // RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
 func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Step 1: Search repos by topic
+	// Step 1: Search repos by topic (no lock needed — pure API call)
 	repos, err := s.client.SearchReposByTopic(ctx, s.topic)
 	if err != nil {
 		return fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
@@ -96,8 +93,16 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
 		}
 	}
 
-	// Step 4: Remove webhooks from repos that are no longer eligible
-	for fullName, hookID := range s.managedRepos {
+	// Step 4: Remove webhooks from repos that are no longer eligible.
+	// Snapshot the current managed repos so we can iterate without holding the lock during API calls.
+	s.mu.Lock()
+	pending := make(map[string]int64, len(s.managedRepos))
+	for k, v := range s.managedRepos {
+		pending[k] = v
+	}
+	s.mu.Unlock()
+
+	for fullName, hookID := range pending {
 		if _, stillActive := adminRepos[fullName]; stillActive {
 			continue
 		}
@@ -107,7 +112,9 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
 			s.logger.Error(fmt.Errorf("lost admin permission on repo that still has topic %q", s.topic),
 				"cannot remove webhook: admin permission required, please remove the webhook manually",
 				"repo", fullName, "hookID", hookID)
+			s.mu.Lock()
 			delete(s.managedRepos, fullName)
+			s.mu.Unlock()
 			continue
 		}
 
@@ -123,13 +130,16 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
 		}
 
 		s.logger.Info("removed webhook from repo (no longer matches topic)", "repo", fullName)
+		s.mu.Lock()
 		delete(s.managedRepos, fullName)
+		s.mu.Unlock()
 	}
 
 	return nil
 }
 
 func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {
+	// API calls without holding the lock
 	hooks, err := s.client.ListRepoWebhooks(ctx, owner, repo)
 	if err != nil {
 		return fmt.Errorf("listing webhooks: %w", err)
@@ -138,7 +148,9 @@ func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName
 	// Check if our webhook already exists
 	for _, hook := range hooks {
 		if hook.Config.URL == s.webhookURL {
+			s.mu.Lock()
 			s.managedRepos[fullName] = hook.ID
+			s.mu.Unlock()
 			return nil
 		}
 	}
@@ -163,7 +175,9 @@ func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName
 		return fmt.Errorf("creating webhook: %w", err)
 	}
 
+	s.mu.Lock()
 	s.managedRepos[fullName] = hook.ID
+	s.mu.Unlock()
 	s.logger.Info("created webhook on repo", "repo", fullName, "hookID", hook.ID)
 	return nil
 }
