@@ -172,9 +172,16 @@ jobs:
             go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
 
             echo "Generating CRDs"
-            controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+            controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
-            git add charts/renovate-operator/crds
+            echo "Adding Helm resource-policy annotation to CRDs"
+            for f in charts/renovate-operator/crd/*.mogenius.com_*.yaml; do
+              if ! grep -q "helm.sh/resource-policy" "$f"; then
+                sed -i 's/  annotations:/  annotations:\n    helm.sh\/resource-policy: keep/' "$f"
+              fi
+            done
+
+            git add charts/renovate-operator/crd/*.mogenius.com_*.yaml
 
             echo "Packaging Helm chart"
             helm package -d /tmp/ ./charts/renovate-operator
