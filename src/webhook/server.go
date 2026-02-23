@@ -133,7 +133,7 @@ func (server *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Fallback to HMAC signature verification (GitHub, Forgejo)
+		// Check for HMAC signature (GitHub, Forgejo)
 		signature := r.Header.Get("X-Hub-Signature-256")
 		if signature == "" {
 			signature = r.Header.Get("X-Forgejo-Signature")
