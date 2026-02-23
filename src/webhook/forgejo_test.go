@@ -37,7 +37,7 @@ func TestForgejoEventValidation(t *testing.T) {
 				Repository: ForgejoRepository{FullName: "example/repo"},
 			},
 			valid:  false,
-			reason: "no checked checkbox",
+			reason: "not a valid renovate checkbox change",
 		},
 		{
 			name:  "issue edited but not renovate content",
@@ -51,7 +51,7 @@ func TestForgejoEventValidation(t *testing.T) {
 				Repository: ForgejoRepository{FullName: "example/repo"},
 			},
 			valid:  false,
-			reason: "not a Renovate Dependency Dashboard",
+			reason: "not a valid renovate checkbox change",
 		},
 		{
 			name:  "issue opened is ignored",
