@@ -151,6 +151,11 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 
 	jobNamespace := renovateJob.Namespace
 
+	if syncCfg.TokenSecretRef == nil {
+		logger.Error(fmt.Errorf("tokenSecretRef is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo API token")
+		return
+	}
+
 	forgejoToken, err := r.readSecretKey(ctx, syncCfg.TokenSecretRef, jobNamespace)
 	if err != nil {
 		logger.Error(err, "failed to read Forgejo API token for webhook sync")

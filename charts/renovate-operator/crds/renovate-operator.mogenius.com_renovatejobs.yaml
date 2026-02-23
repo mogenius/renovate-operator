@@ -3912,6 +3912,7 @@ spec:
                         required:
                         - enabled
                         - forgejoURL
+                        - tokenSecretRef
                         - webhookURL
                         type: object
                     type: object
