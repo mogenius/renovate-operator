@@ -247,7 +247,9 @@ func TestForgejoWebhook_MissingEventHeader(t *testing.T) {
 	}
 
 	var response map[string]string
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	if response["error"] != "missing X-Forgejo-Event header" {
 		t.Errorf("expected error about missing header, got %q", response["error"])
 	}
@@ -327,7 +329,9 @@ func TestForgejoWebhook_MissingQueryParams(t *testing.T) {
 			}
 
 			var response map[string]string
-			json.Unmarshal(w.Body.Bytes(), &response)
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("failed to unmarshal response: %v", err)
+			}
 			if response["error"] != tt.expectedError {
 				t.Errorf("expected error %q, got %q", tt.expectedError, response["error"])
 			}
@@ -353,7 +357,9 @@ func TestForgejoWebhook_InvalidJSON(t *testing.T) {
 	}
 
 	var response map[string]string
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	if response["error"] != "failed to decode payload" {
 		t.Errorf("expected error 'failed to decode payload', got %q", response["error"])
 	}
@@ -405,7 +411,9 @@ func TestForgejoWebhook_RealWorldDependencyDashboard(t *testing.T) {
 	}
 
 	var response map[string]string
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	if response["message"] != "renovate job scheduled" {
 		t.Errorf("expected message 'renovate job scheduled', got %q", response["message"])
 	}
