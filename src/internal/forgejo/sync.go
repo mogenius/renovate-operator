@@ -59,11 +59,12 @@ func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
 }
 
 // RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
-func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
+// It returns a consistent snapshot of the managed repos state as it was at the end of the sync cycle.
+func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 	// Step 1: Search repos by topic (no lock needed — pure API call)
 	repos, err := s.client.SearchReposByTopic(ctx, s.topic)
 	if err != nil {
-		return fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+		return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
 	}
 
 	// Step 2: Partition by admin permission
@@ -135,7 +136,15 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
 		s.mu.Unlock()
 	}
 
-	return nil
+	// Return a consistent snapshot of the final state
+	s.mu.Lock()
+	snapshot := make(map[string]int64, len(s.managedRepos))
+	for k, v := range s.managedRepos {
+		snapshot[k] = v
+	}
+	s.mu.Unlock()
+
+	return snapshot, nil
 }
 
 func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {

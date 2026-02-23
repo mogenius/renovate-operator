@@ -77,7 +77,7 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	state, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,6 +93,14 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 	if mc.created["org/repo1"][0].Config.AuthorizationHeader != "Bearer secret-token" {
 		t.Errorf("expected Bearer auth header in config, got %q", mc.created["org/repo1"][0].Config.AuthorizationHeader)
 	}
+
+	// Verify returned state matches internal state
+	if len(state) != 2 {
+		t.Errorf("expected 2 repos in returned state, got %d", len(state))
+	}
+	if state["org/repo1"] == 0 || state["org/repo2"] == 0 {
+		t.Errorf("expected both repos in returned state, got %v", state)
+	}
 }
 
 func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
@@ -106,7 +114,7 @@ func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +139,7 @@ func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
 	// First run: create webhooks on both repos
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("first run error: %v", err)
 	}
@@ -149,7 +157,7 @@ func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
 		{ID: syncer.managedRepos["org/repo1"], Config: WebhookConfig{URL: "https://webhook.example.com/hook"}},
 	}
 
-	err = syncer.RunOnce(context.Background())
+	_, err = syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("second run error: %v", err)
 	}
@@ -174,7 +182,7 @@ func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
 	// First run: create webhook
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("first run error: %v", err)
 	}
@@ -187,7 +195,7 @@ func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
 		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: false}},
 	}
 
-	err = syncer.RunOnce(context.Background())
+	_, err = syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("second run error: %v", err)
 	}
@@ -213,7 +221,7 @@ func TestSyncSkipsReposWithoutAdminPermission(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -239,7 +247,7 @@ func TestSyncHandlesAPIErrorsWithoutAborting(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -262,7 +270,7 @@ func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -277,7 +285,7 @@ func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
 
 	// Now remove the topic
 	mc.repos = nil
-	err = syncer.RunOnce(context.Background())
+	_, err = syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -296,7 +304,7 @@ func TestSyncDefaultEvents(t *testing.T) {
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
 
-	err := syncer.RunOnce(context.Background())
+	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

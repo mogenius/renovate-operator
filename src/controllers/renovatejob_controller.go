@@ -114,11 +114,13 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 
 		// Run Forgejo webhook sync after discovery completes
 		if entry, ok := reconciler.webhookSyncers[name]; ok {
-			if err := entry.syncer.RunOnce(ctx); err != nil {
+			state, err := entry.syncer.RunOnce(ctx)
+			if err != nil {
 				logger.Error(err, "webhook sync failed")
 			}
-			// Persist managed repos state to annotation
-			reconciler.saveWebhookSyncState(ctx, logger, jobName, jobNamespace, entry.syncer.ManagedRepos())
+			if state != nil {
+				reconciler.saveWebhookSyncState(ctx, logger, jobName, jobNamespace, entry.syncer, state)
+			}
 		}
 	}
 
@@ -247,7 +249,7 @@ func (r *RenovateJobReconciler) loadWebhookSyncState(renovateJob *api.RenovateJo
 	return state
 }
 
-func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger logr.Logger, jobName, jobNamespace string, state map[string]int64) {
+func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger logr.Logger, jobName, jobNamespace string, syncer *forgejo.WebhookSyncer, state map[string]int64) {
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, jobName, jobNamespace)
 	if err != nil {
 		logger.Error(err, "failed to fetch RenovateJob for saving webhook sync state")
@@ -265,13 +267,24 @@ func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger
 		return // no change
 	}
 
+	// Remember what was previously persisted so we can roll back on failure
+	var previousState map[string]int64
+	if raw, ok := renovateJob.Annotations[webhookSyncStateAnnotation]; ok && raw != "" {
+		if err := json.Unmarshal([]byte(raw), &previousState); err != nil {
+			previousState = nil
+		}
+	}
+
 	if renovateJob.Annotations == nil {
 		renovateJob.Annotations = make(map[string]string)
 	}
 	renovateJob.Annotations[webhookSyncStateAnnotation] = newVal
 
 	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
-		logger.Error(err, "failed to save webhook sync state annotation")
+		logger.Error(err, "failed to save webhook sync state annotation, rolling back in-memory state to last persisted value")
+		if previousState != nil {
+			syncer.SetManagedRepos(previousState)
+		}
 	}
 }
 
