@@ -1,3 +1,4 @@
+{{- if .Values.crd.install }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -89,3 +90,4 @@ spec:
         - name: crd
           configMap:
             name: {{ include "renovate-operator.fullname" . }}-crd
+{{- end }}

@@ -5,6 +5,8 @@ fullnameOverride: ""
 replicaCount: 1
 
 crd:
+  # -- whether to install the CRD or not, set to false if you want to install the CRD separately
+  install: true
   image:
     registry: registry.k8s.io
     repository: kubectl
@@ -31,6 +33,8 @@ deployment:
   podLabels: {}
   # -- additional annotations for the operator pods
   podAnnotations: {}
+  # -- revision history limit for the operator deployment
+  revisionHistoryLimit: 10
 
 config:
   # -- default backoff limit for renovate jobs
