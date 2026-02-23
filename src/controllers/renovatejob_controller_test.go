@@ -8,7 +8,6 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/forgejo"
 
 	"github.com/go-logr/logr"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -422,7 +421,7 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		Manager:        mgr,
 		Scheduler:      sched,
 		Discovery:      &fakeDiscovery{},
-		WebhookSyncers: make(map[string]*forgejo.WebhookSyncer),
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}
@@ -455,7 +454,7 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 		Manager:        mgr,
 		Scheduler:      sched,
 		Discovery:      &fakeDiscovery{},
-		WebhookSyncers: make(map[string]*forgejo.WebhookSyncer),
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}
@@ -488,7 +487,7 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 		Manager:        mgr,
 		Scheduler:      sched,
 		Discovery:      &fakeDiscovery{},
-		WebhookSyncers: make(map[string]*forgejo.WebhookSyncer),
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}

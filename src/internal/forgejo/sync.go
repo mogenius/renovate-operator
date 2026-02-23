@@ -37,6 +37,27 @@ func NewWebhookSyncer(client Client, webhookURL, authToken, topic string, events
 	}
 }
 
+// ManagedRepos returns a copy of the current managed repos state.
+func (s *WebhookSyncer) ManagedRepos() map[string]int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int64, len(s.managedRepos))
+	for k, v := range s.managedRepos {
+		out[k] = v
+	}
+	return out
+}
+
+// SetManagedRepos replaces the managed repos state (used to restore persisted state).
+func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.managedRepos = make(map[string]int64, len(m))
+	for k, v := range m {
+		s.managedRepos[k] = v
+	}
+}
+
 // RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
 func (s *WebhookSyncer) RunOnce(ctx context.Context) error {
 	s.mu.Lock()

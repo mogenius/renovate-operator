@@ -2,6 +2,7 @@ package controllers
 
 import (
 	context "context"
+	"encoding/json"
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/forgejo"
@@ -22,6 +23,8 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 )
 
+const webhookSyncStateAnnotation = "renovate-operator.mogenius.com/webhook-sync-managed-repos"
+
 /*
 Reconciler for RenovateJob resources
 Watching for create/update/delete events and managing the schedules accordingly
@@ -31,10 +34,18 @@ type RenovateJobReconciler struct {
 	Manager        crdManager.RenovateJobManager
 	Scheduler      scheduler.Scheduler
 	K8sClient      client.Client
-	WebhookSyncers map[string]*forgejo.WebhookSyncer
+	webhookSyncers map[string]*webhookSyncerEntry
+}
+
+type webhookSyncerEntry struct {
+	syncer      *forgejo.WebhookSyncer
+	fingerprint string
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.webhookSyncers == nil {
+		r.webhookSyncers = make(map[string]*webhookSyncerEntry)
+	}
 	logger := log.FromContext(ctx).WithName("renovatejob-controller")
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
 
@@ -47,7 +58,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob cannot be found -> delete the schedule
 		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
-		delete(r.WebhookSyncers, name)
+		delete(r.webhookSyncers, name)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
 		logger.Error(err, "Failed to get RenovateJob")
@@ -101,10 +112,12 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		logger.V(2).Info("Successfully scheduled RenovateJob")
 
 		// Run Forgejo webhook sync after discovery completes
-		if syncer, ok := reconciler.WebhookSyncers[name]; ok {
-			if err := syncer.RunOnce(ctx); err != nil {
+		if entry, ok := reconciler.webhookSyncers[name]; ok {
+			if err := entry.syncer.RunOnce(ctx); err != nil {
 				logger.Error(err, "webhook sync failed")
 			}
+			// Persist managed repos state to annotation
+			reconciler.saveWebhookSyncState(ctx, logger, jobName, jobNamespace, entry.syncer.ManagedRepos())
 		}
 	}
 
@@ -118,22 +131,24 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
 }
 
-// ensureWebhookSyncer creates or removes the WebhookSyncer for a RenovateJob
+// ensureWebhookSyncer creates, updates, or removes the WebhookSyncer for a RenovateJob
 // based on the webhook.forgejo.sync configuration.
 func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
 	name := renovateJob.Fullname()
 
 	if renovateJob.Spec.Webhook == nil || renovateJob.Spec.Webhook.Forgejo == nil || renovateJob.Spec.Webhook.Forgejo.Sync == nil || !renovateJob.Spec.Webhook.Forgejo.Sync.Enabled {
-		delete(r.WebhookSyncers, name)
-		return
-	}
-
-	// Already initialized
-	if _, exists := r.WebhookSyncers[name]; exists {
+		delete(r.webhookSyncers, name)
 		return
 	}
 
 	syncCfg := renovateJob.Spec.Webhook.Forgejo.Sync
+	fp := syncFingerprint(syncCfg, renovateJob.Spec.DiscoverTopics, renovateJob.Namespace, renovateJob.Name)
+
+	// Config unchanged — nothing to do
+	if entry, exists := r.webhookSyncers[name]; exists && entry.fingerprint == fp {
+		return
+	}
+
 	jobNamespace := renovateJob.Namespace
 
 	forgejoToken, err := r.readSecretKey(ctx, syncCfg.TokenSecretRef, jobNamespace)
@@ -164,7 +179,7 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	webhookURL = fmt.Sprintf("%s%snamespace=%s&job=%s", webhookURL, sep, renovateJob.Namespace, renovateJob.Name)
 
 	forgejoClient := forgejo.NewClient(syncCfg.ForgejoURL, forgejoToken)
-	r.WebhookSyncers[name] = forgejo.NewWebhookSyncer(
+	syncer := forgejo.NewWebhookSyncer(
 		forgejoClient,
 		webhookURL,
 		authToken,
@@ -172,6 +187,81 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 		syncCfg.Events,
 		logger.WithName("webhook-sync"),
 	)
+
+	// Transfer managed repos state: prefer in-memory state from old syncer,
+	// fall back to persisted annotation (covers operator restart).
+	if oldEntry, exists := r.webhookSyncers[name]; exists {
+		syncer.SetManagedRepos(oldEntry.syncer.ManagedRepos())
+	} else {
+		state := r.loadWebhookSyncState(renovateJob)
+		if len(state) > 0 {
+			syncer.SetManagedRepos(state)
+			logger.V(2).Info("restored webhook sync state from annotation", "repos", len(state))
+		}
+	}
+
+	r.webhookSyncers[name] = &webhookSyncerEntry{syncer: syncer, fingerprint: fp}
+}
+
+// syncFingerprint produces a string that changes when any sync-relevant config changes.
+func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, defaultTopic, namespace, jobName string) string {
+	topic := cfg.Topic
+	if topic == "" {
+		topic = defaultTopic
+	}
+	tokenRef := ""
+	if cfg.TokenSecretRef != nil {
+		tokenRef = cfg.TokenSecretRef.Name + "/" + cfg.TokenSecretRef.Key
+	}
+	authRef := ""
+	if cfg.AuthTokenSecretRef != nil {
+		authRef = cfg.AuthTokenSecretRef.Name + "/" + cfg.AuthTokenSecretRef.Key
+	}
+	events := strings.Join(cfg.Events, ",")
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", cfg.ForgejoURL, cfg.WebhookURL, topic, events, tokenRef, authRef, namespace+"/"+jobName)
+}
+
+func (r *RenovateJobReconciler) loadWebhookSyncState(renovateJob *api.RenovateJob) map[string]int64 {
+	if renovateJob.Annotations == nil {
+		return nil
+	}
+	raw, ok := renovateJob.Annotations[webhookSyncStateAnnotation]
+	if !ok || raw == "" {
+		return nil
+	}
+	var state map[string]int64
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil
+	}
+	return state
+}
+
+func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger logr.Logger, jobName, jobNamespace string, state map[string]int64) {
+	renovateJob, err := r.Manager.GetRenovateJob(ctx, jobName, jobNamespace)
+	if err != nil {
+		logger.Error(err, "failed to fetch RenovateJob for saving webhook sync state")
+		return
+	}
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		logger.Error(err, "failed to marshal webhook sync state")
+		return
+	}
+
+	newVal := string(data)
+	if renovateJob.Annotations != nil && renovateJob.Annotations[webhookSyncStateAnnotation] == newVal {
+		return // no change
+	}
+
+	if renovateJob.Annotations == nil {
+		renovateJob.Annotations = make(map[string]string)
+	}
+	renovateJob.Annotations[webhookSyncStateAnnotation] = newVal
+
+	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
+		logger.Error(err, "failed to save webhook sync state annotation")
+	}
 }
 
 func (r *RenovateJobReconciler) readSecretKey(ctx context.Context, ref *api.RenovateSecretKeyReference, namespace string) (string, error) {

@@ -16,7 +16,6 @@ import (
 	"renovate-operator/controllers"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/forgejo"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
@@ -199,11 +198,10 @@ func main() {
 	}()
 
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler:      cronManager,
-		Manager:        jobMgr,
-		Discovery:      discovery,
-		K8sClient:      mgr.GetClient(),
-		WebhookSyncers: make(map[string]*forgejo.WebhookSyncer),
+		Scheduler: cronManager,
+		Manager:   jobMgr,
+		Discovery: discovery,
+		K8sClient: mgr.GetClient(),
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
