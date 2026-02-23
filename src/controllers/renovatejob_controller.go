@@ -8,6 +8,7 @@ import (
 	"renovate-operator/internal/forgejo"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/scheduler"
+	"net/url"
 	"strings"
 	"time"
 
@@ -177,11 +178,16 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	}
 
 	webhookURL := syncCfg.WebhookURL
-	sep := "?"
-	if strings.Contains(webhookURL, "?") {
-		sep = "&"
+	parsed, err := url.Parse(webhookURL)
+	if err != nil {
+		logger.Error(err, "failed to parse webhookURL")
+		return
 	}
-	webhookURL = fmt.Sprintf("%s%snamespace=%s&job=%s", webhookURL, sep, renovateJob.Namespace, renovateJob.Name)
+	q := parsed.Query()
+	q.Set("namespace", renovateJob.Namespace)
+	q.Set("job", renovateJob.Name)
+	parsed.RawQuery = q.Encode()
+	webhookURL = parsed.String()
 
 	forgejoClient := forgejo.NewClient(syncCfg.ForgejoURL, forgejoToken)
 	syncer := forgejo.NewWebhookSyncer(
