@@ -47,7 +47,7 @@ spec:
 ### Issues (Dependency Dashboard)
 
 The webhook triggers a Renovate run when a Dependency Dashboard issue is edited and a checkbox is checked.
-Only issues containing the Renovate Dependency Dashboard marker are processed; all other issue events are ignored.
+Only issues containing Renovate's HTML comment markers (e.g., `<!-- manual job -->`, `<!-- rebase-all-open-prs -->`) are processed; all other issue events are ignored.
 
 ### Pull Requests
 
@@ -57,7 +57,7 @@ The webhook triggers a Renovate run for the following pull request actions:
 - **closed**: When a Renovate PR is closed
 - **reopened**: When a Renovate PR is reopened
 
-Only pull requests containing the Renovate Bot marker in their body are processed; all other PR events are ignored.
+Only pull requests containing Renovate's HTML comment markers (e.g., `<!-- rebase-check -->`, `<!--renovate-debug:...-->`) are processed; all other PR events are ignored.
 
 ## Differences from GitHub Webhook
 

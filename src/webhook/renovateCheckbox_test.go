@@ -39,6 +39,16 @@ func TestRenovateCheckbox(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "valid renovate PR with renovate-debug marker",
+			current:  "Update dependency\n- [x] <!-- rebase-check -->If you want to rebase/retry this PR\n\n<!--renovate-debug:eyJjcmVhdGVkSW5WZXIiOiIzOS4wLjAifQ==-->",
+			expected: true,
+		},
+		{
+			name:     "valid dependency dashboard with manual job checkbox",
+			current:  "# Dependency Dashboard\n- [x] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
+			expected: true,
+		},
+		{
 			name:     "empty description",
 			current:  "",
 			expected: false,
