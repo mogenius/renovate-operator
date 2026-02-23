@@ -212,8 +212,8 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 							hasIssues = parseResult.HasIssues
 
 							// Update config status based on log parsing
-							if parseResult.HasRenovateConfig != nil {
-								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.HasRenovateConfig); err != nil {
+							if parseResult.RenovateResultStatus != nil {
+								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.RenovateResultStatus); err != nil {
 									e.logger.Error(err, "failed to update config status", "project", project.Name)
 								}
 							}

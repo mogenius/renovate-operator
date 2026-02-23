@@ -4,7 +4,6 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-    helm.sh/resource-policy: keep
   name: renovatejobs.renovate-operator.mogenius.com
 spec:
   group: renovate-operator.mogenius.com
@@ -3882,12 +3881,12 @@ spec:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
-                    hasRenovateConfig:
-                      type: boolean
                     lastRun:
                       format: date-time
                       type: string
                     name:
+                      type: string
+                    renovateResultStatus:
                       type: string
                     status:
                       type: string

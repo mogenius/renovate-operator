@@ -833,10 +833,10 @@
               }
               
               // Secondary: onboarding state within same status
-              const aHasConfig = a.hasRenovateConfig;
-              const bHasConfig = b.hasRenovateConfig;
-              const aOnboarding = aHasConfig === true ? 0 : (aHasConfig === false ? 1 : 2);
-              const bOnboarding = bHasConfig === true ? 0 : (bHasConfig === false ? 1 : 2);
+              const aHasConfig = a.renovateResultStatus && a.renovateResultStatus !== "done";
+              const bHasConfig = b.renovateResultStatus && b.renovateResultStatus !== "done";
+              const aOnboarding = aHasConfig ? 1 : 0;
+              const bOnboarding = bHasConfig ? 1 : 0;
               
               if (aOnboarding !== bOnboarding) {
                 return sortConfig.direction === "asc"
@@ -1132,16 +1132,16 @@
                                 <tr
                                   ref={containerRef}
                                   {...tooltipProps}
-                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
+                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
                                 >
-                                  <td className={`px-6 py-4 ${project.hasRenovateConfig === false ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
+                                  <td className={`px-6 py-4 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
                               <div className="flex items-center gap-2">
-                                <span className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                                <span className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
                                 </span>
-                                {project.hasRenovateConfig === false && (
+                                {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
                                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                    No Config (renovate not onboarded)
+                                    {project.renovateResultStatus}
                                   </span>
                                 )}
                               </div>
@@ -1231,17 +1231,17 @@
                             <div 
                               ref={containerRef}
                               {...tooltipProps}
-                              className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
+                              className={`p-4 space-y-3 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
                             >
                           <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                              <p className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                 {project.name}
                               </p>
-                              {project.hasRenovateConfig === false && (
+                              {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
                                 <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                  No Config (renovate not onboarded)
+                                  {project.renovateResultStatus}
                                 </span>
                               )}
                             </div>

@@ -76,7 +76,7 @@ func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId cr
 	return nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, hasConfig *bool) error {
+func (m *mockRenovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *string) error {
 	return nil
 }
 

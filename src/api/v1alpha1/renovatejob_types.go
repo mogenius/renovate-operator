@@ -93,10 +93,10 @@ type RenovateJobMetadata struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name              string                `json:"name"`
-	LastRun           metav1.Time           `json:"lastRun"`
-	Status            RenovateProjectStatus `json:"status"`
-	HasRenovateConfig *bool                 `json:"hasRenovateConfig,omitempty"`
+	Name                 string                `json:"name"`
+	LastRun              metav1.Time           `json:"lastRun"`
+	Status               RenovateProjectStatus `json:"status"`
+	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 }
 
 type RenovateProjectStatus string
