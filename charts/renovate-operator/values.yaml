@@ -10,7 +10,7 @@ crd:
   image:
     registry: registry.k8s.io
     repository: kubectl
-    tag: v1.35.0
+    tag: v1.35.1
     pullPolicy: "IfNotPresent"
     # -- imagePullSecrets for the operator pod
     imagePullSecrets: []
