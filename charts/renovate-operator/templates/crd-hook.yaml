@@ -67,6 +67,10 @@ spec:
     spec:
       serviceAccountName: {{ include "renovate-operator.fullname" . }}-crd-hook
       restartPolicy: OnFailure
+      {{- with .Values.crd.securityContext.pod }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.crd.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -76,6 +80,10 @@ spec:
           {{- with .Values.crd.image }}
           image: {{ .registry }}/{{ .repository }}:{{ .tag }}
           imagePullPolicy: {{ .pullPolicy }}
+          {{- end }}
+          {{- with .Values.crd.securityContext.container }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           command:
             - kubectl
