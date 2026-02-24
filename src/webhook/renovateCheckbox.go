@@ -8,20 +8,21 @@ func isRenovateContent(description string) bool {
 		return false
 	}
 
-	// merge requests created by Renovate contain these specific comments
-	if strings.Contains(description, "<!-- rebase-check -->If you want to rebase/retry this") {
-		return true
+	patternList := []string{
+		"## Detected Dependencies",
+		"<!-- rebase-check -->",
+		"<!-- rebase-all-open-prs -->",
+		"<!-- rebase-branch=",
+		"<!-- approve-all-pending-prs -->",
+		"<!-- approvePr-branch=",
+		"<!-- approve-branch",
+		"<!-- create-config-migration-pr -->",
 	}
 
-	// Dependency Dashboards created by Renovate contain these specific comments
-	if strings.Contains(description, "<!-- rebase-all-open-prs -->**Click on this checkbox to rebase all") {
-		return true
-	}
-	if strings.Contains(description, "<!-- approve-all-pending-prs -->\U0001f510 **Create all pending approval PRs at once** \U0001f510") {
-		return true
-	}
-	if strings.Contains(description, "<!-- approvePr-branch=") {
-		return true
+	for _, pattern := range patternList {
+		if strings.Contains(description, pattern) {
+			return true
+		}
 	}
 	return false
 }
