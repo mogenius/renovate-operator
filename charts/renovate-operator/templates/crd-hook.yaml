@@ -81,6 +81,8 @@ spec:
           command:
             - kubectl
             - apply
+            - --server-side
+            - --force-conflicts
             - -f
             - /crd/renovatejob.yaml
           volumeMounts:
