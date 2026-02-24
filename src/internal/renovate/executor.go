@@ -13,6 +13,7 @@ import (
 
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/parser"
+	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
@@ -188,6 +189,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 			})
 
 			var newStatus api.RenovateProjectStatus
+			var durationStr string
 			if err != nil {
 				if errors.IsNotFound(err) {
 					newStatus = api.JobStatusFailed
@@ -195,7 +197,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 					return err
 				}
 			} else {
-				newStatus, err = getJobStatus(job)
+				newStatus, durationStr, err = getJobStatus(job)
 				if err != nil {
 					return err
 				}
@@ -203,6 +205,10 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 
 			if newStatus != api.JobStatusRunning {
 				// Parse logs before potential job deletion to capture dependency issues
+				newProjectStatus := &types.RenovateStatusUpdate{
+					Status:   newStatus,
+					Duration: &durationStr, // Add this field if RenovateStatusUpdate supports it
+				}
 				hasIssues := false
 				if job != nil {
 					cp := clientProvider.StaticClientProvider()
@@ -211,12 +217,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 							parseResult := parser.ParseRenovateLogs(logs)
 							hasIssues = parseResult.HasIssues
 
-							// Update config status based on log parsing
-							if parseResult.RenovateResultStatus != nil {
-								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.RenovateResultStatus); err != nil {
-									e.logger.Error(err, "failed to update config status", "project", project.Name)
-								}
-							}
+							newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
 						} else {
 							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 						}
@@ -230,7 +231,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
 				metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
 
-				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newStatus)
+				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus)
 				// one project less is currently running
 				runningProjects--
 				if err != nil {
@@ -269,7 +270,9 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				runningProjects++
 
 				jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
-				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, api.JobStatusRunning)
+				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
+					Status: api.JobStatusRunning,
+				})
 				if err != nil {
 					return err
 				}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 )
 
 type GitHubEvent struct {
@@ -64,7 +65,9 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 			Name:      job,
 			Namespace: namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to process GitHub webhook for repo", "repo", payload.Repository.FullName)

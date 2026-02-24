@@ -232,6 +232,14 @@
               <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
                 {formatLocalTime(project.lastRun)}
               </div>
+              {project.duration && (
+                <>
+                  <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
+                  <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
+                    {project.duration}
+                  </div>
+                </>
+              )}
               <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0"></div>
             </div>
           </div>

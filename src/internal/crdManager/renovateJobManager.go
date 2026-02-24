@@ -12,6 +12,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
+	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
 
@@ -36,15 +37,13 @@ type RenovateJobManager interface {
 	// GetProjectsForRenovateJob retrieves all projects associated with a specific RenovateJob CRD.
 	GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error)
 	// UpdateProjectStatus updates the status of a specific project within a RenovateJob CRD.
-	UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// UpdateProjectStatusBatched updates the status of multiple projects within a RenovateJob CRD based on a filter function.
-	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
 	ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error
-	// UpdateProjectConfigStatus updates the RenovateResultStatus for a specific project.
-	UpdateProjectConfigStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *string) error
 	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
@@ -72,6 +71,7 @@ type RenovateProjectStatus struct {
 	Status               api.RenovateProjectStatus `json:"status"`
 	LastRun              time.Time                 `json:"lastRun,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
+	Duration             *string                   `json:"duration,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client) RenovateJobManager {
@@ -117,6 +117,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Status:               project.Status,
 				LastRun:              project.LastRun.Time,
 				RenovateResultStatus: project.RenovateResultStatus,
+				Duration:             project.Duration,
 			})
 		}
 	}
@@ -137,6 +138,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Status:               project.Status,
 			LastRun:              project.LastRun.Time,
 			RenovateResultStatus: project.RenovateResultStatus,
+			Duration:             project.Duration,
 		})
 	}
 	return result, nil
@@ -174,7 +176,7 @@ func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 	return renovateJobs.Items, nil
 }
 
-func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	defer r.globalManagerLock(false)()
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -193,7 +195,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 		if index == -1 {
 			projectStatus := &api.ProjectStatus{
 				Name:   project,
-				Status: status,
+				Status: status.Status,
 			}
 			renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
 		} else {
@@ -205,7 +207,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 	})
 }
 
-func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	defer r.globalManagerLock(false)()
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {

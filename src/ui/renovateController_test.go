@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -22,7 +23,7 @@ type mockRenovateJobManager struct {
 	listRenovateJobsFullFunc      func(ctx context.Context) ([]api.RenovateJob, error)
 	getProjectsForRenovateJobFunc func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
 	getLogsForProjectFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
-	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error
 }
@@ -55,7 +56,7 @@ func (m *mockRenovateJobManager) GetLogsForProject(ctx context.Context, jobId cr
 	return "", nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (m *mockRenovateJobManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if m.updateProjectStatusFunc != nil {
 		return m.updateProjectStatusFunc(ctx, project, jobId, status)
 	}
@@ -76,10 +77,6 @@ func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId cr
 	return nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *string) error {
-	return nil
-}
-
 // Implement remaining interface methods as no-ops
 func (m *mockRenovateJobManager) LoadRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil
@@ -97,7 +94,7 @@ func (m *mockRenovateJobManager) GetProjectsByStatus(ctx context.Context, job cr
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return nil
 }
 
@@ -217,7 +214,7 @@ func TestGetRenovateJsonBody_FormValues(t *testing.T) {
 
 func TestRunRenovateForProject_Success(t *testing.T) {
 	mockManager := &mockRenovateJobManager{
-		updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+		updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 			return nil
 		},
 	}

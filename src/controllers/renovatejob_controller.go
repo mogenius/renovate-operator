@@ -4,6 +4,7 @@ import (
 	context "context"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/types"
 	"renovate-operator/scheduler"
 	"time"
 
@@ -84,7 +85,9 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
-		err = reconciler.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobIdentifier, api.JobStatusScheduled)
+		err = reconciler.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobIdentifier, &types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled,
+		})
 
 		if err != nil {
 			logger.Error(err, "failed to schedule projects")

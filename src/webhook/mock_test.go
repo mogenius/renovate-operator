@@ -4,16 +4,17 @@ import (
 	"context"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 )
 
 // Mock RenovateJobManager for webhook integration tests
 type mockWebhookManager struct {
-	updateProjectStatusFunc     func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	updateProjectStatusFunc     func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	isWebhookTokenValidFunc     func(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error)
 	isWebhookSignatureValidFunc func(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error)
 }
 
-func (m *mockWebhookManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (m *mockWebhookManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if m.updateProjectStatusFunc != nil {
 		return m.updateProjectStatusFunc(ctx, project, jobId, status)
 	}
@@ -53,9 +54,6 @@ func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace
 func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error {
 	return nil
 }
-func (m *mockWebhookManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *string) error {
-	return nil
-}
 func (m *mockWebhookManager) LoadRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil
 }
@@ -68,6 +66,6 @@ func (m *mockWebhookManager) GetProjects(ctx context.Context, jobId crdmanager.R
 func (m *mockWebhookManager) GetProjectsByStatus(ctx context.Context, job crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdmanager.RenovateProjectStatus, error) {
 	return nil, nil
 }
-func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return nil
 }

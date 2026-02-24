@@ -95,6 +95,7 @@ Status of a single project within a RenovateJob
 type ProjectStatus struct {
 	Name                 string                `json:"name"`
 	LastRun              metav1.Time           `json:"lastRun"`
+	Duration             *string               `json:"duration,omitempty"`
 	Status               RenovateProjectStatus `json:"status"`
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 }

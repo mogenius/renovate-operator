@@ -9,11 +9,13 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
 
+	"renovate-operator/internal/types"
+
 	"github.com/go-logr/logr"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -22,7 +24,7 @@ import (
 type fakeManager struct {
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error
-	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error
+	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (f *fakeManager) ListRenovateJobs(ctx context.Context) ([]crdManager.RenovateJobIdentifier, error) {
@@ -40,10 +42,10 @@ func (f *fakeManager) GetRenovateJob(ctx context.Context, name string, namespace
 func (f *fakeManager) GetProjectsForRenovateJob(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (f *fakeManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (f *fakeManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return fmt.Errorf("not implemented")
 }
-func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if f.updateProjectStatusBatchedFn != nil {
 		return f.updateProjectStatusBatchedFn(ctx, fn, job, status)
 	}
@@ -135,7 +137,7 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 		gotProjects = projects
 		return nil
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		calledUpdate = true
 		// run the predicate on a sample project to ensure no panic
 		_ = fn(api.ProjectStatus{Name: "p1", Status: api.JobStatusRunning})
@@ -200,7 +202,7 @@ func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 		calledReconcile = true
 		return nil
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		calledUpdate = true
 		return nil
 	}
@@ -243,7 +245,7 @@ func TestCreateScheduler_ReconcileErrorAborts(t *testing.T) {
 		calledReconcile = true
 		return fmt.Errorf("reconcile boom")
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		calledUpdate = true
 		return nil
 	}
@@ -286,7 +288,7 @@ func TestCreateScheduler_UpdateProjectStatusBatchedError(t *testing.T) {
 		calledReconcile = true
 		return nil
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		calledUpdate = true
 		return fmt.Errorf("update batched boom")
 	}
@@ -328,7 +330,7 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
 		return nil
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		return nil
 	}
 	// Return a RenovateJob with an updated image when re-fetched
@@ -373,7 +375,7 @@ func TestCreateScheduler_SchedulerAddError(t *testing.T) {
 	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
 		return nil
 	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 		return nil
 	}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -423,7 +425,7 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		Discovery: &fakeDiscovery{},
 	}
 
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
 	res, err := reconciler.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -455,7 +457,7 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 		Discovery: &fakeDiscovery{},
 	}
 
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
 	res, err := reconciler.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -487,7 +489,7 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 		Discovery: &fakeDiscovery{},
 	}
 
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
 	_, err := reconciler.Reconcile(context.Background(), req)
 	if err == nil {
 		t.Fatalf("expected error, got nil")

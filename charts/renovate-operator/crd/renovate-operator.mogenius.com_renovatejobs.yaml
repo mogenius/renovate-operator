@@ -3881,6 +3881,8 @@ spec:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
+                    duration:
+                      type: string
                     lastRun:
                       format: date-time
                       type: string

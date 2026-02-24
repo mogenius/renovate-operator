@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -137,7 +138,7 @@ func TestGitHubWebhook_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			updateCalled := false
 			mockManager := &mockWebhookManager{
-				updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status api.RenovateProjectStatus) error {
+				updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 					updateCalled = true
 					if project != tt.payload.Repository.FullName {
 						t.Errorf("expected project %s, got %s", tt.payload.Repository.FullName, project)
@@ -148,8 +149,8 @@ func TestGitHubWebhook_Integration(t *testing.T) {
 					if jobId.Namespace != tt.namespace {
 						t.Errorf("expected namespace %s, got %s", tt.namespace, jobId.Namespace)
 					}
-					if status != api.JobStatusScheduled {
-						t.Errorf("expected status %s, got %s", api.JobStatusScheduled, status)
+					if status.Status != api.JobStatusScheduled {
+						t.Errorf("expected status %s, got %s", api.JobStatusScheduled, status.Status)
 					}
 					return tt.updateProjectError
 				},

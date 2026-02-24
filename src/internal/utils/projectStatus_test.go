@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/types"
 )
 
 func TestGetUpdateStatusForProject(t *testing.T) {
@@ -51,7 +52,7 @@ func TestGetUpdateStatusForProject(t *testing.T) {
 				Name:   "test-project",
 				Status: tt.currentStatus,
 			}
-			result := GetUpdateStatusForProject(proj, tt.desiredStatus)
+			result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: tt.desiredStatus})
 			if result == nil {
 				t.Fatalf("resulting project status is nil for %s", tt.name)
 			}

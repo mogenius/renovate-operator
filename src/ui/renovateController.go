@@ -6,6 +6,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -67,6 +68,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Status:               p.Status,
 				LastRun:              p.LastRun.Time,
 				RenovateResultStatus: p.RenovateResultStatus,
+				Duration:             p.Duration,
 			})
 		}
 
@@ -164,7 +166,9 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 			Name:      params.name,
 			Namespace: params.namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to run Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
