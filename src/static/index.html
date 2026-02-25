@@ -132,6 +132,28 @@
         }
       };
 
+      const buildPRUrl = (platform, endpoint, projectName) => {
+        if (!platform || platform === 'github') {
+          let base = 'https://github.com';
+          if (endpoint && !endpoint.includes('api.github.com')) {
+            // GitHub Enterprise: strip /api/v3/ suffix to get web URL
+            base = endpoint.replace(/\/api\/v3\/?$/, '').replace(/\/$/, '');
+          }
+          return `${base}/${projectName}/pulls`;
+        } else if (platform === 'gitlab') {
+          const base = (endpoint || 'https://gitlab.com').replace(/\/$/, '');
+          return `${base}/${projectName}/-/merge_requests`;
+        } else if (platform === 'bitbucket') {
+          return `https://bitbucket.org/${projectName}/pull-requests`;
+        } else if (platform === 'gitea' || platform === 'forgejo') {
+          if (endpoint) {
+            const base = endpoint.replace(/\/$/, '');
+            return `${base}/${projectName}/pulls`;
+          }
+        }
+        return null;
+      };
+
       function ThemeToggle() {
         const [theme, setTheme] = useState(() => window.ThemeUtils.getTheme());
         const isDark = useMemo(() => window.ThemeUtils.isDark(theme), [theme]);
@@ -1124,6 +1146,9 @@
                             <SortIcon columnKey="lastRun" />
                           </div>
                         </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
+                          Link
+                        </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
                           Actions
                         </th>
@@ -1165,6 +1190,27 @@
                                   ? formatTimeAgo(project.lastRun)
                                   : "Never"}
                               </span>
+                            </td>
+                            <td className="px-6 py-4" data-no-tooltip="true">
+                              {(() => {
+                                const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                                return prUrl ? (
+                                  <a
+                                    href={prUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                                    aria-label={`View open PRs/MRs for ${project.name}`}
+                                    title={`Open PRs/MRs for ${project.name}`}
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
+                                );
+                              })()}
                             </td>
                             <td className="px-6 py-4 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
@@ -1217,7 +1263,7 @@
                       ) : (
                         <tr>
                           <td
-                            colSpan="4"
+                            colSpan="5"
                             className="px-6 py-8 text-center text-gray-500 dark:text-slate-400"
                           >
                             No projects found. Run discovery to find projects.
@@ -1266,7 +1312,7 @@
                             {project.status || "-"}
                           </span>
                         </div>
-                        <div className="flex gap-2" data-no-tooltip="true">
+                        <div className="flex gap-2 flex-wrap" data-no-tooltip="true">
                           <button
                             onClick={() => onTriggerRenovate(job, project)}
                             disabled={
@@ -1297,6 +1343,23 @@
                           >
                             Logs
                           </a>
+                          {(() => {
+                            const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                            return prUrl ? (
+                              <a
+                                href={prUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                                aria-label={`View open PRs/MRs for ${project.name}`}
+                                title={`Open PRs/MRs for ${project.name}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              </a>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                       {tooltipElement}
