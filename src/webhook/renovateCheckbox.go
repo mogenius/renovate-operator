@@ -15,8 +15,12 @@ func isRenovateContent(description string) bool {
 		"<!-- rebase-branch=",
 		"<!-- approve-all-pending-prs -->",
 		"<!-- approvePr-branch=",
-		"<!-- approve-branch",
+		"<!-- approve-branch=",
+		"<!-- recreate-branch=",
+		"<!-- unschedule-branch=",
 		"<!-- create-config-migration-pr -->",
+		"<!-- create-all-awaiting-schedule-prs -->",
+		"<!-- manual job -->",
 	}
 
 	for _, pattern := range patternList {

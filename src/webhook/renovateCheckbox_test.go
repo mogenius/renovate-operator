@@ -72,6 +72,28 @@ func TestRenovateCheckbox(t *testing.T) {
  								- [x] <!-- rebase-branch=renovate/python-reqs -->[chore: update python reqs](../pull/255)`,
 			expected: true,
 		},
+		{
+			name: "manual job",
+			current: `\n- [x] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository\n`,
+			expected: true,
+		},
+		{
+			name: "unschedule-branch checked",
+			current: `\n- [x] <!-- unschedule-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance\n`,
+			expected: true,
+		},
+		{
+			name: "create-all-awaiting-schedule-prs checked",
+			current: `\n- [x] <!-- create-all-awaiting-schedule-prs -->🔐 **Create all awaiting schedule PRs at once** 🔐\n`,
+			expected: true,
+		},
+		{
+			name: "recreate-branch checked",
+			current: `## PR Closed (Blocked)
+						The following updates are blocked by an existing closed PR. To recreate the PR, click on a checkbox below.
+						- [x] <!-- recreate-branch=renovate/harbor-1-18-x -->[fix(deps): update helm release harbor to v1.18.2](pulls/98)`,
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
