@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -24,11 +25,25 @@ const (
 	sessionDuration     = 24 * time.Hour
 )
 
+type contextKey string
+
+const sessionContextKey contextKey = "session"
+
 type sessionData struct {
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	Expiry      int64  `json:"exp"`
-	AccessToken string `json:"at,omitempty"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	Expiry      int64    `json:"exp"`
+	AccessToken string   `json:"at,omitempty"`
+	Groups      []string `json:"groups"`
+}
+
+// getSessionFromContext retrieves the session from the request context.
+func getSessionFromContext(r *http.Request) *sessionData {
+	session, ok := r.Context().Value(sessionContextKey).(*sessionData)
+	if !ok {
+		return nil
+	}
+	return session
 }
 
 // AuthProvider is the interface that both OIDC and GitHub OAuth implement.
@@ -39,6 +54,7 @@ type AuthProvider interface {
 	HandleLogout(w http.ResponseWriter, r *http.Request)
 	HandleAuthStatus(w http.ResponseWriter, r *http.Request)
 	AuthMiddleware(next http.Handler) http.Handler
+	SupportsGroups() bool
 }
 
 // baseAuth contains shared session and middleware logic for all auth providers.
@@ -52,6 +68,7 @@ func newEncryptionKey(sessionSecret string) ([32]byte, error) {
 	if sessionSecret != "" {
 		key = sha256.Sum256([]byte(sessionSecret))
 	} else {
+		// Generate cryptographically secure random key
 		if _, err := io.ReadFull(rand.Reader, key[:]); err != nil {
 			return key, fmt.Errorf("failed to generate encryption key: %w", err)
 		}
@@ -108,6 +125,12 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				}
 				return
 			}
+			// Audit log failed authentication attempt
+			b.logger.V(1).Info("Unauthenticated request rejected",
+				"path", path,
+				"method", r.Method,
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.UserAgent())
 
 			// API requests get 401
 			if strings.HasPrefix(path, "/api/") {
@@ -127,7 +150,9 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 			http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 		}
 
-		next.ServeHTTP(w, r)
+		// Add session to context
+		ctx := context.WithValue(r.Context(), sessionContextKey, session)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -164,6 +189,7 @@ func (b *baseAuth) buildCompleteURL(email, name string, opts ...func(*sessionDat
 	session := sessionData{
 		Email:  email,
 		Name:   name,
+		Groups: []string{},
 		Expiry: time.Now().Add(sessionDuration).Unix(),
 	}
 	for _, opt := range opts {

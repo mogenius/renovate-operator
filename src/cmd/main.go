@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,6 +35,18 @@ var Version = "dev" // default version, will be overridden by ld build flag in D
 func adaptKubeConfig(cfg *rest.Config) {
 	cfg.QPS = 50
 	cfg.Burst = 100
+}
+
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func main() {
@@ -173,6 +186,26 @@ func main() {
 			Key:      "GITHUB_SESSION_SECRET",
 			Optional: true,
 		},
+		{
+			Key:      "DEFAULT_ALLOWED_GROUPS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "OIDC_ALLOWED_GROUP_PREFIX",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "OIDC_ALLOWED_GROUP_PATTERN",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "OIDC_ADDITIONAL_SCOPES",
+			Optional: true,
+			Default:  "",
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -233,17 +266,30 @@ func main() {
 		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer oidcCancel()
 		oidcAuth, oidcErr := ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
-			IssuerURL:          oidcIssuer,
-			ClientID:           oidcClientID,
-			ClientSecret:       oidcClientSecret,
-			RedirectURL:        config.GetValue("OIDC_REDIRECT_URL"),
-			SessionSecret:      config.GetValue("OIDC_SESSION_SECRET"),
-			InsecureSkipVerify: config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
-			LogoutURL:          config.GetValue("OIDC_LOGOUT_URL"),
+			IssuerURL:           oidcIssuer,
+			ClientID:            oidcClientID,
+			ClientSecret:        oidcClientSecret,
+			RedirectURL:         config.GetValue("OIDC_REDIRECT_URL"),
+			SessionSecret:       config.GetValue("OIDC_SESSION_SECRET"),
+			InsecureSkipVerify:  config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
+			LogoutURL:           config.GetValue("OIDC_LOGOUT_URL"),
+			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
+			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
+			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 		}, ctrl.Log.WithName("oidc"))
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
 		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
+
+		// Log group filtering configuration
+		if config.GetValue("OIDC_ALLOWED_GROUP_PREFIX") != "" {
+			ctrl.Log.WithName("auth").Info("OIDC group prefix filter enabled",
+				"prefix", config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"))
+		}
+		if config.GetValue("OIDC_ALLOWED_GROUP_PATTERN") != "" {
+			ctrl.Log.WithName("auth").Info("OIDC group pattern filter enabled",
+				"pattern", config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"))
+		}
 	} else if githubClientID != "" && githubClientSecret != "" {
 		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
 			ClientID:      githubClientID,
@@ -258,8 +304,27 @@ func main() {
 		ctrl.Log.WithName("auth").Info("No authentication configured, UI access is unauthenticated")
 	}
 
+	// Parse default allowed groups (comma-separated)
+	var defaultAllowedGroups []string
+	defaultGroupsStr := config.GetValue("DEFAULT_ALLOWED_GROUPS")
+	if defaultGroupsStr != "" {
+		for _, group := range splitAndTrim(defaultGroupsStr, ",") {
+			if group != "" {
+				normalized := strings.ToLower(strings.TrimSpace(group))
+				defaultAllowedGroups = append(defaultAllowedGroups, normalized)
+			}
+		}
+		ctrl.Log.WithName("auth").Info("Default allowed groups configured", "groups", defaultAllowedGroups)
+	}
+
+	if authProvider != nil && !authProvider.SupportsGroups() && len(defaultAllowedGroups) > 0 {
+		ctrl.Log.WithName("auth").Error(nil,
+			"auth provider does not support group claims -- DEFAULT_ALLOWED_GROUPS is configured but will have no effect, all jobs will be hidden from all users",
+			"ignored_groups", defaultAllowedGroups)
+	}
+
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {

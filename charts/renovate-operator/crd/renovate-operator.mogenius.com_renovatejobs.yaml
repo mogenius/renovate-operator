@@ -3153,6 +3153,13 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+              allowedGroups:
+                description: |-
+                  Groups allowed to view this RenovateJob when authentication is enabled.
+                  If empty or not set, the job is hidden from all users.
+                items:
+                  type: string
+                type: array
               metadata:
                 description: Metadata that shall be applied to the resulting pod
                 properties:

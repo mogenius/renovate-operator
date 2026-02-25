@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,13 +16,16 @@ import (
 )
 
 type OIDCConfig struct {
-	IssuerURL          string
-	ClientID           string
-	ClientSecret       string
-	RedirectURL        string
-	SessionSecret      string
-	InsecureSkipVerify bool
-	LogoutURL          string
+	IssuerURL           string
+	ClientID            string
+	ClientSecret        string
+	RedirectURL         string
+	SessionSecret       string
+	InsecureSkipVerify  bool
+	LogoutURL           string
+	AllowedGroupPrefix  string
+	AllowedGroupPattern string
+	AdditionalScopes    []string
 }
 
 type OIDCAuth struct {
@@ -32,6 +36,7 @@ type OIDCAuth struct {
 	httpClient         *http.Client
 	endSessionURL      string
 	postLogoutRedirect string
+	groupFilterConfig  GroupFilterConfig
 }
 
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDCAuth, error) {
@@ -53,12 +58,31 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 		return nil, fmt.Errorf("failed to create OIDC provider: %w", err)
 	}
 
+	scopes := buildOIDCScopes(cfg.AdditionalScopes)
+	if len(cfg.AdditionalScopes) > 0 {
+		logger.Info("requesting additional OIDC scopes", "scopes", cfg.AdditionalScopes)
+	}
+
+	if cfg.AllowedGroupPrefix != "" || cfg.AllowedGroupPattern != "" {
+		hasGroupsScope := false
+		for _, s := range scopes {
+			if s == "groups" {
+				hasGroupsScope = true
+				break
+			}
+		}
+		if !hasGroupsScope {
+			logger.Info("WARNING: group filtering is configured but 'groups' is not in additionalScopes. " +
+				"If your OIDC provider requires the 'groups' scope to include group claims, add it to additionalScopes.")
+		}
+	}
+
 	oauth2Cfg := oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  cfg.RedirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "email", "profile"},
+		Scopes:       scopes,
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.ClientID})
@@ -86,6 +110,17 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 		return nil, err
 	}
 
+	// Parse group filter pattern if provided
+	var groupFilterConfig GroupFilterConfig
+	groupFilterConfig.AllowedPrefix = cfg.AllowedGroupPrefix
+	if cfg.AllowedGroupPattern != "" {
+		pattern, err := regexp.Compile(cfg.AllowedGroupPattern)
+		if err != nil {
+			return nil, fmt.Errorf("invalid group pattern regex: %w", err)
+		}
+		groupFilterConfig.AllowedPattern = pattern
+	}
+
 	return &OIDCAuth{
 		baseAuth:           baseAuth{encryptionKey: key, logger: logger},
 		provider:           provider,
@@ -94,6 +129,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 		httpClient:         httpClient,
 		endSessionURL:      endSessionURL,
 		postLogoutRedirect: postLogoutRedirect,
+		groupFilterConfig:  groupFilterConfig,
 	}, nil
 }
 
@@ -143,8 +179,9 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
+		Groups []string `json:"groups,omitempty"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		o.logger.Error(err, "failed to parse claims")
@@ -152,7 +189,24 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	completeURL, err := o.buildCompleteURL(claims.Email, claims.Name)
+	// Log received groups for debugging
+	o.logger.V(1).Info("OIDC claims received",
+		"user", claims.Email,
+		"name", claims.Name,
+		"groups", claims.Groups)
+
+	// Apply 3-layer group validation
+	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
+
+	if len(claims.Groups) > 0 && len(validatedGroups) == 0 {
+		o.logger.Info("WARNING: User authenticated but all groups filtered out",
+			"user", claims.Email,
+			"original_groups", claims.Groups)
+	}
+
+	completeURL, err := o.buildCompleteURL(claims.Email, claims.Name, func(s *sessionData) {
+		s.Groups = validatedGroups
+	})
 	if err != nil {
 		o.logger.Error(err, "failed to build complete URL")
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -183,4 +237,25 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	o.handleAuthStatus(w, r)
+}
+
+func (o *OIDCAuth) SupportsGroups() bool {
+	return true
+}
+
+// buildOIDCScopes returns the base OIDC scopes plus any additional scopes, deduplicated.
+func buildOIDCScopes(additionalScopes []string) []string {
+	seen := map[string]struct{}{
+		oidc.ScopeOpenID: {},
+		"email":          {},
+		"profile":        {},
+	}
+	scopes := []string{oidc.ScopeOpenID, "email", "profile"}
+	for _, s := range additionalScopes {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			scopes = append(scopes, s)
+		}
+	}
+	return scopes
 }

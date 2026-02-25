@@ -152,6 +152,10 @@ func (g *GitHubOAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	g.handleAuthStatus(w, r)
 }
 
+func (g *GitHubOAuth) SupportsGroups() bool {
+	return false
+}
+
 func (g *GitHubOAuth) fetchGitHubUser(accessToken string) (email, name string, err error) {
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {

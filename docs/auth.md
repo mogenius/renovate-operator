@@ -24,6 +24,9 @@ auth:
     redirectUrl: ""                            # Optional: auto-detected from ingress
     insecureSkipVerify: false                  # Do not use in production
     logoutUrl: ""                              # Optional: auto-discovered via OIDC metadata
+    allowedGroupPrefix: ""                     # Optional: only accept groups with this prefix
+    allowedGroupPattern: ""                    # Optional: only accept groups matching this regex
+    additionalScopes: []                        # Optional: extra OIDC scopes (e.g., ["groups"])
 ```
 
 ### Secret
@@ -46,6 +49,21 @@ https://<your-operator-host>/auth/callback
 ```
 
 Required scopes: `openid`, `email`, `profile`
+
+#### Additional Scopes
+
+By default, only the standard OIDC scopes (`openid`, `email`, `profile`) are requested. Some providers support additional custom scopes — for example, Keycloak supports a `groups` scope to include group membership in the ID token.
+
+To request extra scopes, set `additionalScopes`:
+
+```yaml
+auth:
+  oidc:
+    additionalScopes:
+      - groups
+```
+
+**Azure AD / Entra ID**: Do **not** add `groups` here. Azure AD does not support `groups` as an OIDC scope and will reject the request with `AADSTS650053`. Instead, configure the `groups` claim in **App Registration → Token Configuration → Add groups claim**. The operator will read groups from the ID token regardless of whether the scope is requested.
 
 ---
 
@@ -96,6 +114,68 @@ Sessions are stored as AES-256-GCM encrypted cookies and expire after **24 hours
 If you run multiple operator replicas, you **must** set a static session secret. Otherwise each pod generates its own key and users will be logged out when requests hit a different replica.
 
 Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+
+---
+
+## Group-Based Authorization
+
+When authentication is enabled, you can control which users can view and manage specific RenovateJobs based on their group membership.
+
+### How It Works
+
+- **Auth disabled**: All RenovateJobs are visible to everyone
+- **Auth enabled**: Jobs are filtered based on user groups
+  - Jobs without `allowedGroups` use the global `defaultAllowedGroups`
+  - If neither are set, the job is hidden (secure by default)
+  - Users can only see jobs where they have at least one matching group
+
+### Configuration
+
+#### Default Allowed Groups
+
+Set default groups for all RenovateJobs without explicit `allowedGroups`:
+
+```yaml
+auth:
+  defaultAllowedGroups: "team-platform,team-infra"
+```
+
+#### Per-Job Authorization
+
+Add `allowedGroups` to individual RenovateJob resources:
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: my-renovate-job
+spec:
+  schedule: "0 2 * * *"
+  allowedGroups:
+    - team-platform
+    - team-devops
+  # ... other fields
+```
+
+#### OIDC Group Filtering
+
+Filter which groups from your OIDC provider are accepted:
+
+```yaml
+auth:
+  oidc:
+    # ... other OIDC settings ...
+    allowedGroupPrefix: "renovate-"              # Only accept groups starting with "renovate-"
+    allowedGroupPattern: "^(team-|platform-).*"  # Only accept groups matching regex
+```
+
+This is useful when your identity provider returns many groups but you only want to use certain ones for authorization.
+
+### Security Considerations
+
+- **Secure by default**: Jobs without any groups configured (neither explicit nor default) are hidden when auth is enabled
+- **Group validation**: Groups are normalized (lowercased, trimmed) and validated for security
+- **Audit logging**: All authorization decisions are logged for security auditing
 
 ---
 
