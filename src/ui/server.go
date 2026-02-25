@@ -24,10 +24,10 @@ type Server struct {
 	server    *http.Server
 	health    health.HealthCheck
 	version   string
-	oidc      *OIDCAuth
+	auth      AuthProvider
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, oidc *OIDCAuth) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider) *Server {
 	return &Server{
 		manager:   manager,
 		logger:    logger,
@@ -35,29 +35,29 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		discovery: discovery,
 		scheduler: scheduler,
 		version:   version,
-		oidc:      oidc,
+		auth:      auth,
 	}
 }
 
 func (s *Server) registerAuthRoutes(router *mux.Router) {
-	if s.oidc != nil {
-		router.HandleFunc("/auth/login", s.oidc.handleLogin).Methods("GET")
-		router.HandleFunc("/auth/callback", s.oidc.handleCallback).Methods("GET")
-		router.HandleFunc("/auth/logout", s.oidc.handleLogout).Methods("GET", "POST")
+	if s.auth != nil {
+		router.HandleFunc("/auth/login", s.auth.HandleLogin).Methods("GET")
+		router.HandleFunc("/auth/callback", s.auth.HandleCallback).Methods("GET")
+		router.HandleFunc("/auth/logout", s.auth.HandleLogout).Methods("GET", "POST")
 	}
 
 	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
 }
 
 func (s *Server) getAuthStatus(w http.ResponseWriter, r *http.Request) {
-	if s.oidc == nil {
+	if s.auth == nil {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"enabled": false,
 		})
 		return
 	}
-	s.oidc.handleAuthStatus(w, r)
+	s.auth.HandleAuthStatus(w, r)
 }
 
 func (s *Server) Run() {
@@ -72,8 +72,8 @@ func (s *Server) Run() {
 	s.registerUiRoutes(router)
 
 	var handler http.Handler = router
-	if s.oidc != nil {
-		handler = s.oidc.authMiddleware(router)
+	if s.auth != nil {
+		handler = s.auth.AuthMiddleware(router)
 	}
 
 	port := config.GetValue("SERVER_PORT")

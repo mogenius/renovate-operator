@@ -161,6 +161,19 @@ auth:
     insecureSkipVerify: false
     # -- optional: OIDC end_session_endpoint URL for provider logout (auto-discovered if available)
     logoutUrl: ""
+  github:
+    # -- whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC)
+    enabled: false
+    # -- GitHub OAuth App client ID
+    clientId: ""
+    # -- name of an existing secret containing the GitHub OAuth client secret
+    existingSecret: ""
+    # -- key in the existing secret that contains the GitHub OAuth client secret
+    secretKey: "client-secret"
+    # -- optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts)
+    sessionSecret: ""
+    # -- optional: GitHub OAuth redirect URL (auto-detected from ingress host if empty)
+    redirectUrl: ""
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding

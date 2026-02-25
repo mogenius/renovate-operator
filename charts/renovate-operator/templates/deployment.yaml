@@ -132,6 +132,22 @@ spec:
             - name: OIDC_LOGOUT_URL
               value: {{ .Values.auth.oidc.logoutUrl | quote }}
             {{- end }}
+            {{- else if .Values.auth.github.enabled }}
+            - name: GITHUB_CLIENT_ID
+              value: {{ .Values.auth.github.clientId | quote }}
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.github.existingSecret }}
+                  key: {{ .Values.auth.github.secretKey | default "client-secret" }}
+            {{- if .Values.auth.github.sessionSecret }}
+            - name: GITHUB_SESSION_SECRET
+              value: {{ .Values.auth.github.sessionSecret | quote }}
+            {{- end }}
+            {{- if .Values.auth.github.redirectUrl }}
+            - name: GITHUB_REDIRECT_URL
+              value: {{ .Values.auth.github.redirectUrl | quote }}
+            {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

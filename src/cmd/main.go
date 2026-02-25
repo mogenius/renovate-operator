@@ -157,6 +157,22 @@ func main() {
 			Key:      "OIDC_LOGOUT_URL",
 			Optional: true,
 		},
+		{
+			Key:      "GITHUB_CLIENT_ID",
+			Optional: true,
+		},
+		{
+			Key:      "GITHUB_CLIENT_SECRET",
+			Optional: true,
+		},
+		{
+			Key:      "GITHUB_REDIRECT_URL",
+			Optional: true,
+		},
+		{
+			Key:      "GITHUB_SESSION_SECRET",
+			Optional: true,
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -205,15 +221,18 @@ func main() {
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
-	// Initialize OIDC if configured
-	var oidcAuth *ui.OIDCAuth
+	// Initialize authentication provider (OIDC or GitHub OAuth)
+	var authProvider ui.AuthProvider
 	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
 	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
 	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
+	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
+	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
+
 	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
 		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer oidcCancel()
-		oidcAuth, err = ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
+		oidcAuth, oidcErr := ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
 			IssuerURL:          oidcIssuer,
 			ClientID:           oidcClientID,
 			ClientSecret:       oidcClientSecret,
@@ -222,14 +241,25 @@ func main() {
 			InsecureSkipVerify: config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
 			LogoutURL:          config.GetValue("OIDC_LOGOUT_URL"),
 		}, ctrl.Log.WithName("oidc"))
-		assert.NoError(err, "failed to initialize OIDC provider")
-		ctrl.Log.WithName("oidc").Info("OIDC authentication enabled", "issuer", oidcIssuer)
+		assert.NoError(oidcErr, "failed to initialize OIDC provider")
+		authProvider = oidcAuth
+		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
+	} else if githubClientID != "" && githubClientSecret != "" {
+		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
+			ClientID:      githubClientID,
+			ClientSecret:  githubClientSecret,
+			RedirectURL:   config.GetValue("GITHUB_REDIRECT_URL"),
+			SessionSecret: config.GetValue("GITHUB_SESSION_SECRET"),
+		}, ctrl.Log.WithName("github-oauth"))
+		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
+		authProvider = ghAuth
+		ctrl.Log.WithName("auth").Info("GitHub OAuth authentication enabled")
 	} else {
-		ctrl.Log.WithName("oidc").Info("OIDC not configured, UI access is unauthenticated")
+		ctrl.Log.WithName("auth").Info("No authentication configured, UI access is unauthenticated")
 	}
 
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, oidcAuth)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
