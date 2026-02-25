@@ -14,12 +14,14 @@ import (
 )
 
 type RenovateJobInfo struct {
-	Name            string                             `json:"name"`
-	Namespace       string                             `json:"namespace"`
-	CronExpression  string                             `json:"cronExpression"`
-	NextSchedule    time.Time                          `json:"nextSchedule"`
-	DiscoveryStatus api.RenovateProjectStatus          `json:"discoveryStatus"`
-	Projects        []crdmanager.RenovateProjectStatus `json:"projects"`
+	Name             string                             `json:"name"`
+	Namespace        string                             `json:"namespace"`
+	CronExpression   string                             `json:"cronExpression"`
+	NextSchedule     time.Time                          `json:"nextSchedule"`
+	DiscoveryStatus  api.RenovateProjectStatus          `json:"discoveryStatus"`
+	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
+	Platform         string                             `json:"platform,omitempty"`
+	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -61,6 +63,19 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		platform := ""
+		platformEndpoint := ""
+		for _, env := range renovateJob.Spec.ExtraEnv {
+			if env.Value != "" {
+				switch env.Name {
+				case "RENOVATE_PLATFORM":
+					platform = env.Value
+				case "RENOVATE_ENDPOINT":
+					platformEndpoint = env.Value
+				}
+			}
+		}
+
 		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {
 			projects = append(projects, crdmanager.RenovateProjectStatus{
@@ -73,12 +88,14 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		result = append(result, RenovateJobInfo{
-			Name:            renovateJob.Name,
-			Namespace:       renovateJob.Namespace,
-			NextSchedule:    s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
-			Projects:        projects,
-			CronExpression:  renovateJob.Spec.Schedule,
-			DiscoveryStatus: discoveryStatus,
+			Name:             renovateJob.Name,
+			Namespace:        renovateJob.Namespace,
+			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
+			Projects:         projects,
+			CronExpression:   renovateJob.Spec.Schedule,
+			DiscoveryStatus:  discoveryStatus,
+			Platform:         platform,
+			PlatformEndpoint: platformEndpoint,
 		})
 	}
 
