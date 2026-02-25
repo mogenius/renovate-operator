@@ -99,6 +99,7 @@ type ProjectStatus struct {
 	LastRun              metav1.Time           `json:"lastRun"`
 	Duration             *string               `json:"duration,omitempty"`
 	Status               RenovateProjectStatus `json:"status"`
+	Priority             int32                 `json:"priority,omitempty"`
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 }
 

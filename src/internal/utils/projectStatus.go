@@ -27,6 +27,9 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	// cannot schedule a project that is currently running
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
+		if desiredStatus.Priority > projectStatus.Priority {
+			projectStatus.Priority = desiredStatus.Priority
+		}
 	}
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	return projectStatus
@@ -36,6 +39,7 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 	// can only set a project to running if it is currently scheduled
 	if projectStatus.Status == api.JobStatusScheduled {
 		projectStatus.Status = api.JobStatusRunning
+		projectStatus.Priority = 0
 	}
 	projectStatus.Duration = nil
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -46,6 +50,7 @@ func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredSta
 	// can only set a running project to completed
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusCompleted
+		projectStatus.Priority = 0
 		projectStatus.LastRun = v1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
@@ -56,6 +61,7 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	// can only set a running project to failed
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusFailed
+		projectStatus.Priority = 0
 		projectStatus.LastRun = v1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration

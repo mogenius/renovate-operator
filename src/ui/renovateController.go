@@ -82,6 +82,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Name:                 p.Name,
 				Status:               p.Status,
 				LastRun:              p.LastRun.Time,
+				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
 			})
@@ -184,7 +185,8 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 			Namespace: params.namespace,
 		},
 		&types.RenovateStatusUpdate{
-			Status: api.JobStatusScheduled,
+			Status:   api.JobStatusScheduled,
+			Priority: 2,
 		},
 	)
 	if err != nil {
@@ -194,7 +196,7 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {

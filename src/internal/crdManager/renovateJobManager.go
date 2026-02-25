@@ -70,6 +70,7 @@ type RenovateProjectStatus struct {
 	Name                 string                    `json:"name"`
 	Status               api.RenovateProjectStatus `json:"status"`
 	LastRun              time.Time                 `json:"lastRun,omitempty"`
+	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
 }
@@ -116,6 +117,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Name:                 project.Name,
 				Status:               project.Status,
 				LastRun:              project.LastRun.Time,
+				Priority:             project.Priority,
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
 			})
@@ -137,6 +139,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Name:                 project.Name,
 			Status:               project.Status,
 			LastRun:              project.LastRun.Time,
+			Priority:             project.Priority,
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
 		})
@@ -194,8 +197,9 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 		}
 		if index == -1 {
 			projectStatus := &api.ProjectStatus{
-				Name:   project,
-				Status: status.Status,
+				Name:     project,
+				Status:   status.Status,
+				Priority: status.Priority,
 			}
 			renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
 		} else {

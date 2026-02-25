@@ -3891,6 +3891,9 @@ spec:
                       type: string
                     name:
                       type: string
+                    priority:
+                      format: int32
+                      type: integer
                     renovateResultStatus:
                       type: string
                     status:
