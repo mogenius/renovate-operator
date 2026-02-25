@@ -1,7 +1,7 @@
 .PHONY: tag docker-build
 
 GIT := $(shell git pull --quiet 2>/dev/null || true)
-LATEST_TAG := $(shell git tag --sort=-version:refname | head -n 1)
+LATEST_TAG := $(shell git tag --sort=-version:refname | head -n 1)-3
 LATEST_TAG := $(if $(LATEST_TAG),$(LATEST_TAG),0.0.1)
 tag:
 	@echo "Latest tag: $(LATEST_TAG)"

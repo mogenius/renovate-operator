@@ -102,7 +102,7 @@ func (o *OIDCAuth) AuthMiddleware(next http.Handler) http.Handler {
 }
 
 func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	state, err := o.setStateCookie(w)
+	state, err := o.setStateCookie(w, r)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -111,6 +111,10 @@ func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	// Prevent proxies from caching this response (it contains Set-Cookie headers)
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+
 	if err := o.validateStateCookie(r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -148,13 +152,18 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := o.setSessionCookie(w, claims.Email, claims.Name); err != nil {
-		o.logger.Error(err, "failed to create session")
+	completeURL, err := o.buildCompleteURL(claims.Email, claims.Name)
+	if err != nil {
+		o.logger.Error(err, "failed to build complete URL")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, completeURL, http.StatusFound)
+}
+
+func (o *OIDCAuth) HandleComplete(w http.ResponseWriter, r *http.Request) {
+	o.baseAuth.handleComplete(w, r)
 }
 
 func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +178,7 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
 }
 
 func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
