@@ -1,4 +1,4 @@
-{{- if .Values.crd.install }}
+{{- if and .Values.crd.install (eq .Values.crd.mode "hook") }}
 ---
 apiVersion: v1
 kind: ServiceAccount

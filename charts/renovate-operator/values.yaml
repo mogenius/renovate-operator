@@ -7,6 +7,7 @@ replicaCount: 1
 crd:
   # -- whether to install the CRD or not, set to false if you want to install the CRD separately
   install: true
+  mode: hook # optional: choose between "hook" and "template" install modes
   image:
     registry: registry.k8s.io
     repository: kubectl
