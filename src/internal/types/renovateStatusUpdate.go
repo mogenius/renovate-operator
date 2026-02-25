@@ -8,6 +8,7 @@ import (
 
 type RenovateStatusUpdate struct {
 	Status               api.RenovateProjectStatus
+	Priority             int32
 	RenovateResultStatus *string
 	LastRun              *v1.Time
 	Duration             *string

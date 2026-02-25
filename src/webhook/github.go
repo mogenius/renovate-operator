@@ -57,7 +57,7 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process the webhook payload
-	s.logger.Info("received github event", "repository", payload.Repository.FullName, "action", payload.Action)
+	s.logger.Info("received github event", "repository", payload.Repository.FullName, "action", payload.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
 		r.Context(),
 		payload.Repository.FullName,
@@ -66,7 +66,8 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 			Namespace: namespace,
 		},
 		&types.RenovateStatusUpdate{
-			Status: api.JobStatusScheduled,
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
 		},
 	)
 	if err != nil {
