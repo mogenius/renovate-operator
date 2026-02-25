@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"encoding/json"
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	"renovate-operator/health"
@@ -17,25 +17,27 @@ import (
 )
 
 type Server struct {
-	manager   crdmanager.RenovateJobManager
-	discovery renovate.DiscoveryAgent
-	scheduler scheduler.Scheduler
-	logger    logr.Logger
-	server    *http.Server
-	health    health.HealthCheck
-	version   string
-	auth      AuthProvider
+	manager              crdmanager.RenovateJobManager
+	discovery            renovate.DiscoveryAgent
+	scheduler            scheduler.Scheduler
+	logger               logr.Logger
+	server               *http.Server
+	health               health.HealthCheck
+	version              string
+	auth                 AuthProvider
+	defaultAllowedGroups []string
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string) *Server {
 	return &Server{
-		manager:   manager,
-		logger:    logger,
-		health:    health,
-		discovery: discovery,
-		scheduler: scheduler,
-		version:   version,
-		auth:      auth,
+		manager:              manager,
+		logger:               logger,
+		health:               health,
+		discovery:            discovery,
+		scheduler:            scheduler,
+		version:              version,
+		auth:                 auth,
+		defaultAllowedGroups: defaultAllowedGroups,
 	}
 }
 
