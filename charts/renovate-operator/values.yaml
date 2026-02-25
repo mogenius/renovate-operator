@@ -142,6 +142,8 @@ webhook:
     weight: 1
 
 auth:
+  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = jobs hidden by default, secure)
+  defaultAllowedGroups: ""
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false
@@ -161,6 +163,14 @@ auth:
     insecureSkipVerify: false
     # -- optional: OIDC end_session_endpoint URL for provider logout (auto-discovered if available)
     logoutUrl: ""
+    # -- optional: only accept groups with this prefix (e.g., "renovate-")
+    # -- Leave empty to accept all groups. High-security environments should set this.
+    allowedGroupPrefix: ""
+    # -- optional: only accept groups matching this regex pattern (e.g., "^(team-|platform-).*")
+    # -- Leave empty to accept all groups. Can be combined with allowedGroupPrefix.
+    allowedGroupPattern: ""
+    # -- optional: additional OIDC scopes to request (e.g., "groups" for Keycloak)
+    additionalScopes: []
   github:
     # -- whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC)
     enabled: false
@@ -231,7 +241,7 @@ logging:
   # -- log level for the operator, one of 'debug', 'info', 'error', 'panic'or any integer value > 0
   level: "info"
   # -- log format for the operator, one of: json, console
-  format: "json" 
+  format: "json"
 
 metrics:
   enabled: false

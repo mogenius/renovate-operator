@@ -55,6 +55,10 @@ type RenovateJobSpec struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// DNS Policy for the renovate pods
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
+	// Groups allowed to view this RenovateJob when authentication is enabled.
+	// If empty or not set, the job is hidden from all users.
+	// +optional
+	AllowedGroups []string `json:"allowedGroups,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
