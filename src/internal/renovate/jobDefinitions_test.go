@@ -64,6 +64,23 @@ func TestSecurityContextHelpers(t *testing.T) {
 		t.Fatalf("expected empty service account name, got %s", name)
 	}
 }
+
+func TestGetDNSPolicy(t *testing.T) {
+	t.Run("returns DNSClusterFirst when DNSPolicy is empty", func(t *testing.T) {
+		spec := api.RenovateJobSpec{}
+		if got := getDNSPolicy(spec); got != v1.DNSClusterFirst {
+			t.Fatalf("expected %s, got %s", v1.DNSClusterFirst, got)
+		}
+	})
+
+	t.Run("returns spec DNSPolicy when set", func(t *testing.T) {
+		spec := api.RenovateJobSpec{DNSPolicy: v1.DNSClusterFirst}
+		if got := getDNSPolicy(spec); got != v1.DNSClusterFirst {
+			t.Fatalf("expected %s, got %s", v1.DNSClusterFirst, got)
+		}
+	})
+}
+
 func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},

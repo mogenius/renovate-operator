@@ -51,6 +51,8 @@ type RenovateJobSpec struct {
 	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 	// Image pull secrets for the renovate pods
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+	// DNS Policy for the renovate pods
+	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod

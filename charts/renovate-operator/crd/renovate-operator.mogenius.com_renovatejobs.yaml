@@ -956,6 +956,9 @@ spec:
               discoveryFilter:
                 description: Filter to select which projects to process
                 type: string
+              dnsPolicy:
+                description: DNS Policy for the renovate pods
+                type: string
               extraEnv:
                 description: Additional environment variables to set in the renovate
                   container

@@ -92,6 +92,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
+					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
@@ -178,6 +179,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
+					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
@@ -304,6 +306,14 @@ func getDefaultImagePullSecrets() []v1.LocalObjectReference {
 		return nil
 	}
 	return secrets
+}
+
+func getDNSPolicy(spec api.RenovateJobSpec) v1.DNSPolicy {
+	if spec.DNSPolicy != "" {
+		return spec.DNSPolicy
+	}
+
+	return v1.DNSClusterFirst
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv
