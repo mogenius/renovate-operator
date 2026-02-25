@@ -43,10 +43,35 @@ func (s *Server) registerAuthRoutes(router *mux.Router) {
 	if s.auth != nil {
 		router.HandleFunc("/auth/login", s.auth.HandleLogin).Methods("GET")
 		router.HandleFunc("/auth/callback", s.auth.HandleCallback).Methods("GET")
+		router.HandleFunc("/auth/complete", s.auth.HandleComplete).Methods("GET")
 		router.HandleFunc("/auth/logout", s.auth.HandleLogout).Methods("GET", "POST")
+		router.HandleFunc("/auth/logged-out", handleLoggedOut).Methods("GET")
 	}
 
 	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
+}
+
+func handleLoggedOut(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logged Out - Renovate Operator</title>
+  <script src="/js/tailwind.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+  <div class="text-center">
+    <h1 class="text-2xl font-bold text-gray-800 mb-4">Successfully logged out</h1>
+    <a href="/auth/login" class="inline-block px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors">
+      Log in again
+    </a>
+  </div>
+</body>
+</html>`)
 }
 
 func (s *Server) getAuthStatus(w http.ResponseWriter, r *http.Request) {

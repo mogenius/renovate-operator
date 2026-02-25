@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,21 +18,24 @@ import (
 )
 
 const (
-	sessionCookieName = "renovate_session"
-	stateCookieName   = "oauth_state"
-	sessionDuration   = 24 * time.Hour
+	sessionCookieName   = "renovate_session"
+	stateCookieName     = "oauth_state"
+	authCompletedCookie = "auth_completed"
+	sessionDuration     = 24 * time.Hour
 )
 
 type sessionData struct {
-	Email  string `json:"email"`
-	Name   string `json:"name"`
-	Expiry int64  `json:"exp"`
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	Expiry      int64  `json:"exp"`
+	AccessToken string `json:"at,omitempty"`
 }
 
 // AuthProvider is the interface that both OIDC and GitHub OAuth implement.
 type AuthProvider interface {
 	HandleLogin(w http.ResponseWriter, r *http.Request)
 	HandleCallback(w http.ResponseWriter, r *http.Request)
+	HandleComplete(w http.ResponseWriter, r *http.Request)
 	HandleLogout(w http.ResponseWriter, r *http.Request)
 	HandleAuthStatus(w http.ResponseWriter, r *http.Request)
 	AuthMiddleware(next http.Handler) http.Handler
@@ -55,18 +59,28 @@ func newEncryptionKey(sessionSecret string) ([32]byte, error) {
 	return key, nil
 }
 
+func isPublicPath(path string) bool {
+	// Health, auth endpoints, auth status API
+	if path == "/health" || path == "/api/v1/auth/status" {
+		return true
+	}
+	if strings.HasPrefix(path, "/auth/") {
+		return true
+	}
+	// Static assets must be accessible without auth so the page can render
+	if strings.HasPrefix(path, "/js/") || strings.HasPrefix(path, "/css/") ||
+		strings.HasPrefix(path, "/assets/") || path == "/favicon.ico" {
+		return true
+	}
+	return false
+}
+
 func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Always allow health endpoint
-		if path == "/health" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Always allow auth endpoints
-		if strings.HasPrefix(path, "/auth/") {
+		// Allow public paths without authentication
+		if isPublicPath(path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -74,6 +88,24 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 		// Check session
 		session, err := b.getSession(r)
 		if err != nil || session == nil {
+			if err != nil {
+				b.logger.Info("session check failed", "path", path, "error", err.Error())
+			}
+
+			// Detect auth redirect loop: if the auth_completed marker cookie is
+			// present, the OAuth callback just succeeded but the session cookie
+			// cannot be read. This typically means the encryption key differs
+			// between replicas (SESSION_SECRET not set).
+			if _, markerErr := r.Cookie(authCompletedCookie); markerErr == nil {
+				http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
+					"could not be verified. This usually means GITHUB_SESSION_SECRET or OIDC_SESSION_SECRET "+
+					"is not set, or differs between replicas.")
+				return
+			}
+
 			// API requests get 401
 			if strings.HasPrefix(path, "/api/") {
 				w.Header().Set("Content-Type", "application/json")
@@ -82,8 +114,14 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			// UI requests get redirected to login
+			b.logger.Info("redirecting to login", "path", path)
 			http.Redirect(w, r, "/auth/login", http.StatusFound)
 			return
+		}
+
+		// Clean up marker cookie after successful session read
+		if _, markerErr := r.Cookie(authCompletedCookie); markerErr == nil {
+			http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 		}
 
 		next.ServeHTTP(w, r)
@@ -109,11 +147,87 @@ func (b *baseAuth) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-func (b *baseAuth) setSessionCookie(w http.ResponseWriter, email, name string) error {
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+// buildCompleteURL encrypts the session data and returns a redirect URL to
+// /auth/complete. This separates the OAuth callback (which some proxies
+// interfere with) from the cookie-setting step.
+func (b *baseAuth) buildCompleteURL(email, name string, opts ...func(*sessionData)) (string, error) {
 	session := sessionData{
 		Email:  email,
 		Name:   name,
 		Expiry: time.Now().Add(sessionDuration).Unix(),
+	}
+	for _, opt := range opts {
+		opt(&session)
+	}
+
+	encrypted, err := b.encryptSession(session)
+	if err != nil {
+		return "", err
+	}
+
+	return "/auth/complete?s=" + url.QueryEscape(encrypted), nil
+}
+
+// handleComplete reads the encrypted session token from the URL query parameter,
+// validates it, sets the session cookie, and redirects to /.
+// This handler is called on a separate first-party request (not the OAuth
+// callback), so reverse proxies won't strip the Set-Cookie header.
+func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
+	sessionValue := r.URL.Query().Get("s")
+	if sessionValue == "" {
+		http.Error(w, "missing session parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the encrypted token can be decrypted
+	session, err := b.decryptSession(sessionValue)
+	if err != nil {
+		b.logger.Error(err, "failed to decrypt session token in /auth/complete")
+		http.Error(w, "invalid session token", http.StatusBadRequest)
+		return
+	}
+
+	secure := isHTTPS(r)
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionValue,
+		Path:     "/",
+		MaxAge:   int(sessionDuration.Seconds()),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCompletedCookie,
+		Value:    "1",
+		Path:     "/",
+		MaxAge:   60,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	b.logger.Info("session cookie set via /auth/complete", "email", session.Email, "name", session.Name, "secure", secure, "cookieLen", len(sessionValue))
+
+	writeCallbackRedirect(w, "/")
+}
+
+func (b *baseAuth) setSessionCookie(w http.ResponseWriter, r *http.Request, email, name string, opts ...func(*sessionData)) error {
+	session := sessionData{
+		Email:  email,
+		Name:   name,
+		Expiry: time.Now().Add(sessionDuration).Unix(),
+	}
+	for _, opt := range opts {
+		opt(&session)
 	}
 
 	encrypted, err := b.encryptSession(session)
@@ -121,14 +235,30 @@ func (b *baseAuth) setSessionCookie(w http.ResponseWriter, email, name string) e
 		return err
 	}
 
+	secure := isHTTPS(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    encrypted,
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+
+	// Set an unencrypted marker cookie so the middleware can detect auth loops
+	// (session cookie exists but cannot be decrypted = key mismatch between replicas).
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCompletedCookie,
+		Value:    "1",
+		Path:     "/",
+		MaxAge:   60,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	b.logger.Info("session cookie set", "email", email, "name", name, "secure", secure, "cookieLen", len(encrypted))
 	return nil
 }
 
@@ -142,7 +272,7 @@ func (b *baseAuth) clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-func (b *baseAuth) setStateCookie(w http.ResponseWriter) (string, error) {
+func (b *baseAuth) setStateCookie(w http.ResponseWriter, r *http.Request) (string, error) {
 	state, err := generateRandomString(32)
 	if err != nil {
 		return "", err
@@ -153,6 +283,7 @@ func (b *baseAuth) setStateCookie(w http.ResponseWriter) (string, error) {
 		Path:     "/",
 		MaxAge:   300,
 		HttpOnly: true,
+		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	return state, nil
@@ -255,6 +386,17 @@ func (b *baseAuth) decryptSession(encrypted string) (*sessionData, error) {
 	}
 
 	return &session, nil
+}
+
+// writeCallbackRedirect sends a 200 response with a meta-refresh redirect.
+// This is used instead of http.Redirect (302) in OAuth callbacks because some
+// reverse proxies / ingress controllers strip Set-Cookie headers from redirect
+// responses, preventing the browser from storing the session cookie.
+func writeCallbackRedirect(w http.ResponseWriter, target string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=%s"></head>`+
+		`<body>Redirecting...</body></html>`, target)
 }
 
 func generateRandomString(n int) (string, error) {
