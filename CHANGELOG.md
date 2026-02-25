@@ -1,3 +1,10 @@
+## [2.13.1](https://github.com/mogenius/renovate-operator/compare/2.13.0...2.13.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* additional valid issue content ([285eace](https://github.com/mogenius/renovate-operator/commit/285eacee19a1b43c2f4ca7d1656103dafd2d647d))
+
 # [2.13.0](https://github.com/mogenius/renovate-operator/compare/2.12.0...2.13.0) (2026-02-25)
 
 
