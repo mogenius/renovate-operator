@@ -21,6 +21,9 @@ crd:
       seccompProfile:
         type: RuntimeDefault
     container:
+      capabilities:
+        drop:
+          - ALL
       runAsUser: 1000
       runAsGroup: 1000
       runAsNonRoot: true
@@ -139,6 +142,9 @@ securityContext:
     seccompProfile:
       type: RuntimeDefault
   container:
+    capabilities:
+      drop:
+        - ALL
     runAsUser: 1000
     runAsGroup: 1000
     runAsNonRoot: true
