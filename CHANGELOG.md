@@ -1,3 +1,10 @@
+# [2.14.0](https://github.com/mogenius/renovate-operator/compare/2.13.1...2.14.0) (2026-02-26)
+
+
+### Features
+
+* show link to open PRs/MRs in project table ([2702052](https://github.com/mogenius/renovate-operator/commit/27020527c46b94ff0d59afa5c0483985e3362425))
+
 ## [2.13.1](https://github.com/mogenius/renovate-operator/compare/2.13.0...2.13.1) (2026-02-25)
 
 
