@@ -1,3 +1,10 @@
+## [2.14.1](https://github.com/mogenius/renovate-operator/compare/2.14.0...2.14.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* Strip /api/v4 from GitLab Endpoints ([e6452c8](https://github.com/mogenius/renovate-operator/commit/e6452c8096a0b289d81a4bb29260e9c84525dac0))
+
 # [2.14.0](https://github.com/mogenius/renovate-operator/compare/2.13.1...2.14.0) (2026-02-26)
 
 
