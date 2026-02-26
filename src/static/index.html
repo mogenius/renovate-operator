@@ -141,7 +141,7 @@
           }
           return `${base}/${projectName}/pulls`;
         } else if (platform === 'gitlab') {
-          const base = (endpoint || 'https://gitlab.com').replace(/\/$/, '');
+          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v4$/, '');
           return `${base}/${projectName}/-/merge_requests`;
         } else if (platform === 'bitbucket') {
           return `https://bitbucket.org/${projectName}/pull-requests`;
@@ -199,7 +199,7 @@
           if (e.target.closest('[data-no-tooltip]')) {
             return;
           }
-          
+
           timeoutRef.current = setTimeout(() => {
             setIsVisible(true);
           }, 500); // 500ms delay before showing tooltip
@@ -244,7 +244,7 @@
             className="fixed z-50 pointer-events-none border-0"
             style={{
               left: '50%',
-              top: containerRef.current ? 
+              top: containerRef.current ?
                 `${containerRef.current.getBoundingClientRect().top - 12}px` : '0',
               transform: 'translate(-50%, -100%)'
             }}
@@ -836,7 +836,7 @@
         const sortedProjects = [...projects];
 
         if (sortConfig.key) {
-          sortedProjects.sort((a, b) => {            
+          sortedProjects.sort((a, b) => {
             let aValue = a[sortConfig.key];
             let bValue = b[sortConfig.key];
 
@@ -854,26 +854,26 @@
               };
               const aStatus = statusOrder[(a.status || "").toLowerCase()] ?? 99;
               const bStatus = statusOrder[(b.status || "").toLowerCase()] ?? 99;
-              
+
               // Primary: status
               if (aStatus !== bStatus) {
-                return sortConfig.direction === "asc" 
-                  ? aStatus - bStatus 
+                return sortConfig.direction === "asc"
+                  ? aStatus - bStatus
                   : bStatus - aStatus;
               }
-              
+
               // Secondary: onboarding state within same status
               const aHasConfig = a.renovateResultStatus && a.renovateResultStatus !== "done";
               const bHasConfig = b.renovateResultStatus && b.renovateResultStatus !== "done";
               const aOnboarding = aHasConfig ? 1 : 0;
               const bOnboarding = bHasConfig ? 1 : 0;
-              
+
               if (aOnboarding !== bOnboarding) {
                 return sortConfig.direction === "asc"
                   ? aOnboarding - bOnboarding
                   : bOnboarding - aOnboarding;
               }
-              
+
               // Tertiary: name
               const aName = (a.name || "").toLowerCase();
               const bName = (b.name || "").toLowerCase();
@@ -1159,7 +1159,7 @@
                         sortedProjects.map((project) => {
                           const ProjectRow = () => {
                             const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
-                            
+
                             return (
                               <>
                                 <tr
@@ -1257,7 +1257,7 @@
                         </>
                       );
                     };
-                    
+
                     return <ProjectRow key={project.name} />;
                   })
                       ) : (
@@ -1279,10 +1279,10 @@
                     sortedProjects.map((project) => {
                       const ProjectCard = () => {
                         const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
-                        
+
                         return (
                           <>
-                            <div 
+                            <div
                               ref={containerRef}
                               {...tooltipProps}
                               className={`p-4 space-y-3 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
@@ -1366,7 +1366,7 @@
                     </>
                   );
                 };
-                
+
                 return <ProjectCard key={project.name} />;
               })
                   ) : (
