@@ -1,3 +1,10 @@
+# [2.16.0](https://github.com/mogenius/renovate-operator/compare/2.15.3...2.16.0) (2026-02-27)
+
+
+### Features
+
+* switch from robfig/cron to netresearch/go-cron for scheduling ([9744439](https://github.com/mogenius/renovate-operator/commit/974443960d8cb7e755a0dda975c6890e92ad070e))
+
 ## [2.15.3](https://github.com/mogenius/renovate-operator/compare/2.15.2...2.15.3) (2026-02-27)
 
 
