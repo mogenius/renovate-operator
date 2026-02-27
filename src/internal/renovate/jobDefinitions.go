@@ -69,8 +69,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
-			BackoffLimit:          getJobBackOffLimit(),
+			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
+			BackoffLimit:            getJobBackOffLimit(),
+			TTLSecondsAfterFinished: getJobTTLSecondsAfterFinished(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
