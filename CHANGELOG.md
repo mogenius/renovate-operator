@@ -1,3 +1,10 @@
+# [2.15.0](https://github.com/mogenius/renovate-operator/compare/2.14.2...2.15.0) (2026-02-27)
+
+
+### Features
+
+* enable timezone support ([4727fec](https://github.com/mogenius/renovate-operator/commit/4727fece7390fc77e417a1d36baeb1122b5f958f))
+
 ## [2.14.2](https://github.com/mogenius/renovate-operator/compare/2.14.1...2.14.2) (2026-02-27)
 
 
