@@ -29,4 +29,7 @@ spec:
       backendRefs:
         - name: {{ include "renovate-operator.fullname" . }}
           port: {{ .Values.webhook.port }}
+          group: {{ .Values.webhook.route.group }}
+          kind: {{ .Values.webhook.route.kind }}
+          weight: {{ .Values.webhook.route.weight }}
 {{- end }}

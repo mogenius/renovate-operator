@@ -96,6 +96,12 @@ route:
   hostnames: []
   # -- parentRefs to place on the HTTPRoute
   parentRefs: []
+  # -- group to place on the HTTPRoute
+  group: ''
+  # -- kind to place on the HTTPRoute
+  kind: Service
+  # -- weight to place on the HTTPRoute
+  weight: 1
 
 webhook:
   enabled: false
@@ -128,7 +134,12 @@ webhook:
     hostnames: []
     # -- parentRefs to place on the HTTPRoute
     parentRefs: []
-
+    # -- group to place on the HTTPRoute
+    group: ''
+    # -- kind to place on the HTTPRoute
+    kind: Service
+    # -- weight to place on the HTTPRoute
+    weight: 1
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding

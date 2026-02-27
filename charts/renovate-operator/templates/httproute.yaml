@@ -29,4 +29,7 @@ spec:
       backendRefs:
         - name: {{ include "renovate-operator.fullname" . }}
           port: 8081
+          group: {{ .Values.route.group }}
+          kind: {{ .Values.route.kind }}
+          weight: {{ .Values.route.weight }}
 {{- end }}
