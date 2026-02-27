@@ -1,3 +1,10 @@
+# [2.17.0](https://github.com/mogenius/renovate-operator/compare/2.16.0...2.17.0) (2026-02-27)
+
+
+### Features
+
+* Add httproute fields ([e8c509f](https://github.com/mogenius/renovate-operator/commit/e8c509fd718e4e9ce61559b7c0de576b5336dcee))
+
 # [2.16.0](https://github.com/mogenius/renovate-operator/compare/2.15.3...2.16.0) (2026-02-27)
 
 
