@@ -1,3 +1,10 @@
+## [2.17.1](https://github.com/mogenius/renovate-operator/compare/2.17.0...2.17.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* Quote httproute fields ([e6cbc98](https://github.com/mogenius/renovate-operator/commit/e6cbc989a984b49e33bd4b645854723b63fea825))
+
 # [2.17.0](https://github.com/mogenius/renovate-operator/compare/2.16.0...2.17.0) (2026-02-27)
 
 
