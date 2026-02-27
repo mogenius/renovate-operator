@@ -188,7 +188,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectImage(t, djContainer, "img")
 	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, dj, 10)
-	expectTtlSecondsAfterFinished(t, dj, nil)
+	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
 
 	// env vars
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
