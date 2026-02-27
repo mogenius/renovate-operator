@@ -1,3 +1,10 @@
+## [2.15.1](https://github.com/mogenius/renovate-operator/compare/2.15.0...2.15.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* allow renovate discovery to parse mixed type arrays ([ffdfc9e](https://github.com/mogenius/renovate-operator/commit/ffdfc9ede75e8cf2cf5d4e257abfecc213dbf1ed)), closes [#167](https://github.com/mogenius/renovate-operator/issues/167)
+
 # [2.15.0](https://github.com/mogenius/renovate-operator/compare/2.14.2...2.15.0) (2026-02-27)
 
 
