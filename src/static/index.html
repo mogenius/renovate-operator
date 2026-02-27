@@ -136,18 +136,18 @@
         if (!platform || platform === 'github') {
           let base = 'https://github.com';
           if (endpoint && !endpoint.includes('api.github.com')) {
-            // GitHub Enterprise: strip /api/v3/ suffix to get web URL
-            base = endpoint.replace(/\/api\/v3\/?$/, '').replace(/\/$/, '');
+            // GitHub Enterprise: strip /api/vN/ suffix to get web URL
+            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
           }
           return `${base}/${projectName}/pulls`;
         } else if (platform === 'gitlab') {
-          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v4$/, '');
+          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
           return `${base}/${projectName}/-/merge_requests`;
         } else if (platform === 'bitbucket') {
           return `https://bitbucket.org/${projectName}/pull-requests`;
         } else if (platform === 'gitea' || platform === 'forgejo') {
           if (endpoint) {
-            const base = endpoint.replace(/\/$/, '');
+            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
             return `${base}/${projectName}/pulls`;
           }
         }
