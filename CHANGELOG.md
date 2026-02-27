@@ -1,3 +1,10 @@
+## [2.15.3](https://github.com/mogenius/renovate-operator/compare/2.15.2...2.15.3) (2026-02-27)
+
+
+### Bug Fixes
+
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.35.2 ([06daf79](https://github.com/mogenius/renovate-operator/commit/06daf79424c9026731bac4d65d1977fd853e799c))
+
 ## [2.15.2](https://github.com/mogenius/renovate-operator/compare/2.15.1...2.15.2) (2026-02-27)
 
 
