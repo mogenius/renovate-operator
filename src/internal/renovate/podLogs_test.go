@@ -6,10 +6,10 @@ import (
 
 func TestParseDiscoveredProjects(t *testing.T) {
 	tests := []struct {
-		name      string
-		logs      string
-		want      []string
-		wantErr   bool
+		name    string
+		logs    string
+		want    []string
+		wantErr bool
 	}{
 		{
 			name: "clean JSON array",
@@ -55,6 +55,11 @@ func TestParseDiscoveredProjects(t *testing.T) {
 			name: "JSON object line before array",
 			logs: `{"level":30,"msg":"some log"}` + "\n" + `["org/repo1"]`,
 			want: []string{"org/repo1"},
+		},
+		{
+			name: "json array with repositories",
+			logs: `[{"repository":"Group1/Folder1/Repository1","secrets":{"SECRET_NAME":"TOKEN2"}},"Group1/Folder2/Repository1","Group1/Folder2/Repository2"]`,
+			want: []string{"Group1/Folder1/Repository1", "Group1/Folder2/Repository1", "Group1/Folder2/Repository2"},
 		},
 	}
 

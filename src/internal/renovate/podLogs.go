@@ -41,25 +41,60 @@ func (e *discoveryAgent) getDiscoveredProjectsFromJobLogs(ctx context.Context, c
 // stderr output mixed into the logs), it scans line by line for a valid JSON array.
 func parseDiscoveredProjects(logs string) ([]string, error) {
 	// Fast path: try parsing the entire log as a JSON array
-	var discovered []string
-	if err := json.Unmarshal([]byte(logs), &discovered); err == nil {
+	discovered, err := parseLineForDiscoveredProjects(logs)
+	if err == nil {
 		return discovered, nil
 	}
 
 	// Fallback: scan line by line for a JSON array (handles stderr mixed into logs)
 	scanner := bufio.NewScanner(strings.NewReader(logs))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if len(line) == 0 || line[0] != '[' {
-			continue
-		}
-		var lineDiscovered []string
-		if err := json.Unmarshal([]byte(line), &lineDiscovered); err == nil {
-			return lineDiscovered, nil
+		discovered, err = parseLineForDiscoveredProjects(scanner.Text())
+		if err == nil {
+			return discovered, nil
 		}
 	}
 
 	return nil, fmt.Errorf("no valid JSON array found in discovery logs (%d bytes)", len(logs))
+}
+
+func parseLineForDiscoveredProjects(line string) ([]string, error) {
+	line = strings.TrimSpace(line)
+
+	if len(line) == 0 || line[0] != '[' {
+		return nil, fmt.Errorf("line does not start with '[': %s", line)
+	}
+
+	// Fast path: try parsing as a plain string array
+	var discovered []string
+	if err := json.Unmarshal([]byte(line), &discovered); err == nil {
+		return discovered, nil
+	}
+
+	// Fallback: parse as mixed array (elements can be strings or objects with "repository" field)
+	var raw []json.RawMessage
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		return nil, err
+	}
+
+	discovered = make([]string, 0, len(raw))
+	for _, elem := range raw {
+		var s string
+		if err := json.Unmarshal(elem, &s); err == nil {
+			discovered = append(discovered, s)
+			continue
+		}
+		var obj struct {
+			Repository string `json:"repository"`
+		}
+		if err := json.Unmarshal(elem, &obj); err == nil && obj.Repository != "" {
+			discovered = append(discovered, obj.Repository)
+			continue
+		}
+		return nil, fmt.Errorf("unsupported element in discovered projects array: %s", elem)
+	}
+
+	return discovered, nil
 }
 
 // getLatestSuccessfulPodLog fetches the logs from the latest successful pod for a job
