@@ -1,3 +1,11 @@
+## [2.14.2](https://github.com/mogenius/renovate-operator/compare/2.14.1...2.14.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* add TTLSecondsAfterFinished to discovery job spec ([4dfb74e](https://github.com/mogenius/renovate-operator/commit/4dfb74e9c8dc8b85b55c49699412370ca7803e87))
+* add TTLSecondsAfterFinished to discovery job spec ([c63c459](https://github.com/mogenius/renovate-operator/commit/c63c45955d1212dfdb6666511ed50c8466aa6ff5))
+
 ## [2.14.1](https://github.com/mogenius/renovate-operator/compare/2.14.0...2.14.1) (2026-02-26)
 
 
