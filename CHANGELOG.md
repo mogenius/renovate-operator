@@ -1,3 +1,10 @@
+## [2.15.2](https://github.com/mogenius/renovate-operator/compare/2.15.1...2.15.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* improve stripping the api suffix for PR Page link ([8d4ffac](https://github.com/mogenius/renovate-operator/commit/8d4ffac3b91b334a2005023ac88c06c50da68e27)), closes [#166](https://github.com/mogenius/renovate-operator/issues/166)
+
 ## [2.15.1](https://github.com/mogenius/renovate-operator/compare/2.15.0...2.15.1) (2026-02-27)
 
 
