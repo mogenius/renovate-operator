@@ -45,17 +45,17 @@ func (s *Server) registerAuthRoutes(router *mux.Router) {
 		router.HandleFunc("/auth/callback", s.auth.HandleCallback).Methods("GET")
 		router.HandleFunc("/auth/complete", s.auth.HandleComplete).Methods("GET")
 		router.HandleFunc("/auth/logout", s.auth.HandleLogout).Methods("GET", "POST")
-		router.HandleFunc("/auth/logged-out", handleLoggedOut).Methods("GET")
+		router.HandleFunc("/auth/logged-out", s.handleLoggedOut).Methods("GET")
 	}
 
 	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
 }
 
-func handleLoggedOut(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, `<!DOCTYPE html>
+	_, err := fmt.Fprint(w, `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -72,6 +72,10 @@ func handleLoggedOut(w http.ResponseWriter, r *http.Request) {
   </div>
 </body>
 </html>`)
+
+	if err != nil {
+		s.logger.Error(err, "failed to write logged-out response")
+	}
 }
 
 func (s *Server) getAuthStatus(w http.ResponseWriter, r *http.Request) {
