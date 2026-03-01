@@ -36,8 +36,8 @@ type OIDCAuth struct {
 
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDCAuth, error) {
 	transport := &http.Transport{
-		Proxy:                  http.ProxyFromEnvironment,
-		DialContext:            (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
 	}
@@ -98,7 +98,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 }
 
 func (o *OIDCAuth) AuthMiddleware(next http.Handler) http.Handler {
-	return o.baseAuth.authMiddleware(next)
+	return o.authMiddleware(next)
 }
 
 func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OIDCAuth) HandleComplete(w http.ResponseWriter, r *http.Request) {
-	o.baseAuth.handleComplete(w, r)
+	o.handleComplete(w, r)
 }
 
 func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -182,5 +182,5 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	o.baseAuth.handleAuthStatus(w, r)
+	o.handleAuthStatus(w, r)
 }
