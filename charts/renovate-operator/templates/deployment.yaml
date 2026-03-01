@@ -143,9 +143,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.github.existingSecret }}
                   key: {{ .Values.auth.github.secretKey | default "client-secret" }}
-            {{- if .Values.auth.github.sessionSecret }}
+            {{- if .Values.auth.github.sessionSecretKey }}
             - name: GITHUB_SESSION_SECRET
-              value: {{ .Values.auth.github.sessionSecret | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.github.existingSecret }}
+                  key: {{ .Values.auth.github.sessionSecretKey }}
             {{- end }}
             {{- if .Values.auth.github.redirectUrl }}
             - name: GITHUB_REDIRECT_URL

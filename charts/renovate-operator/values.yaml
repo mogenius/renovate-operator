@@ -171,7 +171,7 @@ auth:
     # -- key in the existing secret that contains the GitHub OAuth client secret
     secretKey: "client-secret"
     # -- optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts)
-    sessionSecret: ""
+    sessionSecretKey: ""
     # -- optional: GitHub OAuth redirect URL (auto-detected from ingress host if empty)
     redirectUrl: ""
 
