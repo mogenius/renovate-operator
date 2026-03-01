@@ -1,3 +1,19 @@
+# [2.18.0](https://github.com/mogenius/renovate-operator/compare/2.17.2...2.18.0) (2026-03-01)
+
+
+### Bug Fixes
+
+* **lint:** add missing checks and remove unused functions ([d04a1da](https://github.com/mogenius/renovate-operator/commit/d04a1da7eed5fa8901617a80f24136309dfd2c01))
+* move sessionSecret to secret reference ([56ec414](https://github.com/mogenius/renovate-operator/commit/56ec414f35b2830ca1f0601607574645d6de3690))
+* resolve session cookie issues with reverse proxy / ingress ([55c3c84](https://github.com/mogenius/renovate-operator/commit/55c3c840a1355044ae527ff77e382230a6e2b45d))
+* use sessionSecretKey for github as well ([77548d1](https://github.com/mogenius/renovate-operator/commit/77548d1b4e3a3cea63c61710555f5a0a4c76921d))
+
+
+### Features
+
+* add GitHub OAuth as alternative auth provider for the Web UI ([775251f](https://github.com/mogenius/renovate-operator/commit/775251f3443986dcc9603b6f93b7fed20c51364f))
+* Add optional OIDC/OAuth2 authentication for the Web UI ([d9f001d](https://github.com/mogenius/renovate-operator/commit/d9f001d5199ff5b939b1faeacb8b96f7738432b5))
+
 ## [2.17.2](https://github.com/mogenius/renovate-operator/compare/2.17.1...2.17.2) (2026-02-28)
 
 
