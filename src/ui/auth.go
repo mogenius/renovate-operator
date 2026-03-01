@@ -100,9 +100,12 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
+				_, err := fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
 					"could not be verified. This usually means GITHUB_SESSION_SECRET or OIDC_SESSION_SECRET "+
 					"is not set, or differs between replicas.")
+				if err != nil {
+					b.logger.Error(err, "failed to write error response")
+				}
 				return
 			}
 
@@ -217,49 +220,10 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 
 	b.logger.Info("session cookie set via /auth/complete", "email", session.Email, "name", session.Name, "secure", secure, "cookieLen", len(sessionValue))
 
-	writeCallbackRedirect(w, "/")
-}
-
-func (b *baseAuth) setSessionCookie(w http.ResponseWriter, r *http.Request, email, name string, opts ...func(*sessionData)) error {
-	session := sessionData{
-		Email:  email,
-		Name:   name,
-		Expiry: time.Now().Add(sessionDuration).Unix(),
-	}
-	for _, opt := range opts {
-		opt(&session)
-	}
-
-	encrypted, err := b.encryptSession(session)
+	err = writeCallbackRedirect(w, "/")
 	if err != nil {
-		return err
+		b.logger.Error(err, "failed to write callback redirect response")
 	}
-
-	secure := isHTTPS(r)
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    encrypted,
-		Path:     "/",
-		MaxAge:   int(sessionDuration.Seconds()),
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	// Set an unencrypted marker cookie so the middleware can detect auth loops
-	// (session cookie exists but cannot be decrypted = key mismatch between replicas).
-	http.SetCookie(w, &http.Cookie{
-		Name:     authCompletedCookie,
-		Value:    "1",
-		Path:     "/",
-		MaxAge:   60,
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	b.logger.Info("session cookie set", "email", email, "name", name, "secure", secure, "cookieLen", len(encrypted))
-	return nil
 }
 
 func (b *baseAuth) clearSessionCookie(w http.ResponseWriter) {
@@ -392,11 +356,12 @@ func (b *baseAuth) decryptSession(encrypted string) (*sessionData, error) {
 // This is used instead of http.Redirect (302) in OAuth callbacks because some
 // reverse proxies / ingress controllers strip Set-Cookie headers from redirect
 // responses, preventing the browser from storing the session cookie.
-func writeCallbackRedirect(w http.ResponseWriter, target string) {
+func writeCallbackRedirect(w http.ResponseWriter, target string) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=%s"></head>`+
+	_, err := fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=%s"></head>`+
 		`<body>Redirecting...</body></html>`, target)
+	return err
 }
 
 func generateRandomString(n int) (string, error) {

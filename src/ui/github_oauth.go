@@ -135,7 +135,11 @@ func (g *GitHubOAuth) revokeGitHubToken(accessToken string) {
 		g.logger.Error(err, "failed to revoke GitHub token")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			g.logger.Error(err, "failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNoContent {
 		g.logger.Info("GitHub OAuth token revoked successfully")
@@ -160,7 +164,11 @@ func (g *GitHubOAuth) fetchGitHubUser(accessToken string) (email, name string, e
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			g.logger.Error(err, "failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
@@ -203,7 +211,11 @@ func (g *GitHubOAuth) fetchPrimaryEmail(accessToken string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			g.logger.Error(err, "failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub emails API returned status %d", resp.StatusCode)
