@@ -100,3 +100,17 @@ jsInstall:
     echo "Downloading Babel Standalone..."
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone/babel.min.js"
     echo "All JavaScript dependencies downloaded successfully!"
+
+docker image:
+    podman build --platform linux/arm64 \
+        -t {{image}}-arm64 \
+        -f ./Dockerfile .
+    @echo "Creating manifest..."
+    podman manifest rm {{image}} 2>/dev/null || true
+    podman manifest create {{image}}
+    @echo "Adding ARM64 to manifest..."
+    podman manifest add {{image}} {{image}}-arm64
+    @echo "Inspecting manifest:"
+    podman manifest inspect {{image}}
+    @echo "Pushing manifest:"
+    podman manifest push --all {{image}}
