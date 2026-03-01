@@ -154,7 +154,7 @@ auth:
     # -- key in the existing secret that contains the OIDC client secret
     secretKey: "client-secret"
     # -- optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts)
-    sessionSecret: ""
+    sessionSecretKey: ""
     # -- optional: OIDC redirect URL (auto-detected from ingress host if empty)
     redirectUrl: ""
     # -- optional: skip TLS verification for the OIDC provider (not recommended for production)

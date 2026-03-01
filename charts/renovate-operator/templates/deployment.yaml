@@ -116,9 +116,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.oidc.existingSecret }}
                   key: {{ .Values.auth.oidc.secretKey | default "client-secret" }}
-            {{- if .Values.auth.oidc.sessionSecret }}
+            {{- if .Values.auth.oidc.sessionSecretKey }}
             - name: OIDC_SESSION_SECRET
-              value: {{ .Values.auth.oidc.sessionSecret | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.sessionSecretKey }}
             {{- end }}
             {{- if .Values.auth.oidc.redirectUrl }}
             - name: OIDC_REDIRECT_URL
