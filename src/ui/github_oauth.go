@@ -46,7 +46,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger) (*GitHubOAuth, er
 }
 
 func (g *GitHubOAuth) AuthMiddleware(next http.Handler) http.Handler {
-	return g.baseAuth.authMiddleware(next)
+	return g.authMiddleware(next)
 }
 
 func (g *GitHubOAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,7 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *GitHubOAuth) HandleComplete(w http.ResponseWriter, r *http.Request) {
-	g.baseAuth.handleComplete(w, r)
+	g.handleComplete(w, r)
 }
 
 func (g *GitHubOAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +149,7 @@ func (g *GitHubOAuth) revokeGitHubToken(accessToken string) {
 }
 
 func (g *GitHubOAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	g.baseAuth.handleAuthStatus(w, r)
+	g.handleAuthStatus(w, r)
 }
 
 func (g *GitHubOAuth) fetchGitHubUser(accessToken string) (email, name string, err error) {
