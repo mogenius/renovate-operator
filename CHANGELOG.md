@@ -1,3 +1,10 @@
+# [2.20.0](https://github.com/mogenius/renovate-operator/compare/2.19.1...2.20.0) (2026-03-02)
+
+
+### Features
+
+* add dedicated Forgejo webhook endpoint ([#144](https://github.com/mogenius/renovate-operator/issues/144)) ([a365716](https://github.com/mogenius/renovate-operator/commit/a365716f6aea47b7445263b486c678b95105d429))
+
 ## [2.19.1](https://github.com/mogenius/renovate-operator/compare/2.19.0...2.19.1) (2026-03-02)
 
 
