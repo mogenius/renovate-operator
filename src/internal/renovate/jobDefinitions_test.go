@@ -85,8 +85,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
 		Spec: api.RenovateJobSpec{
-			Image:           "img",
-			SecretRef:       "sref",
+			Image:     "img",
+			SecretRef: "sref",
+			Provider: &api.RenovateProvider{
+				Name:     "gitlab",
+				Endpoint: "gitlab.example.com",
+			},
 			DiscoveryFilter: "org/*",
 			DiscoverTopics:  "renovate",
 			Metadata: &api.RenovateJobMetadata{
@@ -194,6 +198,8 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
+	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
+	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
 	expectEnvFromSecret(t, djContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})

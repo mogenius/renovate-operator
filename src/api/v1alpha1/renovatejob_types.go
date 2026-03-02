@@ -17,6 +17,8 @@ type RenovateJobSpec struct {
 	Schedule string `json:"schedule"`
 	// Renovate Docker image to use
 	Image string `json:"image,omitempty"`
+	// Renovate Provider Information to fill environment variables in the renovate container
+	Provider *RenovateProvider `json:"provider,omitempty"` // TODO v3: make this a required field
 	// Filter to select which projects to process
 	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
 	// Topics to discover projects from
@@ -89,6 +91,15 @@ type RenovateSecretKeyReference struct {
 type RenovateJobMetadata struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+/*
+Renovate Provider Information
+This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
+*/
+type RenovateProvider struct {
+	Name     string `json:"name"`
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 /*

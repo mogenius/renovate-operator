@@ -10,11 +10,12 @@ metadata:
   namespace: renovate-operator
 spec:
   discoveryFilter: ###GITHUB_USERNAME###/*
-  extraEnv:
-    - name: RENOVATE_PLATFORM
-      value: github
-    - name: RENOVATE_ENDPOINT
-      value: https://api.github.com/
+  provider:
+    name: github
+    endpoint: ""  # optional, defaults to https://api.github.com
+  extraEnv: {}
+    # - name: ENV_NAME
+    # value: "EV_VALUE"
   image: renovate/renovate:41.43.3
   parallelism: 5
   resources:
