@@ -3126,6 +3126,17 @@ spec:
                 description: Maximum number of projects to process in parallel
                 format: int32
                 type: integer
+              provider:
+                description: Renovate Provider Information to fill environment variables
+                  in the renovate container
+                properties:
+                  endpoint:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               resources:
                 description: Resource requirements for the renovate container
                 properties:

@@ -17,12 +17,12 @@ spec:
   discoveryFilter: "MyOrg/*" # Optional: filter discovered repositories
   image: renovate/renovate:latest # renovate
   secretRef: "renovate-secret"
-  extraEnv:
-    - name: RENOVATE_ENDPOINT
-      value: "https://your-platform.example.com" # Your platform API endpoint
-    - name: RENOVATE_PLATFORM
-      value: "your-platform" # Platform type: github, gitlab, bitbucket, azure, gitea, etc.
-    # Add any additional environment variables here
+  provider:
+    name: your-platform # Platform type: github, gitlab, bitbucket, azure, gitea, etc.
+    endpoint: "https://your-platform.example.com" # Your platform API endpoint
+  extraEnv: {}
+    # - name: ENV_NAME
+    # value: "EV_VALUE"
   parallelism: 1
 ```
 

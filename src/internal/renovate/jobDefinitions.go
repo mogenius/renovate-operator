@@ -40,6 +40,17 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 		})
 	}
 
+	if job.Spec.Provider != nil {
+		platform, endpoint := getPlatformEndpointAndEndpoint(job.Spec.Provider)
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_ENDPOINT",
+			Value: endpoint,
+		}, v1.EnvVar{
+			Name:  "RENOVATE_PLATFORM",
+			Value: platform,
+		})
+	}
+
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
@@ -125,6 +136,17 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			Name:  "LOG_FORMAT",
 			Value: "json",
 		},
+	}
+
+	if job.Spec.Provider != nil {
+		platform, endpoint := getPlatformEndpointAndEndpoint(job.Spec.Provider)
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_ENDPOINT",
+			Value: endpoint,
+		}, v1.EnvVar{
+			Name:  "RENOVATE_PLATFORM",
+			Value: platform,
+		})
 	}
 
 	envFromSecrets := []v1.EnvFromSource{}
@@ -338,4 +360,20 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 	}
 
 	return result
+}
+
+func getPlatformEndpointAndEndpoint(provider *api.RenovateProvider) (string, string) {
+	if provider == nil {
+		return "", ""
+	}
+	endpoint := provider.Endpoint
+	if endpoint == "" {
+		switch provider.Name {
+		case "github":
+			endpoint = "https://api.github.com"
+		case "gitlab":
+			endpoint = "https://gitlab.com/api/v4"
+		}
+	}
+	return provider.Name, endpoint
 }
