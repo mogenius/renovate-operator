@@ -8,7 +8,6 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
-	crdmanager "renovate-operator/internal/crdManager"
 
 	"renovate-operator/internal/types"
 
@@ -52,7 +51,7 @@ func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p 
 	}
 	return nil
 }
-func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil
 }
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
