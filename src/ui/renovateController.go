@@ -7,6 +7,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
+	"renovate-operator/internal/utils"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -65,13 +66,19 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 
 		platform := ""
 		platformEndpoint := ""
-		for _, env := range renovateJob.Spec.ExtraEnv {
-			if env.Value != "" {
-				switch env.Name {
-				case "RENOVATE_PLATFORM":
-					platform = env.Value
-				case "RENOVATE_ENDPOINT":
-					platformEndpoint = env.Value
+
+		if renovateJob.Spec.Provider != nil {
+			platform, platformEndpoint = utils.GetPlatformEndpointAndEndpoint(renovateJob.Spec.Provider)
+		} else {
+			// TODO v3: remove this fallback, as provider should be mandatory
+			for _, env := range renovateJob.Spec.ExtraEnv {
+				if env.Value != "" {
+					switch env.Name {
+					case "RENOVATE_PLATFORM":
+						platform = env.Value
+					case "RENOVATE_ENDPOINT":
+						platformEndpoint = env.Value
+					}
 				}
 			}
 		}
