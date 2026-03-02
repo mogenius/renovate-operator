@@ -1,3 +1,10 @@
+# [2.19.0](https://github.com/mogenius/renovate-operator/compare/2.18.0...2.19.0) (2026-03-02)
+
+
+### Features
+
+* Add priority scheduling for Webhook/UI runs ([5629588](https://github.com/mogenius/renovate-operator/commit/562958887f53f14a3213d71a34b42a091a1fc459))
+
 # [2.18.0](https://github.com/mogenius/renovate-operator/compare/2.17.2...2.18.0) (2026-03-01)
 
 
