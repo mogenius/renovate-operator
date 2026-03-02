@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -123,7 +124,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}
 
 	// add new project via manager
-	err := mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusScheduled)
+	err := mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != nil {
 		t.Fatalf("unexpected error adding project: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}
 
 	// update existing project
-	err = mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusRunning)
+	err = mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != nil {
 		t.Fatalf("unexpected error updating project: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 
 	// predicate: mark non-running projects as scheduled
 	predicate := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
-	err := mgr.UpdateProjectStatusBatched(ctx, predicate, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusScheduled)
+	err := mgr.UpdateProjectStatusBatched(ctx, predicate, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
 	if err != nil {
 		t.Fatalf("unexpected error in batched update: %v", err)
 	}

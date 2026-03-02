@@ -8,11 +8,13 @@ import (
 	"renovate-operator/config"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
+	"sort"
 	"sync"
 	"time"
 
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/parser"
+	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
@@ -164,116 +166,114 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 		}
 	}
 
+	jobId := crdManager.RenovateJobIdentifier{
+		Name:      renovateJob.Name,
+		Namespace: renovateJob.Namespace,
+	}
+
+	// Pass 1: process running projects to free slots
 	for i := range renovateJob.Status.Projects {
 		project := &renovateJob.Status.Projects[i]
-
-		jobId := crdManager.RenovateJobIdentifier{
-			Name:      renovateJob.Name,
-			Namespace: renovateJob.Namespace,
+		if project.Status != api.JobStatusRunning {
+			continue
 		}
 
-		switch project.Status {
-		//Job is completed -> do nothing
-		case api.JobStatusCompleted:
+		job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+			JobName:   utils.ExecutorJobName(renovateJob, project.Name),
+			JobType:   crdManager.ExecutorJobType,
+			Namespace: renovateJob.Namespace,
+		})
 
-		// Job is failed -> do nothing
-		case api.JobStatusFailed:
+		var newStatus api.RenovateProjectStatus
+		var durationStr string
+		if err != nil {
+			if errors.IsNotFound(err) {
+				newStatus = api.JobStatusFailed
+			} else {
+				return err
+			}
+		} else {
+			newStatus, durationStr, err = getJobStatus(job)
+			if err != nil {
+				return err
+			}
+		}
 
-		// Job is running -> verify thats true
-		case api.JobStatusRunning:
-			job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		if newStatus != api.JobStatusRunning {
+			newProjectStatus := &types.RenovateStatusUpdate{
+				Status:   newStatus,
+				Duration: &durationStr,
+			}
+			hasIssues := false
+			if job != nil {
+				cp := clientProvider.StaticClientProvider()
+				if clientset, err := cp.K8sClientSet(); err == nil {
+					if logs, err := crdManager.GetLastJobLog(ctx, clientset, job); err == nil {
+						parseResult := parser.ParseRenovateLogs(logs)
+						hasIssues = parseResult.HasIssues
+						newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
+					} else {
+						e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
+					}
+				} else {
+					e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
+				}
+			}
+
+			metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
+			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
+			metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
+
+			err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus)
+			runningProjects--
+			if err != nil {
+				return err
+			}
+
+			deleteSuccessfulJobs := config.GetValue("DELETE_SUCCESSFUL_JOBS")
+			if newStatus == api.JobStatusCompleted && deleteSuccessfulJobs == "true" && job != nil {
+				err = crdManager.DeleteJob(ctx, e.client, job)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// Pass 2: sort by priority descending, then start scheduled projects in priority order
+	sort.SliceStable(renovateJob.Status.Projects, func(i, j int) bool {
+		return renovateJob.Status.Projects[i].Priority > renovateJob.Status.Projects[j].Priority
+	})
+
+	for i := range renovateJob.Status.Projects {
+		project := &renovateJob.Status.Projects[i]
+		if project.Status != api.JobStatusScheduled {
+			continue
+		}
+
+		if runningProjects < int(renovateJob.Spec.Parallelism) {
+			job := newRenovateJob(renovateJob, project.Name)
+			if err := controllerutil.SetControllerReference(renovateJob, job, e.scheme); err != nil {
+				return fmt.Errorf("failed to set controller reference: %w", err)
+			}
+
+			err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
 				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
 				JobType:   crdManager.ExecutorJobType,
 				Namespace: renovateJob.Namespace,
 			})
-
-			var newStatus api.RenovateProjectStatus
 			if err != nil {
-				if errors.IsNotFound(err) {
-					newStatus = api.JobStatusFailed
-				} else {
-					return err
-				}
-			} else {
-				newStatus, err = getJobStatus(job)
-				if err != nil {
-					return err
-				}
+				return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+			}
+			runningProjects++
+
+			err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
+				Status: api.JobStatusRunning,
+			})
+			if err != nil {
+				return err
 			}
 
-			if newStatus != api.JobStatusRunning {
-				// Parse logs before potential job deletion to capture dependency issues
-				hasIssues := false
-				if job != nil {
-					cp := clientProvider.StaticClientProvider()
-					if clientset, err := cp.K8sClientSet(); err == nil {
-						if logs, err := crdManager.GetLastJobLog(ctx, clientset, job); err == nil {
-							parseResult := parser.ParseRenovateLogs(logs)
-							hasIssues = parseResult.HasIssues
-
-							// Update config status based on log parsing
-							if parseResult.HasRenovateConfig != nil {
-								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.HasRenovateConfig); err != nil {
-									e.logger.Error(err, "failed to update config status", "project", project.Name)
-								}
-							}
-						} else {
-							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
-						}
-					} else {
-						e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
-					}
-				}
-
-				// Update metrics
-				metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
-				metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
-				metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
-
-				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newStatus)
-				// one project less is currently running
-				runningProjects--
-				if err != nil {
-					return err
-				}
-
-				// if DELETE_SUCCESSFUL_JOBS is set -> delete the job
-				deleteSuccessfulJobs := config.GetValue("DELETE_SUCCESSFUL_JOBS")
-				if newStatus == api.JobStatusCompleted && deleteSuccessfulJobs == "true" && job != nil {
-					err = crdManager.DeleteJob(ctx, e.client, job)
-					if err != nil {
-						return err
-					}
-				}
-			}
-
-		// Job is scheduled -> execute (if possible)
-		case api.JobStatusScheduled:
-			// are there already enough projects running?
-			if runningProjects < int(renovateJob.Spec.Parallelism) {
-				// Create a new job for this project
-				job := newRenovateJob(renovateJob, project.Name)
-				if err := controllerutil.SetControllerReference(renovateJob, job, e.scheme); err != nil {
-					return fmt.Errorf("failed to set controller reference: %w", err)
-				}
-
-				// recreate the job
-				err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
-					JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-					JobType:   crdManager.ExecutorJobType,
-					Namespace: renovateJob.Namespace,
-				})
-				if err != nil {
-					return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
-				}
-				runningProjects++
-
-				jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
-				err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, api.JobStatusRunning)
-				if err != nil {
-					return err
-				}
-			}
 		}
 	}
 

@@ -11,42 +11,28 @@ func isRenovateContent(description string) bool {
 		return false
 	}
 
-	// Pull requests / merge requests created by Renovate embed a rebase-check comment
-	// and a renovate-debug trailer.
-	if strings.Contains(description, "<!-- rebase-check -->") {
-		return true
-	}
-	if strings.Contains(description, "<!--renovate-debug:") {
-		return true
+	patternList := []string{
+		"## Detected Dependencies",
+		"<!-- rebase-check -->",
+		"<!--renovate-debug:",
+		"<!-- rebase-all-open-prs -->",
+		"<!-- rebase-branch=",
+		"<!-- approve-all-pending-prs -->",
+		"<!-- approvePr-branch=",
+		"<!-- approve-branch=",
+		"<!-- recreate-branch=",
+		"<!-- unschedule-branch=",
+		"<!-- create-config-migration-pr -->",
+		"<!-- create-all-awaiting-schedule-prs -->",
+		"<!-- create-all-rate-limited-prs -->",
+		"<!-- unlimit-branch=",
+		"<!-- manual job -->",
 	}
 
-	// Dependency Dashboards use HTML comment markers on their interactive checkboxes.
-	if strings.Contains(description, "<!-- manual job -->") {
-		return true
-	}
-	if strings.Contains(description, "<!-- rebase-all-open-prs -->") {
-		return true
-	}
-	if strings.Contains(description, "<!-- approve-all-pending-prs -->") {
-		return true
-	}
-	if strings.Contains(description, "<!-- approvePr-branch=") {
-		return true
-	}
-	if strings.Contains(description, "<!-- approve-branch=") {
-		return true
-	}
-	if strings.Contains(description, "<!-- create-all-rate-limited-prs -->") {
-		return true
-	}
-	if strings.Contains(description, "<!-- unlimit-branch=") {
-		return true
-	}
-	if strings.Contains(description, "<!-- create-all-awaiting-schedule-prs -->") {
-		return true
-	}
-	if strings.Contains(description, "<!-- unschedule-branch=") {
-		return true
+	for _, pattern := range patternList {
+		if strings.Contains(description, pattern) {
+			return true
+		}
 	}
 	return false
 }

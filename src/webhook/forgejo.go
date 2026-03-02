@@ -5,6 +5,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 )
 
 // Forgejo webhook types and handler.
@@ -96,7 +97,10 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 			Name:      job,
 			Namespace: namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to process Forgejo webhook for repo", "repo", payload.Repository.FullName)

@@ -78,8 +78,10 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
   - [GitLab](./docs/webhooks/gitlab.md)
   - [GitHub](./docs/webhooks/github.md)
 - [Using a config.js](./docs/extra-volumes.md)
+- [Image Pull Secrets](./docs/image-pull-secrets.md)
 - [Scheduling](./docs/scheduling.md)
 - [Metrics](./docs/metrics.md)
+- [Authentication](./docs/auth.md)
 
 ## Contributing
 

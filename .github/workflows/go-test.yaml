@@ -28,7 +28,7 @@ jobs:
 
         go mod download
 
-        go build ./...
+        go build -tags timetzdata ./...
   test:
     needs: [build]
     runs-on: self-hosted

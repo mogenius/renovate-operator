@@ -93,6 +93,20 @@
         }
       };
 
+      const formatLocalTime = (timestamp) => {
+        if (!timestamp) return "Never";
+        const date = new Date(timestamp);
+        return date.toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          timeZoneName: 'short'
+        });
+      };
+
       const formatCountdown = (timestamp) => {
         const now = new Date();
         const future = new Date(timestamp);
@@ -116,6 +130,28 @@
         } else {
           return { seconds };
         }
+      };
+
+      const buildPRUrl = (platform, endpoint, projectName) => {
+        if (!platform || platform === 'github') {
+          let base = 'https://github.com';
+          if (endpoint && !endpoint.includes('api.github.com')) {
+            // GitHub Enterprise: strip /api/vN/ suffix to get web URL
+            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          }
+          return `${base}/${projectName}/pulls`;
+        } else if (platform === 'gitlab') {
+          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          return `${base}/${projectName}/-/merge_requests`;
+        } else if (platform === 'bitbucket') {
+          return `https://bitbucket.org/${projectName}/pull-requests`;
+        } else if (platform === 'gitea' || platform === 'forgejo') {
+          if (endpoint) {
+            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+            return `${base}/${projectName}/pulls`;
+          }
+        }
+        return null;
       };
 
       function ThemeToggle() {
@@ -151,6 +187,95 @@
             )}
           </button>
         );
+      }
+
+      function useTooltip(project) {
+        const [isVisible, setIsVisible] = useState(false);
+        const containerRef = React.useRef(null);
+        const timeoutRef = React.useRef(null);
+
+        const handleMouseEnter = (e) => {
+          // Check if hovering over element with data-no-tooltip
+          if (e.target.closest('[data-no-tooltip]')) {
+            return;
+          }
+
+          timeoutRef.current = setTimeout(() => {
+            setIsVisible(true);
+          }, 500); // 500ms delay before showing tooltip
+        };
+
+        const handleMouseMove = (e) => {
+          // Check if moved into element with data-no-tooltip
+          if (e.target.closest('[data-no-tooltip]')) {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
+            setIsVisible(false);
+          } else {
+            // Moved into a normal area - start tooltip if not already showing
+            if (!isVisible && !timeoutRef.current) {
+              timeoutRef.current = setTimeout(() => {
+                setIsVisible(true);
+                timeoutRef.current = null;
+              }, 500);
+            }
+          }
+        };
+
+        const handleMouseLeave = () => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+          }
+          setIsVisible(false);
+        };
+
+        useEffect(() => {
+          return () => {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+            }
+          };
+        }, []);
+
+        const tooltipElement = isVisible && project ? (
+          <div
+            className="fixed z-50 pointer-events-none border-0"
+            style={{
+              left: '50%',
+              top: containerRef.current ?
+                `${containerRef.current.getBoundingClientRect().top - 12}px` : '0',
+              transform: 'translate(-50%, -100%)'
+            }}
+          >
+            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
+              <div className="font-medium mb-1 text-gray-100">Last Run</div>
+              <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
+                {formatLocalTime(project.lastRun)}
+              </div>
+              {project.duration && (
+                <>
+                  <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
+                  <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
+                    {project.duration}
+                  </div>
+                </>
+              )}
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0"></div>
+            </div>
+          </div>
+        ) : null;
+
+        return {
+          containerRef,
+          tooltipProps: {
+            onMouseEnter: handleMouseEnter,
+            onMouseMove: handleMouseMove,
+            onMouseLeave: handleMouseLeave,
+          },
+          tooltipElement
+        };
       }
 
       function Countdown({ nextSchedule }) {
@@ -330,6 +455,15 @@
         );
       }
 
+      const authFetch = async (url, options = {}) => {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+          window.location.href = "/auth/login";
+          throw new Error("Unauthorized");
+        }
+        return response;
+      };
+
       function App() {
         const [jobs, setJobs] = useState([]);
         const [loading, setLoading] = useState(true);
@@ -343,6 +477,7 @@
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
         const [nextToastId, setNextToastId] = useState(1);
+        const [authInfo, setAuthInfo] = useState(null);
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -389,7 +524,7 @@
             setLoading(true);
             setError(null);
 
-            const response = await fetch("/api/v1/renovatejobs");
+            const response = await authFetch("/api/v1/renovatejobs");
             if (!response.ok)
               throw new Error(`HTTP ${response.status}: Failed to fetch jobs`);
 
@@ -433,7 +568,7 @@
           );
 
           try {
-            const response = await fetch("/api/v1/discovery/start", {
+            const response = await authFetch("/api/v1/discovery/start", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -483,7 +618,7 @@
           );
 
           try {
-            const response = await fetch("/api/v1/renovate", {
+            const response = await authFetch("/api/v1/renovate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -524,6 +659,11 @@
         };
 
         useEffect(() => {
+          fetch("/api/v1/auth/status")
+            .then((res) => res.json())
+            .then((data) => setAuthInfo(data))
+            .catch(() => {});
+
           fetch("/api/v1/version")
             .then((res) => res.json())
             .then((data) => setVersion(data.version))
@@ -572,9 +712,6 @@
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
-                    <div className="hidden md:block">
-                      <ThemeToggle />
-                    </div>
                     <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
                       <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
                         Failed
@@ -606,6 +743,22 @@
                       <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-success">
                         {loading ? "—" : stats.completed}
                       </div>
+                    </div>
+                    <div className="hidden md:flex flex-col items-end gap-2">
+                      <ThemeToggle />
+                      {authInfo && authInfo.enabled && authInfo.authenticated && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[150px]" title={authInfo.email}>
+                            {authInfo.name || authInfo.email}
+                          </span>
+                          <a
+                            href="/auth/logout"
+                            className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+                          >
+                            Logout
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -711,7 +864,7 @@
         const sortedProjects = [...projects];
 
         if (sortConfig.key) {
-          sortedProjects.sort((a, b) => {            
+          sortedProjects.sort((a, b) => {
             let aValue = a[sortConfig.key];
             let bValue = b[sortConfig.key];
 
@@ -729,26 +882,26 @@
               };
               const aStatus = statusOrder[(a.status || "").toLowerCase()] ?? 99;
               const bStatus = statusOrder[(b.status || "").toLowerCase()] ?? 99;
-              
+
               // Primary: status
               if (aStatus !== bStatus) {
-                return sortConfig.direction === "asc" 
-                  ? aStatus - bStatus 
+                return sortConfig.direction === "asc"
+                  ? aStatus - bStatus
                   : bStatus - aStatus;
               }
-              
+
               // Secondary: onboarding state within same status
-              const aHasConfig = a.hasRenovateConfig;
-              const bHasConfig = b.hasRenovateConfig;
-              const aOnboarding = aHasConfig === true ? 0 : (aHasConfig === false ? 1 : 2);
-              const bOnboarding = bHasConfig === true ? 0 : (bHasConfig === false ? 1 : 2);
-              
+              const aHasConfig = a.renovateResultStatus && a.renovateResultStatus !== "done";
+              const bHasConfig = b.renovateResultStatus && b.renovateResultStatus !== "done";
+              const aOnboarding = aHasConfig ? 1 : 0;
+              const bOnboarding = bHasConfig ? 1 : 0;
+
               if (aOnboarding !== bOnboarding) {
                 return sortConfig.direction === "asc"
                   ? aOnboarding - bOnboarding
                   : bOnboarding - aOnboarding;
               }
-              
+
               // Tertiary: name
               const aName = (a.name || "").toLowerCase();
               const bName = (b.name || "").toLowerCase();
@@ -1021,6 +1174,9 @@
                             <SortIcon columnKey="lastRun" />
                           </div>
                         </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
+                          Link
+                        </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
                           Actions
                         </th>
@@ -1028,19 +1184,25 @@
                     </thead>
                     <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                       {job.projects && job.projects.length > 0 ? (
-                        sortedProjects.map((project) => (
-                          <tr
-                            key={project.name}
-                            className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
-                          >
-                            <td className={`px-6 py-4 ${project.hasRenovateConfig === false ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
+                        sortedProjects.map((project) => {
+                          const ProjectRow = () => {
+                            const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+
+                            return (
+                              <>
+                                <tr
+                                  ref={containerRef}
+                                  {...tooltipProps}
+                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
+                                >
+                                  <td className={`px-6 py-4 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
                               <div className="flex items-center gap-2">
-                                <span className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                                <span className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
                                 </span>
-                                {project.hasRenovateConfig === false && (
+                                {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
                                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                    No Config (renovate not onboarded)
+                                    {project.renovateResultStatus}
                                   </span>
                                 )}
                               </div>
@@ -1057,7 +1219,28 @@
                                   : "Never"}
                               </span>
                             </td>
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-6 py-4" data-no-tooltip="true">
+                              {(() => {
+                                const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                                return prUrl ? (
+                                  <a
+                                    href={prUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                                    aria-label={`View open PRs/MRs for ${project.name}`}
+                                    title={`Open PRs/MRs for ${project.name}`}
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-6 py-4 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() =>
@@ -1098,11 +1281,17 @@
                               </div>
                             </td>
                           </tr>
-                        ))
+                          {tooltipElement}
+                        </>
+                      );
+                    };
+
+                    return <ProjectRow key={project.name} />;
+                  })
                       ) : (
                         <tr>
                           <td
-                            colSpan="4"
+                            colSpan="5"
                             className="px-6 py-8 text-center text-gray-500 dark:text-slate-400"
                           >
                             No projects found. Run discovery to find projects.
@@ -1115,17 +1304,26 @@
 
                 <div className="md:hidden bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                   {job.projects && job.projects.length > 0 ? (
-                    sortedProjects.map((project) => (
-                      <div key={project.name} className={`p-4 space-y-3 ${project.hasRenovateConfig === false ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
-                        <div className="flex items-start justify-between">
+                    sortedProjects.map((project) => {
+                      const ProjectCard = () => {
+                        const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+
+                        return (
+                          <>
+                            <div
+                              ref={containerRef}
+                              {...tooltipProps}
+                              className={`p-4 space-y-3 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
+                            >
+                          <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className={`font-medium ${project.hasRenovateConfig === false ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                              <p className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                 {project.name}
                               </p>
-                              {project.hasRenovateConfig === false && (
+                              {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
                                 <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                  No Config (renovate not onboarded)
+                                  {project.renovateResultStatus}
                                 </span>
                               )}
                             </div>
@@ -1142,7 +1340,7 @@
                             {project.status || "-"}
                           </span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap" data-no-tooltip="true">
                           <button
                             onClick={() => onTriggerRenovate(job, project)}
                             disabled={
@@ -1173,9 +1371,32 @@
                           >
                             Logs
                           </a>
+                          {(() => {
+                            const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                            return prUrl ? (
+                              <a
+                                href={prUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                                aria-label={`View open PRs/MRs for ${project.name}`}
+                                title={`Open PRs/MRs for ${project.name}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              </a>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
-                    ))
+                      {tooltipElement}
+                    </>
+                  );
+                };
+
+                return <ProjectCard key={project.name} />;
+              })
                   ) : (
                     <div className="p-8 text-center text-gray-500 dark:text-slate-400">
                       No projects found. Run discovery to find projects.

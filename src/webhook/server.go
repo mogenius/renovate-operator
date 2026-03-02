@@ -13,6 +13,7 @@ import (
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
@@ -84,7 +85,10 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 			Name:      job,
 			Namespace: namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to run Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
@@ -93,7 +97,7 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", job, "namespace", namespace, "priority", 1)
 }
 
 func (server *Server) authMiddleware(next http.Handler) http.Handler {

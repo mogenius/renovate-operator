@@ -1,6 +1,7 @@
 package renovate
 
 import (
+	"encoding/json"
 	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
@@ -68,12 +69,13 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: getJobTimeoutSeconds(),
-			BackoffLimit:          getJobBackOffLimit(),
+			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
+			BackoffLimit:            getJobBackOffLimit(),
+			TTLSecondsAfterFinished: getJobTTLSecondsAfterFinished(),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
-					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
@@ -91,6 +93,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
+					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
@@ -159,7 +162,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
-					ImagePullSecrets:              job.Spec.ImagePullSecrets,
+					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []v1.Container{
 						{
@@ -177,6 +180,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
 					RestartPolicy:                v1.RestartPolicyOnFailure,
+					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
@@ -290,6 +294,27 @@ func getJobLabels(metadata *api.RenovateJobMetadata, jobType crdmanager.JobType,
 		maps.Copy(labels, metadata.Labels)
 	}
 	return labels
+}
+
+// imagePullSecrets configured at the operator level via IMAGE_PULL_SECRETS env var
+func getDefaultImagePullSecrets() []v1.LocalObjectReference {
+	raw := config.GetValue("IMAGE_PULL_SECRETS")
+	if raw == "" || raw == "[]" {
+		return nil
+	}
+	var secrets []v1.LocalObjectReference
+	if err := json.Unmarshal([]byte(raw), &secrets); err != nil {
+		return nil
+	}
+	return secrets
+}
+
+func getDNSPolicy(spec api.RenovateJobSpec) v1.DNSPolicy {
+	if spec.DNSPolicy != "" {
+		return spec.DNSPolicy
+	}
+
+	return v1.DNSClusterFirst
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv

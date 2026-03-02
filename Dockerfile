@@ -13,7 +13,7 @@ COPY src/go.mod src/go.sum ./
 RUN go mod download
 COPY src .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
-    go build -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
+    go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
 
 FROM --platform=$BUILDPLATFORM alpine:latest as js-downloader
 WORKDIR /workspace
@@ -32,6 +32,7 @@ RUN mkdir -p src/static/js && \
 
 FROM scratch
 WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /workspace/renovate-operator /app/renovate-operator
 COPY --from=builder /workspace/static /app/static
 COPY --from=js-downloader /workspace/src/static/js /app/static/js
