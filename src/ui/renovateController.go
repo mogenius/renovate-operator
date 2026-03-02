@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
+	"strings"
 	crdmanager "renovate-operator/internal/crdManager"
 	"time"
 
@@ -101,8 +102,28 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Renovate outputs NDJSON (one JSON object per line). Convert to a JSON
+	// array so browsers with built-in JSON viewers can parse and display it.
+	lines := strings.Split(strings.TrimSpace(logs), "\n")
+	entries := make([]json.RawMessage, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if json.Valid([]byte(line)) {
+			entries = append(entries, json.RawMessage(line))
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write([]byte(logs))
+	out, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		internalServerError(w, err, "failed to encode logs")
+		return
+	}
+	_, _ = w.Write(out)
+	_, _ = w.Write([]byte("\n"))
 }
 
 func getRenovateJsonBody(r *http.Request) (*struct {

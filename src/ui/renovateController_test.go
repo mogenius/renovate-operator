@@ -151,7 +151,7 @@ func TestGetRenovateJobs_ListError(t *testing.T) {
 func TestGetRenovateJobLogs_Success(t *testing.T) {
 	mockManager := &mockRenovateJobManager{
 		getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-			return "test logs", nil
+			return `{"level":30,"msg":"starting"}` + "\n" + `{"level":30,"msg":"done"}`, nil
 		},
 	}
 
@@ -169,8 +169,42 @@ func TestGetRenovateJobLogs_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	if w.Body.String() != "test logs" {
-		t.Errorf("Expected 'test logs', got '%s'", w.Body.String())
+	var entries []json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
+		t.Fatalf("Expected valid JSON array, got error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("Expected 2 log entries, got %d", len(entries))
+	}
+}
+
+func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
+	mockManager := &mockRenovateJobManager{
+		getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
+			return "not json\n" + `{"level":30,"msg":"valid"}` + "\n\n", nil
+		},
+	}
+
+	server := &Server{
+		manager: mockManager,
+		logger:  logr.Discard(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/logs?namespace=default&renovate=job1&project=project1", nil)
+	w := httptest.NewRecorder()
+
+	server.getRenovateJobLogs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var entries []json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
+		t.Fatalf("Expected valid JSON array, got error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("Expected 1 valid log entry (non-JSON line skipped), got %d", len(entries))
 	}
 }
 
