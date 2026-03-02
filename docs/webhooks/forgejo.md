@@ -1,7 +1,7 @@
 # Forgejo Webhook Integration
 
 The Forgejo webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on Forgejo pull requests or issues.
-This is particularly useful for responding to Renovate's "rebase" checkbox interactions.
+This is particularly useful for responding to Renovate's "rebase" checkbox interactions and Dependency Dashboard updates.
 
 ## Background
 
@@ -22,9 +22,26 @@ If you prefer to add webhooks to individual repos yourself (or only have a few r
 4. Set **Content type** to `application/json`
 5. If using authentication, set **Authorization Header** to `Bearer YOUR_TOKEN_HERE`
 6. Select individual events:
-   - **Pull requests** (for PR checkbox interactions)
+   - **Pull requests** (for PR checkbox interactions, close, and reopen events)
    - **Issues** (for Dependency Dashboard interactions)
 7. Ensure **Active** is checked
+
+## Supported events
+
+### Issues (Dependency Dashboard)
+
+The webhook triggers a Renovate run when a Dependency Dashboard issue is edited and a checkbox is checked.
+Only issues containing Renovate's HTML comment markers (e.g., `<!-- manual job -->`, `<!-- rebase-all-open-prs -->`) are processed; all other issue events are ignored.
+
+### Pull Requests
+
+The webhook triggers a Renovate run for the following pull request actions:
+
+- **edited**: When a Renovate PR body is edited and a checkbox is checked (e.g., the "rebase" checkbox)
+- **closed**: When a Renovate PR is closed
+- **reopened**: When a Renovate PR is reopened
+
+Only pull requests containing Renovate's HTML comment markers (e.g., `<!-- rebase-check -->`) are processed; all other PR events are ignored.
 
 ## Automatic webhook sync
 
@@ -99,3 +116,8 @@ Repos where the user only has read or write access are silently skipped — no e
 
 - `namespace`: The Kubernetes namespace of your RenovateJob (appended automatically by sync)
 - `job`: The name of your RenovateJob resource (appended automatically by sync)
+
+## Differences from GitHub webhook
+
+Forgejo has a dedicated endpoint rather than reusing the GitHub handler because Forgejo fires issue webhook events for all mutations (title changes, label changes, assignee changes), not just body edits.
+The Forgejo handler includes additional filtering to prevent false triggers from these non-body mutations.

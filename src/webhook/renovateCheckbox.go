@@ -2,7 +2,10 @@ package webhook
 
 import "strings"
 
-// isRenovateContent checks if the description is from Renovate (either MR or Dependency Dashboard)
+// isRenovateContent checks if the description is from Renovate (either MR/PR or Dependency Dashboard).
+// It relies on HTML comment markers that Renovate embeds for its own checkbox-parsing logic,
+// rather than user-configurable text like dependencyDashboardHeader or prFooter which can be
+// overridden in renovate.json.
 func isRenovateContent(description string) bool {
 	if description == "" {
 		return false
@@ -11,6 +14,7 @@ func isRenovateContent(description string) bool {
 	patternList := []string{
 		"## Detected Dependencies",
 		"<!-- rebase-check -->",
+		"<!--renovate-debug:",
 		"<!-- rebase-all-open-prs -->",
 		"<!-- rebase-branch=",
 		"<!-- approve-all-pending-prs -->",
@@ -20,6 +24,8 @@ func isRenovateContent(description string) bool {
 		"<!-- unschedule-branch=",
 		"<!-- create-config-migration-pr -->",
 		"<!-- create-all-awaiting-schedule-prs -->",
+		"<!-- create-all-rate-limited-prs -->",
+		"<!-- unlimit-branch=",
 		"<!-- manual job -->",
 	}
 
