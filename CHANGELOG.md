@@ -1,3 +1,10 @@
+## [2.19.1](https://github.com/mogenius/renovate-operator/compare/2.19.0...2.19.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* **auth:** populate redirect url via route or ingress ([f343ce2](https://github.com/mogenius/renovate-operator/commit/f343ce22f73445b56332c74fef0a4047b3807aa2)), closes [#179](https://github.com/mogenius/renovate-operator/issues/179)
+
 # [2.19.0](https://github.com/mogenius/renovate-operator/compare/2.18.0...2.19.0) (2026-03-02)
 
 
