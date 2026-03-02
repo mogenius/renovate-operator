@@ -177,7 +177,7 @@ func (c *client) DeleteRepoWebhook(ctx context.Context, owner, repo string, hook
 	if err != nil {
 		return fmt.Errorf("deleting webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -187,7 +187,7 @@ func (c *client) DeleteRepoWebhook(ctx context.Context, owner, repo string, hook
 }
 
 func decodeResponse(resp *http.Response, target interface{}) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
