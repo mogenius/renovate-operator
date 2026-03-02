@@ -210,7 +210,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 
 func getDefaultEnvVars(job *api.RenovateJob, predefinedEnvVars []v1.EnvVar) []v1.EnvVar {
 	if job.Spec.Provider != nil {
-		platform, endpoint := utils.GetPlatformEndpointAndEndpoint(job.Spec.Provider)
+		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_ENDPOINT",
 			Value: endpoint,

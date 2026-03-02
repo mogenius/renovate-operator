@@ -73,7 +73,7 @@ func GetPlatformAndEndpointTest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			platform, endpoint := GetPlatformEndpointAndEndpoint(tt.provider)
+			platform, endpoint := GetPlatformAndEndpoint(tt.provider)
 			if platform != tt.expectedPlatform {
 				t.Errorf("expected platform %s, got %s", tt.expectedPlatform, platform)
 			}
