@@ -23,6 +23,11 @@ type RenovateJobInfo struct {
 	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
 	Platform         string                             `json:"platform,omitempty"`
 	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
+	ExecutionOptions *ExecutionOptions                  `json:"executionOptions,omitempty"`
+}
+
+type ExecutionOptions struct {
+	Debug bool `json:"debug,omitempty"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -33,6 +38,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
+	apiV1.HandleFunc("/executionOptions", s.updateExecutionOptions).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +110,9 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			DiscoveryStatus:  discoveryStatus,
 			Platform:         platform,
 			PlatformEndpoint: platformEndpoint,
+			ExecutionOptions: &ExecutionOptions{
+				Debug: renovateJob.Status.ExecutionOptions != nil && renovateJob.Status.ExecutionOptions.Debug,
+			},
 		})
 	}
 
@@ -259,6 +268,40 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
+}
+
+func (s *Server) updateExecutionOptions(w http.ResponseWriter, r *http.Request) {
+	var params struct {
+		RenovateJob string `json:"renovateJob"`
+		Namespace   string `json:"namespace"`
+		Debug       bool   `json:"debug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		badRequestError(w, err, "failed to parse request body")
+		return
+	}
+	if params.RenovateJob == "" || params.Namespace == "" {
+		badRequestError(w, nil, "missing parameters")
+		return
+	}
+
+	err := s.manager.UpdateExecutionOptions(
+		r.Context(),
+		crdmanager.RenovateJobIdentifier{
+			Name:      params.RenovateJob,
+			Namespace: params.Namespace,
+		},
+		&api.RenovateExecutionOptions{
+			Debug: params.Debug,
+		},
+	)
+	if err != nil {
+		s.logger.Error(err, "Failed to update execution options", "renovateJob", params.RenovateJob, "namespace", params.Namespace)
+		internalServerError(w, err, "failed to update execution options")
+		return
+	}
+
+	writeSuccess(w, SuccessResult{Message: "execution options updated"})
 }
 
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {

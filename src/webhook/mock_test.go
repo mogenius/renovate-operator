@@ -34,6 +34,9 @@ func (m *mockWebhookManager) IsWebhookSignatureValid(ctx context.Context, job cr
 	}
 	return true, nil
 }
+func (m *mockWebhookManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+	return nil
+}
 
 // Implement remaining interface methods as no-ops for webhook tests
 func (m *mockWebhookManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
