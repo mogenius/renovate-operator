@@ -105,6 +105,10 @@ func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, jo
 	return true, nil
 }
 
+func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+	return nil
+}
+
 // Mock DiscoveryAgent
 type mockDiscoveryAgent struct {
 	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)

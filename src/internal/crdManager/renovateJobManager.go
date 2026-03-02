@@ -50,6 +50,8 @@ type RenovateJobManager interface {
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
 	// IsWebhookSignatureValid checks if the provided signature is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
+	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
 }
 
 type renovateJobManager struct {
@@ -404,6 +406,20 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 	}
 
 	return false, nil
+}
+
+func (r *renovateJobManager) UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+	defer r.globalManagerLock(false)()
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
+		}
+		renovateJob.Status.ExecutionOptions = options
+		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
+		return err
+	})
 }
 
 func computeHMAC256(message []byte, secret string) string {
