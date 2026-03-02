@@ -123,9 +123,10 @@ spec:
                   name: {{ .Values.auth.oidc.existingSecret }}
                   key: {{ .Values.auth.oidc.sessionSecretKey }}
             {{- end }}
-            {{- if .Values.auth.oidc.redirectUrl }}
+            {{- $oidcRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.oidc.redirectUrl "Values" .Values) }}
+            {{- if $oidcRedirectUrl }}
             - name: OIDC_REDIRECT_URL
-              value: {{ .Values.auth.oidc.redirectUrl | quote }}
+              value: {{ $oidcRedirectUrl | quote }}
             {{- end }}
             {{- if .Values.auth.oidc.insecureSkipVerify }}
             - name: OIDC_INSECURE_SKIP_VERIFY
@@ -150,9 +151,10 @@ spec:
                   name: {{ .Values.auth.github.existingSecret }}
                   key: {{ .Values.auth.github.sessionSecretKey }}
             {{- end }}
-            {{- if .Values.auth.github.redirectUrl }}
+            {{- $githubRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.github.redirectUrl "Values" .Values) }}
+            {{- if $githubRedirectUrl }}
             - name: GITHUB_REDIRECT_URL
-              value: {{ .Values.auth.github.redirectUrl | quote }}
+              value: {{ $githubRedirectUrl | quote }}
             {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
