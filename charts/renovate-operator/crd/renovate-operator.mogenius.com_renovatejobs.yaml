@@ -3891,6 +3891,12 @@ spec:
           status:
             description: RenovateJobStatus defines the observed state of RenovateJob
             properties:
+              executionOptions:
+                properties:
+                  debug:
+                    description: If true, the renovate job will be executed with LOG_LEVEL=debug
+                    type: boolean
+                type: object
               projects:
                 items:
                   description: Status of a single project within a RenovateJob

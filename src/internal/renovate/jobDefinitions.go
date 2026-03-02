@@ -40,16 +40,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 		})
 	}
 
-	if job.Spec.Provider != nil {
-		platform, endpoint := utils.GetPlatformEndpointAndEndpoint(job.Spec.Provider)
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_ENDPOINT",
-			Value: endpoint,
-		}, v1.EnvVar{
-			Name:  "RENOVATE_PLATFORM",
-			Value: platform,
-		})
-	}
+	predefinedEnvVars = getDefaultEnvVars(job, predefinedEnvVars)
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -138,16 +129,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		},
 	}
 
-	if job.Spec.Provider != nil {
-		platform, endpoint := utils.GetPlatformEndpointAndEndpoint(job.Spec.Provider)
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_ENDPOINT",
-			Value: endpoint,
-		}, v1.EnvVar{
-			Name:  "RENOVATE_PLATFORM",
-			Value: platform,
-		})
-	}
+	predefinedEnvVars = getDefaultEnvVars(job, predefinedEnvVars)
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -224,6 +206,27 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	batchJob.Labels = labels
 	batchJob.Spec.Template.Labels = labels
 	return batchJob
+}
+
+func getDefaultEnvVars(job *api.RenovateJob, predefinedEnvVars []v1.EnvVar) []v1.EnvVar {
+	if job.Spec.Provider != nil {
+		platform, endpoint := utils.GetPlatformEndpointAndEndpoint(job.Spec.Provider)
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_ENDPOINT",
+			Value: endpoint,
+		}, v1.EnvVar{
+			Name:  "RENOVATE_PLATFORM",
+			Value: platform,
+		})
+	}
+
+	if job.Status.ExecutionOptions != nil && job.Status.ExecutionOptions.Debug {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "LOG_LEVEL",
+			Value: "debug",
+		})
+	}
+	return predefinedEnvVars
 }
 
 func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
