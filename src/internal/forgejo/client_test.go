@@ -23,7 +23,7 @@ func TestSearchReposByTopic(t *testing.T) {
 
 		page := r.URL.Query().Get("page")
 		if page == "2" {
-			json.NewEncoder(w).Encode(map[string][]Repository{"data": {}})
+			_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": {}})
 			return
 		}
 
@@ -31,7 +31,7 @@ func TestSearchReposByTopic(t *testing.T) {
 			{ID: 1, FullName: "org/repo1", Name: "repo1", Permissions: &RepositoryPermissions{Admin: true}},
 			{ID: 2, FullName: "org/repo2", Name: "repo2", Permissions: &RepositoryPermissions{Admin: false}},
 		}
-		json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+		_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
 	})
 
 	srv := httptest.NewServer(handler)
@@ -63,12 +63,12 @@ func TestSearchReposByTopic_Pagination(t *testing.T) {
 			for i := range repos {
 				repos[i] = Repository{ID: int64(i), FullName: "org/repo" + r.URL.Query().Get("page") + "-" + string(rune('a'+i))}
 			}
-			json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+			_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
 			return
 		}
 
 		repos := []Repository{{ID: 100, FullName: "org/last-repo"}}
-		json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+		_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
 	})
 
 	srv := httptest.NewServer(handler)
@@ -93,7 +93,7 @@ func TestListRepoWebhooks(t *testing.T) {
 		hooks := []Webhook{
 			{ID: 1, Config: WebhookConfig{URL: "https://example.com/webhook"}},
 		}
-		json.NewEncoder(w).Encode(hooks)
+		_ = json.NewEncoder(w).Encode(hooks)
 	})
 
 	srv := httptest.NewServer(handler)
@@ -120,13 +120,13 @@ func TestCreateRepoWebhook(t *testing.T) {
 		}
 
 		var opts CreateWebhookOptions
-		json.NewDecoder(r.Body).Decode(&opts)
+		_ = json.NewDecoder(r.Body).Decode(&opts)
 		if opts.Config.URL != "https://example.com/webhook" {
 			t.Errorf("expected webhook URL, got %s", opts.Config.URL)
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Webhook{ID: 42, Config: opts.Config})
+		_ = json.NewEncoder(w).Encode(Webhook{ID: 42, Config: opts.Config})
 	})
 
 	srv := httptest.NewServer(handler)
@@ -170,7 +170,7 @@ func TestAPIError(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/api/v1/repos/search", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"message":"unauthorized"}`))
+		_, _ = w.Write([]byte(`{"message":"unauthorized"}`))
 	})
 
 	srv := httptest.NewServer(handler)

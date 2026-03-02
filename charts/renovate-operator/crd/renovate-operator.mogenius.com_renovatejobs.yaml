@@ -3878,8 +3878,7 @@ spec:
                           repos by topic
                         properties:
                           authTokenSecretRef:
-                            description: reference to a secret containing the bearer
-                              token sent in the webhook authorization_header
+                            description: reference to a secret and key
                             properties:
                               key:
                                 type: string
@@ -3889,17 +3888,13 @@ spec:
                           enabled:
                             type: boolean
                           events:
-                            description: webhook events to subscribe to, defaults
-                              to ["issues", "pull_request"]
                             items:
                               type: string
                             type: array
                           forgejoURL:
-                            description: base URL of the Forgejo instance
                             type: string
                           tokenSecretRef:
-                            description: reference to a secret containing the Forgejo
-                              API token for listing repos and managing webhooks
+                            description: reference to a secret and key
                             properties:
                               key:
                                 type: string
@@ -3907,15 +3902,12 @@ spec:
                                 type: string
                             type: object
                           topic:
-                            description: topic to search for, defaults to spec.discoverTopics
                             type: string
                           webhookURL:
-                            description: externally reachable webhook endpoint URL
                             type: string
                         required:
                         - enabled
                         - forgejoURL
-                        - tokenSecretRef
                         - webhookURL
                         type: object
                     type: object
