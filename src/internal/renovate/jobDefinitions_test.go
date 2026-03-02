@@ -64,6 +64,23 @@ func TestSecurityContextHelpers(t *testing.T) {
 		t.Fatalf("expected empty service account name, got %s", name)
 	}
 }
+
+func TestGetDNSPolicy(t *testing.T) {
+	t.Run("returns DNSClusterFirst when DNSPolicy is empty", func(t *testing.T) {
+		spec := api.RenovateJobSpec{}
+		if got := getDNSPolicy(spec); got != v1.DNSClusterFirst {
+			t.Fatalf("expected %s, got %s", v1.DNSClusterFirst, got)
+		}
+	})
+
+	t.Run("returns spec DNSPolicy when set", func(t *testing.T) {
+		spec := api.RenovateJobSpec{DNSPolicy: v1.DNSClusterFirst}
+		if got := getDNSPolicy(spec); got != v1.DNSClusterFirst {
+			t.Fatalf("expected %s, got %s", v1.DNSClusterFirst, got)
+		}
+	})
+}
+
 func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
@@ -171,7 +188,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectImage(t, djContainer, "img")
 	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
 	expectActiveDeadlineSeconds(t, dj, 10)
-	expectTtlSecondsAfterFinished(t, dj, nil)
+	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
 
 	// env vars
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
@@ -301,6 +318,43 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectNodeSelector(t, rj, nil)
 	expectTolerations(t, rj, nil)
 	expectTopologySpreadConstraints(t, rj, nil)
+}
+
+func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+		{Key: "IMAGE_PULL_SECRETS", Optional: true, Default: `[{"name":"default-secret"}]`},
+	})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+
+	t.Run("default secret applied when spec has none", func(t *testing.T) {
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec:       api.RenovateJobSpec{Image: "img"},
+		}
+		dj := newDiscoveryJob(job)
+		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
+
+		rj := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "default-secret"}})
+	})
+
+	t.Run("spec and default secrets are combined", func(t *testing.T) {
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec: api.RenovateJobSpec{
+				Image:            "img",
+				ImagePullSecrets: []v1.LocalObjectReference{{Name: "spec-secret"}},
+			},
+		}
+		dj := newDiscoveryJob(job)
+		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+
+		rj := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+	})
 }
 
 // ##### HELPERS #####

@@ -4,6 +4,38 @@ fullnameOverride: ""
 # -- number of operator replicas. Leader election is enabled automatically when > 1
 replicaCount: 1
 
+crd:
+  # -- whether to install the CRD or not, set to false if you want to install the CRD separately
+  install: true
+  mode: hook # optional: choose between "hook" and "template" install modes
+  image:
+    registry: registry.k8s.io
+    repository: kubectl
+    tag: v1.35.2
+    pullPolicy: "IfNotPresent"
+    # -- imagePullSecrets for the operator pod
+    imagePullSecrets: []
+  securityContext:
+    pod:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      capabilities:
+        drop:
+          - ALL
+      runAsUser: 1000
+      runAsGroup: 1000
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+      readOnlyRootFilesystem: true
+      privileged: false
+      allowPrivilegeEscalation: false
+
 image:
   registry: ghcr.io
   repository: mogenius/renovate-operator
@@ -22,6 +54,8 @@ deployment:
   podLabels: {}
   # -- additional annotations for the operator pods
   podAnnotations: {}
+  # -- revision history limit for the operator deployment
+  revisionHistoryLimit: 10
 
 config:
   # -- default backoff limit for renovate jobs
@@ -62,6 +96,12 @@ route:
   hostnames: []
   # -- parentRefs to place on the HTTPRoute
   parentRefs: []
+  # -- group to place on the HTTPRoute
+  group: ''
+  # -- kind to place on the HTTPRoute
+  kind: Service
+  # -- weight to place on the HTTPRoute
+  weight: 1
 
 webhook:
   enabled: false
@@ -94,7 +134,46 @@ webhook:
     hostnames: []
     # -- parentRefs to place on the HTTPRoute
     parentRefs: []
+    # -- group to place on the HTTPRoute
+    group: ''
+    # -- kind to place on the HTTPRoute
+    kind: Service
+    # -- weight to place on the HTTPRoute
+    weight: 1
 
+auth:
+  oidc:
+    # -- whether to enable OIDC authentication for the UI
+    enabled: false
+    # -- OIDC issuer URL (e.g. https://accounts.google.com or https://login.microsoftonline.com/{tenant}/v2.0)
+    issuerUrl: ""
+    # -- OIDC client ID
+    clientId: ""
+    # -- name of an existing secret containing the OIDC client secret
+    existingSecret: ""
+    # -- key in the existing secret that contains the OIDC client secret
+    secretKey: "client-secret"
+    # -- optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts)
+    sessionSecretKey: ""
+    # -- optional: OIDC redirect URL (auto-detected from ingress host if empty)
+    redirectUrl: ""
+    # -- optional: skip TLS verification for the OIDC provider (not recommended for production)
+    insecureSkipVerify: false
+    # -- optional: OIDC end_session_endpoint URL for provider logout (auto-discovered if available)
+    logoutUrl: ""
+  github:
+    # -- whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC)
+    enabled: false
+    # -- GitHub OAuth App client ID
+    clientId: ""
+    # -- name of an existing secret containing the GitHub OAuth client secret
+    existingSecret: ""
+    # -- key in the existing secret that contains the GitHub OAuth client secret
+    secretKey: "client-secret"
+    # -- optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts)
+    sessionSecretKey: ""
+    # -- optional: GitHub OAuth redirect URL (auto-detected from ingress host if empty)
+    redirectUrl: ""
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
@@ -113,6 +192,9 @@ securityContext:
     seccompProfile:
       type: RuntimeDefault
   container:
+    capabilities:
+      drop:
+        - ALL
     runAsUser: 1000
     runAsGroup: 1000
     runAsNonRoot: true

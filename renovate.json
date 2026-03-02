@@ -8,6 +8,10 @@
     {
       "matchManagers": ["gomod","dockerfile"],
       "semanticCommitType": "fix"
+    },
+    {
+      "matchPackageNames": ["registry.k8s.io/kubectl"],
+      "semanticCommitType": "fix"
     }
   ]
 }

@@ -14,11 +14,13 @@ func TestGetJobStatus(t *testing.T) {
 		name           string
 		job            *batchv1.Job
 		expectedStatus api.RenovateProjectStatus
+		expectDuration bool
 	}{
 		{
 			name:           "nil job returns failed status",
 			job:            nil,
 			expectedStatus: api.JobStatusFailed,
+			expectDuration: false,
 		},
 		{
 			name: "job with no conditions is running",
@@ -28,6 +30,7 @@ func TestGetJobStatus(t *testing.T) {
 				},
 			},
 			expectedStatus: api.JobStatusRunning,
+			expectDuration: false,
 		},
 		{
 			name: "job with complete condition true is completed",
@@ -149,13 +152,16 @@ func TestGetJobStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, err := getJobStatus(tt.job)
+			status, duration, err := getJobStatus(tt.job)
 
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
 			if status != tt.expectedStatus {
 				t.Errorf("expected status %v, got %v", tt.expectedStatus, status)
+			}
+			if tt.expectDuration && duration == "" {
+				t.Errorf("expected a duration, got empty string")
 			}
 		})
 	}

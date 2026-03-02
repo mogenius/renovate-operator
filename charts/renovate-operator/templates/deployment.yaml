@@ -13,6 +13,7 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
   selector:
     matchLabels:
       app: {{ include "renovate-operator.fullname" . }}
@@ -81,6 +82,8 @@ spec:
               value: {{ .Values.config.deleteSuccessfulJobs | quote }}
             - name: JOB_TTL_SECONDS_AFTER_FINISHED
               value: {{ .Values.config.jobTTLSecondsAfterFinished | quote }}
+            - name: IMAGE_PULL_SECRETS
+              value: {{ .Values.image.imagePullSecrets | toJson | quote }}
             - name: SERVER_PORT
               value: "8081"
             {{- if or .Values.rbac.ownNamespaceOnly .Values.rbac.watchNamespace }}
@@ -102,6 +105,57 @@ spec:
             {{- if gt (int .Values.replicaCount) 1 }}
             - name: LEADER_ELECTION_ID
               value: "{{ include "renovate-operator.fullname" . }}-leader"
+            {{- end }}
+            {{- if .Values.auth.oidc.enabled }}
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.auth.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.auth.oidc.clientId | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.secretKey | default "client-secret" }}
+            {{- if .Values.auth.oidc.sessionSecretKey }}
+            - name: OIDC_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.sessionSecretKey }}
+            {{- end }}
+            {{- $oidcRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.oidc.redirectUrl "Values" .Values) }}
+            {{- if $oidcRedirectUrl }}
+            - name: OIDC_REDIRECT_URL
+              value: {{ $oidcRedirectUrl | quote }}
+            {{- end }}
+            {{- if .Values.auth.oidc.insecureSkipVerify }}
+            - name: OIDC_INSECURE_SKIP_VERIFY
+              value: "true"
+            {{- end }}
+            {{- if .Values.auth.oidc.logoutUrl }}
+            - name: OIDC_LOGOUT_URL
+              value: {{ .Values.auth.oidc.logoutUrl | quote }}
+            {{- end }}
+            {{- else if .Values.auth.github.enabled }}
+            - name: GITHUB_CLIENT_ID
+              value: {{ .Values.auth.github.clientId | quote }}
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.github.existingSecret }}
+                  key: {{ .Values.auth.github.secretKey | default "client-secret" }}
+            {{- if .Values.auth.github.sessionSecretKey }}
+            - name: GITHUB_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.github.existingSecret }}
+                  key: {{ .Values.auth.github.sessionSecretKey }}
+            {{- end }}
+            {{- $githubRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.github.redirectUrl "Values" .Values) }}
+            {{- if $githubRedirectUrl }}
+            - name: GITHUB_REDIRECT_URL
+              value: {{ $githubRedirectUrl | quote }}
+            {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -51,6 +51,8 @@ type RenovateJobSpec struct {
 	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 	// Image pull secrets for the renovate pods
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+	// DNS Policy for the renovate pods
+	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
@@ -110,10 +112,12 @@ type RenovateJobMetadata struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name              string                `json:"name"`
-	LastRun           metav1.Time           `json:"lastRun"`
-	Status            RenovateProjectStatus `json:"status"`
-	HasRenovateConfig *bool                 `json:"hasRenovateConfig,omitempty"`
+	Name                 string                `json:"name"`
+	LastRun              metav1.Time           `json:"lastRun"`
+	Duration             *string               `json:"duration,omitempty"`
+	Status               RenovateProjectStatus `json:"status"`
+	Priority             int32                 `json:"priority,omitempty"`
+	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 }
 
 type RenovateProjectStatus string

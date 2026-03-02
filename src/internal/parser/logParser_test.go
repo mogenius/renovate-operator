@@ -3,11 +3,9 @@ package parser
 import (
 	"strings"
 	"testing"
-)
 
-func boolPtr(b bool) *bool {
-	return &b
-}
+	"k8s.io/utils/ptr"
+)
 
 func TestParseRenovateLogs(t *testing.T) {
 	tests := []struct {
@@ -80,6 +78,11 @@ func TestParseRenovateLogs(t *testing.T) {
 			logs:      "\n\n" + `{"level":30,"msg":"Info"}` + "\n\n",
 			wantIssue: false,
 		},
+		{
+			name:      "onboarded but disabled",
+			logs:      `{"level":30, "repository":"k8s/adguard-home", "result":"disabled-by-config", "status":"disabled", "enabled":false, "msg":"Repository finished"}`,
+			wantIssue: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -94,79 +97,84 @@ func TestParseRenovateLogs(t *testing.T) {
 
 func TestParseRenovateLogsConfigDetection(t *testing.T) {
 	tests := []struct {
-		name          string
-		logs          string
-		wantHasConfig *bool
+		name         string
+		logs         string
+		configStatus *string
 	}{
 		{
-			name:          "empty logs - unknown config status",
-			logs:          "",
-			wantHasConfig: nil,
+			name:         "empty logs - unknown config status",
+			logs:         "",
+			configStatus: nil,
 		},
 		{
-			name:          "non-JSON logs only - unknown config status",
-			logs:          "This is plain text output\nAnother line of text",
-			wantHasConfig: nil,
+			name:         "non-JSON logs only - unknown config status",
+			logs:         "This is plain text output\nAnother line of text",
+			configStatus: nil,
 		},
 		{
-			name:          "normal run without onboarding - has config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Dependency extraction complete"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(true),
+			name:         "normal run without onboarding - has config",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Dependency extraction complete"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
+			configStatus: ptr.To("done"),
 		},
 		{
-			name:          "onboarding detected - no config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR is needed"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarding detected - no config",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR is needed"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("No Config"),
 		},
 		{
-			name:          "onboarding case insensitive",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"ONBOARDING branch created"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarding case insensitive",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"ONBOARDING branch created"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("No Config"),
 		},
 		{
-			name:          "onboarding in mixed case message",
-			logs:          `{"level":30,"msg":"Ensuring onboarding PR"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarding in mixed case message",
+			logs:         `{"level":30,"msg":"Ensuring onboarding PR"}` + "\n" + `{"level":30,"result":"disabled-closed-onboarding","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("Onboarding Closed"),
 		},
 		{
-			name:          "onboarding with warning - no config and has issues",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Onboarding PR needs update"}` + "\n" + `{"level":30,"result":"done","onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarding with warning - no config and has issues",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Onboarding PR needs update"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("No Config"),
 		},
 		{
-			name:          "run with warnings but no onboarding - has config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(true),
+			name:         "run with warnings but no onboarding - has config",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
+			configStatus: ptr.To("done"),
 		},
 		{
-			name:          "onboarded false in Repository finished line - no config",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Repository finished","onboarded":false,"status":"onboarding"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarded false in Repository finished line - no config",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Repository finished","result":"disabled-no-config","onboarded":false,"status":"onboarding"}`,
+			configStatus: ptr.To("No Config"),
 		},
 		{
-			name:          "onboarded false detected via raw fallback when line exceeds scanner buffer",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR updated"}` + "\n" + `{"level":30,"cloned":true,"onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "onboarded false detected via raw fallback when line exceeds scanner buffer",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR updated"}` + "\n" + `{"level":30,"cloned":true,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("No Config"),
 		},
 		{
-			name:          "real world: onboarded false with scanner-breaking stats line",
-			logs:          `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"cloned":true,"onboarded":false,"msg":"Repository finished"}`,
-			wantHasConfig: boolPtr(false),
+			name:         "real world: onboarded false with scanner-breaking stats line",
+			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"cloned":true,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
+			configStatus: ptr.To("No Config"),
+		},
+		{
+			name:         "onboarded but disabled",
+			logs:         `{"level":30, "repository":"k8s/adguard-home", "result":"disabled-by-config", "status":"disabled", "enabled":false, "msg":"Repository finished"}`,
+			configStatus: ptr.To("Disabled"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseRenovateLogs(tt.logs)
-			if tt.wantHasConfig == nil {
-				if result.HasRenovateConfig != nil {
-					t.Errorf("ParseRenovateLogs() HasRenovateConfig = %v, want nil", *result.HasRenovateConfig)
+			if tt.configStatus == nil {
+				if result.RenovateResultStatus != nil {
+					t.Errorf("ParseRenovateLogs() RenovateResultStatus = %v, want nil", *result.RenovateResultStatus)
 				}
 			} else {
-				if result.HasRenovateConfig == nil {
-					t.Errorf("ParseRenovateLogs() HasRenovateConfig = nil, want %v", *tt.wantHasConfig)
-				} else if *result.HasRenovateConfig != *tt.wantHasConfig {
-					t.Errorf("ParseRenovateLogs() HasRenovateConfig = %v, want %v", *result.HasRenovateConfig, *tt.wantHasConfig)
+				if result.RenovateResultStatus == nil {
+					t.Errorf("ParseRenovateLogs() RenovateResultStatus = nil, want %v", *tt.configStatus)
+				} else if *result.RenovateResultStatus != *tt.configStatus {
+					t.Errorf("ParseRenovateLogs() RenovateResultStatus = %v, want %v", *result.RenovateResultStatus, *tt.configStatus)
 				}
 			}
 		})

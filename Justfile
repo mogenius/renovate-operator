@@ -14,14 +14,14 @@ run *args: build jsInstall
 build: generate
     #!/usr/bin/env sh
     VERSION=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "dev")
-    cd src && go build -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o ../dist/native/renovate-operator ./cmd/main.go
+    cd src && go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o ../dist/native/renovate-operator ./cmd/main.go
 
 # Build binaries for all targets
 build-all: build-linux-amd64 build-linux-arm64 build-linux-armv7
 
 # Build binary for target linux-amd64
 build-linux-amd64: generate
-    cd src && GOOS=linux GOARCH=amd64 go build -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/amd64/renovate-operator ./cmd/main.go
+    cd src && GOOS=linux GOARCH=amd64 go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/amd64/renovate-operator ./cmd/main.go
 
 # Build docker image for target linux-amd64
 build-docker-linux-amd64:
@@ -37,7 +37,7 @@ build-docker-linux-amd64:
 
 # Build binary for target linux-arm64
 build-linux-arm64: generate
-    cd src && GOOS=linux GOARCH=arm64 go build -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/arm64/renovate-operator ./cmd/main.go
+    cd src && GOOS=linux GOARCH=arm64 go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/arm64/renovate-operator ./cmd/main.go
 
 # Build docker image for target linux-arm64
 build-docker-linux-arm64:
@@ -53,7 +53,7 @@ build-docker-linux-arm64:
 
 # Build binary for target linux-armv7
 build-linux-armv7: generate
-    cd src && GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/armv7/renovate-operator ./cmd/main.go
+    cd src && GOOS=linux GOARCH=arm GOARM=7 go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w" -o ../dist/armv7/renovate-operator ./cmd/main.go
 
 # Build docker image for target linux-armv7
 build-docker-linux-armv7:
@@ -74,7 +74,7 @@ _install_controller_gen:
 
 # Execute go generate
 generate: _install_controller_gen
-    controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+    controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
 # Run tests and linters for quick iteration locally.
 check: generate golangci-lint test-unit
@@ -100,3 +100,17 @@ jsInstall:
     echo "Downloading Babel Standalone..."
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone/babel.min.js"
     echo "All JavaScript dependencies downloaded successfully!"
+
+docker image:
+    podman build --platform linux/arm64 \
+        -t {{image}}-arm64 \
+        -f ./Dockerfile .
+    @echo "Creating manifest..."
+    podman manifest rm {{image}} 2>/dev/null || true
+    podman manifest create {{image}}
+    @echo "Adding ARM64 to manifest..."
+    podman manifest add {{image}} {{image}}-arm64
+    @echo "Inspecting manifest:"
+    podman manifest inspect {{image}}
+    @echo "Pushing manifest:"
+    podman manifest push --all {{image}}

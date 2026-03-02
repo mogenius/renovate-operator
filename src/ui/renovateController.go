@@ -7,6 +7,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"strings"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -14,12 +15,14 @@ import (
 )
 
 type RenovateJobInfo struct {
-	Name            string                             `json:"name"`
-	Namespace       string                             `json:"namespace"`
-	CronExpression  string                             `json:"cronExpression"`
-	NextSchedule    time.Time                          `json:"nextSchedule"`
-	DiscoveryStatus api.RenovateProjectStatus          `json:"discoveryStatus"`
-	Projects        []crdmanager.RenovateProjectStatus `json:"projects"`
+	Name             string                             `json:"name"`
+	Namespace        string                             `json:"namespace"`
+	CronExpression   string                             `json:"cronExpression"`
+	NextSchedule     time.Time                          `json:"nextSchedule"`
+	DiscoveryStatus  api.RenovateProjectStatus          `json:"discoveryStatus"`
+	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
+	Platform         string                             `json:"platform,omitempty"`
+	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
@@ -61,23 +64,40 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		platform := ""
+		platformEndpoint := ""
+		for _, env := range renovateJob.Spec.ExtraEnv {
+			if env.Value != "" {
+				switch env.Name {
+				case "RENOVATE_PLATFORM":
+					platform = env.Value
+				case "RENOVATE_ENDPOINT":
+					platformEndpoint = env.Value
+				}
+			}
+		}
+
 		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {
 			projects = append(projects, crdmanager.RenovateProjectStatus{
-				Name:              p.Name,
-				Status:            p.Status,
-				LastRun:           p.LastRun.Time,
-				HasRenovateConfig: p.HasRenovateConfig,
+				Name:                 p.Name,
+				Status:               p.Status,
+				LastRun:              p.LastRun.Time,
+				Priority:             p.Priority,
+				RenovateResultStatus: p.RenovateResultStatus,
+				Duration:             p.Duration,
 			})
 		}
 
 		result = append(result, RenovateJobInfo{
-			Name:            renovateJob.Name,
-			Namespace:       renovateJob.Namespace,
-			NextSchedule:    s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
-			Projects:        projects,
-			CronExpression:  renovateJob.Spec.Schedule,
-			DiscoveryStatus: discoveryStatus,
+			Name:             renovateJob.Name,
+			Namespace:        renovateJob.Namespace,
+			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
+			Projects:         projects,
+			CronExpression:   renovateJob.Spec.Schedule,
+			DiscoveryStatus:  discoveryStatus,
+			Platform:         platform,
+			PlatformEndpoint: platformEndpoint,
 		})
 	}
 
@@ -185,7 +205,10 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 			Name:      params.name,
 			Namespace: params.namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 2,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to run Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
@@ -194,7 +217,7 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {

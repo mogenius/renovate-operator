@@ -5,6 +5,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 )
 
 type GitLabEvent struct {
@@ -60,7 +61,7 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process the webhook payload
-	s.logger.Info("received GitLab event", "repository", payload.Project.PathWithNamespace, "action", payload.ObjectAttributes.Action)
+	s.logger.Info("received GitLab event", "repository", payload.Project.PathWithNamespace, "action", payload.ObjectAttributes.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
 		r.Context(),
 		payload.Project.PathWithNamespace,
@@ -68,7 +69,10 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 			Name:      job,
 			Namespace: namespace,
 		},
-		api.JobStatusScheduled,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
+		},
 	)
 	if err != nil {
 		s.logger.Error(err, "Failed to process GitLab webhook for project", "project", payload.Project.PathWithNamespace)

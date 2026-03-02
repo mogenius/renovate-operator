@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/robfig/cron/v3"
+	cron "github.com/netresearch/go-cron"
 )
 
 /*
@@ -124,7 +124,10 @@ func (s *scheduler) RemoveSchedule(name string) {
 }
 
 func (s *scheduler) GetNextRunOnSchedule(schedule string) time.Time {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	parser, err := cron.TryNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	if err != nil {
+		return time.Time{}
+	}
 	sched, err := parser.Parse(schedule)
 	if err != nil {
 		return time.Time{}

@@ -1,3 +1,214 @@
+## [2.19.1](https://github.com/mogenius/renovate-operator/compare/2.19.0...2.19.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* **auth:** populate redirect url via route or ingress ([f343ce2](https://github.com/mogenius/renovate-operator/commit/f343ce22f73445b56332c74fef0a4047b3807aa2)), closes [#179](https://github.com/mogenius/renovate-operator/issues/179)
+
+# [2.19.0](https://github.com/mogenius/renovate-operator/compare/2.18.0...2.19.0) (2026-03-02)
+
+
+### Features
+
+* Add priority scheduling for Webhook/UI runs ([5629588](https://github.com/mogenius/renovate-operator/commit/562958887f53f14a3213d71a34b42a091a1fc459))
+
+# [2.18.0](https://github.com/mogenius/renovate-operator/compare/2.17.2...2.18.0) (2026-03-01)
+
+
+### Bug Fixes
+
+* **lint:** add missing checks and remove unused functions ([d04a1da](https://github.com/mogenius/renovate-operator/commit/d04a1da7eed5fa8901617a80f24136309dfd2c01))
+* move sessionSecret to secret reference ([56ec414](https://github.com/mogenius/renovate-operator/commit/56ec414f35b2830ca1f0601607574645d6de3690))
+* resolve session cookie issues with reverse proxy / ingress ([55c3c84](https://github.com/mogenius/renovate-operator/commit/55c3c840a1355044ae527ff77e382230a6e2b45d))
+* use sessionSecretKey for github as well ([77548d1](https://github.com/mogenius/renovate-operator/commit/77548d1b4e3a3cea63c61710555f5a0a4c76921d))
+
+
+### Features
+
+* add GitHub OAuth as alternative auth provider for the Web UI ([775251f](https://github.com/mogenius/renovate-operator/commit/775251f3443986dcc9603b6f93b7fed20c51364f))
+* Add optional OIDC/OAuth2 authentication for the Web UI ([d9f001d](https://github.com/mogenius/renovate-operator/commit/d9f001d5199ff5b939b1faeacb8b96f7738432b5))
+
+## [2.17.2](https://github.com/mogenius/renovate-operator/compare/2.17.1...2.17.2) (2026-02-28)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes packages to v0.35.2 ([2563879](https://github.com/mogenius/renovate-operator/commit/25638794f6e4ffb46d9822cdb8f9fad71b2b8caa))
+
+## [2.17.1](https://github.com/mogenius/renovate-operator/compare/2.17.0...2.17.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* Quote httproute fields ([e6cbc98](https://github.com/mogenius/renovate-operator/commit/e6cbc989a984b49e33bd4b645854723b63fea825))
+
+# [2.17.0](https://github.com/mogenius/renovate-operator/compare/2.16.0...2.17.0) (2026-02-27)
+
+
+### Features
+
+* Add httproute fields ([e8c509f](https://github.com/mogenius/renovate-operator/commit/e8c509fd718e4e9ce61559b7c0de576b5336dcee))
+
+# [2.16.0](https://github.com/mogenius/renovate-operator/compare/2.15.3...2.16.0) (2026-02-27)
+
+
+### Features
+
+* switch from robfig/cron to netresearch/go-cron for scheduling ([9744439](https://github.com/mogenius/renovate-operator/commit/974443960d8cb7e755a0dda975c6890e92ad070e))
+
+## [2.15.3](https://github.com/mogenius/renovate-operator/compare/2.15.2...2.15.3) (2026-02-27)
+
+
+### Bug Fixes
+
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.35.2 ([06daf79](https://github.com/mogenius/renovate-operator/commit/06daf79424c9026731bac4d65d1977fd853e799c))
+
+## [2.15.2](https://github.com/mogenius/renovate-operator/compare/2.15.1...2.15.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* improve stripping the api suffix for PR Page link ([8d4ffac](https://github.com/mogenius/renovate-operator/commit/8d4ffac3b91b334a2005023ac88c06c50da68e27)), closes [#166](https://github.com/mogenius/renovate-operator/issues/166)
+
+## [2.15.1](https://github.com/mogenius/renovate-operator/compare/2.15.0...2.15.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* allow renovate discovery to parse mixed type arrays ([ffdfc9e](https://github.com/mogenius/renovate-operator/commit/ffdfc9ede75e8cf2cf5d4e257abfecc213dbf1ed)), closes [#167](https://github.com/mogenius/renovate-operator/issues/167)
+
+# [2.15.0](https://github.com/mogenius/renovate-operator/compare/2.14.2...2.15.0) (2026-02-27)
+
+
+### Features
+
+* enable timezone support ([4727fec](https://github.com/mogenius/renovate-operator/commit/4727fece7390fc77e417a1d36baeb1122b5f958f))
+
+## [2.14.2](https://github.com/mogenius/renovate-operator/compare/2.14.1...2.14.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* add TTLSecondsAfterFinished to discovery job spec ([4dfb74e](https://github.com/mogenius/renovate-operator/commit/4dfb74e9c8dc8b85b55c49699412370ca7803e87))
+* add TTLSecondsAfterFinished to discovery job spec ([c63c459](https://github.com/mogenius/renovate-operator/commit/c63c45955d1212dfdb6666511ed50c8466aa6ff5))
+
+## [2.14.1](https://github.com/mogenius/renovate-operator/compare/2.14.0...2.14.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* Strip /api/v4 from GitLab Endpoints ([e6452c8](https://github.com/mogenius/renovate-operator/commit/e6452c8096a0b289d81a4bb29260e9c84525dac0))
+
+# [2.14.0](https://github.com/mogenius/renovate-operator/compare/2.13.1...2.14.0) (2026-02-26)
+
+
+### Features
+
+* show link to open PRs/MRs in project table ([2702052](https://github.com/mogenius/renovate-operator/commit/27020527c46b94ff0d59afa5c0483985e3362425))
+
+## [2.13.1](https://github.com/mogenius/renovate-operator/compare/2.13.0...2.13.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* additional valid issue content ([285eace](https://github.com/mogenius/renovate-operator/commit/285eacee19a1b43c2f4ca7d1656103dafd2d647d))
+
+# [2.13.0](https://github.com/mogenius/renovate-operator/compare/2.12.0...2.13.0) (2026-02-25)
+
+
+### Features
+
+* set DNSPolicy in JobSpec ([2922494](https://github.com/mogenius/renovate-operator/commit/2922494323083e87f370708cfcc293b0563d57a8))
+
+# [2.12.0](https://github.com/mogenius/renovate-operator/compare/2.11.0...2.12.0) (2026-02-25)
+
+
+### Features
+
+* **helm:** adding optional templating of CRDs ([a8adbfb](https://github.com/mogenius/renovate-operator/commit/a8adbfba615447b2ed85eefc7729a4ac4ed53678))
+
+# [2.11.0](https://github.com/mogenius/renovate-operator/compare/2.10.0...2.11.0) (2026-02-25)
+
+
+### Features
+
+* capture duration of renovate runs ([e49b79f](https://github.com/mogenius/renovate-operator/commit/e49b79f659d5cda8efab0007d5322403ac87a07d)), closes [#137](https://github.com/mogenius/renovate-operator/issues/137)
+
+# [2.10.0](https://github.com/mogenius/renovate-operator/compare/2.9.4...2.10.0) (2026-02-25)
+
+
+### Features
+
+* **charts:** add capabilities.drop to securityContexts ([5b76e05](https://github.com/mogenius/renovate-operator/commit/5b76e05fa90e0420486367d1a0acfc5cd8e06cdd))
+* **charts:** set security context for crd-hook job ([0b94d4e](https://github.com/mogenius/renovate-operator/commit/0b94d4e29af5bd1346a0056e59af7964b4ae02b0)), closes [#154](https://github.com/mogenius/renovate-operator/issues/154)
+
+## [2.9.4](https://github.com/mogenius/renovate-operator/compare/2.9.3...2.9.4) (2026-02-24)
+
+
+### Bug Fixes
+
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.35.1 ([978b7e8](https://github.com/mogenius/renovate-operator/commit/978b7e8c852699616235bcea8f111c7e93b4ac1e))
+
+## [2.9.3](https://github.com/mogenius/renovate-operator/compare/2.9.2...2.9.3) (2026-02-24)
+
+
+### Bug Fixes
+
+* adding settings to disable crd install process ([e6dda05](https://github.com/mogenius/renovate-operator/commit/e6dda05f97f6dea75a0122515246d742015d62ef))
+* improve dependency dashboard matching for webhooks ([60d5a4c](https://github.com/mogenius/renovate-operator/commit/60d5a4c9628c83fb8366a57f0026a0ed1b212a55)), closes [#152](https://github.com/mogenius/renovate-operator/issues/152)
+* use server side apply for crds ([dd1aaf1](https://github.com/mogenius/renovate-operator/commit/dd1aaf120c79a3f45b34176029e4d931bbbbf621)), closes [#150](https://github.com/mogenius/renovate-operator/issues/150)
+
+## [2.9.2](https://github.com/mogenius/renovate-operator/compare/2.9.1...2.9.2) (2026-02-23)
+
+
+### Bug Fixes
+
+* delete crds after migration to helm hook for install ([338786f](https://github.com/mogenius/renovate-operator/commit/338786f4751a20022305d31a76f33ac9a0efcd19))
+* improving handling of the repository finished parsing ([03325c4](https://github.com/mogenius/renovate-operator/commit/03325c4b86f7609331ac8b99236ed495473e2b56))
+
+## [2.9.1](https://github.com/mogenius/renovate-operator/compare/2.9.0...2.9.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* keep annotation is no longer needed ([e55eff4](https://github.com/mogenius/renovate-operator/commit/e55eff45ebcb1f253f8930c1c6dbc7f396d89c07))
+
+# [2.9.0](https://github.com/mogenius/renovate-operator/compare/2.8.7...2.9.0) (2026-02-23)
+
+
+### Features
+
+* **charts:** add values to set the image for the crd-hook job ([e722889](https://github.com/mogenius/renovate-operator/commit/e7228890e83f3c8fbdb3abe5afc42933380e502e)), closes [#147](https://github.com/mogenius/renovate-operator/issues/147)
+
+## [2.8.7](https://github.com/mogenius/renovate-operator/compare/2.8.6...2.8.7) (2026-02-23)
+
+
+### Bug Fixes
+
+* install and upgrade CRD via pre-hook job to ensure schema is always up to date ([4feffdd](https://github.com/mogenius/renovate-operator/commit/4feffddf3ad2a870d81a64bf8d9f46464193f831)), closes [#134](https://github.com/mogenius/renovate-operator/issues/134)
+
+## [2.8.6](https://github.com/mogenius/renovate-operator/compare/2.8.5...2.8.6) (2026-02-23)
+
+
+### Bug Fixes
+
+* display the last run via tooltip ([24db869](https://github.com/mogenius/renovate-operator/commit/24db869e03c0fcfb25bbce5ae731ba4b4055a1bc))
+
+## [2.8.5](https://github.com/mogenius/renovate-operator/compare/2.8.4...2.8.5) (2026-02-23)
+
+
+### Bug Fixes
+
+* added documentation ([d13a343](https://github.com/mogenius/renovate-operator/commit/d13a343e8b10163c8f8e48fed1b85ae79040ac49))
+* pass imagepullsecrets to operator managed pods ([e07724c](https://github.com/mogenius/renovate-operator/commit/e07724cd80a62885a91abb07df0efdabc8d23c77))
+
+## [2.8.4](https://github.com/mogenius/renovate-operator/compare/2.8.3...2.8.4) (2026-02-22)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes packages to v0.35.1 ([1eec1cc](https://github.com/mogenius/renovate-operator/commit/1eec1cc26281340d6a756f68328acbcbe44814b8))
+
 ## [2.8.3](https://github.com/mogenius/renovate-operator/compare/2.8.2...2.8.3) (2026-02-21)
 
 

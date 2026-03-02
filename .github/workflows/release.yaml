@@ -172,9 +172,9 @@ jobs:
             go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
 
             echo "Generating CRDs"
-            controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crds
+            controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
-            git add charts/renovate-operator/crds
+            git add charts/renovate-operator/crd/*.mogenius.com_*.yaml
 
             echo "Packaging Helm chart"
             helm package -d /tmp/ ./charts/renovate-operator
