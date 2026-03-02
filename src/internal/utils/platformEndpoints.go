@@ -4,7 +4,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 )
 
-func GetPlatformEndpointAndEndpoint(provider *api.RenovateProvider) (string, string) {
+func GetPlatformAndEndpoint(provider *api.RenovateProvider) (string, string) {
 	if provider == nil {
 		return "", ""
 	}

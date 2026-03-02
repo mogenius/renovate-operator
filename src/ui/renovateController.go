@@ -74,7 +74,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		platformEndpoint := ""
 
 		if renovateJob.Spec.Provider != nil {
-			platform, platformEndpoint = utils.GetPlatformEndpointAndEndpoint(renovateJob.Spec.Provider)
+			platform, platformEndpoint = utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 		} else {
 			// TODO v3: remove this fallback, as provider should be mandatory
 			for _, env := range renovateJob.Spec.ExtraEnv {
