@@ -126,7 +126,13 @@ const (
 // RenovateJobStatus defines the observed state of RenovateJob
 // +kubebuilder:object:root=true
 type RenovateJobStatus struct {
-	Projects []ProjectStatus `json:"projects,omitempty"`
+	Projects         []ProjectStatus           `json:"projects,omitempty"`
+	ExecutionOptions *RenovateExecutionOptions `json:"executionOptions,omitempty"`
+}
+
+type RenovateExecutionOptions struct {
+	// If true, the renovate job will be executed with LOG_LEVEL=debug
+	Debug bool `json:"debug,omitempty"`
 }
 
 // +kubebuilder:object:root=true

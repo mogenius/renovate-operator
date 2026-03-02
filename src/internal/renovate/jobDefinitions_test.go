@@ -173,6 +173,11 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				},
 			},
 		},
+		Status: api.RenovateJobStatus{
+			ExecutionOptions: &api.RenovateExecutionOptions{
+				Debug: true,
+			},
+		},
 	}
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
@@ -200,6 +205,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
+	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
 	expectEnvFromSecret(t, djContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
