@@ -3127,8 +3127,8 @@ spec:
                 format: int32
                 type: integer
               provider:
-                description: Renovate Provider Information to fill environment variables
-                  in the renovate container
+                description: Renovate Provider Information to fill "RENOVATE_ENDPOINT"
+                  and "RENOVATE_PLATFORM" environment variables in the renovate container
                 properties:
                   endpoint:
                     type: string
