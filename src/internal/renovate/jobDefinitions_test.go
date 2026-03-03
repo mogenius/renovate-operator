@@ -186,7 +186,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectJobNamespace(t, dj, "ns")
 	expectLabels(t, dj, map[string]string{"a": "b"}, string(crdManager.DiscoveryJobType), "rj-discovery-6987b484")
 	expectImage(t, djContainer, "img")
-	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
+	expectRestartPolicy(t, dj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, dj, 10)
 	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
 
@@ -216,7 +216,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectJobNamespace(t, rj, "ns")
 	expectLabels(t, rj, map[string]string{"a": "b"}, string(crdManager.ExecutorJobType), "rj-proj-701b9b0a")
 	expectImage(t, rjContainer, "img")
-	expectRestartPolicy(t, rj, v1.RestartPolicyOnFailure)
+	expectRestartPolicy(t, rj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, rj, 10)
 	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
 
