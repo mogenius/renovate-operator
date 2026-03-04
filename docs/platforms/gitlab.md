@@ -14,9 +14,9 @@ spec:
   provider:
     name: gitlab
     endpoint: ""  # optional, defaults to https://gitlab.com/api/v4
-  extraEnv: {}
+  extraEnv: []
     # - name: ENV_NAME
-    # value: "EV_VALUE"
+    #   value: "EV_VALUE"
   parallelism: 1
   resources:
     requests:
