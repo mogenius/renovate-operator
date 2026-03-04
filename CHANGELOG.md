@@ -1,3 +1,10 @@
+## [2.21.1](https://github.com/mogenius/renovate-operator/compare/2.21.0...2.21.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* unauthorized triggers rerender loop ([f85bcfb](https://github.com/mogenius/renovate-operator/commit/f85bcfbc82966ba47caed65310be586878a76b90)), closes [#184](https://github.com/mogenius/renovate-operator/issues/184)
+
 # [2.21.0](https://github.com/mogenius/renovate-operator/compare/2.20.1...2.21.0) (2026-03-04)
 
 
