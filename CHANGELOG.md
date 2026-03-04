@@ -1,3 +1,18 @@
+# [2.21.0](https://github.com/mogenius/renovate-operator/compare/2.20.1...2.21.0) (2026-03-04)
+
+
+### Bug Fixes
+
+* extract platform endpoint resolution into shared utils package ([2c23aee](https://github.com/mogenius/renovate-operator/commit/2c23aee0cba7446db34ccb767ff617cf33e83a3f))
+
+
+### Features
+
+* add api to update execution options ([4148944](https://github.com/mogenius/renovate-operator/commit/41489440107acda135db0016e7869209fd4ff319)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+* add debug execution option to RenovateJobStatus ([084e4d5](https://github.com/mogenius/renovate-operator/commit/084e4d5ff4c9eb12c30badbac1ffd477a67d293d)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+* add Provider field to RenovateJobSpec for platform configuration ([665c323](https://github.com/mogenius/renovate-operator/commit/665c3237a55ad777799bcd69e360ac4d7ec4de13))
+* add ui options to adapt execution options ([d1c349f](https://github.com/mogenius/renovate-operator/commit/d1c349f1c0b8991dd1ade22225f3ad9016d38458)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+
 ## [2.20.1](https://github.com/mogenius/renovate-operator/compare/2.20.0...2.20.1) (2026-03-04)
 
 
