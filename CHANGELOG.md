@@ -1,3 +1,10 @@
+## [2.20.1](https://github.com/mogenius/renovate-operator/compare/2.20.0...2.20.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* set restart policy to never ([a48a835](https://github.com/mogenius/renovate-operator/commit/a48a8351b003a821efd90ea44bdd08a843e32ef3))
+
 # [2.20.0](https://github.com/mogenius/renovate-operator/compare/2.19.1...2.20.0) (2026-03-02)
 
 
