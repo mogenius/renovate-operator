@@ -136,6 +136,14 @@ spec:
             - name: OIDC_LOGOUT_URL
               value: {{ .Values.auth.oidc.logoutUrl | quote }}
             {{- end }}
+            {{- if .Values.auth.oidc.allowedGroupPrefix }}
+            - name: OIDC_ALLOWED_GROUP_PREFIX
+              value: {{ .Values.auth.oidc.allowedGroupPrefix | quote }}
+            {{- end }}
+            {{- if .Values.auth.oidc.allowedGroupPattern }}
+            - name: OIDC_ALLOWED_GROUP_PATTERN
+              value: {{ .Values.auth.oidc.allowedGroupPattern | quote }}
+            {{- end }}
             {{- else if .Values.auth.github.enabled }}
             - name: GITHUB_CLIENT_ID
               value: {{ .Values.auth.github.clientId | quote }}
@@ -155,6 +163,12 @@ spec:
             {{- if $githubRedirectUrl }}
             - name: GITHUB_REDIRECT_URL
               value: {{ $githubRedirectUrl | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if or .Values.auth.oidc.enabled .Values.auth.github.enabled }}
+            {{- if .Values.auth.defaultAllowedGroups }}
+            - name: DEFAULT_ALLOWED_GROUPS
+              value: {{ .Values.auth.defaultAllowedGroups | quote }}
             {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
