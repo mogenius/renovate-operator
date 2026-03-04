@@ -72,7 +72,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useEffect, useCallback, useMemo } = React;
+      const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
       const formatTimeAgo = (timestamp) => {
         const now = new Date();
@@ -476,18 +476,18 @@
         });
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
-        const [nextToastId, setNextToastId] = useState(1);
+        const nextToastIdRef = useRef(0);
         const [authInfo, setAuthInfo] = useState(null);
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
-            const id = nextToastId;
-            setNextToastId((prev) => prev + 1);
+            nextToastIdRef.current += 1;
+            const id = nextToastIdRef.current;
             const toast = { id, type, title, message, removing: false };
             setToasts((prev) => [...prev, toast]);
             setTimeout(() => removeToast(id), duration);
           },
-          [nextToastId]
+          []
         );
 
         const removeToast = (id) => {
@@ -642,19 +642,7 @@
             console.error("Error triggering renovate:", err);
             addToast("error", "Trigger Failed", err.message);
           } finally {
-            setJobs((prev) =>
-              prev.map((j) => {
-                if (j.name === job.name && j.namespace === job.namespace) {
-                  return {
-                    ...j,
-                    projects: j.projects.map((p) =>
-                      p.name === project.name ? { ...p, triggering: false } : p
-                    ),
-                  };
-                }
-                return j;
-              })
-            );
+            loadJobs();
           }
         };
 
