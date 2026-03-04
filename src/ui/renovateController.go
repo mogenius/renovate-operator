@@ -176,7 +176,8 @@ func (s *Server) authorizeAndGetJob(r *http.Request, namespace, jobName string) 
 			"namespace", namespace,
 			"allowed_groups", effectiveAllowedGroups,
 			"path", r.URL.Path,
-			"method", r.Method)
+			"method", r.Method,
+			"remote_addr", r.RemoteAddr)
 		return job, true
 	}
 
@@ -296,6 +297,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
 }
+
 func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	renovate := r.URL.Query().Get("renovate")
@@ -328,7 +330,8 @@ func getRenovateJsonBody(r *http.Request) (*struct {
 	name      string
 	namespace string
 	project   string
-}, error) {
+}, error,
+) {
 	var renovateJob, namespace, project string
 	if r.Header.Get("Content-Type") == "application/json" {
 		var params struct {
@@ -523,7 +526,6 @@ func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Reques
 			internalServerError(w, err, "failed to get discovery job status")
 			return
 		}
-
 	}
 
 	w.Header().Set("Content-Type", "application/json")
