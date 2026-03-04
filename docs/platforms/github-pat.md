@@ -13,9 +13,9 @@ spec:
   provider:
     name: github
     endpoint: ""  # optional, defaults to https://api.github.com
-  extraEnv: {}
+  extraEnv: []
     # - name: ENV_NAME
-    # value: "EV_VALUE"
+    #   value: "EV_VALUE"
   image: renovate/renovate:41.43.3
   parallelism: 5
   resources:

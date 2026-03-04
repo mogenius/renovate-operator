@@ -20,9 +20,9 @@ spec:
   provider:
     name: your-platform # Platform type: github, gitlab, bitbucket, azure, gitea, etc.
     endpoint: "https://your-platform.example.com" # Your platform API endpoint
-  extraEnv: {}
+  extraEnv: []
     # - name: ENV_NAME
-    # value: "EV_VALUE"
+    #   value: "EV_VALUE"
   parallelism: 1
 ```
 

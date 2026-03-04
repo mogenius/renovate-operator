@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func GetPlatformAndEndpointTest(t *testing.T) {
+func TestGetPlatformAndEndpoint(t *testing.T) {
 	tests := []struct {
 		name             string
 		provider         *api.RenovateProvider
