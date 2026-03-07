@@ -60,7 +60,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
 
-		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob)
+		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob, "")
 		if err != nil {
 			if errors.IsNotFound(err) {
 				discoveryStatus = api.JobStatusScheduled
@@ -234,14 +234,14 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// discovery mus only run once
-	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
+	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job, "")
 	if err == nil && status == api.JobStatusRunning {
 		// discovery job is already running
 		writeSuccess(w, SuccessResult{Message: "discovery job is already running"})
 		return
 	}
 
-	err = s.discovery.CreateDiscoveryJob(ctx, *job)
+	generation, err := s.discovery.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 		internalServerError(w, err, "failed to create discovery job")
@@ -249,7 +249,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	}
 	go func() {
 		ctxBackground := context.Background()
-		projects, err := s.discovery.WaitForDiscoveryJob(ctxBackground, job)
+		projects, err := s.discovery.WaitForDiscoveryJob(ctxBackground, job, generation)
 		if err != nil {
 			s.logger.Error(err, "Discovery job failed for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 			return
@@ -315,7 +315,7 @@ func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Reques
 		internalServerError(w, err, "failed to get renovate job")
 		return
 	}
-	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
+	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job, "")
 	if err != nil {
 		if errors.IsNotFound(err) {
 			status = api.JobStatusScheduled

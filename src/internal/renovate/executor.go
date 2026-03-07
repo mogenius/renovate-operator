@@ -257,7 +257,7 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
 
-			err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
+			_, err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
 				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
 				JobType:   crdManager.ExecutorJobType,
 				Namespace: renovateJob.Namespace,

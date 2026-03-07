@@ -111,32 +111,32 @@ func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, job
 
 // Mock DiscoveryAgent
 type mockDiscoveryAgent struct {
-	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
 	createDiscoveryJobFunc    func(ctx context.Context, renovateJob api.RenovateJob) error
-	waitForDiscoveryJobFunc   func(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	waitForDiscoveryJobFunc   func(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error)
 }
 
 func (m *mockDiscoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	return nil, nil
 }
 
-func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 	if m.getDiscoveryJobStatusFunc != nil {
-		return m.getDiscoveryJobStatusFunc(ctx, job)
+		return m.getDiscoveryJobStatusFunc(ctx, job, generation)
 	}
 	return api.JobStatusScheduled, nil
 }
 
-func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
+func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
 	if m.createDiscoveryJobFunc != nil {
-		return m.createDiscoveryJobFunc(ctx, renovateJob)
+		return "", m.createDiscoveryJobFunc(ctx, renovateJob)
 	}
-	return nil
+	return "", nil
 }
 
-func (m *mockDiscoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+func (m *mockDiscoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
 	if m.waitForDiscoveryJobFunc != nil {
-		return m.waitForDiscoveryJobFunc(ctx, job)
+		return m.waitForDiscoveryJobFunc(ctx, job, generation)
 	}
 	return []string{}, nil
 }
@@ -282,7 +282,7 @@ func TestDiscoveryStatusForProject_Success(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 			return api.JobStatusRunning, nil
 		},
 	}
@@ -328,7 +328,7 @@ func TestDiscoveryStatusForProject_NotFound(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 			return "", k8serrors.NewNotFound(schema.GroupResource{}, "job1")
 		},
 	}
@@ -375,7 +375,7 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 			return api.JobStatusRunning, nil
 		},
 	}

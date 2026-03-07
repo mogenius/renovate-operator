@@ -87,13 +87,13 @@ func (f *fakeDiscovery) Discover(ctx context.Context, job *api.RenovateJob) ([]s
 	}
 	return []string{}, nil
 }
-func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
-	return fmt.Errorf("not implemented")
+func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
+	return "", fmt.Errorf("not implemented")
 }
-func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
 }
-func (f *fakeDiscovery) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+func (f *fakeDiscovery) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
 	return []string{}, nil
 }
 
