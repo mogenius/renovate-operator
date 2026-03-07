@@ -89,7 +89,7 @@ func TestCreateJob(t *testing.T) {
 		},
 	}
 
-	err := CreateJobWithGeneration(context.Background(), client, job, JobSelector{
+	_, err := CreateJobWithGeneration(context.Background(), client, job, JobSelector{
 		JobName:   "new-job",
 		JobType:   ExecutorJobType,
 		Namespace: "test-ns",
