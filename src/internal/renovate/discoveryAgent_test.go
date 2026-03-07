@@ -75,7 +75,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 			job := &api.RenovateJob{}
 			job.Name = tc.jobName
 			job.Namespace = "ns"
-			got, err := da.GetDiscoveryJobStatus(context.Background(), job)
+			got, err := da.GetDiscoveryJobStatus(context.Background(), job, "")
 			if err != nil {
 				t.Fatalf("GetDiscoveryJobStatus error: %v", err)
 			}
@@ -111,7 +111,7 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 	}
 
 	// override status check to return completed immediately
-	da.getDiscoveryJobStatusFn = func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+	da.getDiscoveryJobStatusFn = func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 		// Return completed on first call to simulate job completion
 		return api.JobStatusCompleted, nil
 	}
