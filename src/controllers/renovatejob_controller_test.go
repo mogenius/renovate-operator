@@ -101,7 +101,7 @@ type fakeScheduler struct {
 	addedExpr    string
 	addedName    string
 	addCalled    bool
-	removedName  string
+	removedNames []string
 	removeCalled bool
 	storedFn     func()
 	addErr       error
@@ -115,7 +115,7 @@ func (f *fakeScheduler) AddScheduleReplaceExisting(expr string, name string, fct
 	return f.addErr
 }
 func (f *fakeScheduler) RemoveSchedule(name string) {
-	f.removedName = name
+	f.removedNames = append(f.removedNames, name)
 	f.removeCalled = true
 }
 
@@ -423,9 +423,10 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:   mgr,
-		Scheduler: sched,
-		Discovery: &fakeDiscovery{},
+		Manager:        mgr,
+		Scheduler:      sched,
+		Discovery:      &fakeDiscovery{},
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -455,9 +456,10 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:   mgr,
-		Scheduler: sched,
-		Discovery: &fakeDiscovery{},
+		Manager:        mgr,
+		Scheduler:      sched,
+		Discovery:      &fakeDiscovery{},
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -469,8 +471,8 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 		t.Fatalf("expected RemoveSchedule to be called")
 	}
 	expectedName := "test-default"
-	if sched.removedName != expectedName {
-		t.Fatalf("expected removed name %s, got %s", expectedName, sched.removedName)
+	if len(sched.removedNames) != 1 || sched.removedNames[0] != expectedName {
+		t.Fatalf("expected removed names [%s], got %v", expectedName, sched.removedNames)
 	}
 	if res.RequeueAfter != 1*time.Minute {
 		t.Fatalf("expected RequeueAfter 1m, got %v", res.RequeueAfter)
@@ -487,9 +489,10 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:   mgr,
-		Scheduler: sched,
-		Discovery: &fakeDiscovery{},
+		Manager:        mgr,
+		Scheduler:      sched,
+		Discovery:      &fakeDiscovery{},
+		webhookSyncers: make(map[string]*webhookSyncerEntry),
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}

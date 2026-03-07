@@ -290,6 +290,7 @@ func main() {
 		Scheduler: cronManager,
 		Manager:   jobMgr,
 		Discovery: discovery,
+		K8sClient: mgr.GetClient(),
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
