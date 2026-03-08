@@ -4,7 +4,7 @@ go 1.25.4
 
 require (
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/netresearch/go-cron v0.13.0
+	github.com/netresearch/go-cron v0.13.1
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
 	sigs.k8s.io/controller-runtime v0.23.3
