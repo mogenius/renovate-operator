@@ -1,3 +1,11 @@
+## [2.21.3](https://github.com/mogenius/renovate-operator/compare/2.21.2...2.21.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* **operator:** discovery could select the wrong job to wait for ([2968388](https://github.com/mogenius/renovate-operator/commit/296838837b4fad55f557283f06c218fcc4bd26d5)), closes [#188](https://github.com/mogenius/renovate-operator/issues/188)
+* **operator:** refactor default variables for jobs ([a35a529](https://github.com/mogenius/renovate-operator/commit/a35a5297c9dcfe83413f71a413c84fb04ed748c3))
+
 ## [2.21.2](https://github.com/mogenius/renovate-operator/compare/2.21.1...2.21.2) (2026-03-07)
 
 
