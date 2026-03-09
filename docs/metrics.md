@@ -13,9 +13,9 @@ metrics:
 
 | Name                                       | Type    | Description                                                              | Labels                                                    |
 |--------------------------------------------|---------|--------------------------------------------------------------------------|-----------------------------------------------------------|
-| renovate_operator_project_executions_total | Counter | Total number of executed Renovate projects                               | `renovate-namespace`, `renovate-job`, `project`, `status` |
-| renovate_operator_run_failed               | Gauge   | Whether the last Renovate run for this project failed (1=failed, 0=success) | `renovate-namespace`, `renovate-job`, `project`           |
-| renovate_operator_dependency_issues        | Gauge   | Whether the last Renovate run had WARN/ERROR log entries (1=issues, 0=clean) | `renovate-namespace`, `renovate-job`, `project`           |
+| renovate_operator_project_executions_total | Counter | Total number of executed Renovate projects                               | `renovate_namespace`, `renovate_job`, `project`, `status` |
+| renovate_operator_run_failed               | Gauge   | Whether the last Renovate run for this project failed (1=failed, 0=success) | `renovate_namespace`, `renovate_job`, `project`           |
+| renovate_operator_dependency_issues        | Gauge   | Whether the last Renovate run had WARN/ERROR log entries (1=issues, 0=clean) | `renovate_namespace`, `renovate_job`, `project`           |
 
 ## Dependency Issues Detection
 
