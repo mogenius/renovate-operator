@@ -90,7 +90,7 @@ data:
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "count(group by(project) (renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"}))",
+              "expr": "count(group by(project) (renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"}))",
               "instant": false,
               "legendFormat": "__auto",
               "range": true,
@@ -152,7 +152,7 @@ data:
             {
               "editorMode": "builder",
               "exemplar": false,
-              "expr": "sum(renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\", status=\"completed\"})",
+              "expr": "sum(renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\", status=\"completed\"})",
               "instant": true,
               "legendFormat": "__auto",
               "range": false,
@@ -226,7 +226,7 @@ data:
             {
               "editorMode": "builder",
               "exemplar": false,
-              "expr": "sum(renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\", status=\"failed\"})",
+              "expr": "sum(renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\", status=\"failed\"})",
               "instant": true,
               "legendFormat": "__auto",
               "range": false,
@@ -300,7 +300,7 @@ data:
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\", status=\"failed\"}) / sum (renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"}) * 100",
+              "expr": "sum(renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\", status=\"failed\"}) / sum (renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"}) * 100",
               "instant": false,
               "legendFormat": "__auto",
               "range": true,
@@ -396,7 +396,7 @@ data:
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum by(project) (renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\", status=\"completed\"})",
+              "expr": "sum by(project) (renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\", status=\"completed\"})",
               "instant": true,
               "legendFormat": "{{`{{project}}`}} - {{`{{status}}`}}",
               "range": false,
@@ -492,7 +492,7 @@ data:
               },
               "editorMode": "builder",
               "exemplar": false,
-              "expr": "sum by(project) (renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\", status=\"failed\"})",
+              "expr": "sum by(project) (renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\", status=\"failed\"})",
               "instant": true,
               "legendFormat": "{{`{{project}}`}} - {{`{{status}}`}}",
               "range": false,
@@ -558,7 +558,7 @@ data:
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "count(renovate_operator_run_failed{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"} == 1) or vector(0)",
+              "expr": "count(renovate_operator_run_failed{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"} == 1) or vector(0)",
               "instant": true,
               "legendFormat": "__auto",
               "range": false,
@@ -624,7 +624,7 @@ data:
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "count(renovate_operator_dependency_issues{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"} == 1) or vector(0)",
+              "expr": "count(renovate_operator_dependency_issues{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"} == 1) or vector(0)",
               "instant": true,
               "legendFormat": "__auto",
               "range": false,
@@ -705,7 +705,7 @@ data:
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "renovate_operator_run_failed{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"} == 1 or renovate_operator_dependency_issues{\"renovate-namespace\"=~\"$RenovateNamespace\", \"renovate-job\"=~\"$RenovateJob\"} == 1",
+              "expr": "renovate_operator_run_failed{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"} == 1 or renovate_operator_dependency_issues{\"renovate_namespace\"=~\"$RenovateNamespace\", \"renovate_job\"=~\"$RenovateJob\"} == 1",
               "format": "table",
               "instant": true,
               "legendFormat": "__auto",
@@ -728,13 +728,13 @@ data:
                   "Value": 5,
                   "__name__": 1,
                   "project": 4,
-                  "renovate-job": 3,
-                  "renovate-namespace": 2
+                  "renovate_job": 3,
+                  "renovate_namespace": 2
                 },
                 "renameByName": {
                   "project": "Project",
-                  "renovate-job": "Renovate Job",
-                  "renovate-namespace": "Namespace"
+                  "renovate_job": "Renovate Job",
+                  "renovate_namespace": "Namespace"
                 }
               }
             }
@@ -767,14 +767,14 @@ data:
                 "$__all"
               ]
             },
-            "definition": "label_values(renovate_operator_project_executions_total,renovate-namespace)",
+            "definition": "label_values(renovate_operator_project_executions_total,renovate_namespace)",
             "includeAll": true,
             "multi": true,
             "name": "RenovateNamespace",
             "options": [],
             "query": {
               "qryType": 1,
-              "query": "label_values(renovate_operator_project_executions_total,renovate-namespace)",
+              "query": "label_values(renovate_operator_project_executions_total,renovate_namespace)",
               "refId": "PrometheusVariableQueryEditor-VariableQuery"
             },
             "refresh": 1,
@@ -788,14 +788,14 @@ data:
                 "$__all"
               ]
             },
-            "definition": "label_values(renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\"},renovate-job)",
+            "definition": "label_values(renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\"},renovate_job)",
             "includeAll": true,
             "multi": true,
             "name": "RenovateJob",
             "options": [],
             "query": {
               "qryType": 1,
-              "query": "label_values(renovate_operator_project_executions_total{\"renovate-namespace\"=~\"$RenovateNamespace\"},renovate-job)",
+              "query": "label_values(renovate_operator_project_executions_total{\"renovate_namespace\"=~\"$RenovateNamespace\"},renovate_job)",
               "refId": "PrometheusVariableQueryEditor-VariableQuery"
             },
             "refresh": 1,
