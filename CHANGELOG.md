@@ -1,3 +1,10 @@
+## [2.21.5](https://github.com/mogenius/renovate-operator/compare/2.21.4...2.21.5) (2026-03-09)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/oauth2 to v0.36.0 ([67b19a7](https://github.com/mogenius/renovate-operator/commit/67b19a74ca80a7905772825cbce2d156a649ba63))
+
 ## [2.21.4](https://github.com/mogenius/renovate-operator/compare/2.21.3...2.21.4) (2026-03-09)
 
 
