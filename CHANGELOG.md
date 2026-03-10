@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/mogenius/renovate-operator/compare/3.0.0...3.1.0) (2026-03-10)
+
+
+### Features
+
+* **chart:** grafanaDashboard custom resource configuration ([2ac71b0](https://github.com/mogenius/renovate-operator/commit/2ac71b0897a47d304aa795728bce279a9f603f19))
+
 # [3.0.0](https://github.com/mogenius/renovate-operator/compare/2.21.5...3.0.0) (2026-03-10)
 
 
