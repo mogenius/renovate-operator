@@ -70,24 +70,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		platform := ""
-		platformEndpoint := ""
-
-		if renovateJob.Spec.Provider != nil {
-			platform, platformEndpoint = utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
-		} else {
-			// TODO v3: remove this fallback, as provider should be mandatory
-			for _, env := range renovateJob.Spec.ExtraEnv {
-				if env.Value != "" {
-					switch env.Name {
-					case "RENOVATE_PLATFORM":
-						platform = env.Value
-					case "RENOVATE_ENDPOINT":
-						platformEndpoint = env.Value
-					}
-				}
-			}
-		}
+		platform, platformEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 
 		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {

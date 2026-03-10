@@ -18,7 +18,7 @@ type RenovateJobSpec struct {
 	// Renovate Docker image to use
 	Image string `json:"image,omitempty"`
 	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
-	Provider *RenovateProvider `json:"provider,omitempty"` // TODO v3: make this a required field
+	Provider *RenovateProvider `json:"provider"`
 	// Filter to select which projects to process
 	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
 	// Topics to discover projects from

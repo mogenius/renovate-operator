@@ -3886,6 +3886,7 @@ spec:
                 type: object
             required:
             - parallelism
+            - provider
             - schedule
             type: object
           status:
