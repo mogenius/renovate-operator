@@ -248,7 +248,7 @@ metrics:
       grafana_dashboard: "1"
     # -- namespace to create the dashboard in, defaults to the release namespace
     namespace: ~
-    # -- GrafanaDashboard CR is created when dashboard is enabled and grafana-operator CRDs are present
+    # -- GrafanaDashboard CR is created when metrics.dashboard.enabled is true and grafana-operator CRDs are present
     # -- all fields below are passed to the GrafanaDashboard CR spec
     grafanaDashboard:
       allowCrossNamespaceImport: false
