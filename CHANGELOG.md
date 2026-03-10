@@ -1,3 +1,15 @@
+# [3.0.0](https://github.com/mogenius/renovate-operator/compare/2.21.5...3.0.0) (2026-03-10)
+
+
+* feat!: follow Prometheus recommendations for metric labels ([9250afb](https://github.com/mogenius/renovate-operator/commit/9250afbe824868408efa4f849ad3a5adc46f74a6)), closes [#189](https://github.com/mogenius/renovate-operator/issues/189)
+* feat!: spec.provider is now mandatory to set renovate platform and endpoint ([3a95fa5](https://github.com/mogenius/renovate-operator/commit/3a95fa572ced5d947b6fe77a9df7913fda9f883b)), closes [#191](https://github.com/mogenius/renovate-operator/issues/191)
+
+
+### BREAKING CHANGES
+
+* spec.platform is now mandatory: It replaces extraEnv RENOVATE_PLATFORM and RENOVATE_ENDPOINT with spec.provider.name and spec.provider.endpoint
+* replaced - by _ for metric labels renovate_namespace and renovate_job
+
 ## [2.21.5](https://github.com/mogenius/renovate-operator/compare/2.21.4...2.21.5) (2026-03-09)
 
 
