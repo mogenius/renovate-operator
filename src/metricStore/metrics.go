@@ -11,21 +11,21 @@ var (
 			Name: "renovate_operator_project_executions_total",
 			Help: "Total number of executed Renovate projects",
 		},
-		[]string{"renovate-namespace", "renovate-job", "project", "status"})
+		[]string{"renovate_namespace", "renovate_job", "project", "status"})
 
 	runFailed = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "renovate_operator_run_failed",
 			Help: "Whether the last Renovate run for this project failed (1=failed, 0=success)",
 		},
-		[]string{"renovate-namespace", "renovate-job", "project"})
+		[]string{"renovate_namespace", "renovate_job", "project"})
 
 	dependencyIssues = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "renovate_operator_dependency_issues",
 			Help: "Whether the last Renovate run had WARN/ERROR log entries (1=issues found, 0=clean)",
 		},
-		[]string{"renovate-namespace", "renovate-job", "project"})
+		[]string{"renovate_namespace", "renovate_job", "project"})
 )
 
 func Register(registry ctrlmetrics.RegistererGatherer) {
