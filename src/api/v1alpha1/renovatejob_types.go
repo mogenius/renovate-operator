@@ -27,6 +27,8 @@ type RenovateJobSpec struct {
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+	// Additional environment variable sources to set in the renovate container
+	ExtraEnvFrom []corev1.EnvFromSource `json:"extraEnvFrom,omitempty"`
 	// Maximum number of projects to process in parallel
 	Parallelism int32 `json:"parallelism"`
 	// Resource requirements for the renovate container

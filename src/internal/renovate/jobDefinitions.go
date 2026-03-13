@@ -41,6 +41,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 			},
 		})
 	}
+	if job.Spec.ExtraEnvFrom != nil {
+		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
+	}
 
 	volumes := []v1.Volume{
 		{
@@ -121,6 +124,9 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 				},
 			},
 		})
+	}
+	if job.Spec.ExtraEnvFrom != nil {
+		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
 	volumes := []v1.Volume{
