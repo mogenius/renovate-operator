@@ -3885,6 +3885,7 @@ spec:
                 - enabled
                 type: object
             required:
+            - image
             - parallelism
             - provider
             - schedule

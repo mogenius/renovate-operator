@@ -16,7 +16,7 @@ type RenovateJobSpec struct {
 	// Cron schedule in standard cron format
 	Schedule string `json:"schedule"`
 	// Renovate Docker image to use
-	Image string `json:"image,omitempty"`
+	Image string `json:"image"`
 	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
 	Provider *RenovateProvider `json:"provider"`
 	// Filter to select which projects to process
