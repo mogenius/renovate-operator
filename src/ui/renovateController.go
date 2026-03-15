@@ -7,6 +7,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"strings"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/gitprovider"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"time"
@@ -495,6 +496,20 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 			s.logger.Error(err, "Discovery job failed for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 			return
 		}
+
+		if job.Spec.SkipForks && s.gitProviderClientFactory != nil {
+			providerClient, err := s.gitProviderClientFactory(ctxBackground, job)
+			if err != nil {
+				s.logger.Error(err, "Failed to create git provider client for fork filtering", "renovateJob", params.name, "namespace", params.namespace)
+				return
+			}
+			projects, err = gitprovider.FilterForks(ctxBackground, providerClient, s.logger, projects)
+			if err != nil {
+				s.logger.Error(err, "Failed to filter forked repositories", "renovateJob", params.name, "namespace", params.namespace)
+				return
+			}
+		}
+
 		// update all projects to scheduled
 		jobIdentifier := crdmanager.RenovateJobIdentifier{
 			Name:      params.name,

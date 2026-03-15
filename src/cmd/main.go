@@ -19,6 +19,7 @@ import (
 	"renovate-operator/controllers"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/gitprovider"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
@@ -323,8 +324,10 @@ func main() {
 			"ignored_groups", defaultAllowedGroups)
 	}
 
+	gitProviderClientFactory := gitprovider.NewClientFactory(mgr.GetClient())
+
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups, gitProviderClientFactory)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
@@ -352,10 +355,11 @@ func main() {
 	}()
 
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler: cronManager,
-		Manager:   jobMgr,
-		Discovery: discovery,
-		K8sClient: mgr.GetClient(),
+		Scheduler:                cronManager,
+		Manager:                  jobMgr,
+		Discovery:                discovery,
+		K8sClient:                mgr.GetClient(),
+		GitProviderClientFactory: gitProviderClientFactory,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

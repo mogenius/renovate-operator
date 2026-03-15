@@ -23,6 +23,8 @@ type RenovateJobSpec struct {
 	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
 	// Topics to discover projects from
 	DiscoverTopics string `json:"discoverTopics,omitempty"`
+	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
+	SkipForks bool `json:"skipForks,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container
