@@ -132,6 +132,25 @@
         }
       };
 
+      const buildDashboardUrl = (platform, endpoint, projectName) => {
+        if (!platform || platform === 'github') {
+          let base = 'https://github.com';
+          if (endpoint && !endpoint.includes('api.github.com')) {
+            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          }
+          return `${base}/${projectName}/issues?q=${encodeURIComponent('is:issue is:open "Dependency Dashboard" in:title')}`;
+        } else if (platform === 'gitlab') {
+          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          return `${base}/${projectName}/-/issues?search=Dependency+Dashboard&state=opened`;
+        } else if (platform === 'gitea' || platform === 'forgejo') {
+          if (endpoint) {
+            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+            return `${base}/${projectName}/issues?q=Dependency+Dashboard&type=comment&state=open`;
+          }
+        }
+        return null;
+      };
+
       const buildPRUrl = (platform, endpoint, projectName) => {
         if (!platform || platform === 'github') {
           let base = 'https://github.com';
@@ -1233,7 +1252,7 @@
                           </div>
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
-                          Link
+                          Links
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
                           Actions
@@ -1278,25 +1297,49 @@
                               </span>
                             </td>
                             <td className="px-6 py-4" data-no-tooltip="true">
-                              {(() => {
-                                const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
-                                return prUrl ? (
-                                  <a
-                                    href={prUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
-                                    aria-label={`View open PRs/MRs for ${project.name}`}
-                                    title={`Open PRs/MRs for ${project.name}`}
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                  </a>
-                                ) : (
-                                  <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
-                                );
-                              })()}
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
+                                  return dashboardUrl ? (
+                                    <a
+                                      href={dashboardUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                                      aria-label={`View Dependency Dashboard for ${project.name}`}
+                                      title={`Dependency Dashboard for ${project.name}`}
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                      </svg>
+                                    </a>
+                                  ) : null;
+                                })()}
+                                {(() => {
+                                  const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                                  return prUrl ? (
+                                    <a
+                                      href={prUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                                      aria-label={`View open PRs/MRs for ${project.name}`}
+                                      title={`Open PRs/MRs for ${project.name}`}
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
+                                  ) : null;
+                                })()}
+                                {(() => {
+                                  const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
+                                  const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
+                                  return (!prUrl && !dashboardUrl) ? (
+                                    <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
+                                  ) : null;
+                                })()}
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
@@ -1429,6 +1472,23 @@
                           >
                             Logs
                           </a>
+                          {(() => {
+                            const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
+                            return dashboardUrl ? (
+                              <a
+                                href={dashboardUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                                aria-label={`View Dependency Dashboard for ${project.name}`}
+                                title={`Dependency Dashboard for ${project.name}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                </svg>
+                              </a>
+                            ) : null;
+                          })()}
                           {(() => {
                             const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
                             return prUrl ? (
