@@ -9,6 +9,7 @@ import (
 	"renovate-operator/config"
 	"renovate-operator/health"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/gitprovider"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/scheduler"
 
@@ -17,27 +18,29 @@ import (
 )
 
 type Server struct {
-	manager              crdmanager.RenovateJobManager
-	discovery            renovate.DiscoveryAgent
-	scheduler            scheduler.Scheduler
-	logger               logr.Logger
-	server               *http.Server
-	health               health.HealthCheck
-	version              string
-	auth                 AuthProvider
-	defaultAllowedGroups []string
+	manager                  crdmanager.RenovateJobManager
+	discovery                renovate.DiscoveryAgent
+	scheduler                scheduler.Scheduler
+	logger                   logr.Logger
+	server                   *http.Server
+	health                   health.HealthCheck
+	version                  string
+	auth                     AuthProvider
+	defaultAllowedGroups     []string
+	gitProviderClientFactory gitprovider.ClientFactory
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string, gitProviderClientFactory gitprovider.ClientFactory) *Server {
 	return &Server{
-		manager:              manager,
-		logger:               logger,
-		health:               health,
-		discovery:            discovery,
-		scheduler:            scheduler,
-		version:              version,
-		auth:                 auth,
-		defaultAllowedGroups: defaultAllowedGroups,
+		manager:                  manager,
+		logger:                   logger,
+		health:                   health,
+		discovery:                discovery,
+		scheduler:                scheduler,
+		version:                  version,
+		auth:                     auth,
+		defaultAllowedGroups:     defaultAllowedGroups,
+		gitProviderClientFactory: gitProviderClientFactory,
 	}
 }
 

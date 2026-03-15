@@ -60,3 +60,44 @@ spec:
 In this example, projects tagged with `renovate` will be discovered.
 
 Refer to [Renovate's documentation](https://docs.renovatebot.com/self-hosted-configuration/#autodiscovertopics) for detailed syntax.
+
+### Excluding Forked Repositories
+
+When using autodiscovery, forked repositories are included by default. This can lead to unnecessary
+jobs being created for repositories you don't intend to manage. The `skipForks` field tells the
+operator to query the platform API after discovery and exclude any forked repositories before
+creating execution jobs.
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-group1
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  skipForks: true
+  secretRef: renovate-secret
+  provider:
+    name: github
+  ...
+```
+
+Requirements:
+- `secretRef` must be set and the referenced secret must contain a platform API token
+  (one of: `RENOVATE_TOKEN`, `GITHUB_COM_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN`,
+  `GITEA_TOKEN`, or `FORGEJO_TOKEN`).
+- `provider` must be configured with a supported platform.
+
+Supported platforms:
+
+| Platform    | API used to detect forks                                  |
+|-------------|-----------------------------------------------------------|
+| `github`    | `GET /repos/{owner}/{repo}` — checks `fork` field        |
+| `gitlab`    | `GET /projects/{path}` — checks `forked_from_project`    |
+| `gitea`     | `GET /api/v1/repos/{owner}/{repo}` — checks `fork` field |
+| `forgejo`   | Same as Gitea                                             |
+| `bitbucket` | `GET /2.0/repositories/{workspace}/{slug}` — checks `parent` field |
+
+If the API call fails for a specific repository, the repository is kept (fail-open) to avoid
+accidentally excluding valid projects.
