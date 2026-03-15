@@ -35,6 +35,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
+	apiV1.HandleFunc("/renovate/all", s.runRenovateForAllProjects).Methods("POST")
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
@@ -196,6 +197,44 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
 	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
+}
+
+func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
+	params, err := getRenovateJsonBody(r)
+	if err != nil {
+		badRequestError(w, err, "failed to parse request body")
+		return
+	}
+
+	if params.name == "" || params.namespace == "" {
+		badRequestError(w, err, "Missing parameters")
+		return
+	}
+
+	jobIdentifier := crdmanager.RenovateJobIdentifier{
+		Name:      params.name,
+		Namespace: params.namespace,
+	}
+
+	err = s.manager.UpdateProjectStatusBatched(
+		r.Context(),
+		func(p api.ProjectStatus) bool {
+			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
+		},
+		jobIdentifier,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 2,
+		},
+	)
+	if err != nil {
+		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", params.name, "namespace", params.namespace)
+		internalServerError(w, err, "failed to trigger all projects")
+		return
+	}
+
+	writeSuccess(w, SuccessResult{Message: "All projects triggered"})
+	s.logger.V(2).Info("Successfully triggered all projects", "renovateJob", params.name, "namespace", params.namespace)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {
