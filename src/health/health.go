@@ -1,6 +1,9 @@
 package health
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type SchedulerHealth struct {
 	Running   bool                             `json:"running"`
@@ -34,6 +37,7 @@ type HealthCheck interface {
 	SetSchedulerHealth(func(health *SchedulerHealth) *SchedulerHealth)
 }
 type healthcheck struct {
+	mu     sync.RWMutex
 	health *ApplicationHealth
 }
 
@@ -54,10 +58,14 @@ func NewHealthCheck() HealthCheck {
 }
 
 func (h *healthcheck) GetHealth() *ApplicationHealth {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.health
 }
 
 func (h *healthcheck) SetExecutorHealth(fn func(health *ExecutorHealth) *ExecutorHealth) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	e := *fn(&h.health.Executor)
 	lastUpdate := time.Now()
 	for key := range e.Executor {
@@ -69,6 +77,8 @@ func (h *healthcheck) SetExecutorHealth(fn func(health *ExecutorHealth) *Executo
 }
 
 func (h *healthcheck) SetSchedulerHealth(fn func(health *SchedulerHealth) *SchedulerHealth) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	e := *fn(&h.health.Scheduler)
 	lastUpdate := time.Now()
 	for key := range e.Scheduler {
