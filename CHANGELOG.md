@@ -1,3 +1,10 @@
+## [3.2.1](https://github.com/mogenius/renovate-operator/compare/3.2.0...3.2.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* add mutex to prevent crashing with shared cron schedules ([16685f4](https://github.com/mogenius/renovate-operator/commit/16685f47a5fd17c65e9c84c9922f8d6cf2d7888f))
+
 # [3.2.0](https://github.com/mogenius/renovate-operator/compare/3.1.2...3.2.0) (2026-03-16)
 
 
