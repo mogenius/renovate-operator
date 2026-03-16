@@ -121,7 +121,7 @@ func TestConcurrentReadWriteHealth(t *testing.T) {
 			defer wg.Done()
 			snapshot := h.GetHealth()
 			// Iterate the returned maps, as json.Encode would in the health endpoint.
-			json.Marshal(snapshot)
+			_, _ = json.Marshal(snapshot)
 		}()
 	}
 
