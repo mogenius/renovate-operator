@@ -77,6 +77,9 @@ func TestConcurrentExecutorHealthUpdates(t *testing.T) {
 	wg.Wait()
 }
 
+// TestConcurrentReadWriteHealth should ideally be run with -race to detect data races,
+// but that requires CGO and a C compiler on the runner, and is not present on the self-hosted
+// runners used by the CI.
 func TestConcurrentReadWriteHealth(t *testing.T) {
 	t.Parallel()
 
