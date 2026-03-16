@@ -60,7 +60,27 @@ func NewHealthCheck() HealthCheck {
 func (h *healthcheck) GetHealth() *ApplicationHealth {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.health
+
+	schedulerMap := make(map[string]SingleSchedulerHealth, len(h.health.Scheduler.Scheduler))
+	for k, v := range h.health.Scheduler.Scheduler {
+		schedulerMap[k] = v
+	}
+	executorMap := make(map[string]SingleExecutorHealth, len(h.health.Executor.Executor))
+	for k, v := range h.health.Executor.Executor {
+		executorMap[k] = v
+	}
+
+	return &ApplicationHealth{
+		Scheduler: SchedulerHealth{
+			Running:   h.health.Scheduler.Running,
+			Scheduler: schedulerMap,
+		},
+		Executor: ExecutorHealth{
+			Running:  h.health.Executor.Running,
+			Executor: executorMap,
+		},
+		Healthy: h.health.Healthy,
+	}
 }
 
 func (h *healthcheck) SetExecutorHealth(fn func(health *ExecutorHealth) *ExecutorHealth) {
