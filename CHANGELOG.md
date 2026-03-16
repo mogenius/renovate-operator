@@ -1,3 +1,10 @@
+## [3.1.1](https://github.com/mogenius/renovate-operator/compare/3.1.0...3.1.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* replace tilde for job names ([ac47053](https://github.com/mogenius/renovate-operator/commit/ac4705341d9193ea523c8114d9a592fa19c997df)), closes [#201](https://github.com/mogenius/renovate-operator/issues/201)
+
 # [3.1.0](https://github.com/mogenius/renovate-operator/compare/3.0.0...3.1.0) (2026-03-10)
 
 
