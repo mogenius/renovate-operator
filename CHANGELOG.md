@@ -1,3 +1,10 @@
+## [3.1.2](https://github.com/mogenius/renovate-operator/compare/3.1.1...3.1.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* **crd:** mark image as required field in RenovateJob spec ([6337c2e](https://github.com/mogenius/renovate-operator/commit/6337c2eb38b4ee8d98b0ace2c765ecdddb745950)), closes [#202](https://github.com/mogenius/renovate-operator/issues/202)
+
 ## [3.1.1](https://github.com/mogenius/renovate-operator/compare/3.1.0...3.1.1) (2026-03-16)
 
 
