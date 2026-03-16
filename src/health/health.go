@@ -1,6 +1,10 @@
 package health
 
-import "time"
+import (
+	"maps"
+	"sync"
+	"time"
+)
 
 type SchedulerHealth struct {
 	Running   bool                             `json:"running"`
@@ -34,6 +38,7 @@ type HealthCheck interface {
 	SetSchedulerHealth(func(health *SchedulerHealth) *SchedulerHealth)
 }
 type healthcheck struct {
+	mu     sync.RWMutex
 	health *ApplicationHealth
 }
 
@@ -54,27 +59,36 @@ func NewHealthCheck() HealthCheck {
 }
 
 func (h *healthcheck) GetHealth() *ApplicationHealth {
-	return h.health
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	cp := *h.health
+	cp.Scheduler.Scheduler = maps.Clone(h.health.Scheduler.Scheduler)
+	cp.Executor.Executor = maps.Clone(h.health.Executor.Executor)
+	return &cp
 }
 
 func (h *healthcheck) SetExecutorHealth(fn func(health *ExecutorHealth) *ExecutorHealth) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	e := *fn(&h.health.Executor)
 	lastUpdate := time.Now()
 	for key := range e.Executor {
-		s := e.Executor[key]
-		s.LastUpdate = lastUpdate
-		e.Executor[key] = s
+		entry := e.Executor[key]
+		entry.LastUpdate = lastUpdate
+		e.Executor[key] = entry
 	}
 	h.health.Executor = e
 }
 
 func (h *healthcheck) SetSchedulerHealth(fn func(health *SchedulerHealth) *SchedulerHealth) {
-	e := *fn(&h.health.Scheduler)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := *fn(&h.health.Scheduler)
 	lastUpdate := time.Now()
-	for key := range e.Scheduler {
-		s := e.Scheduler[key]
-		s.LastUpdate = lastUpdate
-		e.Scheduler[key] = s
+	for key := range s.Scheduler {
+		entry := s.Scheduler[key]
+		entry.LastUpdate = lastUpdate
+		s.Scheduler[key] = entry
 	}
-	h.health.Scheduler = e
+	h.health.Scheduler = s
 }
