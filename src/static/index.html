@@ -1314,7 +1314,28 @@
                           Link
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
-                          Actions
+                          <div className="flex items-center justify-end gap-2">
+                            <span>Actions</span>
+                            <button
+                              onClick={() => onTriggerAllRenovate(job)}
+                              disabled={job.triggeringAll || !job.projects || job.projects.length === 0}
+                              className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-600 hover:bg-gray-200 dark:hover:bg-slate-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-slate-200 px-2 py-1 rounded font-semibold text-[0.688rem] normal-case tracking-normal transition-all"
+                              aria-label={job.triggeringAll ? "Triggering all projects" : `Trigger all projects for ${job.name}`}
+                            >
+                              <svg
+                                className={`w-3 h-3 ${job.triggeringAll ? "animate-spin" : ""}`}
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              {job.triggeringAll ? "Triggering..." : "Trigger All"}
+                            </button>
+                          </div>
                         </th>
                       </tr>
                     </thead>
