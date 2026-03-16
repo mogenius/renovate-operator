@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/mogenius/renovate-operator/compare/3.1.2...3.2.0) (2026-03-16)
+
+
+### Features
+
+* adding extra env from ([c8a7bdd](https://github.com/mogenius/renovate-operator/commit/c8a7bdd8fa5c1b239bbe21062cc042c6a58cd827)), closes [#195](https://github.com/mogenius/renovate-operator/issues/195)
+
 ## [3.1.2](https://github.com/mogenius/renovate-operator/compare/3.1.1...3.1.2) (2026-03-16)
 
 
