@@ -78,6 +78,13 @@ func TestRenovateJob_JobNames(t *testing.T) {
 			expectedExecutor:  "this-is-a-very-long-renovate-job-name-to-test-the-trim-5a3f39f4",
 			expectedDiscovery: "this-is-a-very-long-renovate-job-name-to-tes-discovery-03ec2833",
 		},
+		{
+			name:              "bitbucket user folder",
+			jobName:           "renovate",
+			project:           "~/user/repo",
+			expectedExecutor:  "renovate---user-repo-780152db",
+			expectedDiscovery: "renovate-discovery-df3ed160",
+		},
 	}
 
 	for _, tt := range tests {
