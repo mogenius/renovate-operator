@@ -16,6 +16,7 @@ import (
 	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/controllers"
+	"renovate-operator/github"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
@@ -275,11 +276,15 @@ func main() {
 		health,
 	)
 
+	githubAppToken := github.NewGitHubAppTokenCreator(mgr.GetClient())
+	githubAppWorker := github.NewTokenRenewalWorker(ctx, ctrl.Log.WithName("github-token-renewal-worker"), githubAppToken, mgr.GetClient())
+
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
 	go func() {
 		<-mgr.Elected()
 		ctrl.Log.WithName("leader-election").Info("this instance is the leader, starting executor and scheduler")
+		githubAppWorker.Start()
 		cronManager.Start()
 		if err := executor.Start(ctx); err != nil {
 			ctrl.Log.WithName("leader-election").Error(err, "failed to start executor")
@@ -290,6 +295,7 @@ func main() {
 		Scheduler: cronManager,
 		Manager:   jobMgr,
 		Discovery: discovery,
+		GithubApp: githubAppWorker,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

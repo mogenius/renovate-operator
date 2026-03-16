@@ -77,6 +77,11 @@ func (f *fakeManager) IsWebhookSignatureValid(ctx context.Context, job crdManage
 	return true, nil
 }
 
+type fakeGithubAppToken struct{}
+
+func (worker *fakeGithubAppToken) CreateOrUpdateWorker(job *api.RenovateJob) {}
+func (worker *fakeGithubAppToken) DeleteWorker(name, namespace string)       {}
+
 type fakeDiscovery struct {
 	discoverFn func(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
@@ -426,6 +431,7 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		Manager:   mgr,
 		Scheduler: sched,
 		Discovery: &fakeDiscovery{},
+		GithubApp: &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -458,6 +464,7 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 		Manager:   mgr,
 		Scheduler: sched,
 		Discovery: &fakeDiscovery{},
+		GithubApp: &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}

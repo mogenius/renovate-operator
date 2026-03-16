@@ -55,12 +55,22 @@ type RenovateJobSpec struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// DNS Policy for the renovate pods
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
+	// Reference to a Github App for authentication, this will automatically mount a secret with
+	// RENOVATE_TOKEN, GITHUB_COM_TOKEN and GITHUB_COM_USER
+	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
 type RenovateJobServiceAccount struct {
 	AutomountServiceAccountToken *bool  `json:"automountServiceAccountToken,omitempty"`
 	Name                         string `json:"name,omitempty"`
+}
+
+type GithubAppReference struct {
+	SecretName              string `json:"secretName"`
+	AppIdSecretKey          string `json:"appIdSecretKey"`
+	InstallationIdSecretKey string `json:"installationIdSecretKey"`
+	PemSecretKey            string `json:"pemSecretKey"`
 }
 
 // security context for either the pod or the container
