@@ -1,3 +1,10 @@
+# [3.3.0](https://github.com/mogenius/renovate-operator/compare/3.2.1...3.3.0) (2026-03-16)
+
+
+### Features
+
+* **ui:** add trigger all button to trigger all projects in a job ([50304bf](https://github.com/mogenius/renovate-operator/commit/50304bfce527135155b65c644c6359fe8e4ab0c6)), closes [#200](https://github.com/mogenius/renovate-operator/issues/200)
+
 ## [3.2.1](https://github.com/mogenius/renovate-operator/compare/3.2.0...3.2.1) (2026-03-16)
 
 
