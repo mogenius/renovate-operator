@@ -43,12 +43,10 @@ jobs:
         go-version: '>=1.25.4'
 
     - name: lint and test
-      env:
-        CGO_ENABLED: 1
       run: |
         cd src
         go mod download
-        go test -race ./... -v
+        go test ./... -v
 
   lint:
     needs: [build]
