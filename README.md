@@ -75,8 +75,9 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Autodiscovery](./docs/autodiscovery.md)
 - Webhook API
   - [Generic](./docs/webhooks/webhook.md)
-  - [GitLab](./docs/webhooks/gitlab.md)
+  - [Forgejo](./docs/webhooks/forgejo.md)
   - [GitHub](./docs/webhooks/github.md)
+  - [GitLab](./docs/webhooks/gitlab.md)
 - [Using a config.js](./docs/extra-volumes.md)
 - [Image Pull Secrets](./docs/image-pull-secrets.md)
 - [Scheduling](./docs/scheduling.md)

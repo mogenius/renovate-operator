@@ -75,6 +75,22 @@ type RenovateJobSecurityContext struct {
 type RenovateWebhook struct {
 	Enabled        bool                 `json:"enabled"`
 	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
+	Forgejo        *RenovateWebhookForgejo `json:"forgejo,omitempty"`
+}
+
+// Forgejo-specific webhook configuration
+type RenovateWebhookForgejo struct {
+	Sync *RenovateWebhookForgejoSync `json:"sync,omitempty"`
+}
+
+// configuration for syncing webhooks to Forgejo repos by topic
+type RenovateWebhookForgejoSync struct {
+	Enabled            bool                        `json:"enabled"`
+	WebhookURL         string                      `json:"webhookURL"`
+	Topic              string                      `json:"topic,omitempty"`
+	Events             []string                    `json:"events,omitempty"`
+	TokenSecretRef     *RenovateSecretKeyReference `json:"tokenSecretRef,omitempty"`
+	AuthTokenSecretRef *RenovateSecretKeyReference `json:"authTokenSecretRef,omitempty"`
 }
 
 // authentication configuration for webhooks

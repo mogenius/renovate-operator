@@ -3929,6 +3929,45 @@ spec:
                     type: object
                   enabled:
                     type: boolean
+                  forgejo:
+                    description: Forgejo-specific webhook configuration
+                    properties:
+                      sync:
+                        description: configuration for syncing webhooks to Forgejo
+                          repos by topic
+                        properties:
+                          authTokenSecretRef:
+                            description: reference to a secret and key
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                            type: object
+                          enabled:
+                            type: boolean
+                          events:
+                            items:
+                              type: string
+                            type: array
+                          tokenSecretRef:
+                            description: reference to a secret and key
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                            type: object
+                          topic:
+                            type: string
+                          webhookURL:
+                            type: string
+                        required:
+                        - enabled
+                        - tokenSecretRef
+                        - webhookURL
+                        type: object
+                    type: object
                 required:
                 - enabled
                 type: object
