@@ -16,7 +16,9 @@ type RenovateJobSpec struct {
 	// Cron schedule in standard cron format
 	Schedule string `json:"schedule"`
 	// Renovate Docker image to use
-	Image string `json:"image,omitempty"`
+	Image string `json:"image"`
+	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
+	Provider *RenovateProvider `json:"provider"`
 	// Filter to select which projects to process
 	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
 	// Topics to discover projects from
@@ -25,6 +27,8 @@ type RenovateJobSpec struct {
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+	// Additional environment variable sources to set in the renovate container
+	ExtraEnvFrom []corev1.EnvFromSource `json:"extraEnvFrom,omitempty"`
 	// Maximum number of projects to process in parallel
 	Parallelism int32 `json:"parallelism"`
 	// Resource requirements for the renovate container
@@ -109,6 +113,15 @@ type RenovateJobMetadata struct {
 }
 
 /*
+Renovate Provider Information
+This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
+*/
+type RenovateProvider struct {
+	Name     string `json:"name"`
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
+/*
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
@@ -132,7 +145,13 @@ const (
 // RenovateJobStatus defines the observed state of RenovateJob
 // +kubebuilder:object:root=true
 type RenovateJobStatus struct {
-	Projects []ProjectStatus `json:"projects,omitempty"`
+	Projects         []ProjectStatus           `json:"projects,omitempty"`
+	ExecutionOptions *RenovateExecutionOptions `json:"executionOptions,omitempty"`
+}
+
+type RenovateExecutionOptions struct {
+	// If true, the renovate job will be executed with LOG_LEVEL=debug
+	Debug bool `json:"debug,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -1,6 +1,8 @@
 package health
 
 import (
+	"encoding/json"
+	"sync"
 	"testing"
 )
 
@@ -24,4 +26,107 @@ func TestSetSchedulerHealth(t *testing.T) {
 	if !h.GetHealth().Scheduler.Running {
 		t.Error("Scheduler health not set to running")
 	}
+}
+
+func TestConcurrentSchedulerHealthUpdates(t *testing.T) {
+	t.Parallel()
+
+	h := NewHealthCheck()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		name := "job-" + string(rune('a'+i%26))
+		go func(n string) {
+			defer wg.Done()
+			h.SetSchedulerHealth(func(s *SchedulerHealth) *SchedulerHealth {
+				if s.Scheduler == nil {
+					s.Scheduler = make(map[string]SingleSchedulerHealth)
+				}
+				s.Scheduler[n] = SingleSchedulerHealth{
+					Name:      n,
+					IsRunning: true,
+				}
+				return s
+			})
+		}(name)
+	}
+	wg.Wait()
+}
+
+func TestConcurrentExecutorHealthUpdates(t *testing.T) {
+	t.Parallel()
+
+	h := NewHealthCheck()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		name := "job-" + string(rune('a'+i%26))
+		go func(n string) {
+			defer wg.Done()
+			h.SetExecutorHealth(func(e *ExecutorHealth) *ExecutorHealth {
+				if e.Executor == nil {
+					e.Executor = make(map[string]SingleExecutorHealth)
+				}
+				e.Executor[n] = SingleExecutorHealth{
+					IsRunning: true,
+				}
+				return e
+			})
+		}(name)
+	}
+	wg.Wait()
+}
+
+// TestConcurrentReadWriteHealth should ideally be run with -race to detect data races,
+// but that requires CGO and a C compiler on the runner, and is not present on the self-hosted
+// runners used by the CI.
+func TestConcurrentReadWriteHealth(t *testing.T) {
+	t.Parallel()
+
+	h := NewHealthCheck()
+	var wg sync.WaitGroup
+
+	// Writers: update scheduler and executor health concurrently
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		name := "job-" + string(rune('a'+i%26))
+		go func(n string) {
+			defer wg.Done()
+			h.SetSchedulerHealth(func(s *SchedulerHealth) *SchedulerHealth {
+				if s.Scheduler == nil {
+					s.Scheduler = make(map[string]SingleSchedulerHealth)
+				}
+				s.Scheduler[n] = SingleSchedulerHealth{
+					Name:      n,
+					IsRunning: true,
+				}
+				return s
+			})
+		}(name)
+		go func(n string) {
+			defer wg.Done()
+			h.SetExecutorHealth(func(e *ExecutorHealth) *ExecutorHealth {
+				if e.Executor == nil {
+					e.Executor = make(map[string]SingleExecutorHealth)
+				}
+				e.Executor[n] = SingleExecutorHealth{
+					IsRunning: true,
+				}
+				return e
+			})
+		}(name)
+	}
+
+	// Readers: simulate what the HTTP health endpoint does (json.Marshal iterates the maps)
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snapshot := h.GetHealth()
+			// Iterate the returned maps, as json.Encode would in the health endpoint.
+			_, _ = json.Marshal(snapshot)
+		}()
+	}
+
+	wg.Wait()
 }

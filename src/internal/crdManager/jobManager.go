@@ -32,6 +32,8 @@ type JobSelector struct {
 	JobName   string
 	JobType   JobType
 	Namespace string
+	// optional generation to filter by - if not provided, the most recent job will be returned
+	Generation *string
 }
 
 // GetJobByLabel retrieves a single job matching the given labels.
@@ -70,11 +72,15 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 // Retrieve all Jobs by our standard labels
 func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSelector) ([]batchv1.Job, error) {
 
-	jobList := &batchv1.JobList{}
-	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels{
+	matcher := crclient.MatchingLabels{
 		JOB_LABEL_NAME: selector.JobName,
 		JOB_LABEL_TYPE: string(selector.JobType),
-	})
+	}
+	if selector.Generation != nil && *selector.Generation != "" {
+		matcher[JOB_LABEL_GENERATION] = *selector.Generation
+	}
+	jobList := &batchv1.JobList{}
+	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
 	if err != nil {
 		return nil, fmt.Errorf("listing jobs with label %s: %w", selector.JobName, err)
 	}
@@ -90,7 +96,7 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	}
 	return nil
 }
-func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) error {
+func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
 	generation := fmt.Sprintf("%d", time.Now().Unix())
 
 	job.Labels[JOB_LABEL_GENERATION] = generation
@@ -98,7 +104,7 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 	// Create immediately - no deletion needed first
 	err := client.Create(ctx, job)
 	if err != nil {
-		return fmt.Errorf("creating job with generateName %s: %w", job.GenerateName, err)
+		return "", fmt.Errorf("creating job with generateName %s: %w", job.GenerateName, err)
 	}
 
 	go func() {
@@ -109,7 +115,7 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 		_ = cleanupOldGenerations(cleanupCtx, client, selector, generation)
 	}()
 
-	return nil
+	return generation, nil
 }
 
 // Delete jobs that aren't the current generation

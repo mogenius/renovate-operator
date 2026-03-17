@@ -1,0 +1,12 @@
+{{- if and .Values.metrics.dashboard.enabled (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1/GrafanaDashboard") }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: renovate-operator-dashboard
+  namespace: {{ .Values.metrics.dashboard.namespace | default .Release.Namespace }}
+spec:
+  {{- toYaml .Values.metrics.dashboard.grafanaDashboard | nindent 2 }}
+  configMapRef:
+    name: renovate-operator-dashboard
+    key: renovate-operator.json
+{{- end }}

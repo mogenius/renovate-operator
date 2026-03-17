@@ -1,3 +1,136 @@
+## [3.4.1](https://github.com/mogenius/renovate-operator/compare/3.4.0...3.4.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* **deps:** update k8s.io/utils digest to b8788ab ([7d1344a](https://github.com/mogenius/renovate-operator/commit/7d1344a30b77225d3a23995b632d2c43e3c24865))
+
+# [3.4.0](https://github.com/mogenius/renovate-operator/compare/3.3.0...3.4.0) (2026-03-17)
+
+
+### Features
+
+* **ui:** add Dependency Dashboard link to project views ([29d218f](https://github.com/mogenius/renovate-operator/commit/29d218f909c8a50d87888c486110f3ce66175c85))
+
+# [3.3.0](https://github.com/mogenius/renovate-operator/compare/3.2.1...3.3.0) (2026-03-16)
+
+
+### Features
+
+* **ui:** add trigger all button to trigger all projects in a job ([50304bf](https://github.com/mogenius/renovate-operator/commit/50304bfce527135155b65c644c6359fe8e4ab0c6)), closes [#200](https://github.com/mogenius/renovate-operator/issues/200)
+
+## [3.2.1](https://github.com/mogenius/renovate-operator/compare/3.2.0...3.2.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* add mutex to prevent crashing with shared cron schedules ([16685f4](https://github.com/mogenius/renovate-operator/commit/16685f47a5fd17c65e9c84c9922f8d6cf2d7888f))
+
+# [3.2.0](https://github.com/mogenius/renovate-operator/compare/3.1.2...3.2.0) (2026-03-16)
+
+
+### Features
+
+* adding extra env from ([c8a7bdd](https://github.com/mogenius/renovate-operator/commit/c8a7bdd8fa5c1b239bbe21062cc042c6a58cd827)), closes [#195](https://github.com/mogenius/renovate-operator/issues/195)
+
+## [3.1.2](https://github.com/mogenius/renovate-operator/compare/3.1.1...3.1.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* **crd:** mark image as required field in RenovateJob spec ([6337c2e](https://github.com/mogenius/renovate-operator/commit/6337c2eb38b4ee8d98b0ace2c765ecdddb745950)), closes [#202](https://github.com/mogenius/renovate-operator/issues/202)
+
+## [3.1.1](https://github.com/mogenius/renovate-operator/compare/3.1.0...3.1.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* replace tilde for job names ([ac47053](https://github.com/mogenius/renovate-operator/commit/ac4705341d9193ea523c8114d9a592fa19c997df)), closes [#201](https://github.com/mogenius/renovate-operator/issues/201)
+
+# [3.1.0](https://github.com/mogenius/renovate-operator/compare/3.0.0...3.1.0) (2026-03-10)
+
+
+### Features
+
+* **chart:** grafanaDashboard custom resource configuration ([2ac71b0](https://github.com/mogenius/renovate-operator/commit/2ac71b0897a47d304aa795728bce279a9f603f19))
+
+# [3.0.0](https://github.com/mogenius/renovate-operator/compare/2.21.5...3.0.0) (2026-03-10)
+
+
+* feat!: follow Prometheus recommendations for metric labels ([9250afb](https://github.com/mogenius/renovate-operator/commit/9250afbe824868408efa4f849ad3a5adc46f74a6)), closes [#189](https://github.com/mogenius/renovate-operator/issues/189)
+* feat!: spec.provider is now mandatory to set renovate platform and endpoint ([3a95fa5](https://github.com/mogenius/renovate-operator/commit/3a95fa572ced5d947b6fe77a9df7913fda9f883b)), closes [#191](https://github.com/mogenius/renovate-operator/issues/191)
+
+
+### BREAKING CHANGES
+
+* spec.platform is now mandatory: It replaces extraEnv RENOVATE_PLATFORM and RENOVATE_ENDPOINT with spec.provider.name and spec.provider.endpoint
+* replaced - by _ for metric labels renovate_namespace and renovate_job
+
+## [2.21.5](https://github.com/mogenius/renovate-operator/compare/2.21.4...2.21.5) (2026-03-09)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/oauth2 to v0.36.0 ([67b19a7](https://github.com/mogenius/renovate-operator/commit/67b19a74ca80a7905772825cbce2d156a649ba63))
+
+## [2.21.4](https://github.com/mogenius/renovate-operator/compare/2.21.3...2.21.4) (2026-03-09)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/netresearch/go-cron to v0.13.1 ([139c4d8](https://github.com/mogenius/renovate-operator/commit/139c4d895b8bbff6f79d599fef80bb69a7ca6802))
+
+## [2.21.3](https://github.com/mogenius/renovate-operator/compare/2.21.2...2.21.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* **operator:** discovery could select the wrong job to wait for ([2968388](https://github.com/mogenius/renovate-operator/commit/296838837b4fad55f557283f06c218fcc4bd26d5)), closes [#188](https://github.com/mogenius/renovate-operator/issues/188)
+* **operator:** refactor default variables for jobs ([a35a529](https://github.com/mogenius/renovate-operator/commit/a35a5297c9dcfe83413f71a413c84fb04ed748c3))
+
+## [2.21.2](https://github.com/mogenius/renovate-operator/compare/2.21.1...2.21.2) (2026-03-07)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.23.3 ([a4839bf](https://github.com/mogenius/renovate-operator/commit/a4839bf2a52e20e56e759efa3ae81880cbb24acd))
+
+## [2.21.1](https://github.com/mogenius/renovate-operator/compare/2.21.0...2.21.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* unauthorized triggers rerender loop ([f85bcfb](https://github.com/mogenius/renovate-operator/commit/f85bcfbc82966ba47caed65310be586878a76b90)), closes [#184](https://github.com/mogenius/renovate-operator/issues/184)
+
+# [2.21.0](https://github.com/mogenius/renovate-operator/compare/2.20.1...2.21.0) (2026-03-04)
+
+
+### Bug Fixes
+
+* extract platform endpoint resolution into shared utils package ([2c23aee](https://github.com/mogenius/renovate-operator/commit/2c23aee0cba7446db34ccb767ff617cf33e83a3f))
+
+
+### Features
+
+* add api to update execution options ([4148944](https://github.com/mogenius/renovate-operator/commit/41489440107acda135db0016e7869209fd4ff319)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+* add debug execution option to RenovateJobStatus ([084e4d5](https://github.com/mogenius/renovate-operator/commit/084e4d5ff4c9eb12c30badbac1ffd477a67d293d)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+* add Provider field to RenovateJobSpec for platform configuration ([665c323](https://github.com/mogenius/renovate-operator/commit/665c3237a55ad777799bcd69e360ac4d7ec4de13))
+* add ui options to adapt execution options ([d1c349f](https://github.com/mogenius/renovate-operator/commit/d1c349f1c0b8991dd1ade22225f3ad9016d38458)), closes [#131](https://github.com/mogenius/renovate-operator/issues/131)
+
+## [2.20.1](https://github.com/mogenius/renovate-operator/compare/2.20.0...2.20.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* set restart policy to never ([a48a835](https://github.com/mogenius/renovate-operator/commit/a48a8351b003a821efd90ea44bdd08a843e32ef3))
+
+# [2.20.0](https://github.com/mogenius/renovate-operator/compare/2.19.1...2.20.0) (2026-03-02)
+
+
+### Features
+
+* add dedicated Forgejo webhook endpoint ([#144](https://github.com/mogenius/renovate-operator/issues/144)) ([a365716](https://github.com/mogenius/renovate-operator/commit/a365716f6aea47b7445263b486c678b95105d429))
+
 ## [2.19.1](https://github.com/mogenius/renovate-operator/compare/2.19.0...2.19.1) (2026-03-02)
 
 

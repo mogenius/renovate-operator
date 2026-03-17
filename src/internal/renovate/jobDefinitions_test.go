@@ -85,8 +85,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
 		Spec: api.RenovateJobSpec{
-			Image:           "img",
-			SecretRef:       "sref",
+			Image:     "img",
+			SecretRef: "sref",
+			Provider: &api.RenovateProvider{
+				Name:     "gitlab",
+				Endpoint: "gitlab.example.com",
+			},
 			DiscoveryFilter: "org/*",
 			DiscoverTopics:  "renovate",
 			Metadata: &api.RenovateJobMetadata{
@@ -169,6 +173,11 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				},
 			},
 		},
+		Status: api.RenovateJobStatus{
+			ExecutionOptions: &api.RenovateExecutionOptions{
+				Debug: true,
+			},
+		},
 	}
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
@@ -186,7 +195,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectJobNamespace(t, dj, "ns")
 	expectLabels(t, dj, map[string]string{"a": "b"}, string(crdManager.DiscoveryJobType), "rj-discovery-6987b484")
 	expectImage(t, djContainer, "img")
-	expectRestartPolicy(t, dj, v1.RestartPolicyOnFailure)
+	expectRestartPolicy(t, dj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, dj, 10)
 	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
 
@@ -194,6 +203,9 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
+	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
+	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
+	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
 	expectEnvFromSecret(t, djContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
@@ -216,7 +228,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectJobNamespace(t, rj, "ns")
 	expectLabels(t, rj, map[string]string{"a": "b"}, string(crdManager.ExecutorJobType), "rj-proj-701b9b0a")
 	expectImage(t, rjContainer, "img")
-	expectRestartPolicy(t, rj, v1.RestartPolicyOnFailure)
+	expectRestartPolicy(t, rj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, rj, 10)
 	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
 

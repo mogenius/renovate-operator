@@ -11,11 +11,12 @@ spec:
   discoveryFilter: "Group1/*"
   image: renovate/renovate:41.43.3 # renovate
   secretRef: "renovate-secret"
-  extraEnv:
-    - name: RENOVATE_ENDPOINT
-      value: "https://gitlab.company.com"
-    - name: RENOVATE_PLATFORM
-      value: "gitlab"
+  provider:
+    name: gitlab
+    endpoint: ""  # optional, defaults to https://gitlab.com/api/v4
+  extraEnv: []
+    # - name: ENV_NAME
+    #   value: "EV_VALUE"
   parallelism: 1
   resources:
     requests:

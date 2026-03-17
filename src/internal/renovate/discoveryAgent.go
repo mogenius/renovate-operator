@@ -24,11 +24,11 @@ type DiscoveryAgent interface {
 	// Discover runs the discovery process for the given RenovateJob CRD and returns the list of discovered projects.
 	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
 	// Only create and start the discovery job, do not wait for completion.
-	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error
+	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error)
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
-	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
 	// WaitForDiscoveryJob waits for the discovery job to complete and returns the list of discovered projects.
-	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error)
 }
 
 type discoveryAgent struct {
@@ -39,7 +39,7 @@ type discoveryAgent struct {
 	// allow tests to override how logs are extracted
 	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
 	// allow tests to override how status is checked
-	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
+	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
 }
 
 func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger) DiscoveryAgent {
@@ -64,18 +64,18 @@ func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]
 
 func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	// 1. Create the discovery job - replaces existing job
-	err := e.CreateDiscoveryJob(ctx, *job)
+	generation, err := e.CreateDiscoveryJob(ctx, *job)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or get discovery job: %w", err)
 	}
 
-	return e.WaitForDiscoveryJob(ctx, job)
+	return e.WaitForDiscoveryJob(ctx, job, generation)
 }
 
-func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
 	// 2. Wait for discovery job completion
 	for {
-		status, err := e.getDiscoveryJobStatusFn(ctx, job)
+		status, err := e.getDiscoveryJobStatusFn(ctx, job, generation)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get discovery job status: %w", err)
@@ -109,12 +109,12 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
-func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
-	return e.getDiscoveryJobStatusFn(ctx, job)
+func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+	return e.getDiscoveryJobStatusFn(ctx, job, generation)
 }
 
 // getDiscoveryJobStatusInternal is the internal implementation of GetDiscoveryJobStatus.
-func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 	// lock based on the renovatejob
 	name := job.Fullname()
 	lock := e.syncer[name]
@@ -125,12 +125,13 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	lock.RLock()
 	defer lock.RUnlock()
 
+	// if generation is not provided, get the latest job and return its status
 	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-		JobName:   utils.DiscoveryJobName(job),
-		JobType:   crdManager.DiscoveryJobType,
-		Namespace: job.Namespace,
+		JobName:    utils.DiscoveryJobName(job),
+		JobType:    crdManager.DiscoveryJobType,
+		Namespace:  job.Namespace,
+		Generation: &generation,
 	})
-
 	// retry getting the job if not found
 	if err != nil && errors.IsNotFound(err) {
 		time.Sleep(1 * time.Second)
@@ -142,9 +143,10 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
 			}
 			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobName:   utils.DiscoveryJobName(job),
-				JobType:   crdManager.DiscoveryJobType,
-				Namespace: job.Namespace,
+				JobName:    utils.DiscoveryJobName(job),
+				JobType:    crdManager.DiscoveryJobType,
+				Namespace:  job.Namespace,
+				Generation: &generation,
 			})
 		}
 	} else if err != nil {
@@ -159,7 +161,7 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	}
 	return api.JobStatusRunning, nil
 }
-func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) error {
+func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
 	// lock based on the renovatejob
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
@@ -172,17 +174,17 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 
 	discoveryJob := newDiscoveryJob(&renovateJob)
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
-		return fmt.Errorf("failed to set controller reference: %w", err)
+		return "", fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	// Create the discovery job
-	err := crdManager.CreateJobWithGeneration(ctx, e.client, discoveryJob, crdManager.JobSelector{
+	generation, err := crdManager.CreateJobWithGeneration(ctx, e.client, discoveryJob, crdManager.JobSelector{
 		JobName:   utils.DiscoveryJobName(&renovateJob),
 		JobType:   crdManager.DiscoveryJobType,
 		Namespace: renovateJob.Namespace,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create discovery job: %w", err)
+		return "", fmt.Errorf("failed to create discovery job: %w", err)
 	}
-	return nil
+	return generation, nil
 }

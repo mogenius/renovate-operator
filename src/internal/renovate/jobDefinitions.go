@@ -16,16 +16,7 @@ import (
 
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
-	predefinedEnvVars := []v1.EnvVar{
-		{
-			Name:  "LOG_FORMAT",
-			Value: "json",
-		},
-		{
-			Name:  "NODE_NO_WARNINGS",
-			Value: "1",
-		},
-	}
+	predefinedEnvVars := getDefaultEnvVars(job)
 
 	if job.Spec.DiscoveryFilter != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -49,6 +40,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 				},
 			},
 		})
+	}
+	if job.Spec.ExtraEnvFrom != nil {
+		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
 	volumes := []v1.Volume{
@@ -92,7 +86,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					},
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
-					RestartPolicy:                v1.RestartPolicyOnFailure,
+					RestartPolicy:                v1.RestartPolicyNever,
 					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
@@ -119,13 +113,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 
 // create a Job spec for renovate run on project...
 func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
-	// Default env vars - user can override via ExtraEnv since these are prepended
-	predefinedEnvVars := []v1.EnvVar{
-		{
-			Name:  "LOG_FORMAT",
-			Value: "json",
-		},
-	}
+	predefinedEnvVars := getDefaultEnvVars(job)
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -136,6 +124,9 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 				},
 			},
 		})
+	}
+	if job.Spec.ExtraEnvFrom != nil {
+		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
 	volumes := []v1.Volume{
@@ -179,7 +170,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					},
 					SecurityContext:              getPodSecurityContext(job.Spec),
 					AutomountServiceAccountToken: getAutoMountServiceAccountToken(job.Spec),
-					RestartPolicy:                v1.RestartPolicyOnFailure,
+					RestartPolicy:                v1.RestartPolicyNever,
 					DNSPolicy:                    getDNSPolicy(job.Spec),
 					NodeSelector:                 job.Spec.NodeSelector,
 					Affinity:                     job.Spec.Affinity,
@@ -202,6 +193,39 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	batchJob.Labels = labels
 	batchJob.Spec.Template.Labels = labels
 	return batchJob
+}
+
+func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
+
+	predefinedEnvVars := []v1.EnvVar{
+		{
+			Name:  "LOG_FORMAT",
+			Value: "json",
+		},
+		{
+			Name:  "NODE_NO_WARNINGS",
+			Value: "1",
+		},
+	}
+
+	if job.Spec.Provider != nil {
+		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_ENDPOINT",
+			Value: endpoint,
+		}, v1.EnvVar{
+			Name:  "RENOVATE_PLATFORM",
+			Value: platform,
+		})
+	}
+
+	if job.Status.ExecutionOptions != nil && job.Status.ExecutionOptions.Debug {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "LOG_LEVEL",
+			Value: "debug",
+		})
+	}
+	return predefinedEnvVars
 }
 
 func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {

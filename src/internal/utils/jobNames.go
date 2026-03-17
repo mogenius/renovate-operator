@@ -28,6 +28,7 @@ func kubernetesCompatibleName(name string) string {
 	name = strings.ReplaceAll(name, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
 	name = strings.ReplaceAll(name, "_", "-")
 	name = strings.ReplaceAll(name, ".", "-")
+	name = strings.ReplaceAll(name, "~", "-")
 	name = strings.ToLower(name) // Ensure lowercase for consistency
 	return name
 }
