@@ -1,3 +1,10 @@
+# [3.4.0](https://github.com/mogenius/renovate-operator/compare/3.3.0...3.4.0) (2026-03-17)
+
+
+### Features
+
+* **ui:** add Dependency Dashboard link to project views ([29d218f](https://github.com/mogenius/renovate-operator/commit/29d218f909c8a50d87888c486110f3ce66175c85))
+
 # [3.3.0](https://github.com/mogenius/renovate-operator/compare/3.2.1...3.3.0) (2026-03-16)
 
 
