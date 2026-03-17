@@ -966,10 +966,6 @@ spec:
               dnsPolicy:
                 description: DNS Policy for the renovate pods
                 type: string
-              skipForks:
-                description: If true, forked repositories discovered during autodiscovery
-                  will be excluded by querying the platform API
-                type: boolean
               extraEnv:
                 description: Additional environment variables to set in the renovate
                   container
@@ -3704,6 +3700,10 @@ spec:
                   name:
                     type: string
                 type: object
+              skipForks:
+                description: If true, forked repositories discovered during autodiscovery
+                  will be excluded by querying the platform API
+                type: boolean
               tolerations:
                 description: Tolerations for scheduling the resulting pod
                 items:
