@@ -1,3 +1,15 @@
+# [3.7.0](https://github.com/mogenius/renovate-operator/compare/3.6.1...3.7.0) (2026-03-17)
+
+
+### Bug Fixes
+
+* add missing getRenovateJobFunc mock in TestGetRenovateJobLogs_NonJSONLines ([e856480](https://github.com/mogenius/renovate-operator/commit/e856480d5c3c064253e84503adba7c66a9434343))
+
+
+### Features
+
+* add skipForks option to exclude forked repos from autodiscovery ([c6ab32e](https://github.com/mogenius/renovate-operator/commit/c6ab32e71b2a43928ae6ec247e579b86ae48776c))
+
 ## [3.6.1](https://github.com/mogenius/renovate-operator/compare/3.6.0...3.6.1) (2026-03-17)
 
 
