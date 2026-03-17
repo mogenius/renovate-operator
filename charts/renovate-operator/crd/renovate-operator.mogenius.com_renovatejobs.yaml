@@ -3964,7 +3964,6 @@ spec:
                             type: string
                         required:
                         - enabled
-                        - tokenSecretRef
                         - webhookURL
                         type: object
                     type: object
