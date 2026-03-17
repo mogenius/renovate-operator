@@ -188,6 +188,9 @@ func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
 		getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
 			return "not json\n" + `{"level":30,"msg":"valid"}` + "\n\n", nil
 		},
+		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+			return &api.RenovateJob{}, nil
+		},
 	}
 
 	server := &Server{
