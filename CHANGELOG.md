@@ -1,3 +1,10 @@
+## [3.6.1](https://github.com/mogenius/renovate-operator/compare/3.6.0...3.6.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* mobile viewport button update ([fcf25d7](https://github.com/mogenius/renovate-operator/commit/fcf25d7cc5d84c6d8b2dd9c35b2e7bac6fc5a081))
+
 # [3.6.0](https://github.com/mogenius/renovate-operator/compare/3.5.0...3.6.0) (2026-03-17)
 
 
