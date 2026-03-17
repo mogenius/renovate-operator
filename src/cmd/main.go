@@ -207,6 +207,11 @@ func main() {
 			Optional: true,
 			Default:  "",
 		},
+		{
+			Key:      "OIDC_FETCH_USERINFO_GROUPS",
+			Optional: true,
+			Default:  "false",
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -277,6 +282,7 @@ func main() {
 			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
+			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
 		}, ctrl.Log.WithName("oidc"))
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth

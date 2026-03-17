@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -69,6 +70,67 @@ func TestBuildOIDCScopes(t *testing.T) {
 				if result[i] != tt.want[i] {
 					t.Errorf("buildOIDCScopes()[%d] = %q, want %q", i, result[i], tt.want[i])
 				}
+			}
+		})
+	}
+}
+
+func TestMergeGroups(t *testing.T) {
+	tests := []struct {
+		name           string
+		idTokenGroups  []string
+		userInfoGroups []string
+		want           []string
+	}{
+		{
+			name:           "two non-empty slices",
+			idTokenGroups:  []string{"team-a", "team-b"},
+			userInfoGroups: []string{"team-c", "team-d"},
+			want:           []string{"team-a", "team-b", "team-c", "team-d"},
+		},
+		{
+			name:           "overlapping entries are deduplicated",
+			idTokenGroups:  []string{"team-a", "team-b"},
+			userInfoGroups: []string{"team-b", "team-c"},
+			want:           []string{"team-a", "team-b", "team-c"},
+		},
+		{
+			name:           "first empty",
+			idTokenGroups:  []string{},
+			userInfoGroups: []string{"team-a"},
+			want:           []string{"team-a"},
+		},
+		{
+			name:           "second empty",
+			idTokenGroups:  []string{"team-a"},
+			userInfoGroups: []string{},
+			want:           []string{"team-a"},
+		},
+		{
+			name:           "both empty",
+			idTokenGroups:  []string{},
+			userInfoGroups: []string{},
+			want:           []string{},
+		},
+		{
+			name:           "nil and non-empty",
+			idTokenGroups:  nil,
+			userInfoGroups: []string{"team-a"},
+			want:           []string{"team-a"},
+		},
+		{
+			name:           "both nil",
+			idTokenGroups:  nil,
+			userInfoGroups: nil,
+			want:           []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeGroups(tt.idTokenGroups, tt.userInfoGroups)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("mergeGroups() = %v, want %v", got, tt.want)
 			}
 		})
 	}
