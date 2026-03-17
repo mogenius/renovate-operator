@@ -1,3 +1,10 @@
+# [3.5.0](https://github.com/mogenius/renovate-operator/compare/3.4.1...3.5.0) (2026-03-17)
+
+
+### Features
+
+* add Forgejo webhook sync controller ([#145](https://github.com/mogenius/renovate-operator/issues/145)) ([af6e244](https://github.com/mogenius/renovate-operator/commit/af6e244c7427dc92547be195bdfe598256f76de7))
+
 ## [3.4.1](https://github.com/mogenius/renovate-operator/compare/3.4.0...3.4.1) (2026-03-17)
 
 
