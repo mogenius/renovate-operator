@@ -950,6 +950,13 @@ spec:
                         x-kubernetes-list-type: atomic
                     type: object
                 type: object
+              allowedGroups:
+                description: |-
+                  Groups allowed to view this RenovateJob when authentication is enabled.
+                  If empty or not set, the job is hidden from all users.
+                items:
+                  type: string
+                type: array
               discoverTopics:
                 description: Topics to discover projects from
                 type: string
@@ -3152,13 +3159,6 @@ spec:
                       type: string
                   type: object
                   x-kubernetes-map-type: atomic
-                type: array
-              allowedGroups:
-                description: |-
-                  Groups allowed to view this RenovateJob when authentication is enabled.
-                  If empty or not set, the job is hidden from all users.
-                items:
-                  type: string
                 type: array
               metadata:
                 description: Metadata that shall be applied to the resulting pod
