@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint:
-    runs-on: self-hosted
+    runs-on: arc-runner-set-amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v6
