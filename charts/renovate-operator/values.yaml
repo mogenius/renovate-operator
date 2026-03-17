@@ -171,6 +171,8 @@ auth:
     allowedGroupPattern: ""
     # -- optional: additional OIDC scopes to request (e.g., "groups" for Keycloak)
     additionalScopes: []
+    # -- optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo)
+    fetchUserInfoGroups: false
   github:
     # -- whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC)
     enabled: false

@@ -26,17 +26,19 @@ type OIDCConfig struct {
 	AllowedGroupPrefix  string
 	AllowedGroupPattern string
 	AdditionalScopes    []string
+	FetchUserInfoGroups bool
 }
 
 type OIDCAuth struct {
 	baseAuth
-	provider           *oidc.Provider
-	oauth2Config       oauth2.Config
-	verifier           *oidc.IDTokenVerifier
-	httpClient         *http.Client
-	endSessionURL      string
-	postLogoutRedirect string
-	groupFilterConfig  GroupFilterConfig
+	provider            *oidc.Provider
+	oauth2Config        oauth2.Config
+	verifier            *oidc.IDTokenVerifier
+	httpClient          *http.Client
+	endSessionURL       string
+	postLogoutRedirect  string
+	groupFilterConfig   GroupFilterConfig
+	fetchUserInfoGroups bool
 }
 
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDCAuth, error) {
@@ -121,15 +123,20 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 		groupFilterConfig.AllowedPattern = pattern
 	}
 
+	if cfg.FetchUserInfoGroups {
+		logger.Info("OIDC userinfo group fetching enabled -- groups will be fetched from both ID token and userinfo endpoint; userinfo failures will block login")
+	}
+
 	return &OIDCAuth{
-		baseAuth:           baseAuth{encryptionKey: key, logger: logger},
-		provider:           provider,
-		oauth2Config:       oauth2Cfg,
-		verifier:           verifier,
-		httpClient:         httpClient,
-		endSessionURL:      endSessionURL,
-		postLogoutRedirect: postLogoutRedirect,
-		groupFilterConfig:  groupFilterConfig,
+		baseAuth:            baseAuth{encryptionKey: key, logger: logger},
+		provider:            provider,
+		oauth2Config:        oauth2Cfg,
+		verifier:            verifier,
+		httpClient:          httpClient,
+		endSessionURL:       endSessionURL,
+		postLogoutRedirect:  postLogoutRedirect,
+		groupFilterConfig:   groupFilterConfig,
+		fetchUserInfoGroups: cfg.FetchUserInfoGroups,
 	}, nil
 }
 
@@ -195,13 +202,41 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		"name", claims.Name,
 		"groups", claims.Groups)
 
+	idTokenGroups := claims.Groups
+
+	if o.fetchUserInfoGroups {
+		o.logger.V(1).Info("fetching groups from userinfo endpoint", "user", claims.Email)
+		userInfoCtx, cancel := context.WithTimeout(exchangeCtx, 15*time.Second)
+		defer cancel()
+		userInfo, err := o.provider.UserInfo(userInfoCtx, oauth2.StaticTokenSource(oauth2Token))
+		if err != nil {
+			o.logger.Error(err, "failed to fetch userinfo")
+			http.Error(w, "failed to fetch userinfo", http.StatusInternalServerError)
+			return
+		}
+		var userInfoClaims struct {
+			Groups []string `json:"groups,omitempty"`
+		}
+		if err := userInfo.Claims(&userInfoClaims); err != nil {
+			o.logger.Error(err, "failed to parse userinfo claims")
+			http.Error(w, "failed to parse userinfo claims", http.StatusInternalServerError)
+			return
+		}
+		o.logger.V(1).Info("userinfo groups received",
+			"user", claims.Email,
+			"id_token_groups", claims.Groups,
+			"userinfo_groups", userInfoClaims.Groups)
+		claims.Groups = mergeGroups(claims.Groups, userInfoClaims.Groups)
+	}
+
 	// Apply 3-layer group validation
 	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
 
 	if len(claims.Groups) > 0 && len(validatedGroups) == 0 {
 		o.logger.Info("WARNING: User authenticated but all groups filtered out",
 			"user", claims.Email,
-			"original_groups", claims.Groups)
+			"id_token_groups", idTokenGroups,
+			"groups_before_validation", claims.Groups)
 	}
 
 	completeURL, err := o.buildCompleteURL(claims.Email, claims.Name, func(s *sessionData) {
@@ -241,6 +276,25 @@ func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 func (o *OIDCAuth) SupportsGroups() bool {
 	return true
+}
+
+// mergeGroups combines groups from the ID token and userinfo endpoint,
+// deduplicating entries so that the merged result doesn't inflate the
+// count before the downstream maxGroupsPerUser truncation.
+func mergeGroups(idTokenGroups, userInfoGroups []string) []string {
+	seen := make(map[string]struct{}, len(idTokenGroups))
+	merged := make([]string, 0, len(idTokenGroups)+len(userInfoGroups))
+	for _, g := range idTokenGroups {
+		seen[g] = struct{}{}
+		merged = append(merged, g)
+	}
+	for _, g := range userInfoGroups {
+		if _, ok := seen[g]; !ok {
+			seen[g] = struct{}{}
+			merged = append(merged, g)
+		}
+	}
+	return merged
 }
 
 // buildOIDCScopes returns the base OIDC scopes plus any additional scopes, deduplicated.

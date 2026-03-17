@@ -27,6 +27,7 @@ auth:
     allowedGroupPrefix: ""                     # Optional: only accept groups with this prefix
     allowedGroupPattern: ""                    # Optional: only accept groups matching this regex
     additionalScopes: []                        # Optional: extra OIDC scopes (e.g., ["groups"])
+    fetchUserInfoGroups: false                   # Optional: fetch groups from userinfo endpoint
 ```
 
 ### Secret
@@ -64,6 +65,18 @@ auth:
 ```
 
 **Azure AD / Entra ID**: Do **not** add `groups` here. Azure AD does not support `groups` as an OIDC scope and will reject the request with `AADSTS650053`. Instead, configure the `groups` claim in **App Registration → Token Configuration → Add groups claim**. The operator will read groups from the ID token regardless of whether the scope is requested.
+
+#### Userinfo Group Fetching
+
+Some OIDC providers (Keycloak, Auth0, custom setups) expose groups exclusively via the userinfo endpoint rather than in the ID token. To fetch groups from the userinfo endpoint and merge them with any ID token groups:
+
+```yaml
+auth:
+  oidc:
+    fetchUserInfoGroups: true
+```
+
+When enabled, the operator makes an additional HTTP call to the provider's userinfo endpoint during login. Groups from both sources are deduplicated and merged before validation. Userinfo failures are treated as hard errors and will block login.
 
 ---
 

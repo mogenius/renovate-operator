@@ -148,6 +148,10 @@ spec:
             - name: OIDC_ADDITIONAL_SCOPES
               value: {{ .Values.auth.oidc.additionalScopes | join "," | quote }}
             {{- end }}
+            {{- if .Values.auth.oidc.fetchUserInfoGroups }}
+            - name: OIDC_FETCH_USERINFO_GROUPS
+              value: "true"
+            {{- end }}
             {{- else if .Values.auth.github.enabled }}
             - name: GITHUB_CLIENT_ID
               value: {{ .Values.auth.github.clientId | quote }}
