@@ -1,3 +1,10 @@
+# [3.6.0](https://github.com/mogenius/renovate-operator/compare/3.5.0...3.6.0) (2026-03-17)
+
+
+### Features
+
+* add group-based authorization for RenovateJobs ([fa5ac13](https://github.com/mogenius/renovate-operator/commit/fa5ac1327734913935b98c5b229328a3c3a96d34))
+
 # [3.5.0](https://github.com/mogenius/renovate-operator/compare/3.4.1...3.5.0) (2026-03-17)
 
 
