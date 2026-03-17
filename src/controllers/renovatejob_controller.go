@@ -8,6 +8,7 @@ import (
 	"renovate-operator/internal/forgejo"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
+	"renovate-operator/internal/utils"
 	"renovate-operator/scheduler"
 	"net/url"
 	"strings"
@@ -45,9 +46,6 @@ type webhookSyncerEntry struct {
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	if r.webhookSyncers == nil {
-		r.webhookSyncers = make(map[string]*webhookSyncerEntry)
-	}
 	logger := log.FromContext(ctx).WithName("renovatejob-controller")
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
 
@@ -148,7 +146,8 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	}
 
 	syncCfg := renovateJob.Spec.Webhook.Forgejo.Sync
-	fp := syncFingerprint(syncCfg, renovateJob.Spec.DiscoverTopics, renovateJob.Namespace, renovateJob.Name)
+	_, providerEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+	fp := syncFingerprint(syncCfg, providerEndpoint, renovateJob.Spec.DiscoverTopics, renovateJob.Namespace, renovateJob.Name)
 
 	// Config unchanged — nothing to do
 	if entry, exists := r.webhookSyncers[name]; exists && entry.fingerprint == fp {
@@ -194,7 +193,12 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	parsed.RawQuery = q.Encode()
 	webhookURL = parsed.String()
 
-	forgejoClient := forgejo.NewClient(syncCfg.ForgejoURL, forgejoToken)
+	if providerEndpoint == "" {
+		logger.Error(fmt.Errorf("provider endpoint is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo endpoint")
+		return
+	}
+
+	forgejoClient := forgejo.NewClient(providerEndpoint, forgejoToken)
 	syncer := forgejo.NewWebhookSyncer(
 		forgejoClient,
 		webhookURL,
@@ -220,7 +224,7 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 }
 
 // syncFingerprint produces a string that changes when any sync-relevant config changes.
-func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, defaultTopic, namespace, jobName string) string {
+func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, endpoint, defaultTopic, namespace, jobName string) string {
 	topic := cfg.Topic
 	if topic == "" {
 		topic = defaultTopic
@@ -234,7 +238,7 @@ func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, defaultTopic, namespac
 		authRef = cfg.AuthTokenSecretRef.Name + "/" + cfg.AuthTokenSecretRef.Key
 	}
 	events := strings.Join(cfg.Events, ",")
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", cfg.ForgejoURL, cfg.WebhookURL, topic, events, tokenRef, authRef, namespace+"/"+jobName)
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", endpoint, cfg.WebhookURL, topic, events, tokenRef, authRef, namespace+"/"+jobName)
 }
 
 func (r *RenovateJobReconciler) loadWebhookSyncState(renovateJob *api.RenovateJob) map[string]int64 {
@@ -311,6 +315,7 @@ func (r *RenovateJobReconciler) readSecretKey(ctx context.Context, ref *api.Reno
 }
 
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.webhookSyncers = make(map[string]*webhookSyncerEntry)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.RenovateJob{}).
 		Owns(&batchv1.Job{}).

@@ -3950,8 +3950,6 @@ spec:
                             items:
                               type: string
                             type: array
-                          forgejoURL:
-                            type: string
                           tokenSecretRef:
                             description: reference to a secret and key
                             properties:
@@ -3966,7 +3964,7 @@ spec:
                             type: string
                         required:
                         - enabled
-                        - forgejoURL
+                        - tokenSecretRef
                         - webhookURL
                         type: object
                     type: object

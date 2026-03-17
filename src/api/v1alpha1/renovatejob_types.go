@@ -86,7 +86,6 @@ type RenovateWebhookForgejo struct {
 // configuration for syncing webhooks to Forgejo repos by topic
 type RenovateWebhookForgejoSync struct {
 	Enabled            bool                        `json:"enabled"`
-	ForgejoURL         string                      `json:"forgejoURL"`
 	WebhookURL         string                      `json:"webhookURL"`
 	Topic              string                      `json:"topic,omitempty"`
 	Events             []string                    `json:"events,omitempty"`

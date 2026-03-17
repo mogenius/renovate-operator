@@ -74,7 +74,6 @@ spec:
     forgejo:
       sync:
         enabled: true
-        forgejoURL: https://forgejo.example.com
         webhookURL: https://your-webhook-host/webhook/v1/forgejo
         topic: renovate
         tokenSecretRef:
@@ -90,7 +89,6 @@ spec:
 | Field                | Required | Default                        | Description                                                                                                                                                                                                                                     |
 | :------------------- | :------: | :----------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`            |   yes    |                                | Enable or disable automatic webhook sync.                                                                                                                                                                                                       |
-| `forgejoURL`         |   yes    |                                | Base URL of the Forgejo instance (e.g. `https://forgejo.example.com`).                                                                                                                                                                          |
 | `webhookURL`         |   yes    |                                | Externally reachable URL of the operator's Forgejo webhook endpoint. The operator appends `?namespace=...&job=...` query parameters automatically.                                                                                              |
 | `topic`              |    no    | value of `spec.discoverTopics` | Forgejo topic used as the search filter for discovering candidate repos.                                                                                                                                                                        |
 | `events`             |    no    | `["issues", "pull_request"]`   | Forgejo webhook event types to subscribe to.                                                                                                                                                                                                    |
