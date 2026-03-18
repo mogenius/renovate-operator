@@ -144,6 +144,14 @@ webhook:
 auth:
   # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = jobs hidden by default, secure)
   defaultAllowedGroups: ""
+  # -- optional: Redis URL for session storage (e.g., "redis://:password@redis:6379/0")
+  # -- When set, sessions are stored in Redis (recommended for multi-replica deployments)
+  # -- When empty, sessions are stored in-memory (lost on pod restart)
+  sessionStoreRedisUrl: ""
+  # -- name of an existing secret containing the Redis URL (alternative to plain-text sessionStoreRedisUrl)
+  sessionStoreRedisExistingSecret: ""
+  # -- key in the existing secret that contains the Redis URL
+  sessionStoreRedisSecretKey: "redis-url"
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false
@@ -244,6 +252,17 @@ logging:
   level: "info"
   # -- log format for the operator, one of: json, console
   format: "json"
+
+# -- optional: deploy a Redis instance for session storage (recommended for multi-replica)
+redis:
+  enabled: false
+  architecture: standalone
+  auth:
+    enabled: true
+    password: ""
+  master:
+    persistence:
+      enabled: false
 
 metrics:
   enabled: false

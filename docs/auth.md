@@ -122,11 +122,52 @@ The operator requests the `read:user` and `user:email` scopes. On logout, the OA
 
 ## Session Security
 
-Sessions are stored as AES-256-GCM encrypted cookies and expire after **24 hours**.
+Sessions are stored **server-side** (in-memory by default, or in Redis) and expire after **24 hours**. The browser cookie holds only an AES-256-GCM encrypted session ID (~100 bytes), avoiding the ~4096 byte browser cookie size limit that can cause auth loops for users with many groups.
 
-If you run multiple operator replicas, you **must** set a static session secret. Otherwise each pod generates its own key and users will be logged out when requests hit a different replica.
+**In-memory store** (default): sessions are lost on pod restart and not shared across replicas. Suitable for single-replica deployments.
 
-Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+**Redis store**: sessions survive pod restarts and are shared across replicas. Recommended for multi-replica deployments.
+
+If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session ID cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+
+### Redis Session Store
+
+To use Redis for session storage, either deploy a Redis instance via the bundled subchart or provide an external Redis URL:
+
+**Option 1: Bundled Redis subchart**
+
+```yaml
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+  master:
+    persistence:
+      enabled: false  # sessions are ephemeral
+```
+
+**Option 2: External Redis URL**
+
+```yaml
+auth:
+  sessionStoreRedisUrl: "redis://:password@redis.example.com:6379/0"
+```
+
+For TLS connections, use the `rediss://` scheme:
+
+```yaml
+auth:
+  sessionStoreRedisUrl: "rediss://:password@redis.example.com:6380/0"
+```
+
+**Option 3: Redis URL from an existing secret**
+
+```yaml
+auth:
+  sessionStoreRedisExistingSecret: "my-redis-secret"
+  sessionStoreRedisSecretKey: "redis-url"
+```
 
 ---
 
