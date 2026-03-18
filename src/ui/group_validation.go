@@ -14,9 +14,9 @@ const (
 )
 
 var (
-	// validGroupNamePattern allows alphanumeric, dash, underscore, @, dot, forward slash, comma, equals, space
-	// This covers most OIDC providers: Azure AD (including DN format and display names), Okta, Google, Keycloak, etc.
-	validGroupNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._@/,= -]+$`)
+	// validGroupNamePattern allows alphanumeric, dash, underscore, @, dot, forward slash, comma, equals, space, colon
+	// This covers most OIDC providers: Azure AD (including DN format and display names), Okta, Google, Keycloak, Forgejo, etc.
+	validGroupNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._@/,= -:]+$`)
 )
 
 // validateGroupName performs basic format validation on a single group name.

@@ -18,6 +18,7 @@ func TestValidateGroupName(t *testing.T) {
 		{"valid with dot", "team.alpha", false},
 		{"valid with at", "team@company.com", false},
 		{"valid with slash", "org/team", false},
+		{"valid with colon", "org:team", false},
 		{"empty string", "", true},
 		{"too long", string(make([]byte, 257)), true},
 		{"valid with spaces", "team alpha", false},
