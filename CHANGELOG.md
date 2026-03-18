@@ -1,3 +1,10 @@
+# [3.8.0](https://github.com/mogenius/renovate-operator/compare/3.7.3...3.8.0) (2026-03-18)
+
+
+### Features
+
+* add optional userinfo endpoint group fetching for OIDC ([df1a85a](https://github.com/mogenius/renovate-operator/commit/df1a85a86e87c0fd3d72d6335af38120c74e0bc7))
+
 ## [3.7.3](https://github.com/mogenius/renovate-operator/compare/3.7.2...3.7.3) (2026-03-18)
 
 
