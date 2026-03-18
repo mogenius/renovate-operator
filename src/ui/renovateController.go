@@ -37,9 +37,9 @@ type ExecutionOptions struct {
 // - When auth is disabled (authEnabled == false): all jobs visible
 // - When auth is enabled (authEnabled == true):
 //   - Jobs without allowedGroups use defaultAllowedGroups (from operator config)
-//   - If defaultAllowedGroups is also empty, job is HIDDEN (secure by default)
+//   - If defaultAllowedGroups is also empty, job is visible to all authenticated users
 //   - Jobs with allowedGroups shown only if user has at least one matching group
-//   - Users without groups see no jobs
+//   - Users without groups see no jobs (unless the job has no group restrictions)
 //   - If session is nil (edge case/bug), return empty list for security
 func filterRenovateJobsByGroups(jobs []api.RenovateJob, authEnabled bool, session *sessionData, defaultAllowedGroups []string) []api.RenovateJob {
 	// If auth is disabled, return all jobs
@@ -66,8 +66,9 @@ func filterRenovateJobsByGroups(jobs []api.RenovateJob, authEnabled bool, sessio
 			effectiveAllowedGroups = defaultAllowedGroups
 		}
 
-		// If no effective groups (neither job-specific nor defaults), hide the job
+		// If no effective groups (neither job-specific nor defaults), job is visible to all authenticated users
 		if len(effectiveAllowedGroups) == 0 {
+			filtered = append(filtered, job)
 			continue
 		}
 
@@ -149,16 +150,15 @@ func (s *Server) authorizeAndGetJob(r *http.Request, namespace, jobName string) 
 		effectiveAllowedGroups = s.defaultAllowedGroups
 	}
 
-	// If no effective groups (neither job-specific nor defaults), deny access
+	// If no effective groups (neither job-specific nor defaults), job is visible to all authenticated users
 	if len(effectiveAllowedGroups) == 0 {
-		s.logger.Info("Authorization denied: job has no allowed groups",
+		s.logger.V(1).Info("Authorization granted: job has no group restrictions",
 			"user", session.Email,
-			"user_groups", session.Groups,
 			"resource", jobName,
 			"namespace", namespace,
 			"path", r.URL.Path,
 			"remote_addr", r.RemoteAddr)
-		return nil, false
+		return job, true
 	}
 
 	// Check if user has any matching group
