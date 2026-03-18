@@ -61,6 +61,7 @@ type AuthProvider interface {
 type baseAuth struct {
 	encryptionKey [32]byte
 	logger        logr.Logger
+	sessionStore  SessionStore
 }
 
 func newEncryptionKey(sessionSecret string) ([32]byte, error) {
@@ -119,7 +120,8 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, err := fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
 					"could not be verified. This usually means GITHUB_SESSION_SECRET or OIDC_SESSION_SECRET "+
-					"is not set, or differs between replicas.")
+					"is not set, or differs between replicas. It can also occur when the session store "+
+					"is unavailable (pod restart with in-memory store, or Redis connectivity issue).")
 				if err != nil {
 					b.logger.Error(err, "failed to write error response")
 				}
@@ -252,6 +254,20 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// deleteSession removes the session from the server-side store.
+// It silently ignores errors since this is best-effort cleanup.
+func (b *baseAuth) deleteSession(r *http.Request) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return
+	}
+	id, err := b.decryptToSessionID(cookie.Value)
+	if err != nil {
+		return
+	}
+	_ = b.sessionStore.Delete(r.Context(), id)
+}
+
 func (b *baseAuth) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -311,6 +327,8 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 		return nil, err
 	}
 
+	// The session store handles TTL-based expiry. Check the in-session expiry
+	// field as a secondary safeguard.
 	if time.Now().Unix() > session.Expiry {
 		return nil, fmt.Errorf("session expired")
 	}
@@ -319,11 +337,27 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 }
 
 func (b *baseAuth) encryptSession(session sessionData) (string, error) {
-	plaintext, err := json.Marshal(session)
+	// Generate a random session ID
+	sessionID, err := generateRandomString(32)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
+	// Store the full session data server-side
+	ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
+	if ttl <= 0 {
+		ttl = sessionDuration
+	}
+	if err := b.sessionStore.Save(context.Background(), sessionID, session, ttl); err != nil {
+		return "", fmt.Errorf("failed to save session: %w", err)
+	}
+
+	// AES-GCM encrypt only the session ID (not the full session data)
+	return b.encryptString(sessionID)
+}
+
+// encryptString encrypts a plaintext string using AES-GCM and returns a base64url-encoded ciphertext.
+func (b *baseAuth) encryptString(plaintext string) (string, error) {
 	block, err := aes.NewCipher(b.encryptionKey[:])
 	if err != nil {
 		return "", err
@@ -339,43 +373,60 @@ func (b *baseAuth) encryptSession(session sessionData) (string, error) {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
 	return base64.URLEncoding.EncodeToString(ciphertext), nil
 }
 
 func (b *baseAuth) decryptSession(encrypted string) (*sessionData, error) {
-	data, err := base64.URLEncoding.DecodeString(encrypted)
+	// Decrypt to get the session ID
+	sessionID, err := b.decryptString(encrypted)
 	if err != nil {
 		return nil, err
+	}
+
+	// Load full session data from the server-side store
+	session, err := b.sessionStore.Load(context.Background(), sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("session store load failed: %w", err)
+	}
+
+	return session, nil
+}
+
+// decryptToSessionID decrypts the cookie value to get the raw session ID.
+func (b *baseAuth) decryptToSessionID(encrypted string) (string, error) {
+	return b.decryptString(encrypted)
+}
+
+// decryptString decrypts a base64url-encoded AES-GCM ciphertext and returns the plaintext string.
+func (b *baseAuth) decryptString(encrypted string) (string, error) {
+	data, err := base64.URLEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", err
 	}
 
 	block, err := aes.NewCipher(b.encryptionKey[:])
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
+		return "", fmt.Errorf("ciphertext too short")
 	}
 
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	var session sessionData
-	if err := json.Unmarshal(plaintext, &session); err != nil {
-		return nil, err
-	}
-
-	return &session, nil
+	return string(plaintext), nil
 }
 
 // writeCallbackRedirect sends a 200 response with a meta-refresh redirect.

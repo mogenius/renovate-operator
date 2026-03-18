@@ -12,7 +12,8 @@ import (
 
 func TestGetSession_ValidWithGroups(t *testing.T) {
 	auth := &baseAuth{
-		logger: logr.Discard(),
+		logger:       logr.Discard(),
+		sessionStore: NewMemorySessionStore(),
 	}
 	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
 	if err != nil {
@@ -55,7 +56,8 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 
 func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
 	auth := &baseAuth{
-		logger: logr.Discard(),
+		logger:       logr.Discard(),
+		sessionStore: NewMemorySessionStore(),
 	}
 	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
 	if err != nil {
@@ -94,7 +96,8 @@ func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
 // TestCookieDeletionFlags verifies proper flags on cookie deletion
 func TestCookieDeletionFlags(t *testing.T) {
 	auth := &baseAuth{
-		logger: logr.Discard(),
+		logger:       logr.Discard(),
+		sessionStore: NewMemorySessionStore(),
 	}
 
 	w := httptest.NewRecorder()
@@ -152,7 +155,8 @@ func TestGetSessionFromContext_NoSession(t *testing.T) {
 
 func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 	auth := &baseAuth{
-		logger: logr.Discard(),
+		logger:       logr.Discard(),
+		sessionStore: NewMemorySessionStore(),
 	}
 	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
 	if err != nil {

@@ -41,7 +41,7 @@ type OIDCAuth struct {
 	fetchUserInfoGroups bool
 }
 
-func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDCAuth, error) {
+func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
@@ -128,7 +128,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger) (*OIDC
 	}
 
 	return &OIDCAuth{
-		baseAuth:            baseAuth{encryptionKey: key, logger: logger},
+		baseAuth:            baseAuth{encryptionKey: key, logger: logger, sessionStore: sessionStore},
 		provider:            provider,
 		oauth2Config:        oauth2Cfg,
 		verifier:            verifier,
@@ -256,6 +256,7 @@ func (o *OIDCAuth) HandleComplete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	o.deleteSession(r)
 	o.clearSessionCookie(w)
 
 	if o.endSessionURL != "" {

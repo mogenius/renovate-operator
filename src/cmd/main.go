@@ -212,6 +212,11 @@ func main() {
 			Optional: true,
 			Default:  "false",
 		},
+		{
+			Key:      "SESSION_STORE_REDIS_URL",
+			Optional: true,
+			Default:  "",
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -262,6 +267,19 @@ func main() {
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
+	// Initialize session store (Redis if configured, otherwise in-memory)
+	var sessionStore ui.SessionStore
+	redisURL := config.GetValue("SESSION_STORE_REDIS_URL")
+	if redisURL != "" {
+		store, storeErr := ui.NewRedisSessionStore(redisURL)
+		assert.NoError(storeErr, "failed to connect to Redis session store")
+		sessionStore = store
+		ctrl.Log.WithName("auth").Info("Using Redis session store")
+	} else {
+		sessionStore = ui.NewMemorySessionStore()
+		ctrl.Log.WithName("auth").Info("Using in-memory session store (sessions lost on pod restart)")
+	}
+
 	// Initialize authentication provider (OIDC or GitHub OAuth)
 	var authProvider ui.AuthProvider
 	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
@@ -285,7 +303,7 @@ func main() {
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
-		}, ctrl.Log.WithName("oidc"))
+		}, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
 		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
@@ -305,7 +323,7 @@ func main() {
 			ClientSecret:  githubClientSecret,
 			RedirectURL:   config.GetValue("GITHUB_REDIRECT_URL"),
 			SessionSecret: config.GetValue("GITHUB_SESSION_SECRET"),
-		}, ctrl.Log.WithName("github-oauth"))
+		}, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
 		ctrl.Log.WithName("auth").Info("GitHub OAuth authentication enabled")

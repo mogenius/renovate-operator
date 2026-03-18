@@ -24,7 +24,7 @@ type GitHubOAuth struct {
 	httpClient   *http.Client
 }
 
-func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger) (*GitHubOAuth, error) {
+func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger, sessionStore SessionStore) (*GitHubOAuth, error) {
 	oauth2Cfg := oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
@@ -39,7 +39,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger) (*GitHubOAuth, er
 	}
 
 	return &GitHubOAuth{
-		baseAuth:     baseAuth{encryptionKey: key, logger: logger},
+		baseAuth:     baseAuth{encryptionKey: key, logger: logger, sessionStore: sessionStore},
 		oauth2Config: oauth2Cfg,
 		httpClient:   &http.Client{},
 	}, nil
@@ -115,6 +115,7 @@ func (g *GitHubOAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if session, err := g.getSession(r); err == nil && session.AccessToken != "" {
 		g.revokeGitHubToken(session.AccessToken)
 	}
+	g.deleteSession(r)
 	g.clearSessionCookie(w)
 	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
 }
