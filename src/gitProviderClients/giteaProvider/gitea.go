@@ -1,4 +1,4 @@
-package gitprovider
+package giteaProvider
 
 import (
 	"context"
@@ -10,22 +10,22 @@ import (
 
 // GiteaClient implements GitProviderClient for the Gitea and Forgejo APIs.
 type GiteaClient struct {
-	endpoint   string
-	token      string
-	httpClient *http.Client
+	Endpoint   string
+	Token      string
+	HTTPClient *http.Client
 }
 
 func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) {
 	// Gitea/Forgejo API: GET /api/v1/repos/{owner}/{repo}
-	url := fmt.Sprintf("%s/api/v1/repos/%s", c.endpoint, project)
+	url := fmt.Sprintf("%s/api/v1/repos/%s", c.Endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return false, err
 	}

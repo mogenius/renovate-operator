@@ -1,4 +1,4 @@
-package gitprovider
+package gitlabProvider
 
 import (
 	"context"
@@ -11,21 +11,21 @@ import (
 
 // GitLabClient implements GitProviderClient for the GitLab API.
 type GitLabClient struct {
-	endpoint   string
-	token      string
-	httpClient *http.Client
+	Endpoint   string
+	Token      string
+	HTTPClient *http.Client
 }
 
 func (c *GitLabClient) IsFork(ctx context.Context, project string) (bool, error) {
 	// GitLab endpoint already includes /api/v4, project path must be URL-encoded
-	apiURL := fmt.Sprintf("%s/projects/%s", c.endpoint, url.PathEscape(project))
+	apiURL := fmt.Sprintf("%s/projects/%s", c.Endpoint, url.PathEscape(project))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return false, err
 	}

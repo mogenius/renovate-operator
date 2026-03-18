@@ -26,7 +26,7 @@ type mockRenovateJobManager struct {
 	getLogsForProjectFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
 	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error
+	reconcileProjectsFunc         func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -71,7 +71,7 @@ func (m *mockRenovateJobManager) GetRenovateJob(ctx context.Context, name, names
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error {
+func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) error {
 	if m.reconcileProjectsFunc != nil {
 		return m.reconcileProjectsFunc(ctx, jobId, projects)
 	}

@@ -7,6 +7,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,7 +37,7 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobs(ctx)
 	if err != nil {
@@ -58,7 +59,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobsFull(ctx)
 	if err != nil {
@@ -88,7 +89,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 
 	// shorten retries for tests
@@ -162,7 +163,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -224,7 +225,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -241,11 +242,12 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("inner client cannot find object: %v", err)
 	}
 	// debug: try loadRenovateJob directly using the same client
-	if _, derr := loadRenovateJob(ctx, "job1", "default", cl); derr != nil {
+	rJob, derr := loadRenovateJob(ctx, "job1", "default", cl)
+	if derr != nil {
 		t.Fatalf("debug: loadRenovateJob direct error: %v", derr)
 	}
 
-	err := mgr.ReconcileProjects(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, []string{"a", "b"})
+	err := mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
@@ -285,7 +287,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 
-	mgr := NewRenovateJobManager(cl)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
 	ctx := context.Background()
 
 	list, err := mgr.GetProjectsByStatus(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusCompleted)

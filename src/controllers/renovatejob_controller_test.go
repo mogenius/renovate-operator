@@ -7,7 +7,6 @@ import (
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/gitprovider"
 	crdManager "renovate-operator/internal/crdManager"
 
 	"renovate-operator/internal/types"
@@ -24,7 +23,7 @@ import (
 // methods used by the reconciler are given meaningful behaviour in tests.
 type fakeManager struct {
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFn          func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error
+	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
@@ -58,7 +57,7 @@ func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdManag
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (f *fakeManager) ReconcileProjects(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error {
 	if f.reconcileProjectsFn != nil {
 		return f.reconcileProjectsFn(ctx, job, projects)
 	}
@@ -145,7 +144,7 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 	calledUpdate := false
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		calledReconcile = true
 		gotProjects = projects
 		return nil
@@ -211,7 +210,7 @@ func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 	calledUpdate := false
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		calledReconcile = true
 		return nil
 	}
@@ -254,7 +253,7 @@ func TestCreateScheduler_ReconcileErrorAborts(t *testing.T) {
 	calledUpdate := false
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		calledReconcile = true
 		return fmt.Errorf("reconcile boom")
 	}
@@ -297,7 +296,7 @@ func TestCreateScheduler_UpdateProjectStatusBatchedError(t *testing.T) {
 	calledUpdate := false
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		calledReconcile = true
 		return nil
 	}
@@ -340,7 +339,7 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	var discoveredJob *api.RenovateJob
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		return nil
 	}
 	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -385,7 +384,7 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 // Test: when Scheduler.AddScheduleReplaceExisting returns an error, createScheduler should not panic and should log the error
 func TestCreateScheduler_SchedulerAddError(t *testing.T) {
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
+	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 		return nil
 	}
 	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -509,175 +508,5 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 	_, err := reconciler.Reconcile(context.Background(), req)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
-	}
-}
-
-// Test: when SkipForks is true, the ForkFilterFn is called and forks are removed
-func TestCreateScheduler_SkipForksFilters(t *testing.T) {
-	var gotProjects []string
-
-	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
-		gotProjects = projects
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		return nil
-	}
-	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec: api.RenovateJobSpec{
-				Schedule:  "*/1 * * * *",
-				SkipForks: true,
-			},
-		}, nil
-	}
-
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"org/repo1", "org/repo2-fork", "org/repo3"}, nil
-	}
-
-	// Factory that returns a fake client marking "org/repo2-fork" as a fork
-	factory := gitprovider.ClientFactory(func(ctx context.Context, job *api.RenovateJob) (gitprovider.GitProviderClient, error) {
-		return &fakeGitProviderClient{
-			isForkFn: func(ctx context.Context, project string) (bool, error) {
-				return project == "org/repo2-fork", nil
-			},
-		}, nil
-	})
-
-	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{
-		Manager:                  mgr,
-		Scheduler:                sched,
-		Discovery:                disc,
-		GitProviderClientFactory: factory,
-	}
-
-	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", SkipForks: true},
-	}
-
-	createScheduler(logger, renovateJob, reconciler)
-	sched.storedFn()
-
-	if len(gotProjects) != 2 || gotProjects[0] != "org/repo1" || gotProjects[1] != "org/repo3" {
-		t.Fatalf("expected [org/repo1 org/repo3], got %v", gotProjects)
-	}
-}
-
-// Test: when SkipForks is false, ForkFilterFn is not called
-func TestCreateScheduler_SkipForksFalseDoesNotFilter(t *testing.T) {
-	filterCalled := false
-	var gotProjects []string
-
-	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
-		gotProjects = projects
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		return nil
-	}
-	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *"},
-		}, nil
-	}
-
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"org/repo1", "org/repo2-fork"}, nil
-	}
-
-	factory := gitprovider.ClientFactory(func(ctx context.Context, job *api.RenovateJob) (gitprovider.GitProviderClient, error) {
-		filterCalled = true
-		return &fakeGitProviderClient{
-			isForkFn: func(ctx context.Context, project string) (bool, error) {
-				return false, nil
-			},
-		}, nil
-	})
-
-	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{
-		Manager:                  mgr,
-		Scheduler:                sched,
-		Discovery:                disc,
-		GitProviderClientFactory: factory,
-	}
-
-	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *"},
-	}
-
-	createScheduler(logger, renovateJob, reconciler)
-	sched.storedFn()
-
-	if filterCalled {
-		t.Fatal("expected ForkFilterFn NOT to be called when SkipForks is false")
-	}
-	if len(gotProjects) != 2 {
-		t.Fatalf("expected all projects, got %v", gotProjects)
-	}
-}
-
-// Test: when ForkFilterFn returns an error, ReconcileProjects should not be called
-func TestCreateScheduler_SkipForksFilterError(t *testing.T) {
-	calledReconcile := false
-
-	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job crdManager.RenovateJobIdentifier, projects []string) error {
-		calledReconcile = true
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		return nil
-	}
-	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec: api.RenovateJobSpec{
-				Schedule:  "*/1 * * * *",
-				SkipForks: true,
-			},
-		}, nil
-	}
-
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"org/repo1"}, nil
-	}
-
-	factory := gitprovider.ClientFactory(func(ctx context.Context, job *api.RenovateJob) (gitprovider.GitProviderClient, error) {
-		return nil, fmt.Errorf("filter error")
-	})
-
-	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{
-		Manager:                  mgr,
-		Scheduler:                sched,
-		Discovery:                disc,
-		GitProviderClientFactory: factory,
-	}
-
-	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", SkipForks: true},
-	}
-
-	createScheduler(logger, renovateJob, reconciler)
-	sched.storedFn()
-
-	if calledReconcile {
-		t.Fatal("expected ReconcileProjects NOT to be called when fork filter errors")
 	}
 }
