@@ -12,10 +12,12 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
+	"renovate-operator/gitProviderClients"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -43,7 +45,7 @@ type RenovateJobManager interface {
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
-	ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error
+	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error
 	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
 	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
@@ -55,8 +57,10 @@ type RenovateJobManager interface {
 }
 
 type renovateJobManager struct {
-	client client.Client
-	lock   *sync.RWMutex
+	client                   client.Client
+	gitProviderClientFactory gitProviderClients.GitProviderClientFactory
+	logger                   logr.Logger
+	lock                     *sync.RWMutex
 }
 
 type RenovateJobIdentifier struct {
@@ -77,10 +81,12 @@ type RenovateProjectStatus struct {
 	Duration             *string                   `json:"duration,omitempty"`
 }
 
-func NewRenovateJobManager(client client.Client) RenovateJobManager {
+func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClients.GitProviderClientFactory, logger logr.Logger) RenovateJobManager {
 	return &renovateJobManager{
-		client: client,
-		lock:   &sync.RWMutex{},
+		client:                   client,
+		gitProviderClientFactory: gitProviderClientFactory,
+		logger:                   logger,
+		lock:                     &sync.RWMutex{},
 	}
 }
 
@@ -235,15 +241,30 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	})
 }
 
-func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job RenovateJobIdentifier, projects []string) error {
+func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) error {
+
+	if renovateJob.Spec.SkipForks && r.gitProviderClientFactory != nil {
+		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
+		if err != nil {
+			r.logger.Error(err, "Failed to create git provider client for fork filtering")
+		} else {
+			newProjects, err := gitProviderClients.FilterForks(ctx, providerClient, r.logger, projects)
+			if err != nil {
+				r.logger.Error(err, "Failed to filter forked repositories")
+			} else {
+				r.logger.V(2).Info("Filtered forked repositories", "remaining", len(newProjects))
+				projects = newProjects
+			}
+		}
+	}
+
 	defer r.globalManagerLock(false)()
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
 		if err != nil {
 			return err
 		}
-
 		// Build a set of current CRD projects
 		crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
 		for i, crdProject := range renovateJob.Status.Projects {
@@ -260,7 +281,7 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, job Renovate
 		for projectName := range crdProjectSet {
 			if _, exists := newProjectSet[projectName]; !exists {
 				// Project is being removed, clean up its metrics
-				metricStore.DeleteProjectMetrics(job.Namespace, job.Name, projectName)
+				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
 			}
 		}
 

@@ -1,4 +1,4 @@
-package gitprovider
+package bitbucketProvider
 
 import (
 	"context"
@@ -10,22 +10,22 @@ import (
 
 // BitbucketClient implements GitProviderClient for the Bitbucket Cloud API.
 type BitbucketClient struct {
-	endpoint   string
-	token      string
-	httpClient *http.Client
+	Endpoint   string
+	Token      string
+	HTTPClient *http.Client
 }
 
 func (c *BitbucketClient) IsFork(ctx context.Context, project string) (bool, error) {
 	// Bitbucket Cloud API: GET /2.0/repositories/{workspace}/{repo_slug}
-	url := fmt.Sprintf("%s/2.0/repositories/%s", c.endpoint, project)
+	url := fmt.Sprintf("%s/2.0/repositories/%s", c.Endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return false, err
 	}

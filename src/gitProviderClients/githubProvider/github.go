@@ -1,4 +1,4 @@
-package gitprovider
+package githubProvider
 
 import (
 	"context"
@@ -10,21 +10,21 @@ import (
 
 // GitHubClient implements GitProviderClient for the GitHub API.
 type GitHubClient struct {
-	endpoint   string
-	token      string
-	httpClient *http.Client
+	Endpoint   string
+	Token      string
+	HTTPClient *http.Client
 }
 
 func (c *GitHubClient) IsFork(ctx context.Context, project string) (bool, error) {
-	url := fmt.Sprintf("%s/repos/%s", c.endpoint, project)
+	url := fmt.Sprintf("%s/repos/%s", c.Endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return false, err
 	}

@@ -4,14 +4,13 @@ import (
 	context "context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/forgejo"
-	"renovate-operator/internal/gitprovider"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/scheduler"
-	"net/url"
 	"strings"
 	"time"
 
@@ -34,12 +33,11 @@ Reconciler for RenovateJob resources
 Watching for create/update/delete events and managing the schedules accordingly
 */
 type RenovateJobReconciler struct {
-	Discovery                renovate.DiscoveryAgent
-	Manager                  crdManager.RenovateJobManager
-	Scheduler                scheduler.Scheduler
-	K8sClient                client.Client
-	GitProviderClientFactory gitprovider.ClientFactory
-	webhookSyncers           map[string]*webhookSyncerEntry
+	Discovery      renovate.DiscoveryAgent
+	Manager        crdManager.RenovateJobManager
+	Scheduler      scheduler.Scheduler
+	K8sClient      client.Client
+	webhookSyncers map[string]*webhookSyncerEntry
 }
 
 type webhookSyncerEntry struct {
@@ -92,25 +90,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		}
 		logger.V(2).Info("Successfully discovered projects", "count", len(projects))
 
-		if currentJob.Spec.SkipForks && reconciler.GitProviderClientFactory != nil {
-			providerClient, err := reconciler.GitProviderClientFactory(ctx, currentJob)
-			if err != nil {
-				logger.Error(err, "Failed to create git provider client for fork filtering")
-				return
-			}
-			projects, err = gitprovider.FilterForks(ctx, providerClient, logger, projects)
-			if err != nil {
-				logger.Error(err, "Failed to filter forked repositories")
-				return
-			}
-			logger.V(2).Info("Filtered forked repositories", "remaining", len(projects))
-		}
-
-		jobIdentifier := crdManager.RenovateJobIdentifier{
-			Name:      jobName,
-			Namespace: jobNamespace,
-		}
-		err = reconciler.Manager.ReconcileProjects(ctx, jobIdentifier, projects)
+		err = reconciler.Manager.ReconcileProjects(ctx, currentJob, projects)
 		if err != nil {
 			logger.Error(err, "failed to reconcile projects")
 			return
@@ -120,7 +100,10 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
-		err = reconciler.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobIdentifier, &types.RenovateStatusUpdate{
+		err = reconciler.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, crdManager.RenovateJobIdentifier{
+			Name:      jobName,
+			Namespace: jobNamespace,
+		}, &types.RenovateStatusUpdate{
 			Status: api.JobStatusScheduled,
 		})
 

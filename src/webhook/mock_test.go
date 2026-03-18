@@ -54,7 +54,7 @@ func (m *mockWebhookManager) GetLogsForProject(ctx context.Context, jobId crdman
 func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil
 }
-func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error {
+func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) error {
 	return nil
 }
 func (m *mockWebhookManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *string) error {
