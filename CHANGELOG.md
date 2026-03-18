@@ -1,3 +1,10 @@
+## [3.7.3](https://github.com/mogenius/renovate-operator/compare/3.7.2...3.7.3) (2026-03-18)
+
+
+### Bug Fixes
+
+* **dockerfile:** use correct `AS` casing ([98d0598](https://github.com/mogenius/renovate-operator/commit/98d0598600defa52cf7d3d6797bed83818bd2409))
+
 ## [3.7.2](https://github.com/mogenius/renovate-operator/compare/3.7.1...3.7.2) (2026-03-18)
 
 
