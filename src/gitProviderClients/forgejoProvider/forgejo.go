@@ -1,4 +1,4 @@
-package giteaProvider
+package forgejoProvider
 
 import (
 	"context"
@@ -9,19 +9,20 @@ import (
 	"strings"
 )
 
-// GiteaClient implements GitProviderClient for the Gitea and Forgejo APIs.
-type GiteaClient struct {
+// ForgejoClient implements GitProviderClient for the Forgejo API.
+type ForgejoClient struct {
 	Endpoint   string
 	Token      string
 	HTTPClient *http.Client
 }
 
-func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) {
+func (c *ForgejoClient) IsFork(ctx context.Context, project string) (bool, error) {
+	// Forgejo API: GET /api/v1/repos/{owner}/{repo}
+
 	//trim /api/v1 if it is included in the endpoint, to avoid double /api/v1 in the URL
 	endpoint := strings.TrimSuffix(c.Endpoint, "/")
 	endpoint = strings.TrimSuffix(endpoint, "/api/v1")
 
-	// Gitea/Forgejo API: GET /api/v1/repos/{owner}/{repo}
 	url := fmt.Sprintf("%s/api/v1/repos/%s", endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -38,14 +39,14 @@ func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("gitea API returned status %d for %s: %s", resp.StatusCode, project, string(body))
+		return false, fmt.Errorf("forgejo API returned status %d for %s: %s", resp.StatusCode, project, string(body))
 	}
 
 	var repo struct {
 		Fork bool `json:"fork"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		return false, fmt.Errorf("failed to decode gitea API response for %s: %w", project, err)
+		return false, fmt.Errorf("failed to decode forgejo API response for %s: %w", project, err)
 	}
 	return repo.Fork, nil
 }
