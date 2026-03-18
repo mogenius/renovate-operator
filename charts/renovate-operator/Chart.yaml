@@ -5,21 +5,12 @@ type: application
 version: 3.8.0
 appVersion: 3.8.0
 home: https://mogenius.com
-icon: https://app.mogenius.com/assets/logos/logo-mogenius-signet-neg.svg
+icon: https://avatars.githubusercontent.com/u/92862356
 sources:
   - https://github.com/mogenius/renovate-operator
   - https://helm.mogenius.com/public
   - oci://ghcr.io/mogenius/helm-charts/renovate-operator
 maintainers:
-  - email: ruediger@mogenius.com
-    name: Rüdiger Küpper @mogenius
-    url: https://mogenius.com
   - email: lukas@mogenius.com
     name: Lukas Hankeln @mogenius
-    url: https://mogenius.com
-  - email: bene@mogenius.com
-    name: Benedikt Iltisberger @mogenius
-    url: https://mogenius.com
-  - email: behrang@mogenius.com
-    name: Behrang Alavi @mogenius
     url: https://mogenius.com
