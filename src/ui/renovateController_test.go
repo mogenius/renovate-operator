@@ -522,15 +522,15 @@ func TestFilterRenovateJobsByGroups(t *testing.T) {
 			wantJobs:    []string{},
 		},
 		{
-			name: "job without allowedGroups hidden from all users",
+			name: "job without allowedGroups visible to all authenticated users",
 			jobs: []api.RenovateJob{
 				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
 				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-a"}},
-			wantLen:     0,
-			wantJobs:    []string{},
+			wantLen:     2,
+			wantJobs:    []string{"job1", "job2"},
 		},
 		{
 			name: "user with multiple groups sees all matching jobs",
@@ -623,15 +623,15 @@ func TestFilterRenovateJobsByGroups_WithDefaults(t *testing.T) {
 			wantJobs:             []string{},
 		},
 		{
-			name: "job without allowedGroups and no defaults - hidden",
+			name: "job without allowedGroups and no defaults - visible to all authenticated users",
 			jobs: []api.RenovateJob{
 				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
 			},
 			authEnabled:          true,
 			session:              &sessionData{Groups: []string{"team-a"}},
 			defaultAllowedGroups: nil,
-			wantLen:              0,
-			wantJobs:             []string{},
+			wantLen:              1,
+			wantJobs:             []string{"job1"},
 		},
 		{
 			name: "multiple defaults - user has one",
