@@ -1,10 +1,11 @@
-package gitProviderClients
+package gitProviderClientFactory
 
 import (
 	"context"
 	"fmt"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/gitProviderClients"
 	"renovate-operator/gitProviderClients/bitbucketProvider"
 	"renovate-operator/gitProviderClients/forgejoProvider"
 	"renovate-operator/gitProviderClients/giteaProvider"
@@ -20,7 +21,7 @@ import (
 type GitProviderClientFactory interface {
 	// NewClient creates a GitProviderClient for the given RenovateJob by reading
 	// platform credentials from the referenced Kubernetes secret.
-	NewClient(ctx context.Context, job *api.RenovateJob) (GitProviderClient, error)
+	NewClient(ctx context.Context, job *api.RenovateJob) (gitProviderClients.GitProviderClient, error)
 }
 
 type gitProviderClientFactory struct {
@@ -34,7 +35,7 @@ func NewGitProviderClientFactory(c client.Client) GitProviderClientFactory {
 // NewClientFactory creates a ClientFactory that reads platform credentials from
 // the Kubernetes secret referenced by the RenovateJob and returns the appropriate
 // platform client.
-func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.RenovateJob) (GitProviderClient, error) {
+func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.RenovateJob) (gitProviderClients.GitProviderClient, error) {
 
 	platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
 	if platform == "" {

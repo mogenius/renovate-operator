@@ -13,6 +13,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
 	"renovate-operator/gitProviderClients"
+	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
@@ -58,7 +59,7 @@ type RenovateJobManager interface {
 
 type renovateJobManager struct {
 	client                   client.Client
-	gitProviderClientFactory gitProviderClients.GitProviderClientFactory
+	gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory
 	logger                   logr.Logger
 	lock                     *sync.RWMutex
 }
@@ -81,7 +82,7 @@ type RenovateProjectStatus struct {
 	Duration             *string                   `json:"duration,omitempty"`
 }
 
-func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClients.GitProviderClientFactory, logger logr.Logger) RenovateJobManager {
+func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger) RenovateJobManager {
 	return &renovateJobManager{
 		client:                   client,
 		gitProviderClientFactory: gitProviderClientFactory,

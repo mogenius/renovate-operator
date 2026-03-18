@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"renovate-operator/gitProviderClients"
 	"strings"
 	"sync"
 
@@ -11,7 +12,7 @@ import (
 
 // WebhookSyncer manages webhook lifecycle on Forgejo repos tagged with a specific topic.
 type WebhookSyncer struct {
-	client       Client
+	client       gitProviderClients.GitProviderClient
 	webhookURL   string
 	authToken    string
 	events       []string
@@ -22,7 +23,7 @@ type WebhookSyncer struct {
 }
 
 // NewWebhookSyncer creates a new WebhookSyncer.
-func NewWebhookSyncer(client Client, webhookURL, authToken, topic string, events []string, logger logr.Logger) *WebhookSyncer {
+func NewWebhookSyncer(client gitProviderClients.GitProviderClient, webhookURL, authToken, topic string, events []string, logger logr.Logger) *WebhookSyncer {
 	if len(events) == 0 {
 		events = []string{"issues", "pull_request"}
 	}
@@ -69,7 +70,7 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 
 	// Step 2: Partition by admin permission
 	topicRepos := make(map[string]bool, len(repos))
-	adminRepos := make(map[string]Repository)
+	adminRepos := make(map[string]gitProviderClients.Repository)
 	for _, repo := range repos {
 		topicRepos[repo.FullName] = true
 		if repo.Permissions != nil && repo.Permissions.Admin {
@@ -165,14 +166,14 @@ func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName
 	}
 
 	// Create the webhook
-	cfg := WebhookConfig{
+	cfg := gitProviderClients.WebhookConfig{
 		URL:         s.webhookURL,
 		ContentType: "json",
 	}
 	if s.authToken != "" {
 		cfg.AuthorizationHeader = "Bearer " + s.authToken
 	}
-	opts := CreateWebhookOptions{
+	opts := gitProviderClients.CreateWebhookOptions{
 		Type:   "forgejo",
 		Config: cfg,
 		Events: s.events,

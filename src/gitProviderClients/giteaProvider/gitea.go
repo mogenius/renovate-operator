@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"renovate-operator/gitProviderClients"
 	"strings"
 )
 
@@ -48,4 +49,20 @@ func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) 
 		return false, fmt.Errorf("failed to decode gitea API response for %s: %w", project, err)
 	}
 	return repo.Fork, nil
+}
+
+func (c *GiteaClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
+	return nil, fmt.Errorf("searching repositories by topic is not supported by Gitea API")
+}
+
+func (c *GiteaClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("listing webhooks is not supported by Gitea API")
+}
+
+func (c *GiteaClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("creating webhooks is not supported by Gitea API")
+}
+
+func (c *GiteaClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
+	return fmt.Errorf("deleting webhooks is not supported by Gitea API")
 }

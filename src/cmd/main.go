@@ -17,7 +17,7 @@ import (
 	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/controllers"
-	"renovate-operator/gitProviderClients"
+	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
@@ -250,7 +250,7 @@ func main() {
 	health := health.NewHealthCheck()
 	ctx := ctrl.SetupSignalHandler()
 
-	gitProviderClientFactory := gitProviderClients.NewGitProviderClientFactory(mgr.GetClient())
+	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
 
 	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"))
 

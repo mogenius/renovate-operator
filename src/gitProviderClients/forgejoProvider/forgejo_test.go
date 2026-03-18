@@ -1,10 +1,11 @@
-package forgejo
+package forgejoProvider
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"renovate-operator/gitProviderClients"
 	"testing"
 )
 
@@ -23,15 +24,15 @@ func TestSearchReposByTopic(t *testing.T) {
 
 		page := r.URL.Query().Get("page")
 		if page == "2" {
-			_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": {}})
+			_ = json.NewEncoder(w).Encode(map[string][]gitProviderClients.Repository{"data": {}})
 			return
 		}
 
-		repos := []Repository{
-			{ID: 1, FullName: "org/repo1", Name: "repo1", Permissions: &RepositoryPermissions{Admin: true}},
-			{ID: 2, FullName: "org/repo2", Name: "repo2", Permissions: &RepositoryPermissions{Admin: false}},
+		repos := []gitProviderClients.Repository{
+			{ID: 1, FullName: "org/repo1", Name: "repo1", Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+			{ID: 2, FullName: "org/repo2", Name: "repo2", Permissions: &gitProviderClients.RepositoryPermissions{Admin: false}},
 		}
-		_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+		_ = json.NewEncoder(w).Encode(map[string][]gitProviderClients.Repository{"data": repos})
 	})
 
 	srv := httptest.NewServer(handler)
@@ -59,16 +60,16 @@ func TestSearchReposByTopic_Pagination(t *testing.T) {
 
 		// Return 50 repos on page 1 to trigger pagination, empty on page 2
 		if page == "1" {
-			repos := make([]Repository, 50)
+			repos := make([]gitProviderClients.Repository, 50)
 			for i := range repos {
-				repos[i] = Repository{ID: int64(i), FullName: "org/repo" + r.URL.Query().Get("page") + "-" + string(rune('a'+i))}
+				repos[i] = gitProviderClients.Repository{ID: int64(i), FullName: "org/repo" + r.URL.Query().Get("page") + "-" + string(rune('a'+i))}
 			}
-			_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+			_ = json.NewEncoder(w).Encode(map[string][]gitProviderClients.Repository{"data": repos})
 			return
 		}
 
-		repos := []Repository{{ID: 100, FullName: "org/last-repo"}}
-		_ = json.NewEncoder(w).Encode(map[string][]Repository{"data": repos})
+		repos := []gitProviderClients.Repository{{ID: 100, FullName: "org/last-repo"}}
+		_ = json.NewEncoder(w).Encode(map[string][]gitProviderClients.Repository{"data": repos})
 	})
 
 	srv := httptest.NewServer(handler)
@@ -90,8 +91,8 @@ func TestSearchReposByTopic_Pagination(t *testing.T) {
 func TestListRepoWebhooks(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/api/v1/repos/org/repo1/hooks", func(w http.ResponseWriter, r *http.Request) {
-		hooks := []Webhook{
-			{ID: 1, Config: WebhookConfig{URL: "https://example.com/webhook"}},
+		hooks := []gitProviderClients.Webhook{
+			{ID: 1, Config: gitProviderClients.WebhookConfig{URL: "https://example.com/webhook"}},
 		}
 		_ = json.NewEncoder(w).Encode(hooks)
 	})
@@ -119,23 +120,23 @@ func TestCreateRepoWebhook(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 
-		var opts CreateWebhookOptions
+		var opts gitProviderClients.CreateWebhookOptions
 		_ = json.NewDecoder(r.Body).Decode(&opts)
 		if opts.Config.URL != "https://example.com/webhook" {
 			t.Errorf("expected webhook URL, got %s", opts.Config.URL)
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(Webhook{ID: 42, Config: opts.Config})
+		_ = json.NewEncoder(w).Encode(gitProviderClients.Webhook{ID: 42, Config: opts.Config})
 	})
 
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "test-token")
-	hook, err := c.CreateRepoWebhook(context.Background(), "org", "repo1", CreateWebhookOptions{
+	hook, err := c.CreateRepoWebhook(context.Background(), "org", "repo1", gitProviderClients.CreateWebhookOptions{
 		Type:   "forgejo",
-		Config: WebhookConfig{URL: "https://example.com/webhook", ContentType: "json"},
+		Config: gitProviderClients.WebhookConfig{URL: "https://example.com/webhook", ContentType: "json"},
 		Events: []string{"push"},
 		Active: true,
 	})
