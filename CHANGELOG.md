@@ -1,3 +1,10 @@
+## [3.7.1](https://github.com/mogenius/renovate-operator/compare/3.7.0...3.7.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* if there are no groups provided the job counts as being authorized ([5ab8a00](https://github.com/mogenius/renovate-operator/commit/5ab8a0080ea04db85d5d233d916edf3ae5f23717))
+
 # [3.7.0](https://github.com/mogenius/renovate-operator/compare/3.6.1...3.7.0) (2026-03-17)
 
 
