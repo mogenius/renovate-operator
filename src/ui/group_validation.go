@@ -16,7 +16,7 @@ const (
 var (
 	// validGroupNamePattern allows alphanumeric, dash, underscore, @, dot, forward slash, comma, equals, space, colon
 	// This covers most OIDC providers: Azure AD (including DN format and display names), Okta, Google, Keycloak, Forgejo, etc.
-	validGroupNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._@/,= -:]+$`)
+	validGroupNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._@/,= :\-]+$`)
 )
 
 // validateGroupName performs basic format validation on a single group name.
@@ -31,7 +31,7 @@ func validateGroupName(name string) error {
 	}
 
 	if !validGroupNamePattern.MatchString(name) {
-		return fmt.Errorf("invalid characters in group name (allowed: a-z A-Z 0-9 . _ @ / , = - space)")
+		return fmt.Errorf("invalid characters in group name (allowed: a-z A-Z 0-9 . _ @ / , = - : space)")
 	}
 
 	return nil
