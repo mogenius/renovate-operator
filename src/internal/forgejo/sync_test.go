@@ -3,43 +3,48 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"renovate-operator/gitProviderClients"
 	"testing"
 
 	"github.com/go-logr/logr"
 )
 
 type mockClient struct {
-	repos    []Repository
-	hooks    map[string][]Webhook // "owner/repo" -> hooks
-	created  map[string][]CreateWebhookOptions
-	deleted  map[string][]int64
+	repos      []gitProviderClients.Repository
+	hooks      map[string][]gitProviderClients.Webhook // "owner/repo" -> hooks
+	created    map[string][]gitProviderClients.CreateWebhookOptions
+	deleted    map[string][]int64
 	nextHookID int64
-	searchErr error
-	listErr   map[string]error
-	createErr map[string]error
-	deleteErr map[string]error
+	searchErr  error
+	listErr    map[string]error
+	createErr  map[string]error
+	deleteErr  map[string]error
 }
 
 func newMockClient() *mockClient {
 	return &mockClient{
-		hooks:   make(map[string][]Webhook),
-		created: make(map[string][]CreateWebhookOptions),
-		deleted: make(map[string][]int64),
-		listErr: make(map[string]error),
-		createErr: make(map[string]error),
-		deleteErr: make(map[string]error),
+		hooks:      make(map[string][]gitProviderClients.Webhook),
+		created:    make(map[string][]gitProviderClients.CreateWebhookOptions),
+		deleted:    make(map[string][]int64),
+		listErr:    make(map[string]error),
+		createErr:  make(map[string]error),
+		deleteErr:  make(map[string]error),
 		nextHookID: 100,
 	}
 }
 
-func (m *mockClient) SearchReposByTopic(_ context.Context, _ string) ([]Repository, error) {
+func (m *mockClient) IsFork(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockClient) SearchReposByTopic(_ context.Context, _ string) ([]gitProviderClients.Repository, error) {
 	if m.searchErr != nil {
 		return nil, m.searchErr
 	}
 	return m.repos, nil
 }
 
-func (m *mockClient) ListRepoWebhooks(_ context.Context, owner, repo string) ([]Webhook, error) {
+func (m *mockClient) ListRepoWebhooks(_ context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
 	key := owner + "/" + repo
 	if err, ok := m.listErr[key]; ok {
 		return nil, err
@@ -47,14 +52,14 @@ func (m *mockClient) ListRepoWebhooks(_ context.Context, owner, repo string) ([]
 	return m.hooks[key], nil
 }
 
-func (m *mockClient) CreateRepoWebhook(_ context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error) {
+func (m *mockClient) CreateRepoWebhook(_ context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
 	key := owner + "/" + repo
 	if err, ok := m.createErr[key]; ok {
 		return nil, err
 	}
 	m.created[key] = append(m.created[key], opts)
 	m.nextHookID++
-	hook := &Webhook{ID: m.nextHookID, Config: opts.Config, Events: opts.Events}
+	hook := &gitProviderClients.Webhook{ID: m.nextHookID, Config: opts.Config, Events: opts.Events}
 	m.hooks[key] = append(m.hooks[key], *hook)
 	return hook, nil
 }
@@ -70,9 +75,13 @@ func (m *mockClient) DeleteRepoWebhook(_ context.Context, owner, repo string, ho
 
 func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "renovate", nil, logr.Discard())
@@ -105,11 +114,13 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 
 func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
-	mc.hooks["org/repo1"] = []Webhook{
-		{ID: 99, Config: WebhookConfig{URL: "https://webhook.example.com/hook"}},
+	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
+		{ID: 99, Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
@@ -131,9 +142,13 @@ func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 
 func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
@@ -150,11 +165,13 @@ func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
 	}
 
 	// Second run: repo2 loses the topic
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
-	mc.hooks["org/repo1"] = []Webhook{
-		{ID: syncer.managedRepos["org/repo1"], Config: WebhookConfig{URL: "https://webhook.example.com/hook"}},
+	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
+		{ID: syncer.managedRepos["org/repo1"], Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
 	}
 
 	_, err = syncer.RunOnce(context.Background())
@@ -175,8 +192,10 @@ func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
 
 func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
@@ -191,8 +210,10 @@ func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
 	}
 
 	// Second run: repo still has topic but we lost admin
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: false}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: false}},
 	}
 
 	_, err = syncer.RunOnce(context.Background())
@@ -213,10 +234,16 @@ func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
 
 func TestSyncSkipsReposWithoutAdminPermission(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/admin-repo", Name: "admin-repo", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/no-admin", Name: "no-admin", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: false}},
-		{ID: 3, FullName: "org/nil-perms", Name: "nil-perms", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: nil},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/admin-repo", Name: "admin-repo", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+		{ID: 2, FullName: "org/no-admin", Name: "no-admin", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: false}},
+		{ID: 3, FullName: "org/nil-perms", Name: "nil-perms", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: nil},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
@@ -239,9 +266,13 @@ func TestSyncSkipsReposWithoutAdminPermission(t *testing.T) {
 
 func TestSyncHandlesAPIErrorsWithoutAborting(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 	mc.listErr["org/repo1"] = fmt.Errorf("connection refused")
 
@@ -260,12 +291,14 @@ func TestSyncHandlesAPIErrorsWithoutAborting(t *testing.T) {
 
 func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 	// Simulate existing webhook (created before syncer existed)
-	mc.hooks["org/repo1"] = []Webhook{
-		{ID: 55, Config: WebhookConfig{URL: "https://webhook.example.com/hook"}},
+	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
+		{ID: 55, Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
@@ -298,8 +331,10 @@ func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
 
 func TestSyncDefaultEvents(t *testing.T) {
 	mc := newMockClient()
-	mc.repos = []Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct{ Login string `json:"login"` }{Login: "org"}, Permissions: &RepositoryPermissions{Admin: true}},
+	mc.repos = []gitProviderClients.Repository{
+		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
+			Login string `json:"login"`
+		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
 	}
 
 	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())

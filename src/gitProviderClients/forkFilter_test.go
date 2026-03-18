@@ -84,6 +84,22 @@ func (m *mockGitProviderClient) IsFork(ctx context.Context, project string) (boo
 	return m.isForkFunc(ctx, project)
 }
 
+func (c *mockGitProviderClient) SearchReposByTopic(ctx context.Context, topic string) ([]Repository, error) {
+	return nil, fmt.Errorf("searching repositories by topic is not supported by GitHub API")
+}
+
+func (c *mockGitProviderClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]Webhook, error) {
+	return nil, fmt.Errorf("listing webhooks is not supported by GitHub API")
+}
+
+func (c *mockGitProviderClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error) {
+	return nil, fmt.Errorf("creating webhooks is not supported by GitHub API")
+}
+
+func (c *mockGitProviderClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
+	return fmt.Errorf("deleting webhooks is not supported by GitHub API")
+}
+
 func equalSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

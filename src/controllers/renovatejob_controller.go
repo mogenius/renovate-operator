@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/gitProviderClients/forgejoProvider"
 	"renovate-operator/internal/forgejo"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
@@ -197,7 +198,7 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 		return
 	}
 
-	forgejoClient := forgejo.NewClient(providerEndpoint, forgejoToken)
+	forgejoClient := forgejoProvider.NewClient(providerEndpoint, forgejoToken)
 	syncer := forgejo.NewWebhookSyncer(
 		forgejoClient,
 		webhookURL,

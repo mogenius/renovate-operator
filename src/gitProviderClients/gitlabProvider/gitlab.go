@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"renovate-operator/gitProviderClients"
 )
 
 // GitLabClient implements GitProviderClient for the GitLab API.
@@ -43,4 +44,20 @@ func (c *GitLabClient) IsFork(ctx context.Context, project string) (bool, error)
 		return false, fmt.Errorf("failed to decode GitLab API response for %s: %w", project, err)
 	}
 	return proj.ForkedFromProject != nil, nil
+}
+
+func (c *GitLabClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
+	return nil, fmt.Errorf("searching repositories by topic is not supported by GitLab API")
+}
+
+func (c *GitLabClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("listing webhooks is not supported by GitLab API")
+}
+
+func (c *GitLabClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("creating webhooks is not supported by GitLab API")
+}
+
+func (c *GitLabClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
+	return fmt.Errorf("deleting webhooks is not supported by GitLab API")
 }

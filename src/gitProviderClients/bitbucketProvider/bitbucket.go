@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"renovate-operator/gitProviderClients"
 )
 
 // BitbucketClient implements GitProviderClient for the Bitbucket Cloud API.
@@ -43,4 +44,20 @@ func (c *BitbucketClient) IsFork(ctx context.Context, project string) (bool, err
 		return false, fmt.Errorf("failed to decode bitbucket API response for %s: %w", project, err)
 	}
 	return repo.Parent != nil, nil
+}
+
+func (c *BitbucketClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
+	return nil, fmt.Errorf("searching repositories by topic is not supported by Bitbucket API")
+}
+
+func (c *BitbucketClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("listing webhooks is not supported by Bitbucket API")
+}
+
+func (c *BitbucketClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("creating webhooks is not supported by Bitbucket API")
+}
+
+func (c *BitbucketClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
+	return fmt.Errorf("deleting webhooks is not supported by Bitbucket API")
 }
