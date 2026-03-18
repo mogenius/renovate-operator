@@ -1,3 +1,10 @@
+## [3.7.2](https://github.com/mogenius/renovate-operator/compare/3.7.1...3.7.2) (2026-03-18)
+
+
+### Bug Fixes
+
+* allow colon in group names ([fc8f9f0](https://github.com/mogenius/renovate-operator/commit/fc8f9f024d45f3ffe6af94306340654d51b1952b))
+
 ## [3.7.1](https://github.com/mogenius/renovate-operator/compare/3.7.0...3.7.1) (2026-03-18)
 
 
