@@ -6,6 +6,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/gitProviderClients/bitbucketProvider"
+	"renovate-operator/gitProviderClients/forgejoProvider"
 	"renovate-operator/gitProviderClients/giteaProvider"
 	"renovate-operator/gitProviderClients/githubProvider"
 	"renovate-operator/gitProviderClients/gitlabProvider"
@@ -52,8 +53,10 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return &githubProvider.GitHubClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	case "gitlab":
 		return &gitlabProvider.GitLabClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
-	case "gitea", "forgejo":
+	case "gitea":
 		return &giteaProvider.GiteaClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
+	case "forgejo":
+		return &forgejoProvider.ForgejoClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	case "bitbucket":
 		return &bitbucketProvider.BitbucketClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	default:
