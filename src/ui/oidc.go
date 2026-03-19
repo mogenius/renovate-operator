@@ -20,7 +20,6 @@ type OIDCConfig struct {
 	ClientID            string
 	ClientSecret        string
 	RedirectURL         string
-	SessionSecret       string
 	InsecureSkipVerify  bool
 	LogoutURL           string
 	AllowedGroupPrefix  string
@@ -41,7 +40,7 @@ type OIDCAuth struct {
 	fetchUserInfoGroups bool
 }
 
-func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
+func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
@@ -107,7 +106,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger, sessio
 		postLogoutRedirect = postLogoutRedirect[:idx]
 	}
 
-	base, err := newBaseAuth(cfg.SessionSecret, logger, sessionStore)
+	base, err := newBaseAuth(encryptionKey, logger, sessionStore)
 	if err != nil {
 		return nil, err
 	}

@@ -12,10 +12,9 @@ import (
 )
 
 type GitHubOAuthConfig struct {
-	ClientID      string
-	ClientSecret  string
-	RedirectURL   string
-	SessionSecret string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
 type GitHubOAuth struct {
@@ -24,7 +23,7 @@ type GitHubOAuth struct {
 	httpClient   *http.Client
 }
 
-func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger, sessionStore SessionStore) (*GitHubOAuth, error) {
+func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*GitHubOAuth, error) {
 	oauth2Cfg := oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
@@ -33,7 +32,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger, sessionStore Sess
 		Scopes:       []string{"read:user", "user:email"},
 	}
 
-	base, err := newBaseAuth(cfg.SessionSecret, logger, sessionStore)
+	base, err := newBaseAuth(encryptionKey, logger, sessionStore)
 	if err != nil {
 		return nil, err
 	}

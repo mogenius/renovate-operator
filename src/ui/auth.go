@@ -79,14 +79,10 @@ func ComputeEncryptionKey(secret string) ([32]byte, error) {
 	return key, nil
 }
 
-// newBaseAuth initialises the shared auth fields including the pre-computed
-// AES-GCM cipher derived from sessionSecret.
-func newBaseAuth(sessionSecret string, logger logr.Logger, store SessionStore) (baseAuth, error) {
-	key, err := ComputeEncryptionKey(sessionSecret)
-	if err != nil {
-		return baseAuth{}, err
-	}
-
+// newBaseAuth initialises the shared auth fields using a pre-computed
+// 32-byte AES key. The caller is responsible for deriving the key via
+// ComputeEncryptionKey so that the key is computed exactly once.
+func newBaseAuth(key [32]byte, logger logr.Logger, store SessionStore) (baseAuth, error) {
 	gcm, err := newGCM(key)
 	if err != nil {
 		return baseAuth{}, err
@@ -254,17 +250,34 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the encrypted token can be decrypted
-	session, err := b.decryptSession(r.Context(), sessionValue)
+	sessionID, err := b.decryptString(sessionValue)
 	if err != nil {
 		b.logger.Error(err, "failed to decrypt session token in /auth/complete")
 		http.Error(w, "invalid session token", http.StatusBadRequest)
 		return
 	}
 
+	// Verify the session exists in the store
+	session, err := b.sessionStore.Load(r.Context(), sessionID)
+	if err != nil {
+		b.logger.Error(err, "session not found in store during /auth/complete")
+		http.Error(w, "invalid session token", http.StatusBadRequest)
+		return
+	}
+
+	// Re-encrypt to get a fresh ciphertext (different nonce) so that
+	// the URL-captured token cannot be replayed as a cookie value.
+	freshCookie, err := b.encryptString(sessionID)
+	if err != nil {
+		b.logger.Error(err, "failed to re-encrypt session ID")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	secure := isHTTPS(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    sessionValue,
+		Value:    freshCookie,
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
@@ -282,7 +295,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	b.logger.Info("session cookie set via /auth/complete", "email", session.Email, "name", session.Name, "secure", secure, "cookieLen", len(sessionValue))
+	b.logger.Info("session cookie set via /auth/complete", "email", session.Email, "name", session.Name, "secure", secure, "cookieLen", len(freshCookie))
 
 	err = writeCallbackRedirect(w, "/")
 	if err != nil {

@@ -10,8 +10,17 @@ import (
 	"github.com/go-logr/logr"
 )
 
+func testEncryptionKey(t *testing.T) [32]byte {
+	t.Helper()
+	key, err := ComputeEncryptionKey("test-secret-key-with-32-chars!!!")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+	return key
+}
+
 func TestGetSession_ValidWithGroups(t *testing.T) {
-	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
@@ -52,7 +61,7 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 }
 
 func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
-	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
@@ -148,7 +157,7 @@ func TestGetSessionFromContext_NoSession(t *testing.T) {
 }
 
 func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
-	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
 	}

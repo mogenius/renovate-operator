@@ -334,14 +334,13 @@ func main() {
 			ClientID:            oidcClientID,
 			ClientSecret:        oidcClientSecret,
 			RedirectURL:         config.GetValue("OIDC_REDIRECT_URL"),
-			SessionSecret:       config.GetValue("OIDC_SESSION_SECRET"),
 			InsecureSkipVerify:  config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
 			LogoutURL:           config.GetValue("OIDC_LOGOUT_URL"),
 			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
-		}, ctrl.Log.WithName("oidc"), sessionStore)
+		}, encryptionKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
 		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
@@ -357,11 +356,10 @@ func main() {
 		}
 	} else if githubClientID != "" && githubClientSecret != "" {
 		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
-			ClientID:      githubClientID,
-			ClientSecret:  githubClientSecret,
-			RedirectURL:   config.GetValue("GITHUB_REDIRECT_URL"),
-			SessionSecret: config.GetValue("GITHUB_SESSION_SECRET"),
-		}, ctrl.Log.WithName("github-oauth"), sessionStore)
+			ClientID:     githubClientID,
+			ClientSecret: githubClientSecret,
+			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
+		}, encryptionKey, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
 		ctrl.Log.WithName("auth").Info("GitHub OAuth authentication enabled")

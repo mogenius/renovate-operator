@@ -167,7 +167,11 @@ func TestMemoryStore_NotFound(t *testing.T) {
 }
 
 func TestCookieSize_WithManyGroups(t *testing.T) {
-	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
+	key, keyErr := ComputeEncryptionKey("test-secret-key-with-32-chars!!!")
+	if keyErr != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", keyErr)
+	}
+	base, err := newBaseAuth(key, logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
