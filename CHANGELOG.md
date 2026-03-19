@@ -1,3 +1,10 @@
+## [3.8.2](https://github.com/mogenius/renovate-operator/compare/3.8.1...3.8.2) (2026-03-19)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.35.3 ([48c7134](https://github.com/mogenius/renovate-operator/commit/48c7134f8585fefe4a611b2437305e15f07fb6a4))
+
 ## [3.8.1](https://github.com/mogenius/renovate-operator/compare/3.8.0...3.8.1) (2026-03-19)
 
 
