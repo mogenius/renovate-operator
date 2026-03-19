@@ -142,13 +142,11 @@ webhook:
     weight: 1
 
 auth:
-  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = jobs hidden by default, secure)
+  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
   defaultAllowedGroups: ""
-  # -- optional: Redis URL for session storage (e.g., "redis://:password@redis:6379/0")
+  # -- name of an existing secret containing the Redis URL for session storage
+  # -- Use this to provide a Redis URL (e.g., "redis://:password@redis:6379/0") via a Kubernetes secret
   # -- When set, sessions are stored in Redis (recommended for multi-replica deployments)
-  # -- When empty, sessions are stored in-memory (lost on pod restart)
-  sessionStoreRedisUrl: ""
-  # -- name of an existing secret containing the Redis URL (alternative to plain-text sessionStoreRedisUrl)
   sessionStoreRedisExistingSecret: ""
   # -- key in the existing secret that contains the Redis URL
   sessionStoreRedisSecretKey: "redis-url"

@@ -180,9 +180,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.sessionStoreRedisExistingSecret }}
                   key: {{ .Values.auth.sessionStoreRedisSecretKey | default "redis-url" }}
-            {{- else if .Values.auth.sessionStoreRedisUrl }}
-            - name: SESSION_STORE_REDIS_URL
-              value: {{ .Values.auth.sessionStoreRedisUrl | quote }}
             {{- else if .Values.redis.enabled }}
             - name: REDIS_HOST
               value: "{{ include "renovate-operator.fullname" . }}-redis-master"

@@ -107,13 +107,32 @@ func (m *memorySessionStore) Close() error {
 	return nil
 }
 
-// sweep removes all expired entries from the store.
+// sweep removes all expired entries from the store using a two-phase
+// approach: collect expired keys under a read lock, then delete them
+// under a write lock (with re-check). This avoids blocking Save/Load/Delete
+// for the entire map iteration.
 func (m *memorySessionStore) sweep() {
 	defer m.sweeping.Store(false)
 	now := time.Now()
-	m.mu.Lock()
+
+	// Phase 1: collect expired keys under read lock
+	m.mu.RLock()
+	var expired []string
 	for id, entry := range m.entries {
 		if now.After(entry.expiresAt) {
+			expired = append(expired, id)
+		}
+	}
+	m.mu.RUnlock()
+
+	if len(expired) == 0 {
+		return
+	}
+
+	// Phase 2: delete under write lock with re-check
+	m.mu.Lock()
+	for _, id := range expired {
+		if e, ok := m.entries[id]; ok && now.After(e.expiresAt) {
 			delete(m.entries, id)
 		}
 	}
