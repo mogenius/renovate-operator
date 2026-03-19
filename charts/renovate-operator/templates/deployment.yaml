@@ -184,13 +184,15 @@ spec:
             - name: SESSION_STORE_REDIS_URL
               value: {{ .Values.auth.sessionStoreRedisUrl | quote }}
             {{- else if .Values.redis.enabled }}
+            - name: REDIS_HOST
+              value: "{{ include "renovate-operator.fullname" . }}-redis-master"
+            - name: REDIS_PORT
+              value: "6379"
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "renovate-operator.fullname" . }}-redis
                   key: redis-password
-            - name: SESSION_STORE_REDIS_URL
-              value: "redis://:$(REDIS_PASSWORD)@{{ include "renovate-operator.fullname" . }}-redis-master:6379/0"
             {{- end }}
             {{- if .Values.auth.defaultAllowedGroups }}
             - name: DEFAULT_ALLOWED_GROUPS

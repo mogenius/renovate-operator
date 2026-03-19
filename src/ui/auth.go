@@ -60,21 +60,57 @@ type AuthProvider interface {
 // baseAuth contains shared session and middleware logic for all auth providers.
 type baseAuth struct {
 	encryptionKey [32]byte
+	gcm           cipher.AEAD
 	logger        logr.Logger
 	sessionStore  SessionStore
 }
 
-func newEncryptionKey(sessionSecret string) ([32]byte, error) {
+// ComputeEncryptionKey derives a 32-byte AES key from a session secret.
+// If secret is empty, a cryptographically random key is generated.
+func ComputeEncryptionKey(secret string) ([32]byte, error) {
 	var key [32]byte
-	if sessionSecret != "" {
-		key = sha256.Sum256([]byte(sessionSecret))
+	if secret != "" {
+		key = sha256.Sum256([]byte(secret))
 	} else {
-		// Generate cryptographically secure random key
 		if _, err := io.ReadFull(rand.Reader, key[:]); err != nil {
 			return key, fmt.Errorf("failed to generate encryption key: %w", err)
 		}
 	}
 	return key, nil
+}
+
+// newBaseAuth initialises the shared auth fields including the pre-computed
+// AES-GCM cipher derived from sessionSecret.
+func newBaseAuth(sessionSecret string, logger logr.Logger, store SessionStore) (baseAuth, error) {
+	key, err := ComputeEncryptionKey(sessionSecret)
+	if err != nil {
+		return baseAuth{}, err
+	}
+
+	gcm, err := newGCM(key)
+	if err != nil {
+		return baseAuth{}, err
+	}
+
+	return baseAuth{
+		encryptionKey: key,
+		gcm:           gcm,
+		logger:        logger,
+		sessionStore:  store,
+	}, nil
+}
+
+// newGCM creates an AES-GCM cipher from the given 32-byte key.
+func newGCM(key [32]byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+	return gcm, nil
 }
 
 func isPublicPath(path string) bool {
@@ -187,7 +223,7 @@ func isHTTPS(r *http.Request) bool {
 // buildCompleteURL encrypts the session data and returns a redirect URL to
 // /auth/complete. This separates the OAuth callback (which some proxies
 // interfere with) from the cookie-setting step.
-func (b *baseAuth) buildCompleteURL(email, name string, opts ...func(*sessionData)) (string, error) {
+func (b *baseAuth) buildCompleteURL(ctx context.Context, email, name string, opts ...func(*sessionData)) (string, error) {
 	session := sessionData{
 		Email:  email,
 		Name:   name,
@@ -198,7 +234,7 @@ func (b *baseAuth) buildCompleteURL(email, name string, opts ...func(*sessionDat
 		opt(&session)
 	}
 
-	encrypted, err := b.encryptSession(session)
+	encrypted, err := b.encryptSession(ctx, session)
 	if err != nil {
 		return "", err
 	}
@@ -218,7 +254,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the encrypted token can be decrypted
-	session, err := b.decryptSession(sessionValue)
+	session, err := b.decryptSession(r.Context(), sessionValue)
 	if err != nil {
 		b.logger.Error(err, "failed to decrypt session token in /auth/complete")
 		http.Error(w, "invalid session token", http.StatusBadRequest)
@@ -255,17 +291,18 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteSession removes the session from the server-side store.
-// It silently ignores errors since this is best-effort cleanup.
 func (b *baseAuth) deleteSession(r *http.Request) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return
 	}
-	id, err := b.decryptToSessionID(cookie.Value)
+	id, err := b.decryptString(cookie.Value)
 	if err != nil {
 		return
 	}
-	_ = b.sessionStore.Delete(r.Context(), id)
+	if err := b.sessionStore.Delete(r.Context(), id); err != nil {
+		b.logger.V(1).Info("failed to delete session from store", "error", err)
+	}
 }
 
 func (b *baseAuth) clearSessionCookie(w http.ResponseWriter) {
@@ -322,7 +359,7 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 		return nil, err
 	}
 
-	session, err := b.decryptSession(cookie.Value)
+	session, err := b.decryptSession(r.Context(), cookie.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +373,7 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 	return session, nil
 }
 
-func (b *baseAuth) encryptSession(session sessionData) (string, error) {
+func (b *baseAuth) encryptSession(ctx context.Context, session sessionData) (string, error) {
 	// Generate a random session ID
 	sessionID, err := generateRandomString(32)
 	if err != nil {
@@ -348,7 +385,7 @@ func (b *baseAuth) encryptSession(session sessionData) (string, error) {
 	if ttl <= 0 {
 		ttl = sessionDuration
 	}
-	if err := b.sessionStore.Save(context.Background(), sessionID, session, ttl); err != nil {
+	if err := b.sessionStore.Save(ctx, sessionID, session, ttl); err != nil {
 		return "", fmt.Errorf("failed to save session: %w", err)
 	}
 
@@ -358,26 +395,16 @@ func (b *baseAuth) encryptSession(session sessionData) (string, error) {
 
 // encryptString encrypts a plaintext string using AES-GCM and returns a base64url-encoded ciphertext.
 func (b *baseAuth) encryptString(plaintext string) (string, error) {
-	block, err := aes.NewCipher(b.encryptionKey[:])
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
+	nonce := make([]byte, b.gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	ciphertext := b.gcm.Seal(nonce, nonce, []byte(plaintext), nil)
 	return base64.URLEncoding.EncodeToString(ciphertext), nil
 }
 
-func (b *baseAuth) decryptSession(encrypted string) (*sessionData, error) {
+func (b *baseAuth) decryptSession(ctx context.Context, encrypted string) (*sessionData, error) {
 	// Decrypt to get the session ID
 	sessionID, err := b.decryptString(encrypted)
 	if err != nil {
@@ -385,17 +412,12 @@ func (b *baseAuth) decryptSession(encrypted string) (*sessionData, error) {
 	}
 
 	// Load full session data from the server-side store
-	session, err := b.sessionStore.Load(context.Background(), sessionID)
+	session, err := b.sessionStore.Load(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("session store load failed: %w", err)
 	}
 
 	return session, nil
-}
-
-// decryptToSessionID decrypts the cookie value to get the raw session ID.
-func (b *baseAuth) decryptToSessionID(encrypted string) (string, error) {
-	return b.decryptString(encrypted)
 }
 
 // decryptString decrypts a base64url-encoded AES-GCM ciphertext and returns the plaintext string.
@@ -405,23 +427,13 @@ func (b *baseAuth) decryptString(encrypted string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher(b.encryptionKey[:])
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonceSize := gcm.NonceSize()
+	nonceSize := b.gcm.NonceSize()
 	if len(data) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
 
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := b.gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}

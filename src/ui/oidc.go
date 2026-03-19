@@ -107,7 +107,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger, sessio
 		postLogoutRedirect = postLogoutRedirect[:idx]
 	}
 
-	key, err := newEncryptionKey(cfg.SessionSecret)
+	base, err := newBaseAuth(cfg.SessionSecret, logger, sessionStore)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, logger logr.Logger, sessio
 	}
 
 	return &OIDCAuth{
-		baseAuth:            baseAuth{encryptionKey: key, logger: logger, sessionStore: sessionStore},
+		baseAuth:            base,
 		provider:            provider,
 		oauth2Config:        oauth2Cfg,
 		verifier:            verifier,
@@ -239,7 +239,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			"groups_before_validation", claims.Groups)
 	}
 
-	completeURL, err := o.buildCompleteURL(claims.Email, claims.Name, func(s *sessionData) {
+	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {
 		s.Groups = validatedGroups
 	})
 	if err != nil {

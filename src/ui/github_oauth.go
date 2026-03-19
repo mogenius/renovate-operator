@@ -33,13 +33,13 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger, sessionStore Sess
 		Scopes:       []string{"read:user", "user:email"},
 	}
 
-	key, err := newEncryptionKey(cfg.SessionSecret)
+	base, err := newBaseAuth(cfg.SessionSecret, logger, sessionStore)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GitHubOAuth{
-		baseAuth:     baseAuth{encryptionKey: key, logger: logger, sessionStore: sessionStore},
+		baseAuth:     base,
 		oauth2Config: oauth2Cfg,
 		httpClient:   &http.Client{},
 	}, nil
@@ -95,7 +95,7 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Redirect to /auth/complete with the encrypted session token.
 	// The cookie is set there, not here, because some reverse proxies strip
 	// Set-Cookie headers from OAuth callback responses.
-	completeURL, err := g.buildCompleteURL(email, name, func(s *sessionData) {
+	completeURL, err := g.buildCompleteURL(r.Context(), email, name, func(s *sessionData) {
 		s.AccessToken = oauth2Token.AccessToken
 	})
 	if err != nil {

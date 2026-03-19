@@ -11,15 +11,11 @@ import (
 )
 
 func TestGetSession_ValidWithGroups(t *testing.T) {
-	auth := &baseAuth{
-		logger:       logr.Discard(),
-		sessionStore: NewMemorySessionStore(),
-	}
-	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
+	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
 	if err != nil {
-		t.Fatalf("Failed to create encryption key: %v", err)
+		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
-	auth.encryptionKey = key
+	auth := &base
 
 	// Create a session with groups
 	sessionData := sessionData{
@@ -29,7 +25,8 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
 
-	encrypted, err := auth.encryptSession(sessionData)
+	ctx := context.Background()
+	encrypted, err := auth.encryptSession(ctx, sessionData)
 	if err != nil {
 		t.Fatalf("Failed to encrypt session: %v", err)
 	}
@@ -55,15 +52,11 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 }
 
 func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
-	auth := &baseAuth{
-		logger:       logr.Discard(),
-		sessionStore: NewMemorySessionStore(),
-	}
-	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
+	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
 	if err != nil {
-		t.Fatalf("Failed to create encryption key: %v", err)
+		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
-	auth.encryptionKey = key
+	auth := &base
 
 	originalSession := sessionData{
 		Email:  "test@example.com",
@@ -72,12 +65,13 @@ func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
 
-	encrypted, err := auth.encryptSession(originalSession)
+	ctx := context.Background()
+	encrypted, err := auth.encryptSession(ctx, originalSession)
 	if err != nil {
 		t.Fatalf("Failed to encrypt session: %v", err)
 	}
 
-	decrypted, err := auth.decryptSession(encrypted)
+	decrypted, err := auth.decryptSession(ctx, encrypted)
 	if err != nil {
 		t.Fatalf("Failed to decrypt session: %v", err)
 	}
@@ -154,15 +148,11 @@ func TestGetSessionFromContext_NoSession(t *testing.T) {
 }
 
 func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
-	auth := &baseAuth{
-		logger:       logr.Discard(),
-		sessionStore: NewMemorySessionStore(),
-	}
-	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
+	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
 	if err != nil {
-		t.Fatalf("Failed to create encryption key: %v", err)
+		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
-	auth.encryptionKey = key
+	auth := &base
 
 	// Create a valid session cookie
 	session := sessionData{
@@ -172,7 +162,8 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
 
-	encrypted, err := auth.encryptSession(session)
+	ctx := context.Background()
+	encrypted, err := auth.encryptSession(ctx, session)
 	if err != nil {
 		t.Fatalf("Failed to encrypt session: %v", err)
 	}

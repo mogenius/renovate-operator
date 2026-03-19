@@ -2,10 +2,17 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+// Sentinel errors for session store operations.
+var (
+	ErrSessionNotFound = errors.New("session not found")
+	ErrSessionExpired  = fmt.Errorf("%w: expired", ErrSessionNotFound)
 )
 
 // SessionStore is the interface for server-side session storage.
@@ -29,6 +36,7 @@ type memorySessionStore struct {
 	mu        sync.RWMutex
 	entries   map[string]sessionEntry
 	loadCount atomic.Int64
+	sweeping  atomic.Bool
 }
 
 // NewMemorySessionStore creates a new in-memory session store.
@@ -62,7 +70,7 @@ func (m *memorySessionStore) Load(_ context.Context, id string) (*sessionData, e
 	m.mu.RUnlock()
 
 	if !ok {
-		return nil, fmt.Errorf("session not found")
+		return nil, ErrSessionNotFound
 	}
 
 	if time.Now().After(entry.expiresAt) {
@@ -70,11 +78,11 @@ func (m *memorySessionStore) Load(_ context.Context, id string) (*sessionData, e
 		m.mu.Lock()
 		delete(m.entries, id)
 		m.mu.Unlock()
-		return nil, fmt.Errorf("session expired")
+		return nil, ErrSessionExpired
 	}
 
-	// Every 100th Load, sweep for other expired entries
-	if count%100 == 0 {
+	// Every 100th Load, sweep for other expired entries (at most one concurrent sweep)
+	if count%100 == 0 && m.sweeping.CompareAndSwap(false, true) {
 		go m.sweep()
 	}
 
@@ -96,6 +104,7 @@ func (m *memorySessionStore) Delete(_ context.Context, id string) error {
 
 // sweep removes all expired entries from the store.
 func (m *memorySessionStore) sweep() {
+	defer m.sweeping.Store(false)
 	now := time.Now()
 	m.mu.Lock()
 	for id, entry := range m.entries {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -217,6 +218,21 @@ func main() {
 			Optional: true,
 			Default:  "",
 		},
+		{
+			Key:      "REDIS_HOST",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "REDIS_PORT",
+			Optional: true,
+			Default:  "6379",
+		},
+		{
+			Key:      "REDIS_PASSWORD",
+			Optional: true,
+			Default:  "",
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -267,11 +283,38 @@ func main() {
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
+	// Determine the session secret for the active auth provider so we can
+	// derive the encryption key early (needed for both the Redis store and
+	// the auth provider itself).
+	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
+	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
+	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
+	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
+	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
+
+	var sessionSecret string
+	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
+		sessionSecret = config.GetValue("OIDC_SESSION_SECRET")
+	} else if githubClientID != "" && githubClientSecret != "" {
+		sessionSecret = config.GetValue("GITHUB_SESSION_SECRET")
+	}
+
+	encryptionKey, encKeyErr := ui.ComputeEncryptionKey(sessionSecret)
+	assert.NoError(encKeyErr, "failed to compute session encryption key")
+
 	// Initialize session store (Redis if configured, otherwise in-memory)
 	var sessionStore ui.SessionStore
 	redisURL := config.GetValue("SESSION_STORE_REDIS_URL")
+	// Construct Redis URL from component env vars if not set directly
+	if redisURL == "" {
+		if host := config.GetValue("REDIS_HOST"); host != "" {
+			port := config.GetValue("REDIS_PORT")
+			password := config.GetValue("REDIS_PASSWORD")
+			redisURL = fmt.Sprintf("redis://:%s@%s:%s/0", url.QueryEscape(password), host, port)
+		}
+	}
 	if redisURL != "" {
-		store, storeErr := ui.NewRedisSessionStore(redisURL)
+		store, storeErr := ui.NewRedisSessionStore(redisURL, encryptionKey)
 		assert.NoError(storeErr, "failed to connect to Redis session store")
 		sessionStore = store
 		ctrl.Log.WithName("auth").Info("Using Redis session store")
@@ -282,11 +325,6 @@ func main() {
 
 	// Initialize authentication provider (OIDC or GitHub OAuth)
 	var authProvider ui.AuthProvider
-	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
-	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
-	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
-	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
-	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
 
 	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
 		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)

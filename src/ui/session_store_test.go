@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -121,8 +122,8 @@ func TestMemoryStore_Delete(t *testing.T) {
 	}
 
 	_, err := store.Load(ctx, "sid-del")
-	if err == nil {
-		t.Error("Expected error after Delete, got nil")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound after Delete, got %v", err)
 	}
 }
 
@@ -137,17 +138,21 @@ func TestMemoryStore_ExpiredEntry(t *testing.T) {
 		Expiry: time.Now().Add(-1 * time.Hour).Unix(),
 	}
 
-	// Save with a very short TTL that has already expired
-	if err := store.Save(ctx, "sid-exp", session, 1*time.Millisecond); err != nil {
+	if err := store.Save(ctx, "sid-exp", session, 1*time.Hour); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	// Wait for TTL to pass
-	time.Sleep(5 * time.Millisecond)
+	// Directly set expiresAt to the past instead of relying on time.Sleep
+	ms := store.(*memorySessionStore)
+	ms.mu.Lock()
+	entry := ms.entries["sid-exp"]
+	entry.expiresAt = time.Now().Add(-1 * time.Second)
+	ms.entries["sid-exp"] = entry
+	ms.mu.Unlock()
 
 	_, err := store.Load(ctx, "sid-exp")
-	if err == nil {
-		t.Error("Expected error for expired session, got nil")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound (expired), got %v", err)
 	}
 }
 
@@ -156,21 +161,17 @@ func TestMemoryStore_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.Load(ctx, "nonexistent")
-	if err == nil {
-		t.Error("Expected error for non-existent session, got nil")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound, got %v", err)
 	}
 }
 
 func TestCookieSize_WithManyGroups(t *testing.T) {
-	auth := &baseAuth{
-		logger:       logr.Discard(),
-		sessionStore: NewMemorySessionStore(),
-	}
-	key, err := newEncryptionKey("test-secret-key-with-32-chars!!!")
+	base, err := newBaseAuth("test-secret-key-with-32-chars!!!", logr.Discard(), NewMemorySessionStore())
 	if err != nil {
-		t.Fatalf("Failed to create encryption key: %v", err)
+		t.Fatalf("Failed to create baseAuth: %v", err)
 	}
-	auth.encryptionKey = key
+	auth := &base
 
 	// Generate 100 UUID-like groups (36 chars each)
 	groups := make([]string, 100)
@@ -186,7 +187,8 @@ func TestCookieSize_WithManyGroups(t *testing.T) {
 		Expiry:      time.Now().Add(24 * time.Hour).Unix(),
 	}
 
-	encrypted, err := auth.encryptSession(session)
+	ctx := context.Background()
+	encrypted, err := auth.encryptSession(ctx, session)
 	if err != nil {
 		t.Fatalf("encryptSession failed: %v", err)
 	}
@@ -198,7 +200,7 @@ func TestCookieSize_WithManyGroups(t *testing.T) {
 	}
 
 	// Verify the full round-trip still works
-	decrypted, err := auth.decryptSession(encrypted)
+	decrypted, err := auth.decryptSession(ctx, encrypted)
 	if err != nil {
 		t.Fatalf("decryptSession failed: %v", err)
 	}
@@ -217,7 +219,12 @@ func TestRedisStore_Integration(t *testing.T) {
 		t.Skip("REDIS_URL not set, skipping Redis integration test")
 	}
 
-	store, err := NewRedisSessionStore(redisURL)
+	key, keyErr := ComputeEncryptionKey("redis-test-secret")
+	if keyErr != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", keyErr)
+	}
+
+	store, err := NewRedisSessionStore(redisURL, key)
 	if err != nil {
 		t.Fatalf("NewRedisSessionStore failed: %v", err)
 	}
@@ -254,13 +261,13 @@ func TestRedisStore_Integration(t *testing.T) {
 
 	// Load after delete
 	_, err = store.Load(ctx, "redis-sid-1")
-	if err == nil {
-		t.Error("Expected error after Delete, got nil")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound after Delete, got %v", err)
 	}
 
 	// Load non-existent
 	_, err = store.Load(ctx, "redis-nonexistent")
-	if err == nil {
-		t.Error("Expected error for non-existent session, got nil")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound for non-existent session, got %v", err)
 	}
 }
