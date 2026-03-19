@@ -1,3 +1,10 @@
+## [3.8.3](https://github.com/mogenius/renovate-operator/compare/3.8.2...3.8.3) (2026-03-19)
+
+
+### Bug Fixes
+
+* trim api suffix for gitea and forgejo if present for fork skip lookup ([dd1f8c8](https://github.com/mogenius/renovate-operator/commit/dd1f8c8088797be74e18f8fed0d58b95a9f8de56))
+
 ## [3.8.2](https://github.com/mogenius/renovate-operator/compare/3.8.1...3.8.2) (2026-03-19)
 
 
