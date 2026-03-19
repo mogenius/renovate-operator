@@ -22,6 +22,7 @@ type SessionStore interface {
 	Save(ctx context.Context, id string, data sessionData, ttl time.Duration) error
 	Load(ctx context.Context, id string) (*sessionData, error)
 	Delete(ctx context.Context, id string) error
+	Close() error
 }
 
 // sessionEntry wraps session data with an expiration timestamp.
@@ -99,6 +100,10 @@ func (m *memorySessionStore) Delete(_ context.Context, id string) error {
 	m.mu.Lock()
 	delete(m.entries, id)
 	m.mu.Unlock()
+	return nil
+}
+
+func (m *memorySessionStore) Close() error {
 	return nil
 }
 

@@ -310,7 +310,11 @@ func main() {
 		if host := config.GetValue("REDIS_HOST"); host != "" {
 			port := config.GetValue("REDIS_PORT")
 			password := config.GetValue("REDIS_PASSWORD")
-			redisURL = fmt.Sprintf("redis://:%s@%s:%s/0", url.QueryEscape(password), host, port)
+			var userInfo string
+			if password != "" {
+				userInfo = ":" + url.QueryEscape(password) + "@"
+			}
+			redisURL = fmt.Sprintf("redis://%s%s:%s/0", userInfo, host, port)
 		}
 	}
 	if redisURL != "" {
@@ -322,6 +326,11 @@ func main() {
 		sessionStore = ui.NewMemorySessionStore()
 		ctrl.Log.WithName("auth").Info("Using in-memory session store (sessions lost on pod restart)")
 	}
+	defer func() {
+		if err := sessionStore.Close(); err != nil {
+			ctrl.Log.WithName("auth").Error(err, "failed to close session store")
+		}
+	}()
 
 	// Initialize authentication provider (OIDC or GitHub OAuth)
 	var authProvider ui.AuthProvider

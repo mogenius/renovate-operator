@@ -101,3 +101,7 @@ func (r *redisSessionStore) Load(ctx context.Context, id string) (*sessionData, 
 func (r *redisSessionStore) Delete(ctx context.Context, id string) error {
 	return r.client.Del(ctx, redisKeyPrefix+id).Err()
 }
+
+func (r *redisSessionStore) Close() error {
+	return r.client.Close()
+}
