@@ -263,6 +263,10 @@ redis:
   master:
     persistence:
       enabled: false
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
 
 metrics:
   enabled: false
