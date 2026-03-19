@@ -182,13 +182,13 @@ spec:
                   key: {{ .Values.auth.sessionStoreRedisSecretKey | default "redis-url" }}
             {{- else if .Values.redis.enabled }}
             - name: REDIS_HOST
-              value: "{{ include "renovate-operator.fullname" . }}-redis-master"
+              value: "{{ .Release.Name }}-redis-master"
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "renovate-operator.fullname" . }}-redis
+                  name: {{ .Release.Name }}-redis
                   key: redis-password
             {{- end }}
             {{- if .Values.auth.defaultAllowedGroups }}
