@@ -1,3 +1,11 @@
+## [3.8.1](https://github.com/mogenius/renovate-operator/compare/3.8.0...3.8.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.35.3 ([d65ed8d](https://github.com/mogenius/renovate-operator/commit/d65ed8d87449c57c6963c7b00d7f6396433bca28))
+* Update Chart.yaml (new logo, reduced maintainers list) [skipci] ([d27d848](https://github.com/mogenius/renovate-operator/commit/d27d84842a0fa3a885571078beec354c2313bb78))
+
 # [3.8.0](https://github.com/mogenius/renovate-operator/compare/3.7.3...3.8.0) (2026-03-18)
 
 
