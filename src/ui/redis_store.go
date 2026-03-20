@@ -3,11 +3,9 @@ package ui
 import (
 	"context"
 	"crypto/cipher"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -56,12 +54,11 @@ func (r *redisSessionStore) Save(ctx context.Context, id string, data sessionDat
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	nonce := make([]byte, r.gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return fmt.Errorf("failed to generate nonce: %w", err)
+	sealed, err := sealGCM(r.gcm, payload)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt session data: %w", err)
 	}
-	encrypted := r.gcm.Seal(nonce, nonce, payload, nil)
-	encoded := base64.StdEncoding.EncodeToString(encrypted)
+	encoded := base64.StdEncoding.EncodeToString(sealed)
 
 	return r.client.Set(ctx, redisKeyPrefix+id, encoded, ttl).Err()
 }
@@ -80,12 +77,7 @@ func (r *redisSessionStore) Load(ctx context.Context, id string) (*sessionData, 
 		return nil, fmt.Errorf("failed to decode session data: %w", err)
 	}
 
-	nonceSize := r.gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("session ciphertext too short")
-	}
-	nonce, cipherBytes := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := r.gcm.Open(nil, nonce, cipherBytes, nil)
+	plaintext, err := openGCM(r.gcm, ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session data: %w", err)
 	}

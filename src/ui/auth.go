@@ -59,10 +59,9 @@ type AuthProvider interface {
 
 // baseAuth contains shared session and middleware logic for all auth providers.
 type baseAuth struct {
-	encryptionKey [32]byte
-	gcm           cipher.AEAD
-	logger        logr.Logger
-	sessionStore  SessionStore
+	gcm          cipher.AEAD
+	logger       logr.Logger
+	sessionStore SessionStore
 }
 
 // ComputeEncryptionKey derives a 32-byte AES key from a session secret.
@@ -89,10 +88,9 @@ func newBaseAuth(key [32]byte, logger logr.Logger, store SessionStore) (baseAuth
 	}
 
 	return baseAuth{
-		encryptionKey: key,
-		gcm:           gcm,
-		logger:        logger,
-		sessionStore:  store,
+		gcm:          gcm,
+		logger:       logger,
+		sessionStore: store,
 	}, nil
 }
 
@@ -107,6 +105,25 @@ func newGCM(key [32]byte) (cipher.AEAD, error) {
 		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 	return gcm, nil
+}
+
+// sealGCM encrypts plaintext using AES-GCM and returns nonce||ciphertext.
+func sealGCM(gcm cipher.AEAD, plaintext []byte) ([]byte, error) {
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
+
+// openGCM decrypts nonce||ciphertext produced by sealGCM.
+func openGCM(gcm cipher.AEAD, data []byte) ([]byte, error) {
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
 func isPublicPath(path string) bool {
@@ -408,13 +425,11 @@ func (b *baseAuth) encryptSession(ctx context.Context, session sessionData) (str
 
 // encryptString encrypts a plaintext string using AES-GCM and returns a base64url-encoded ciphertext.
 func (b *baseAuth) encryptString(plaintext string) (string, error) {
-	nonce := make([]byte, b.gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	sealed, err := sealGCM(b.gcm, []byte(plaintext))
+	if err != nil {
 		return "", err
 	}
-
-	ciphertext := b.gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.URLEncoding.EncodeToString(ciphertext), nil
+	return base64.URLEncoding.EncodeToString(sealed), nil
 }
 
 func (b *baseAuth) decryptSession(ctx context.Context, encrypted string) (*sessionData, error) {
@@ -439,18 +454,10 @@ func (b *baseAuth) decryptString(encrypted string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	nonceSize := b.gcm.NonceSize()
-	if len(data) < nonceSize {
-		return "", fmt.Errorf("ciphertext too short")
-	}
-
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := b.gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := openGCM(b.gcm, data)
 	if err != nil {
 		return "", err
 	}
-
 	return string(plaintext), nil
 }
 
