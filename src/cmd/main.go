@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -303,29 +302,14 @@ func main() {
 	assert.NoError(encKeyErr, "failed to compute session encryption key")
 
 	// Initialize session store (Redis if configured, otherwise in-memory)
-	var sessionStore ui.SessionStore
-	redisURL := config.GetValue("SESSION_STORE_REDIS_URL")
-	// Construct Redis URL from component env vars if not set directly
-	if redisURL == "" {
-		if host := config.GetValue("REDIS_HOST"); host != "" {
-			port := config.GetValue("REDIS_PORT")
-			password := config.GetValue("REDIS_PASSWORD")
-			var userInfo string
-			if password != "" {
-				userInfo = ":" + url.QueryEscape(password) + "@"
-			}
-			redisURL = fmt.Sprintf("redis://%s%s:%s/0", userInfo, host, port)
-		}
-	}
-	if redisURL != "" {
-		store, storeErr := ui.NewRedisSessionStore(redisURL, encryptionKey)
-		assert.NoError(storeErr, "failed to connect to Redis session store")
-		sessionStore = store
-		ctrl.Log.WithName("auth").Info("Using Redis session store")
-	} else {
-		sessionStore = ui.NewMemorySessionStore()
-		ctrl.Log.WithName("auth").Info("Using in-memory session store (sessions lost on pod restart)")
-	}
+	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.RedisConfig{
+		URL:      config.GetValue("SESSION_STORE_REDIS_URL"),
+		Host:     config.GetValue("REDIS_HOST"),
+		Port:     config.GetValue("REDIS_PORT"),
+		Password: config.GetValue("REDIS_PASSWORD"),
+	}, encryptionKey)
+	assert.NoError(storeErr, "failed to initialize session store")
+	ctrl.Log.WithName("auth").Info("Using session store", "type", storeType)
 	defer func() {
 		if err := sessionStore.Close(); err != nil {
 			ctrl.Log.WithName("auth").Error(err, "failed to close session store")

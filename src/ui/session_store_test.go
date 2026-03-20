@@ -2,12 +2,13 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/go-logr/logr"
 )
 
@@ -217,61 +218,282 @@ func TestCookieSize_WithManyGroups(t *testing.T) {
 	}
 }
 
-func TestRedisStore_Integration(t *testing.T) {
-	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		t.Skip("REDIS_URL not set, skipping Redis integration test")
-	}
+// --- Redis store tests (using miniredis) ---
 
-	key, keyErr := ComputeEncryptionKey("redis-test-secret")
-	if keyErr != nil {
-		t.Fatalf("ComputeEncryptionKey failed: %v", keyErr)
+func newTestRedisStore(t *testing.T) (SessionStore, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	key, err := ComputeEncryptionKey("test-redis-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
-
-	store, err := NewRedisSessionStore(redisURL, key)
+	store, err := NewRedisSessionStore("redis://"+mr.Addr()+"/0", key)
 	if err != nil {
 		t.Fatalf("NewRedisSessionStore failed: %v", err)
 	}
+	return store, mr
+}
 
+func TestRedisStore_SaveAndLoad(t *testing.T) {
+	store, _ := newTestRedisStore(t)
 	ctx := context.Background()
+
 	session := sessionData{
-		Email:  "redis-test@example.com",
-		Name:   "Redis Test User",
+		Email:  "redis@example.com",
+		Name:   "Redis User",
 		Groups: []string{"team-a", "team-b"},
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
 
-	// Save
-	if err := store.Save(ctx, "redis-sid-1", session, 1*time.Hour); err != nil {
+	if err := store.Save(ctx, "rs-1", session, 1*time.Hour); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	// Load
-	loaded, err := store.Load(ctx, "redis-sid-1")
+	loaded, err := store.Load(ctx, "rs-1")
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
+
 	if loaded.Email != session.Email {
 		t.Errorf("Email mismatch: got %s, want %s", loaded.Email, session.Email)
 	}
-	if len(loaded.Groups) != 2 {
+	if loaded.Name != session.Name {
+		t.Errorf("Name mismatch: got %s, want %s", loaded.Name, session.Name)
+	}
+	if len(loaded.Groups) != 2 || loaded.Groups[0] != "team-a" || loaded.Groups[1] != "team-b" {
 		t.Errorf("Groups mismatch: got %v", loaded.Groups)
 	}
+}
 
-	// Delete
-	if err := store.Delete(ctx, "redis-sid-1"); err != nil {
+func TestRedisStore_Delete(t *testing.T) {
+	store, _ := newTestRedisStore(t)
+	ctx := context.Background()
+
+	session := sessionData{
+		Email:  "redis@example.com",
+		Groups: []string{},
+		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+	}
+
+	if err := store.Save(ctx, "rs-del", session, 1*time.Hour); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	if err := store.Delete(ctx, "rs-del"); err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	// Load after delete
-	_, err = store.Load(ctx, "redis-sid-1")
+	_, err := store.Load(ctx, "rs-del")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("Expected ErrSessionNotFound after Delete, got %v", err)
 	}
+}
 
-	// Load non-existent
-	_, err = store.Load(ctx, "redis-nonexistent")
+func TestRedisStore_NotFound(t *testing.T) {
+	store, _ := newTestRedisStore(t)
+	ctx := context.Background()
+
+	_, err := store.Load(ctx, "nonexistent")
 	if !errors.Is(err, ErrSessionNotFound) {
-		t.Errorf("Expected ErrSessionNotFound for non-existent session, got %v", err)
+		t.Errorf("Expected ErrSessionNotFound, got %v", err)
+	}
+}
+
+func TestRedisStore_Expiry(t *testing.T) {
+	store, mr := newTestRedisStore(t)
+	ctx := context.Background()
+
+	session := sessionData{
+		Email:  "redis@example.com",
+		Groups: []string{},
+		Expiry: time.Now().Add(10 * time.Second).Unix(),
+	}
+
+	if err := store.Save(ctx, "rs-exp", session, 10*time.Second); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Verify it exists before expiry
+	if _, err := store.Load(ctx, "rs-exp"); err != nil {
+		t.Fatalf("Load before expiry failed: %v", err)
+	}
+
+	// Fast-forward miniredis clock past the TTL
+	mr.FastForward(11 * time.Second)
+
+	_, err := store.Load(ctx, "rs-exp")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("Expected ErrSessionNotFound after expiry, got %v", err)
+	}
+}
+
+func TestRedisStore_EncryptionAtRest(t *testing.T) {
+	store, mr := newTestRedisStore(t)
+	ctx := context.Background()
+
+	session := sessionData{
+		Email:  "secret@example.com",
+		Name:   "Secret User",
+		Groups: []string{"admin"},
+		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+	}
+
+	if err := store.Save(ctx, "rs-enc", session, 1*time.Hour); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Read the raw value from miniredis — it should NOT be plaintext JSON
+	raw, err := mr.Get(redisKeyPrefix + "rs-enc")
+	if err != nil {
+		t.Fatalf("Failed to read raw value from miniredis: %v", err)
+	}
+
+	// Verify raw value is not valid JSON (i.e., it's encrypted)
+	var probe json.RawMessage
+	if json.Unmarshal([]byte(raw), &probe) == nil {
+		t.Error("Raw Redis value is valid JSON — session data is NOT encrypted at rest")
+	}
+
+	// Verify the email is not in the raw value as plaintext
+	if containsSubstring(raw, "secret@example.com") {
+		t.Error("Raw Redis value contains plaintext email — session data is NOT encrypted at rest")
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && searchSubstring(s, sub))
+}
+
+func searchSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// --- Factory and URL builder tests ---
+
+func TestBuildRedisURL_EmptyHost(t *testing.T) {
+	result := buildRedisURL("", "6379", "")
+	if result != "" {
+		t.Errorf("Expected empty string for empty host, got %q", result)
+	}
+}
+
+func TestBuildRedisURL_HostAndPort(t *testing.T) {
+	result := buildRedisURL("redis.example.com", "6380", "")
+	expected := "redis://redis.example.com:6380/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildRedisURL_DefaultPort(t *testing.T) {
+	result := buildRedisURL("redis.example.com", "", "")
+	expected := "redis://redis.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildRedisURL_WithPassword(t *testing.T) {
+	result := buildRedisURL("redis.example.com", "6379", "s3cret")
+	expected := "redis://:s3cret@redis.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildRedisURL_PasswordWithSpecialChars(t *testing.T) {
+	result := buildRedisURL("redis.example.com", "6379", "p@ss:word/123")
+	expected := "redis://:p%40ss%3Aword%2F123@redis.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestNewSessionStore_EmptyConfig_ReturnsMemory(t *testing.T) {
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	store, storeType, storeErr := NewSessionStore(RedisConfig{}, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if storeType != "memory" {
+		t.Errorf("Expected store type 'memory', got %q", storeType)
+	}
+	if store == nil {
+		t.Fatal("Expected non-nil store")
+	}
+}
+
+func TestNewSessionStore_WithRedisURL_ReturnsRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	store, storeType, storeErr := NewSessionStore(RedisConfig{
+		URL: "redis://" + mr.Addr() + "/0",
+	}, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if storeType != "redis" {
+		t.Errorf("Expected store type 'redis', got %q", storeType)
+	}
+	if store == nil {
+		t.Fatal("Expected non-nil store")
+	}
+}
+
+func TestNewSessionStore_WithHost_ReturnsRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	store, storeType, storeErr := NewSessionStore(RedisConfig{
+		Host: mr.Host(),
+		Port: mr.Port(),
+	}, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if storeType != "redis" {
+		t.Errorf("Expected store type 'redis', got %q", storeType)
+	}
+	if store == nil {
+		t.Fatal("Expected non-nil store")
+	}
+}
+
+func TestNewSessionStore_URLTakesPrecedenceOverHost(t *testing.T) {
+	mr := miniredis.RunT(t)
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	// URL points to miniredis, Host points to nowhere
+	store, storeType, storeErr := NewSessionStore(RedisConfig{
+		URL:  "redis://" + mr.Addr() + "/0",
+		Host: "nonexistent.invalid",
+		Port: "9999",
+	}, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if storeType != "redis" {
+		t.Errorf("Expected store type 'redis', got %q", storeType)
+	}
+	if store == nil {
+		t.Fatal("Expected non-nil store")
 	}
 }

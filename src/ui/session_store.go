@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,6 +24,52 @@ type SessionStore interface {
 	Load(ctx context.Context, id string) (*sessionData, error)
 	Delete(ctx context.Context, id string) error
 	Close() error
+}
+
+// RedisConfig holds the configuration for connecting to Redis.
+// Either URL or Host must be set; URL takes precedence.
+type RedisConfig struct {
+	URL      string
+	Host     string
+	Port     string
+	Password string
+}
+
+// NewSessionStore creates a SessionStore based on the provided configuration.
+// If Redis is configured (via URL or Host), a Redis-backed store is returned;
+// otherwise an in-memory store is used.
+// The second return value indicates the store type ("redis" or "memory").
+func NewSessionStore(redisCfg RedisConfig, encryptionKey [32]byte) (SessionStore, string, error) {
+	redisURL := redisCfg.URL
+	if redisURL == "" {
+		redisURL = buildRedisURL(redisCfg.Host, redisCfg.Port, redisCfg.Password)
+	}
+
+	if redisURL != "" {
+		store, err := NewRedisSessionStore(redisURL, encryptionKey)
+		if err != nil {
+			return nil, "", err
+		}
+		return store, "redis", nil
+	}
+
+	return NewMemorySessionStore(), "memory", nil
+}
+
+// buildRedisURL constructs a Redis URL from host, port, and password.
+// Returns "" if host is empty.
+func buildRedisURL(host, port, password string) string {
+	if host == "" {
+		return ""
+	}
+	if port == "" {
+		port = "6379"
+	}
+	var userInfo string
+	if password != "" {
+		userInfo = ":" + url.QueryEscape(password) + "@"
+	}
+	return fmt.Sprintf("redis://%s%s:%s/0", userInfo, host, port)
 }
 
 // sessionEntry wraps session data with an expiration timestamp.
