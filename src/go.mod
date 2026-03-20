@@ -3,20 +3,25 @@ module renovate-operator
 go 1.25.4
 
 require (
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/netresearch/go-cron v0.13.1
+	github.com/redis/go-redis/v9 v9.18.0
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 require (
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sync v0.18.0 // indirect

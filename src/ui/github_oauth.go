@@ -12,10 +12,9 @@ import (
 )
 
 type GitHubOAuthConfig struct {
-	ClientID      string
-	ClientSecret  string
-	RedirectURL   string
-	SessionSecret string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
 type GitHubOAuth struct {
@@ -24,7 +23,7 @@ type GitHubOAuth struct {
 	httpClient   *http.Client
 }
 
-func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger) (*GitHubOAuth, error) {
+func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*GitHubOAuth, error) {
 	oauth2Cfg := oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
@@ -33,13 +32,13 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, logger logr.Logger) (*GitHubOAuth, er
 		Scopes:       []string{"read:user", "user:email"},
 	}
 
-	key, err := newEncryptionKey(cfg.SessionSecret)
+	base, err := newBaseAuth(encryptionKey, logger, sessionStore)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GitHubOAuth{
-		baseAuth:     baseAuth{encryptionKey: key, logger: logger},
+		baseAuth:     base,
 		oauth2Config: oauth2Cfg,
 		httpClient:   &http.Client{},
 	}, nil
@@ -95,7 +94,7 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Redirect to /auth/complete with the encrypted session token.
 	// The cookie is set there, not here, because some reverse proxies strip
 	// Set-Cookie headers from OAuth callback responses.
-	completeURL, err := g.buildCompleteURL(email, name, func(s *sessionData) {
+	completeURL, err := g.buildCompleteURL(r.Context(), email, name, func(s *sessionData) {
 		s.AccessToken = oauth2Token.AccessToken
 	})
 	if err != nil {
@@ -115,6 +114,7 @@ func (g *GitHubOAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if session, err := g.getSession(r); err == nil && session.AccessToken != "" {
 		g.revokeGitHubToken(session.AccessToken)
 	}
+	g.deleteSession(r)
 	g.clearSessionCookie(w)
 	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
 }

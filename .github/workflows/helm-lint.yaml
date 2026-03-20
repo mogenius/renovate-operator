@@ -21,4 +21,5 @@ jobs:
         run: helm lint ./charts/renovate-operator
 
       - name: Run Helm template
-        run: helm template --set=metrics.dashboard.enabled=true ./charts/renovate-operator
+        run: |
+          helm dependency build ./charts/renovate-operator && helm template --set=metrics.dashboard.enabled=true ./charts/renovate-operator
