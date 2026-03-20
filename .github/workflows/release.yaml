@@ -176,6 +176,9 @@ jobs:
 
             git add charts/renovate-operator/crd/*.mogenius.com_*.yaml
 
+            echo "Building dependencies"
+            helm dependency build ./charts/renovate-operator
+
             echo "Packaging Helm chart"
             helm package -d /tmp/ ./charts/renovate-operator
 
