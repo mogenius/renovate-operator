@@ -42,6 +42,7 @@ func NewRedisSessionStore(redisURL string, encryptionKey [32]byte) (SessionStore
 
 	gcm, err := newGCM(encryptionKey)
 	if err != nil {
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to create GCM for Redis store: %w", err)
 	}
 

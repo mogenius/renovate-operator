@@ -301,15 +301,22 @@ func main() {
 	encryptionKey, encKeyErr := ui.ComputeEncryptionKey(sessionSecret)
 	assert.NoError(encKeyErr, "failed to compute session encryption key")
 
+	// Derive separate keys for cookie encryption and session store at-rest
+	// encryption so a compromise of one does not affect the other.
+	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
+
 	// Initialize session store (Redis if configured, otherwise in-memory)
 	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.RedisConfig{
 		URL:      config.GetValue("REDIS_URL"),
 		Host:     config.GetValue("REDIS_HOST"),
 		Port:     config.GetValue("REDIS_PORT"),
 		Password: config.GetValue("REDIS_PASSWORD"),
-	}, encryptionKey)
+	}, storeKey)
 	assert.NoError(storeErr, "failed to initialize session store")
 	ctrl.Log.WithName("auth").Info("Using session store", "type", storeType)
+	if storeType == "memory" && leaderElectionID != "" {
+		ctrl.Log.WithName("auth").Info("WARNING: in-memory session store with multiple replicas will cause sessions to break across pods; configure Redis for multi-replica deployments")
+	}
 	defer func() {
 		if err := sessionStore.Close(); err != nil {
 			ctrl.Log.WithName("auth").Error(err, "failed to close session store")
@@ -333,7 +340,7 @@ func main() {
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
-		}, encryptionKey, ctrl.Log.WithName("oidc"), sessionStore)
+		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
 		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
@@ -352,7 +359,7 @@ func main() {
 			ClientID:     githubClientID,
 			ClientSecret: githubClientSecret,
 			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
-		}, encryptionKey, ctrl.Log.WithName("github-oauth"), sessionStore)
+		}, cookieKey, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
 		ctrl.Log.WithName("auth").Info("GitHub OAuth authentication enabled")

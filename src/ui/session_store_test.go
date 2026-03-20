@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,22 +355,9 @@ func TestRedisStore_EncryptionAtRest(t *testing.T) {
 	}
 
 	// Verify the email is not in the raw value as plaintext
-	if containsSubstring(raw, "secret@example.com") {
+	if strings.Contains(raw, "secret@example.com") {
 		t.Error("Raw Redis value contains plaintext email — session data is NOT encrypted at rest")
 	}
-}
-
-func containsSubstring(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && searchSubstring(s, sub))
-}
-
-func searchSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 // --- Factory and URL builder tests ---

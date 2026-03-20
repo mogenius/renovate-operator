@@ -78,9 +78,20 @@ func ComputeEncryptionKey(secret string) ([32]byte, error) {
 	return key, nil
 }
 
+// DeriveSubKeys derives two independent 32-byte keys from a master key
+// using SHA-256 with domain separation. This ensures the cookie encryption
+// key and the session store at-rest encryption key are cryptographically
+// independent, so a compromise of one does not affect the other.
+func DeriveSubKeys(masterKey [32]byte) (cookieKey, storeKey [32]byte) {
+	cookieKey = sha256.Sum256(append(masterKey[:], []byte("cookie-encryption")...))
+	storeKey = sha256.Sum256(append(masterKey[:], []byte("store-encryption")...))
+	return
+}
+
 // newBaseAuth initialises the shared auth fields using a pre-computed
 // 32-byte AES key. The caller is responsible for deriving the key via
-// ComputeEncryptionKey so that the key is computed exactly once.
+// ComputeEncryptionKey and DeriveSubKeys so that keys are computed
+// exactly once and are domain-separated.
 func newBaseAuth(key [32]byte, logger logr.Logger, store SessionStore) (baseAuth, error) {
 	gcm, err := newGCM(key)
 	if err != nil {
@@ -282,11 +293,30 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-encrypt to get a fresh ciphertext (different nonce) so that
-	// the URL-captured token cannot be replayed as a cookie value.
-	freshCookie, err := b.encryptString(sessionID)
+	// Rotate the session ID so the URL-captured token becomes single-use.
+	// Save under a new ID, delete the old one, and use the new ID in the cookie.
+	newSessionID, err := generateRandomString(32)
 	if err != nil {
-		b.logger.Error(err, "failed to re-encrypt session ID")
+		b.logger.Error(err, "failed to generate new session ID")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
+	if ttl <= 0 {
+		ttl = sessionDuration
+	}
+	if err := b.sessionStore.Save(r.Context(), newSessionID, *session, ttl); err != nil {
+		b.logger.Error(err, "failed to save rotated session")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// Best-effort delete of the old session ID
+	_ = b.sessionStore.Delete(r.Context(), sessionID)
+
+	freshCookie, err := b.encryptString(newSessionID)
+	if err != nil {
+		b.logger.Error(err, "failed to encrypt rotated session ID")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

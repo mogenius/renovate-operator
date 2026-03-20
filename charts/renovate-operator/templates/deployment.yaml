@@ -185,11 +185,13 @@ spec:
               value: "{{ .Release.Name }}-redis-master"
             - name: REDIS_PORT
               value: "6379"
+            {{- if .Values.redis.auth.enabled }}
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Release.Name }}-redis
                   key: redis-password
+            {{- end }}
             {{- end }}
             {{- if .Values.auth.defaultAllowedGroups }}
             - name: DEFAULT_ALLOWED_GROUPS
