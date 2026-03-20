@@ -132,7 +132,7 @@ If you run multiple operator replicas, you **must** set a static session secret 
 
 ### Redis Session Store
 
-To use Redis for session storage, either deploy a Redis instance via the bundled subchart or provide an external Redis URL:
+To use Redis for session storage, either deploy a Redis instance via the bundled subchart or provide an external Redis URL via a secret:
 
 **Option 1: Bundled Redis subchart**
 
@@ -147,27 +147,15 @@ redis:
       enabled: false  # sessions are ephemeral
 ```
 
-**Option 2: External Redis URL**
+**Option 2: Redis URL from an existing secret**
 
 ```yaml
-auth:
-  sessionStoreRedisUrl: "redis://:password@redis.example.com:6379/0"
+redis:
+  existingSecret: "my-redis-secret"
+  existingSecretKey: "redis-url"   # key containing e.g. "redis://:password@redis:6379/0"
 ```
 
-For TLS connections, use the `rediss://` scheme:
-
-```yaml
-auth:
-  sessionStoreRedisUrl: "rediss://:password@redis.example.com:6380/0"
-```
-
-**Option 3: Redis URL from an existing secret**
-
-```yaml
-auth:
-  sessionStoreRedisExistingSecret: "my-redis-secret"
-  sessionStoreRedisSecretKey: "redis-url"
-```
+For TLS connections, use the `rediss://` scheme in the secret value.
 
 ---
 

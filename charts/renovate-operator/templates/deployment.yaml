@@ -174,12 +174,12 @@ spec:
             {{- end }}
             {{- end }}
             {{- if or .Values.auth.oidc.enabled .Values.auth.github.enabled }}
-            {{- if .Values.auth.sessionStoreRedisExistingSecret }}
-            - name: SESSION_STORE_REDIS_URL
+            {{- if .Values.redis.existingSecret }}
+            - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.sessionStoreRedisExistingSecret }}
-                  key: {{ .Values.auth.sessionStoreRedisSecretKey | default "redis-url" }}
+                  name: {{ .Values.redis.existingSecret }}
+                  key: {{ .Values.redis.existingSecretKey | default "redis-url" }}
             {{- else if .Values.redis.enabled }}
             - name: REDIS_HOST
               value: "{{ .Release.Name }}-redis-master"

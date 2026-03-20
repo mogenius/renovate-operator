@@ -213,7 +213,7 @@ func main() {
 			Default:  "false",
 		},
 		{
-			Key:      "SESSION_STORE_REDIS_URL",
+			Key:      "REDIS_URL",
 			Optional: true,
 			Default:  "",
 		},
@@ -303,7 +303,7 @@ func main() {
 
 	// Initialize session store (Redis if configured, otherwise in-memory)
 	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.RedisConfig{
-		URL:      config.GetValue("SESSION_STORE_REDIS_URL"),
+		URL:      config.GetValue("REDIS_URL"),
 		Host:     config.GetValue("REDIS_HOST"),
 		Port:     config.GetValue("REDIS_PORT"),
 		Password: config.GetValue("REDIS_PASSWORD"),

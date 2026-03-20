@@ -144,12 +144,6 @@ webhook:
 auth:
   # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
   defaultAllowedGroups: ""
-  # -- name of an existing secret containing the Redis URL for session storage
-  # -- Use this to provide a Redis URL (e.g., "redis://:password@redis:6379/0") via a Kubernetes secret
-  # -- When set, sessions are stored in Redis (recommended for multi-replica deployments)
-  sessionStoreRedisExistingSecret: ""
-  # -- key in the existing secret that contains the Redis URL
-  sessionStoreRedisSecretKey: "redis-url"
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false
@@ -254,6 +248,12 @@ logging:
 # -- optional: deploy a Redis instance for session storage (recommended for multi-replica)
 redis:
   enabled: false
+  # -- name of an existing secret containing the Redis URL for session storage
+  # -- Use this to provide a Redis URL (e.g., "redis://:password@redis:6379/0") via a Kubernetes secret
+  # -- When set, sessions are stored in Redis (recommended for multi-replica deployments)
+  existingSecret: ""
+  # -- key in the existing secret that contains the Redis URL
+  existingSecretKey: "redis-url"
   architecture: standalone
   auth:
     enabled: true
