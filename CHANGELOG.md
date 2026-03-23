@@ -1,3 +1,10 @@
+## [3.8.4](https://github.com/mogenius/renovate-operator/compare/3.8.3...3.8.4) (2026-03-23)
+
+
+### Bug Fixes
+
+* add missing authorization checks to runRenovateForAllProjects and updateExecutionOptions ([8af636d](https://github.com/mogenius/renovate-operator/commit/8af636db2466e578a9b9ee9ef48f3a8b80e0a745))
+
 ## [3.8.3](https://github.com/mogenius/renovate-operator/compare/3.8.2...3.8.3) (2026-03-19)
 
 
