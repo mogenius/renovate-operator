@@ -1,3 +1,10 @@
+# [3.9.0](https://github.com/mogenius/renovate-operator/compare/3.8.4...3.9.0) (2026-03-25)
+
+
+### Features
+
+* **chart:** add priorityClassName support for operator deployment ([e132416](https://github.com/mogenius/renovate-operator/commit/e13241635cbc96a8dbcfa9941539302ee706d9bd))
+
 ## [3.8.4](https://github.com/mogenius/renovate-operator/compare/3.8.3...3.8.4) (2026-03-23)
 
 
