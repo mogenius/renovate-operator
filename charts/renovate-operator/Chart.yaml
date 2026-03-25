@@ -2,8 +2,8 @@ apiVersion: v2
 name: renovate-operator
 description: Chart to deploy the renovate operator to your cluster
 type: application
-version: 3.8.4
-appVersion: 3.8.4
+version: 3.9.0
+appVersion: 3.9.0
 home: https://mogenius.com
 icon: https://avatars.githubusercontent.com/u/92862356
 sources:
