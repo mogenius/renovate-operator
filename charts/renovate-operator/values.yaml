@@ -228,6 +228,8 @@ tolerations: []
 affinity: {}
 # -- topologySpreadConstraints for the operator pod
 topologySpreadConstraints: []
+# -- priorityClassName for the operator pod
+priorityClassName: ""
 
 serviceAccount:
   # -- name of the serviceaccount, if not set a name is generated using the fullname template
