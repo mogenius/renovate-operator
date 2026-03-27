@@ -22,6 +22,9 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+    {{- if .Values.route.additionalRules }}
+    {{- tpl (toYaml .Values.route.additionalRules) $ | nindent 4 }}
+    {{- end }}
     - matches:
         - path:
             type: PathPrefix
