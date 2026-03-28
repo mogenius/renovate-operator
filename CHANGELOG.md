@@ -1,3 +1,10 @@
+# [3.10.0](https://github.com/mogenius/renovate-operator/compare/3.9.0...3.10.0) (2026-03-28)
+
+
+### Features
+
+* **chart:** add additionalRules field for httproutes ([994c936](https://github.com/mogenius/renovate-operator/commit/994c9365465e1a806ae59484500470180a8feb7c))
+
 # [3.9.0](https://github.com/mogenius/renovate-operator/compare/3.8.4...3.9.0) (2026-03-25)
 
 
