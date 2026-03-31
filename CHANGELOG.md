@@ -1,3 +1,10 @@
+## [3.10.1](https://github.com/mogenius/renovate-operator/compare/3.10.0...3.10.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **deps:** update k8s.io/utils digest to 28399d8 ([73cadc7](https://github.com/mogenius/renovate-operator/commit/73cadc765b586f2a6bea2248e3cb600a72cf01ea))
+
 # [3.10.0](https://github.com/mogenius/renovate-operator/compare/3.9.0...3.10.0) (2026-03-28)
 
 
