@@ -58,13 +58,23 @@ func (c *MemoryRepoCache) Get(_ context.Context, key string) (map[string]RepoPer
 	if !ok || time.Now().After(entry.expires) {
 		return nil, false
 	}
-	return entry.repos, true
+	// Return a defensive copy to prevent callers from mutating cached state.
+	copied := make(map[string]RepoPermission, len(entry.repos))
+	for k, v := range entry.repos {
+		copied[k] = v
+	}
+	return copied, true
 }
 
 func (c *MemoryRepoCache) Set(_ context.Context, key string, repos map[string]RepoPermission, ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = memoryCacheEntry{repos: repos, expires: time.Now().Add(ttl)}
+	// Store a defensive copy so the caller can't mutate cached state.
+	stored := make(map[string]RepoPermission, len(repos))
+	for k, v := range repos {
+		stored[k] = v
+	}
+	c.entries[key] = memoryCacheEntry{repos: stored, expires: time.Now().Add(ttl)}
 }
 
 func (c *MemoryRepoCache) cleanup() {
@@ -84,8 +94,24 @@ func (c *MemoryRepoCache) cleanup() {
 
 // --- Cache key helper ---
 
+// normalizeEndpoint strips path, query, and default ports so that semantically
+// equivalent endpoint URLs (e.g. with/without /api/v1, trailing slash) share a cache entry.
+func normalizeEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return strings.TrimRight(endpoint, "/")
+	}
+	u.Path = ""
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.User = nil
+	u.Host = strings.ToLower(u.Host)
+	return strings.TrimRight(u.String(), "/")
+}
+
 func repoCacheKey(token, endpoint string) string {
-	h := sha256.Sum256([]byte(token + "\x00" + endpoint))
+	normalized := normalizeEndpoint(endpoint)
+	h := sha256.Sum256([]byte(token + "\x00" + normalized))
 	return hex.EncodeToString(h[:])
 }
 
@@ -303,7 +329,10 @@ func filterProjectsByAccess(
 }
 
 // canUserWriteRepo checks if the user has write access to a specific repo.
-// Returns true if permissions cannot be determined (fail-open for backwards compatibility).
+// Returns true (fail-open) when permissions cannot be determined — this covers
+// unsupported platforms, missing tokens, and transient API errors. Fail-open is
+// intentional: this is additive security on top of existing group-based auth,
+// and failing closed would block all trigger actions on transient API failures.
 func canUserWriteRepo(
 	ctx context.Context,
 	session *sessionData,
