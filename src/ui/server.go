@@ -26,9 +26,10 @@ type Server struct {
 	version              string
 	auth                 AuthProvider
 	defaultAllowedGroups []string
+	repoCache            RepoCache
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string, repoCache RepoCache) *Server {
 	return &Server{
 		manager:              manager,
 		logger:               logger,
@@ -38,6 +39,7 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		version:              version,
 		auth:                 auth,
 		defaultAllowedGroups: defaultAllowedGroups,
+		repoCache:            repoCache,
 	}
 }
 
