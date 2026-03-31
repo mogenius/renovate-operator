@@ -212,6 +212,21 @@ func main() {
 			Optional: true,
 			Default:  "false",
 		},
+		{
+			Key:      "GLOBAL_PARALLELISM_LIMIT",
+			Optional: true,
+			Default:  "0",
+			Validate: func(value string) error {
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' needs to be an integer: %s", err.Error())
+				}
+				if parsed < 0 {
+					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' must be 0 (unlimited) or a positive integer")
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
