@@ -66,6 +66,8 @@ config:
   deleteSuccessfulJobs: false
   # -- TTL for finished renovate jobs in seconds, -1 means they are kept forever
   jobTTLSecondsAfterFinished: -1
+  # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
+  globalParallelismLimit: 0
 
 ingress:
   # -- whether to enable the ingress renovate-operator
