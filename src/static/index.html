@@ -1506,6 +1506,11 @@
                       <tr
                         className="bg-gray-50 dark:bg-slate-900/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
                         onClick={() => setShowReadOnly(!showReadOnly)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowReadOnly(!showReadOnly); } }}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={showReadOnly}
+                        aria-label={`${showReadOnly ? "Collapse" : "Expand"} ${readOnlyProjects.length} read-only ${readOnlyProjects.length === 1 ? "repo" : "repos"}`}
                       >
                         <td colSpan="5" className="px-6 py-2.5">
                           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
@@ -1514,6 +1519,7 @@
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
+                              aria-hidden="true"
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
@@ -1726,6 +1732,11 @@
                   <div
                     className="p-4 bg-gray-50 dark:bg-slate-900/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
                     onClick={() => setShowReadOnly(!showReadOnly)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowReadOnly(!showReadOnly); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={showReadOnly}
+                    aria-label={`${showReadOnly ? "Collapse" : "Expand"} ${readOnlyProjects.length} read-only ${readOnlyProjects.length === 1 ? "repo" : "repos"}`}
                   >
                     <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
                       <svg
@@ -1733,6 +1744,7 @@
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        aria-hidden="true"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>

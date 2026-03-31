@@ -279,20 +279,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Filter projects by user's repo access on the git platform
-		if userRepos != nil {
-			filtered := make([]crdmanager.RenovateProjectStatus, 0, len(crdProjects))
-			for _, p := range crdProjects {
-				if _, ok := userRepos[p.Name]; ok {
-					filtered = append(filtered, p)
-				}
-			}
-			s.logger.V(1).Info("filtered projects by user access",
-				"user", session.Email,
-				"platform", platform,
-				"total_projects", len(crdProjects),
-				"visible_projects", len(filtered))
-			crdProjects = filtered
-		}
+		crdProjects = filterProjectsByAccess(r.Context(), session, platform, platformEndpoint, crdProjects, s.repoCache, s.logger)
 
 		// Build UI project list with write permission annotations
 		projects := make([]UIProjectStatus, 0, len(crdProjects))
@@ -490,9 +477,18 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
+	if !authorized {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
+	}
+
+	// Resolve writable repos so we only trigger projects the user can write to
+	var userRepos map[string]RepoPermission
+	session := getSessionFromContext(r)
+	if job != nil {
+		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
+		userRepos = getUserRepos(r.Context(), session, platform, endpoint, s.repoCache, s.logger)
 	}
 
 	jobIdentifier := crdmanager.RenovateJobIdentifier{
@@ -503,7 +499,17 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 	err = s.manager.UpdateProjectStatusBatched(
 		r.Context(),
 		func(p api.ProjectStatus) bool {
-			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
+			if p.Status == api.JobStatusRunning || p.Status == api.JobStatusScheduled {
+				return false
+			}
+			// Skip projects the user doesn't have write access to
+			if userRepos != nil {
+				perm, ok := userRepos[p.Name]
+				if !ok || !perm.CanWrite {
+					return false
+				}
+			}
+			return true
 		},
 		jobIdentifier,
 		&types.RenovateStatusUpdate{
