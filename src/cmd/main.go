@@ -333,7 +333,8 @@ func main() {
 	}
 
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups)
+	repoCache := ui.NewMemoryRepoCache()
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups, repoCache)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
