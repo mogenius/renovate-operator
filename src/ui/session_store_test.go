@@ -219,29 +219,29 @@ func TestCookieSize_WithManyGroups(t *testing.T) {
 	}
 }
 
-// --- Redis store tests (using miniredis) ---
+// --- Valkey store tests (using miniredis — wire-compatible) ---
 
-func newTestRedisStore(t *testing.T) (SessionStore, *miniredis.Miniredis) {
+func newTestValkeyStore(t *testing.T) (SessionStore, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)
-	key, err := ComputeEncryptionKey("test-redis-secret")
+	key, err := ComputeEncryptionKey("test-valkey-secret")
 	if err != nil {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
-	store, err := NewRedisSessionStore("redis://"+mr.Addr()+"/0", key)
+	store, err := NewValkeySessionStore("redis://"+mr.Addr()+"/0", key)
 	if err != nil {
-		t.Fatalf("NewRedisSessionStore failed: %v", err)
+		t.Fatalf("NewValkeySessionStore failed: %v", err)
 	}
 	return store, mr
 }
 
-func TestRedisStore_SaveAndLoad(t *testing.T) {
-	store, _ := newTestRedisStore(t)
+func TestValkeyStore_SaveAndLoad(t *testing.T) {
+	store, _ := newTestValkeyStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
-		Email:  "redis@example.com",
-		Name:   "Redis User",
+		Email:  "valkey@example.com",
+		Name:   "Valkey User",
 		Groups: []string{"team-a", "team-b"},
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
@@ -266,12 +266,12 @@ func TestRedisStore_SaveAndLoad(t *testing.T) {
 	}
 }
 
-func TestRedisStore_Delete(t *testing.T) {
-	store, _ := newTestRedisStore(t)
+func TestValkeyStore_Delete(t *testing.T) {
+	store, _ := newTestValkeyStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
-		Email:  "redis@example.com",
+		Email:  "valkey@example.com",
 		Groups: []string{},
 		Expiry: time.Now().Add(1 * time.Hour).Unix(),
 	}
@@ -289,8 +289,8 @@ func TestRedisStore_Delete(t *testing.T) {
 	}
 }
 
-func TestRedisStore_NotFound(t *testing.T) {
-	store, _ := newTestRedisStore(t)
+func TestValkeyStore_NotFound(t *testing.T) {
+	store, _ := newTestValkeyStore(t)
 	ctx := context.Background()
 
 	_, err := store.Load(ctx, "nonexistent")
@@ -299,12 +299,12 @@ func TestRedisStore_NotFound(t *testing.T) {
 	}
 }
 
-func TestRedisStore_Expiry(t *testing.T) {
-	store, mr := newTestRedisStore(t)
+func TestValkeyStore_Expiry(t *testing.T) {
+	store, mr := newTestValkeyStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
-		Email:  "redis@example.com",
+		Email:  "valkey@example.com",
 		Groups: []string{},
 		Expiry: time.Now().Add(10 * time.Second).Unix(),
 	}
@@ -327,8 +327,8 @@ func TestRedisStore_Expiry(t *testing.T) {
 	}
 }
 
-func TestRedisStore_EncryptionAtRest(t *testing.T) {
-	store, mr := newTestRedisStore(t)
+func TestValkeyStore_EncryptionAtRest(t *testing.T) {
+	store, mr := newTestValkeyStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
@@ -343,7 +343,7 @@ func TestRedisStore_EncryptionAtRest(t *testing.T) {
 	}
 
 	// Read the raw value from miniredis — it should NOT be plaintext JSON
-	raw, err := mr.Get(redisKeyPrefix + "rs-enc")
+	raw, err := mr.Get(valkeyKeyPrefix + "rs-enc")
 	if err != nil {
 		t.Fatalf("Failed to read raw value from miniredis: %v", err)
 	}
@@ -351,51 +351,51 @@ func TestRedisStore_EncryptionAtRest(t *testing.T) {
 	// Verify raw value is not valid JSON (i.e., it's encrypted)
 	var probe json.RawMessage
 	if json.Unmarshal([]byte(raw), &probe) == nil {
-		t.Error("Raw Redis value is valid JSON — session data is NOT encrypted at rest")
+		t.Error("Raw Valkey value is valid JSON — session data is NOT encrypted at rest")
 	}
 
 	// Verify the email is not in the raw value as plaintext
 	if strings.Contains(raw, "secret@example.com") {
-		t.Error("Raw Redis value contains plaintext email — session data is NOT encrypted at rest")
+		t.Error("Raw Valkey value contains plaintext email — session data is NOT encrypted at rest")
 	}
 }
 
 // --- Factory and URL builder tests ---
 
-func TestBuildRedisURL_EmptyHost(t *testing.T) {
-	result := buildRedisURL("", "6379", "")
+func TestBuildValkeyURL_EmptyHost(t *testing.T) {
+	result := buildValkeyURL("", "6379", "")
 	if result != "" {
 		t.Errorf("Expected empty string for empty host, got %q", result)
 	}
 }
 
-func TestBuildRedisURL_HostAndPort(t *testing.T) {
-	result := buildRedisURL("redis.example.com", "6380", "")
-	expected := "redis://redis.example.com:6380/0"
+func TestBuildValkeyURL_HostAndPort(t *testing.T) {
+	result := buildValkeyURL("valkey.example.com", "6380", "")
+	expected := "redis://valkey.example.com:6380/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
 	}
 }
 
-func TestBuildRedisURL_DefaultPort(t *testing.T) {
-	result := buildRedisURL("redis.example.com", "", "")
-	expected := "redis://redis.example.com:6379/0"
+func TestBuildValkeyURL_DefaultPort(t *testing.T) {
+	result := buildValkeyURL("valkey.example.com", "", "")
+	expected := "redis://valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
 	}
 }
 
-func TestBuildRedisURL_WithPassword(t *testing.T) {
-	result := buildRedisURL("redis.example.com", "6379", "s3cret")
-	expected := "redis://:s3cret@redis.example.com:6379/0"
+func TestBuildValkeyURL_WithPassword(t *testing.T) {
+	result := buildValkeyURL("valkey.example.com", "6379", "s3cret")
+	expected := "redis://:s3cret@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
 	}
 }
 
-func TestBuildRedisURL_PasswordWithSpecialChars(t *testing.T) {
-	result := buildRedisURL("redis.example.com", "6379", "p@ss:word/123")
-	expected := "redis://:p%40ss%3Aword%2F123@redis.example.com:6379/0"
+func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
+	result := buildValkeyURL("valkey.example.com", "6379", "p@ss:word/123")
+	expected := "redis://:p%40ss%3Aword%2F123@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
 	}
@@ -407,7 +407,7 @@ func TestNewSessionStore_EmptyConfig_ReturnsMemory(t *testing.T) {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
 
-	store, storeType, storeErr := NewSessionStore(RedisConfig{}, key)
+	store, storeType, storeErr := NewSessionStore(ValkeyConfig{}, key)
 	if storeErr != nil {
 		t.Fatalf("NewSessionStore failed: %v", storeErr)
 	}
@@ -419,43 +419,43 @@ func TestNewSessionStore_EmptyConfig_ReturnsMemory(t *testing.T) {
 	}
 }
 
-func TestNewSessionStore_WithRedisURL_ReturnsRedis(t *testing.T) {
+func TestNewSessionStore_WithValkeyURL_ReturnsValkey(t *testing.T) {
 	mr := miniredis.RunT(t)
 	key, err := ComputeEncryptionKey("test-secret")
 	if err != nil {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
 
-	store, storeType, storeErr := NewSessionStore(RedisConfig{
+	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
 		URL: "redis://" + mr.Addr() + "/0",
 	}, key)
 	if storeErr != nil {
 		t.Fatalf("NewSessionStore failed: %v", storeErr)
 	}
-	if storeType != "redis" {
-		t.Errorf("Expected store type 'redis', got %q", storeType)
+	if storeType != "valkey" {
+		t.Errorf("Expected store type 'valkey', got %q", storeType)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")
 	}
 }
 
-func TestNewSessionStore_WithHost_ReturnsRedis(t *testing.T) {
+func TestNewSessionStore_WithHost_ReturnsValkey(t *testing.T) {
 	mr := miniredis.RunT(t)
 	key, err := ComputeEncryptionKey("test-secret")
 	if err != nil {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
 
-	store, storeType, storeErr := NewSessionStore(RedisConfig{
+	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
 		Host: mr.Host(),
 		Port: mr.Port(),
 	}, key)
 	if storeErr != nil {
 		t.Fatalf("NewSessionStore failed: %v", storeErr)
 	}
-	if storeType != "redis" {
-		t.Errorf("Expected store type 'redis', got %q", storeType)
+	if storeType != "valkey" {
+		t.Errorf("Expected store type 'valkey', got %q", storeType)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")
@@ -470,7 +470,7 @@ func TestNewSessionStore_URLTakesPrecedenceOverHost(t *testing.T) {
 	}
 
 	// URL points to miniredis, Host points to nowhere
-	store, storeType, storeErr := NewSessionStore(RedisConfig{
+	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
 		URL:  "redis://" + mr.Addr() + "/0",
 		Host: "nonexistent.invalid",
 		Port: "9999",
@@ -478,8 +478,8 @@ func TestNewSessionStore_URLTakesPrecedenceOverHost(t *testing.T) {
 	if storeErr != nil {
 		t.Fatalf("NewSessionStore failed: %v", storeErr)
 	}
-	if storeType != "redis" {
-		t.Errorf("Expected store type 'redis', got %q", storeType)
+	if storeType != "valkey" {
+		t.Errorf("Expected store type 'valkey', got %q", storeType)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")

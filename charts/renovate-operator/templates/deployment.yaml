@@ -174,23 +174,23 @@ spec:
             {{- end }}
             {{- end }}
             {{- if or .Values.auth.oidc.enabled .Values.auth.github.enabled }}
-            {{- if .Values.redis.existingSecret }}
-            - name: REDIS_URL
+            {{- if .Values.valkey.existingSecret }}
+            - name: VALKEY_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.redis.existingSecret }}
-                  key: {{ .Values.redis.existingSecretKey | default "redis-url" }}
-            {{- else if .Values.redis.enabled }}
-            - name: REDIS_HOST
-              value: "{{ .Release.Name }}-redis-master"
-            - name: REDIS_PORT
+                  name: {{ .Values.valkey.existingSecret }}
+                  key: {{ .Values.valkey.existingSecretKey | default "valkey-url" }}
+            {{- else if .Values.valkey.enabled }}
+            - name: VALKEY_HOST
+              value: "{{ .Release.Name }}-valkey"
+            - name: VALKEY_PORT
               value: "6379"
-            {{- if .Values.redis.auth.enabled }}
-            - name: REDIS_PASSWORD
+            {{- if .Values.valkey.auth.enabled }}
+            - name: VALKEY_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-redis
-                  key: redis-password
+                  name: {{ .Release.Name }}-valkey-auth
+                  key: default-password
             {{- end }}
             {{- end }}
             {{- if .Values.auth.defaultAllowedGroups }}

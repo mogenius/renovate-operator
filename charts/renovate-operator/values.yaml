@@ -245,22 +245,23 @@ logging:
   # -- log format for the operator, one of: json, console
   format: "json"
 
-# -- optional: deploy a Redis instance for session storage (recommended for multi-replica)
-redis:
+# -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
+valkey:
   enabled: false
-  # -- name of an existing secret containing the Redis URL for session storage
-  # -- Use this to provide a Redis URL (e.g., "redis://:password@redis:6379/0") via a Kubernetes secret
-  # -- When set, sessions are stored in Redis (recommended for multi-replica deployments)
+  # -- name of an existing secret containing the Valkey URL for session storage
+  # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
+  # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
   existingSecret: ""
-  # -- key in the existing secret that contains the Redis URL
-  existingSecretKey: "redis-url"
-  architecture: standalone
+  # -- key in the existing secret that contains the Valkey URL
+  existingSecretKey: "valkey-url"
   auth:
     enabled: true
-    password: ""
-  master:
-    persistence:
-      enabled: false
+    aclUsers:
+      default:
+        password: ""
+        permissions: "~* &* +@all"
+  dataStorage:
+    enabled: false
   metrics:
     enabled: false
     serviceMonitor:

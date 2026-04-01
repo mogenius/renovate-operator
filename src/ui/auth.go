@@ -181,7 +181,7 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				_, err := fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
 					"could not be verified. This usually means GITHUB_SESSION_SECRET or OIDC_SESSION_SECRET "+
 					"is not set, or differs between replicas. It can also occur when the session store "+
-					"is unavailable (pod restart with in-memory store, or Redis connectivity issue).")
+					"is unavailable (pod restart with in-memory store, or Valkey connectivity issue).")
 				if err != nil {
 					b.logger.Error(err, "failed to write error response")
 				}

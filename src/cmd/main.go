@@ -213,22 +213,22 @@ func main() {
 			Default:  "false",
 		},
 		{
-			Key:      "REDIS_URL",
+			Key:      "VALKEY_URL",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "REDIS_HOST",
+			Key:      "VALKEY_HOST",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "REDIS_PORT",
+			Key:      "VALKEY_PORT",
 			Optional: true,
 			Default:  "6379",
 		},
 		{
-			Key:      "REDIS_PASSWORD",
+			Key:      "VALKEY_PASSWORD",
 			Optional: true,
 			Default:  "",
 		},
@@ -283,7 +283,7 @@ func main() {
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
 	// Determine the session secret for the active auth provider so we can
-	// derive the encryption key early (needed for both the Redis store and
+	// derive the encryption key early (needed for both the Valkey store and
 	// the auth provider itself).
 	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
 	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
@@ -305,17 +305,17 @@ func main() {
 	// encryption so a compromise of one does not affect the other.
 	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
 
-	// Initialize session store (Redis if configured, otherwise in-memory)
-	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.RedisConfig{
-		URL:      config.GetValue("REDIS_URL"),
-		Host:     config.GetValue("REDIS_HOST"),
-		Port:     config.GetValue("REDIS_PORT"),
-		Password: config.GetValue("REDIS_PASSWORD"),
+	// Initialize session store (Valkey if configured, otherwise in-memory)
+	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.ValkeyConfig{
+		URL:      config.GetValue("VALKEY_URL"),
+		Host:     config.GetValue("VALKEY_HOST"),
+		Port:     config.GetValue("VALKEY_PORT"),
+		Password: config.GetValue("VALKEY_PASSWORD"),
 	}, storeKey)
 	assert.NoError(storeErr, "failed to initialize session store")
 	ctrl.Log.WithName("auth").Info("Using session store", "type", storeType)
 	if storeType == "memory" && leaderElectionID != "" {
-		ctrl.Log.WithName("auth").Info("WARNING: in-memory session store with multiple replicas will cause sessions to break across pods; configure Redis for multi-replica deployments")
+		ctrl.Log.WithName("auth").Info("WARNING: in-memory session store with multiple replicas will cause sessions to break across pods; configure Valkey for multi-replica deployments")
 	}
 	defer func() {
 		if err := sessionStore.Close(); err != nil {

@@ -26,9 +26,9 @@ type SessionStore interface {
 	Close() error
 }
 
-// RedisConfig holds the configuration for connecting to Redis.
+// ValkeyConfig holds the configuration for connecting to Valkey.
 // Either URL or Host must be set; URL takes precedence.
-type RedisConfig struct {
+type ValkeyConfig struct {
 	URL      string
 	Host     string
 	Port     string
@@ -36,29 +36,29 @@ type RedisConfig struct {
 }
 
 // NewSessionStore creates a SessionStore based on the provided configuration.
-// If Redis is configured (via URL or Host), a Redis-backed store is returned;
+// If Valkey is configured (via URL or Host), a Valkey-backed store is returned;
 // otherwise an in-memory store is used.
-// The second return value indicates the store type ("redis" or "memory").
-func NewSessionStore(redisCfg RedisConfig, encryptionKey [32]byte) (SessionStore, string, error) {
-	redisURL := redisCfg.URL
-	if redisURL == "" {
-		redisURL = buildRedisURL(redisCfg.Host, redisCfg.Port, redisCfg.Password)
+// The second return value indicates the store type ("valkey" or "memory").
+func NewSessionStore(valkeyCfg ValkeyConfig, encryptionKey [32]byte) (SessionStore, string, error) {
+	valkeyURL := valkeyCfg.URL
+	if valkeyURL == "" {
+		valkeyURL = buildValkeyURL(valkeyCfg.Host, valkeyCfg.Port, valkeyCfg.Password)
 	}
 
-	if redisURL != "" {
-		store, err := NewRedisSessionStore(redisURL, encryptionKey)
+	if valkeyURL != "" {
+		store, err := NewValkeySessionStore(valkeyURL, encryptionKey)
 		if err != nil {
 			return nil, "", err
 		}
-		return store, "redis", nil
+		return store, "valkey", nil
 	}
 
 	return NewMemorySessionStore(), "memory", nil
 }
 
-// buildRedisURL constructs a Redis URL from host, port, and password.
-// Returns "" if host is empty.
-func buildRedisURL(host, port, password string) string {
+// buildValkeyURL constructs a Valkey URL from host, port, and password.
+// Returns "" if host is empty. Uses the redis:// scheme (wire-compatible protocol).
+func buildValkeyURL(host, port, password string) string {
 	if host == "" {
 		return ""
 	}

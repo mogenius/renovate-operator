@@ -122,37 +122,39 @@ The operator requests the `read:user` and `user:email` scopes. On logout, the OA
 
 ## Session Security
 
-Sessions are stored **server-side** (in-memory by default, or in Redis) and expire after **24 hours**. The browser cookie holds only an AES-256-GCM encrypted session ID (~100 bytes), avoiding the ~4096 byte browser cookie size limit that can cause auth loops for users with many groups.
+Sessions are stored **server-side** (in-memory by default, or in Valkey) and expire after **24 hours**. The browser cookie holds only an AES-256-GCM encrypted session ID (~100 bytes), avoiding the ~4096 byte browser cookie size limit that can cause auth loops for users with many groups.
 
 **In-memory store** (default): sessions are lost on pod restart and not shared across replicas. Suitable for single-replica deployments.
 
-**Redis store**: sessions survive pod restarts and are shared across replicas. Recommended for multi-replica deployments.
+**Valkey store**: sessions survive pod restarts and are shared across replicas. Recommended for multi-replica deployments.
 
 If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session ID cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
 
-### Redis Session Store
+### Valkey Session Store
 
-To use Redis for session storage, either deploy a Redis instance via the bundled subchart or provide an external Redis URL via a secret:
+To use Valkey for session storage, either deploy a Valkey instance via the bundled subchart or provide an external Valkey URL via a secret:
 
-**Option 1: Bundled Redis subchart**
+**Option 1: Bundled Valkey subchart**
 
 ```yaml
-redis:
+valkey:
   enabled: true
-  architecture: standalone
   auth:
     enabled: true
-  master:
-    persistence:
-      enabled: false  # sessions are ephemeral
+    aclUsers:
+      default:
+        password: ""
+        permissions: "~* &* +@all"
+  dataStorage:
+    enabled: false  # sessions are ephemeral
 ```
 
-**Option 2: Redis URL from an existing secret**
+**Option 2: Valkey URL from an existing secret**
 
 ```yaml
-redis:
-  existingSecret: "my-redis-secret"
-  existingSecretKey: "redis-url"   # key containing e.g. "redis://:password@redis:6379/0"
+valkey:
+  existingSecret: "my-valkey-secret"
+  existingSecretKey: "valkey-url"   # key containing e.g. "redis://:password@valkey:6379/0"
 ```
 
 For TLS connections, use the `rediss://` scheme in the secret value.
