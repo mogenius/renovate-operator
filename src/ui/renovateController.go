@@ -67,6 +67,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Status:            p.Status,
 				LastRun:           p.LastRun.Time,
 				HasRenovateConfig: p.HasRenovateConfig,
+				PRActivity:        p.PRActivity,
 			})
 		}
 

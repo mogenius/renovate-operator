@@ -4,6 +4,7 @@ import (
 	"context"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/parser"
 )
 
 // Mock RenovateJobManager for webhook integration tests
@@ -53,7 +54,7 @@ func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace
 func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, projects []string) error {
 	return nil
 }
-func (m *mockWebhookManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, hasConfig *bool) error {
+func (m *mockWebhookManager) UpdateProjectParseResults(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, parseResult *parser.LogParseResult) error {
 	return nil
 }
 func (m *mockWebhookManager) LoadRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {

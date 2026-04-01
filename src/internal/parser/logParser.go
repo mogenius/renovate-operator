@@ -3,15 +3,24 @@ package parser
 import (
 	"bufio"
 	"encoding/json"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+
+	api "renovate-operator/api/v1alpha1"
 
 	"k8s.io/utils/ptr"
 )
 
+// MaxPRDetails is the maximum number of individual PR details stored to prevent CRD bloat
+const MaxPRDetails = 100
+
 // LogParseResult contains the result of parsing Renovate logs
 type LogParseResult struct {
-	HasIssues         bool  // true if any WARN (level 40) or ERROR (level 50) found
-	HasRenovateConfig *bool // nil = unknown, true = config found, false = no config (onboarding detected)
+	HasIssues         bool            // true if any WARN (level 40) or ERROR (level 50) found
+	HasRenovateConfig *bool           // nil = unknown, true = config found, false = no config (onboarding detected)
+	PRActivity        *api.PRActivity // nil when logs are empty/unparseable, non-nil (possibly zero counts) when logs were parsed successfully
 }
 
 // renovateLogEntry represents a single line in Renovate's JSON log output
@@ -24,6 +33,60 @@ type repositoryFinishedEntry struct {
 	Msg       string `json:"msg"`
 	Onboarded *bool  `json:"onboarded,omitempty"`
 }
+
+// prCreateUpdateEntry is a targeted partial-unmarshal struct for "Creating PR" / "Updating PR" messages
+type prCreateUpdateEntry struct {
+	Msg    string `json:"msg"`
+	Branch string `json:"branch"`
+	Title  string `json:"title"`
+}
+
+// prUnchangedEntry is a targeted partial-unmarshal struct for "does not need updating" messages
+type prUnchangedEntry struct {
+	Msg    string `json:"msg"`
+	Branch string `json:"branch"`
+}
+
+// gitPushEntry is a targeted partial-unmarshal struct for "git push" messages containing PR URLs
+type gitPushEntry struct {
+	Msg    string `json:"msg"`
+	Branch string `json:"branch"`
+	Result struct {
+		RemoteMessages struct {
+			All []string `json:"all"`
+		} `json:"remoteMessages"`
+	} `json:"result"`
+}
+
+// prCreatedEntry is a targeted partial-unmarshal struct for "PR created" messages (level 30)
+// which contain the PR number after the PR is created on the forge
+type prCreatedEntry struct {
+	Msg    string `json:"msg"`
+	Branch string `json:"branch"`
+	PR     int    `json:"pr"`
+}
+
+// branchInfoItem represents a single branch in the "branches info extended" summary
+type branchInfoItem struct {
+	BranchName string `json:"branchName"`
+	PRNo       *int   `json:"prNo"` // pointer because null means no PR
+	PRTitle    string `json:"prTitle"`
+	Result     string `json:"result"`
+}
+
+// branchesInfoEntry is a targeted partial-unmarshal struct for "branches info extended" (level 20)
+// which contains a complete list of all branches Renovate knows about, including skipped ones
+type branchesInfoEntry struct {
+	Msg          string           `json:"msg"`
+	BranchesInfo []branchInfoItem `json:"branchesInformation"`
+}
+
+var (
+	// prURLRegex matches PR/MR URLs from GitHub (/pull/N), Forgejo (/pulls/N), and GitLab (/merge_requests/N)
+	prURLRegex = regexp.MustCompile(`https?://[^\s"]+/(?:pulls|pull|merge_requests)/(\d+)`)
+	// prNumberRegex extracts the PR number from "Pull Request #N does not need updating" messages
+	prNumberRegex = regexp.MustCompile(`Pull Request #(\d+)`)
+)
 
 // ParseRenovateLogs parses Renovate JSON logs (NDJSON format) and detects warnings/errors
 // and whether the repository has a Renovate config file.
@@ -41,6 +104,10 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		return result
 	}
 
+	// Per-branch map for accumulating PR details (last-write-wins for action)
+	branchMap := make(map[string]*api.PRDetail)
+	parsedAnyLine := false
+
 	scanner := bufio.NewScanner(strings.NewReader(logs))
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max
 	for scanner.Scan() {
@@ -54,6 +121,8 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			// Line is not valid JSON, skip it
 			continue
 		}
+
+		parsedAnyLine = true
 
 		// Renovate log levels: 10=trace, 20=debug, 30=info, 40=warn, 50=error, 60=fatal
 		if entry.Level >= 40 {
@@ -69,10 +138,194 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 				} else {
 					result.HasRenovateConfig = finished.Onboarded
 				}
+			}
+		}
 
+		// PR activity: "Creating PR" (level 30)
+		if entry.Msg == "Creating PR" {
+			var pr prCreateUpdateEntry
+			if err := json.Unmarshal([]byte(line), &pr); err == nil && pr.Branch != "" {
+				detail := getOrCreateDetail(branchMap, pr.Branch)
+				detail.Action = api.PRActionCreated
+				detail.Title = pr.Title
+			}
+		}
+
+		// PR activity: "Updating PR" (level 30)
+		if entry.Msg == "Updating PR" {
+			var pr prCreateUpdateEntry
+			if err := json.Unmarshal([]byte(line), &pr); err == nil && pr.Branch != "" {
+				detail := getOrCreateDetail(branchMap, pr.Branch)
+				detail.Action = api.PRActionUpdated
+				detail.Title = pr.Title
+			}
+		}
+
+		// PR activity: "Pull Request #N does not need updating" (level 20)
+		if strings.Contains(entry.Msg, "does not need updating") {
+			if matches := prNumberRegex.FindStringSubmatch(entry.Msg); len(matches) == 2 {
+				if num, err := strconv.Atoi(matches[1]); err == nil {
+					var unch prUnchangedEntry
+					if err := json.Unmarshal([]byte(line), &unch); err == nil && unch.Branch != "" {
+						detail := getOrCreateDetail(branchMap, unch.Branch)
+						detail.Action = api.PRActionUnchanged
+						detail.Number = num
+					}
+				}
+			}
+		}
+
+		// PR activity: "git push" with remoteMessages containing PR URL (level 20)
+		if entry.Msg == "git push" {
+			var gp gitPushEntry
+			if err := json.Unmarshal([]byte(line), &gp); err == nil && gp.Branch != "" {
+				for _, msg := range gp.Result.RemoteMessages.All {
+					if matches := prURLRegex.FindStringSubmatch(msg); len(matches) == 2 {
+						detail := getOrCreateDetail(branchMap, gp.Branch)
+						detail.URL = matches[0]
+						if num, err := strconv.Atoi(matches[1]); err == nil {
+							detail.Number = num
+						}
+						break
+					}
+				}
+			}
+		}
+
+		// PR activity: "PR created" (level 30) - contains the PR number after forge creates the PR
+		if entry.Msg == "PR created" {
+			var pc prCreatedEntry
+			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" && pc.PR > 0 {
+				detail := getOrCreateDetail(branchMap, pc.Branch)
+				detail.Number = pc.PR
+			}
+		}
+
+		// PR activity: "PR automerged" (level 30) - PR was automatically merged
+		if entry.Msg == "PR automerged" {
+			var pc prCreatedEntry // same shape: msg, branch, pr
+			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" {
+				detail := getOrCreateDetail(branchMap, pc.Branch)
+				detail.Action = api.PRActionAutomerged
+				if pc.PR > 0 {
+					detail.Number = pc.PR
+				}
+			}
+		}
+
+		// PR activity: "branches info extended" (level 20) - complete list of all branches,
+		// including those skipped in this run. Backfills branches not seen in per-message parsing.
+		// Skip branches with result="already-existed" (stale branches with closed/merged PRs).
+		if entry.Msg == "branches info extended" {
+			var bi branchesInfoEntry
+			if err := json.Unmarshal([]byte(line), &bi); err == nil {
+				for _, b := range bi.BranchesInfo {
+					if b.BranchName == "" || b.Result == "already-existed" {
+						continue
+					}
+					if _, exists := branchMap[b.BranchName]; exists {
+						// Already captured from per-message parsing, skip
+						continue
+					}
+					detail := getOrCreateDetail(branchMap, b.BranchName)
+					detail.Action = api.PRActionUnchanged
+					detail.Title = b.PRTitle
+					if b.PRNo != nil {
+						detail.Number = *b.PRNo
+					}
+				}
 			}
 		}
 	}
 
+	// Build PRActivity if we parsed any log lines
+	if parsedAnyLine {
+		result.PRActivity = buildPRActivity(branchMap)
+	}
+
 	return result
+}
+
+// getOrCreateDetail returns the PRDetail for a branch, creating it if needed
+func getOrCreateDetail(m map[string]*api.PRDetail, branch string) *api.PRDetail {
+	if d, ok := m[branch]; ok {
+		return d
+	}
+	d := &api.PRDetail{Branch: branch}
+	m[branch] = d
+	return d
+}
+
+// buildPRActivity collapses the branch map into counts and a capped PRDetail slice
+func buildPRActivity(branchMap map[string]*api.PRDetail) *api.PRActivity {
+	activity := &api.PRActivity{}
+
+	if len(branchMap) == 0 {
+		return activity
+	}
+
+	// Default action for branches that only appeared in "git push" or "PR created" messages
+	for _, detail := range branchMap {
+		if detail.Action == "" && (detail.URL != "" || detail.Number > 0) {
+			detail.Action = api.PRActionUpdated
+		}
+	}
+
+	// Backfill URLs: if any PR has a URL, derive the base prefix and apply to PRs with number but no URL.
+	// All PRs in a single run come from the same forge, so the first URL found is representative.
+	// Map iteration order is non-deterministic, but all URLs share the same prefix so the result is stable.
+	var urlPrefix string
+	for _, detail := range branchMap {
+		if detail.URL != "" && detail.Number > 0 {
+			idx := strings.LastIndex(detail.URL, "/"+strconv.Itoa(detail.Number))
+			if idx > 0 {
+				urlPrefix = detail.URL[:idx+1] // includes trailing /
+				break
+			}
+		}
+	}
+	if urlPrefix != "" {
+		for _, detail := range branchMap {
+			if detail.URL == "" && detail.Number > 0 {
+				detail.URL = urlPrefix + strconv.Itoa(detail.Number)
+			}
+		}
+	}
+
+	// Count actions across all branches (before truncation)
+	for _, detail := range branchMap {
+		switch detail.Action {
+		case api.PRActionAutomerged:
+			activity.Automerged++
+		case api.PRActionCreated:
+			activity.Created++
+		case api.PRActionUpdated:
+			activity.Updated++
+		case api.PRActionUnchanged:
+			activity.Unchanged++
+		}
+	}
+
+	// Collect all PRDetails, sorted by action priority (automerged > created > updated > unchanged), then branch name
+	actionOrder := map[api.PRAction]int{api.PRActionAutomerged: 0, api.PRActionCreated: 1, api.PRActionUpdated: 2, api.PRActionUnchanged: 3}
+	prs := make([]api.PRDetail, 0, len(branchMap))
+	for _, detail := range branchMap {
+		prs = append(prs, *detail)
+	}
+	sort.Slice(prs, func(i, j int) bool {
+		oi, oj := actionOrder[prs[i].Action], actionOrder[prs[j].Action]
+		if oi != oj {
+			return oi < oj
+		}
+		return prs[i].Branch < prs[j].Branch
+	})
+
+	// Cap at MaxPRDetails
+	if len(prs) > MaxPRDetails {
+		prs = prs[:MaxPRDetails]
+		activity.Truncated = true
+	}
+
+	activity.PRs = prs
+	return activity
 }

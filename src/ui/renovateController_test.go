@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/parser"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -76,7 +77,7 @@ func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId cr
 	return nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, hasConfig *bool) error {
+func (m *mockRenovateJobManager) UpdateProjectParseResults(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, parseResult *parser.LogParseResult) error {
 	return nil
 }
 

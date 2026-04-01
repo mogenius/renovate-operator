@@ -211,11 +211,9 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 							parseResult := parser.ParseRenovateLogs(logs)
 							hasIssues = parseResult.HasIssues
 
-							// Update config status based on log parsing
-							if parseResult.HasRenovateConfig != nil {
-								if err := e.manager.UpdateProjectConfigStatus(ctx, project.Name, jobId, parseResult.HasRenovateConfig); err != nil {
-									e.logger.Error(err, "failed to update config status", "project", project.Name)
-								}
+							// Update config status and PR activity from parsed log results
+							if err := e.manager.UpdateProjectParseResults(ctx, project.Name, jobId, parseResult); err != nil {
+								e.logger.Error(err, "failed to update parse results", "project", project.Name)
 							}
 						} else {
 							e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)

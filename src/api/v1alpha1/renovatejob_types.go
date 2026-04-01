@@ -89,6 +89,35 @@ type RenovateJobMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+// PRAction represents what happened to a PR in a Renovate run
+type PRAction string
+
+const (
+	PRActionAutomerged PRAction = "automerged"
+	PRActionCreated    PRAction = "created"
+	PRActionUpdated    PRAction = "updated"
+	PRActionUnchanged  PRAction = "unchanged"
+)
+
+// PRDetail represents a single PR found in Renovate logs
+type PRDetail struct {
+	Branch string   `json:"branch"`
+	Number int      `json:"number,omitempty"`
+	URL    string   `json:"url,omitempty"`
+	Title  string   `json:"title,omitempty"`
+	Action PRAction `json:"action"`
+}
+
+// PRActivity contains aggregate counts and individual details of PR activity from a run
+type PRActivity struct {
+	Automerged int        `json:"automerged"`
+	Created    int        `json:"created"`
+	Updated    int        `json:"updated"`
+	Unchanged  int        `json:"unchanged"`
+	PRs        []PRDetail `json:"prs,omitempty"`
+	Truncated  bool       `json:"truncated,omitempty"`
+}
+
 /*
 Status of a single project within a RenovateJob
 */
@@ -97,6 +126,7 @@ type ProjectStatus struct {
 	LastRun           metav1.Time           `json:"lastRun"`
 	Status            RenovateProjectStatus `json:"status"`
 	HasRenovateConfig *bool                 `json:"hasRenovateConfig,omitempty"`
+	PRActivity        *PRActivity           `json:"prActivity,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -124,13 +154,42 @@ type RenovateJob struct {
 	Status RenovateJobStatus `json:"status,omitempty"`
 }
 
+// DeepCopyInto deep copies a RenovateJob into out
+func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
+	*out = *in
+	// Deep copy Status.Projects (contains pointer and slice fields)
+	if in.Status.Projects != nil {
+		out.Status.Projects = make([]ProjectStatus, len(in.Status.Projects))
+		for i := range in.Status.Projects {
+			in.Status.Projects[i].DeepCopyInto(&out.Status.Projects[i])
+		}
+	}
+}
+
 func (in *RenovateJob) DeepCopyObject() runtime.Object {
 	if in == nil {
 		return nil
 	}
 	out := new(RenovateJob)
-	*out = *in
+	in.DeepCopyInto(out)
 	return out
+}
+
+// DeepCopyInto deep copies a ProjectStatus into out
+func (in *ProjectStatus) DeepCopyInto(out *ProjectStatus) {
+	*out = *in
+	if in.HasRenovateConfig != nil {
+		out.HasRenovateConfig = new(bool)
+		*out.HasRenovateConfig = *in.HasRenovateConfig
+	}
+	if in.PRActivity != nil {
+		out.PRActivity = new(PRActivity)
+		*out.PRActivity = *in.PRActivity
+		if in.PRActivity.PRs != nil {
+			out.PRActivity.PRs = make([]PRDetail, len(in.PRActivity.PRs))
+			copy(out.PRActivity.PRs, in.PRActivity.PRs)
+		}
+	}
 }
 
 // unique name for a renovatejob ${name}-${namespace}
@@ -150,6 +209,12 @@ func (in *RenovateJobList) DeepCopyObject() runtime.Object {
 	}
 	out := new(RenovateJobList)
 	*out = *in
+	if in.Items != nil {
+		out.Items = make([]RenovateJob, len(in.Items))
+		for i := range in.Items {
+			in.Items[i].DeepCopyInto(&out.Items[i])
+		}
+	}
 	return out
 }
 

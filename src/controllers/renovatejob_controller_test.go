@@ -8,6 +8,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/parser"
 
 	"github.com/go-logr/logr"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,7 +62,7 @@ func (f *fakeManager) ReconcileProjects(ctx context.Context, job crdManager.Reno
 func (f *fakeManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
 	return "", fmt.Errorf("not implemented")
 }
-func (f *fakeManager) UpdateProjectConfigStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, hasConfig *bool) error {
+func (f *fakeManager) UpdateProjectParseResults(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, parseResult *parser.LogParseResult) error {
 	return nil
 }
 
