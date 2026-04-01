@@ -82,6 +82,7 @@ type RenovateProjectStatus struct {
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
+	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore) RenovateJobManager {
@@ -132,6 +133,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Priority:             project.Priority,
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
+				PRActivity:           project.PRActivity,
 			})
 		}
 	}
@@ -154,6 +156,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Priority:             project.Priority,
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
+			PRActivity:           project.PRActivity,
 		})
 	}
 	return result, nil
@@ -307,25 +310,6 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 		return err
-	})
-}
-
-func (r *renovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *string) error {
-	defer r.globalManagerLock(false)()
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-		if err != nil {
-			return err
-		}
-		for i := range renovateJob.Status.Projects {
-			if renovateJob.Status.Projects[i].Name == project {
-				renovateJob.Status.Projects[i].RenovateResultStatus = status
-				_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-				return err
-			}
-		}
-		return nil
 	})
 }
 
