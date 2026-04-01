@@ -10,6 +10,7 @@ type RenovateStatusUpdate struct {
 	Status               api.RenovateProjectStatus
 	Priority             int32
 	RenovateResultStatus *string
+	PRActivity           *api.PRActivity
 	LastRun              *v1.Time
 	Duration             *string
 }

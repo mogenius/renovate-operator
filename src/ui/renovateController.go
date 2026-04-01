@@ -261,6 +261,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
+				PRActivity:           p.PRActivity,
 			})
 		}
 

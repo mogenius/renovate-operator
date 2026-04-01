@@ -4013,6 +4013,48 @@ spec:
                       type: string
                     name:
                       type: string
+                    prActivity:
+                      description: PRActivity contains aggregate counts and individual
+                        details of PR activity from a run.
+                      properties:
+                        automerged:
+                          type: integer
+                        created:
+                          type: integer
+                        prs:
+                          items:
+                            description: PRDetail represents a single PR found in
+                              Renovate logs.
+                            properties:
+                              action:
+                                description: PRAction represents what happened to
+                                  a PR in a Renovate run.
+                                type: string
+                              branch:
+                                type: string
+                              number:
+                                type: integer
+                              title:
+                                type: string
+                              url:
+                                type: string
+                            required:
+                            - action
+                            - branch
+                            type: object
+                          type: array
+                        truncated:
+                          type: boolean
+                        unchanged:
+                          type: integer
+                        updated:
+                          type: integer
+                      required:
+                      - automerged
+                      - created
+                      - unchanged
+                      - updated
+                      type: object
                     priority:
                       format: int32
                       type: integer
