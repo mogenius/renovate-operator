@@ -2,9 +2,10 @@ package ui
 
 import (
 	"context"
+	"crypto/cipher"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,50 +27,71 @@ type SessionStore interface {
 	Close() error
 }
 
-// ValkeyConfig holds the configuration for connecting to Valkey.
-// Either URL or Host must be set; URL takes precedence.
-type ValkeyConfig struct {
-	URL      string
-	Host     string
-	Port     string
-	Password string
+// NewSessionStore creates a SessionStore wrapping the provided KVStore.
+// If kvStore is nil, returns (nil, nil) — indicating cookie-only mode.
+func NewSessionStore(kvStore KVStore, encryptionKey [32]byte) (SessionStore, error) {
+	if kvStore == nil {
+		return nil, nil
+	}
+
+	gcm, err := newGCM(encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM for session store: %w", err)
+	}
+
+	return &valkeySessionStore{store: kvStore, gcm: gcm}, nil
 }
 
-// NewSessionStore creates a SessionStore based on the provided configuration.
-// If Valkey is configured (via URL or Host), a Valkey-backed store is returned;
-// otherwise an in-memory store is used.
-// The second return value indicates the store type ("valkey" or "memory").
-func NewSessionStore(valkeyCfg ValkeyConfig, encryptionKey [32]byte) (SessionStore, string, error) {
-	valkeyURL := valkeyCfg.URL
-	if valkeyURL == "" {
-		valkeyURL = buildValkeyURL(valkeyCfg.Host, valkeyCfg.Port, valkeyCfg.Password)
-	}
-
-	if valkeyURL != "" {
-		store, err := NewValkeySessionStore(valkeyURL, encryptionKey)
-		if err != nil {
-			return nil, "", err
-		}
-		return store, "valkey", nil
-	}
-
-	return NewMemorySessionStore(), "memory", nil
+// valkeySessionStore is a SessionStore backed by a KVStore.
+// It handles JSON marshaling and AES-GCM encryption, delegating
+// raw storage to the underlying KVStore with a "session:" key prefix.
+type valkeySessionStore struct {
+	store KVStore
+	gcm   cipher.AEAD
 }
 
-// buildValkeyURL constructs a Valkey URL from host, port, and password.
-// Returns "" if host is empty. Uses the redis:// scheme (wire-compatible protocol).
-func buildValkeyURL(host, port, password string) string {
-	if host == "" {
-		return ""
+func (v *valkeySessionStore) Save(ctx context.Context, id string, data sessionData, ttl time.Duration) error {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
-	if port == "" {
-		port = "6379"
+
+	sealed, err := sealGCM(v.gcm, payload)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt session data: %w", err)
 	}
-	var userInfo string
-	if password != "" {
-		userInfo = ":" + url.QueryEscape(password) + "@"
+
+	return v.store.Put(ctx, JoinKey("session", id), sealed, ttl)
+}
+
+func (v *valkeySessionStore) Load(ctx context.Context, id string) (*sessionData, error) {
+	raw, err := v.store.Get(ctx, JoinKey("session", id))
+	if errors.Is(err, ErrKeyNotFound) {
+		return nil, ErrSessionNotFound
 	}
-	return fmt.Sprintf("redis://%s%s:%s/0", userInfo, host, port)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load session from store: %w", err)
+	}
+
+	plaintext, err := openGCM(v.gcm, raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt session data: %w", err)
+	}
+
+	var data sessionData
+	if err := json.Unmarshal(plaintext, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
+	}
+
+	return &data, nil
+}
+
+func (v *valkeySessionStore) Delete(ctx context.Context, id string) error {
+	return v.store.Del(ctx, JoinKey("session", id))
+}
+
+func (v *valkeySessionStore) Close() error {
+	return v.store.Close()
 }
 
 // sessionEntry wraps session data with an expiration timestamp.

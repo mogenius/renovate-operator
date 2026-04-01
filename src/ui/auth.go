@@ -277,48 +277,68 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the encrypted token can be decrypted
-	sessionID, err := b.decryptString(sessionValue)
-	if err != nil {
-		b.logger.Error(err, "failed to decrypt session token in /auth/complete")
-		http.Error(w, "invalid session token", http.StatusBadRequest)
-		return
-	}
+	var freshCookie string
+	var logEmail, logName string
 
-	// Verify the session exists in the store
-	session, err := b.sessionStore.Load(r.Context(), sessionID)
-	if err != nil {
-		b.logger.Error(err, "session not found in store during /auth/complete")
-		http.Error(w, "invalid session token", http.StatusBadRequest)
-		return
-	}
+	if b.sessionStore == nil {
+		// Cookie-only mode: the URL param contains encrypted session data.
+		// Decrypt to validate, then re-encrypt for the cookie (different
+		// nonce, so the URL token cannot be replayed as a cookie value).
+		session, err := b.decryptSessionData(sessionValue)
+		if err != nil {
+			b.logger.Error(err, "failed to decrypt session token in /auth/complete")
+			http.Error(w, "invalid session token", http.StatusBadRequest)
+			return
+		}
+		freshCookie, err = b.encryptSessionData(*session)
+		if err != nil {
+			b.logger.Error(err, "failed to re-encrypt session for cookie")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		logEmail, logName = session.Email, session.Name
+	} else {
+		// Server-side mode: decrypt the session ID, rotate it, save under new ID.
+		sessionID, err := b.decryptString(sessionValue)
+		if err != nil {
+			b.logger.Error(err, "failed to decrypt session token in /auth/complete")
+			http.Error(w, "invalid session token", http.StatusBadRequest)
+			return
+		}
 
-	// Rotate the session ID so the URL-captured token becomes single-use.
-	// Save under a new ID, delete the old one, and use the new ID in the cookie.
-	newSessionID, err := generateRandomString(32)
-	if err != nil {
-		b.logger.Error(err, "failed to generate new session ID")
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+		session, err := b.sessionStore.Load(r.Context(), sessionID)
+		if err != nil {
+			b.logger.Error(err, "session not found in store during /auth/complete")
+			http.Error(w, "invalid session token", http.StatusBadRequest)
+			return
+		}
 
-	ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
-	if ttl <= 0 {
-		ttl = sessionDuration
-	}
-	if err := b.sessionStore.Save(r.Context(), newSessionID, *session, ttl); err != nil {
-		b.logger.Error(err, "failed to save rotated session")
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	// Best-effort delete of the old session ID
-	_ = b.sessionStore.Delete(r.Context(), sessionID)
+		newSessionID, err := generateRandomString(32)
+		if err != nil {
+			b.logger.Error(err, "failed to generate new session ID")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 
-	freshCookie, err := b.encryptString(newSessionID)
-	if err != nil {
-		b.logger.Error(err, "failed to encrypt rotated session ID")
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
+		if ttl <= 0 {
+			ttl = sessionDuration
+		}
+		if err := b.sessionStore.Save(r.Context(), newSessionID, *session, ttl); err != nil {
+			b.logger.Error(err, "failed to save rotated session")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		// Best-effort delete of the old session ID
+		_ = b.sessionStore.Delete(r.Context(), sessionID)
+
+		freshCookie, err = b.encryptString(newSessionID)
+		if err != nil {
+			b.logger.Error(err, "failed to encrypt rotated session ID")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		logEmail, logName = session.Email, session.Name
 	}
 
 	secure := isHTTPS(r)
@@ -342,16 +362,20 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	b.logger.Info("session cookie set via /auth/complete", "email", session.Email, "name", session.Name, "secure", secure, "cookieLen", len(freshCookie))
+	b.logger.Info("session cookie set via /auth/complete", "email", logEmail, "name", logName, "secure", secure, "cookieLen", len(freshCookie))
 
-	err = writeCallbackRedirect(w, "/")
+	err := writeCallbackRedirect(w, "/")
 	if err != nil {
 		b.logger.Error(err, "failed to write callback redirect response")
 	}
 }
 
 // deleteSession removes the session from the server-side store.
+// In cookie-only mode this is a no-op — clearing the cookie suffices.
 func (b *baseAuth) deleteSession(r *http.Request) {
+	if b.sessionStore == nil {
+		return
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return
@@ -424,8 +448,8 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 		return nil, err
 	}
 
-	// The session store handles TTL-based expiry. Check the in-session expiry
-	// field as a secondary safeguard.
+	// In server-side mode the store handles TTL-based expiry. In cookie-only
+	// mode this is the primary expiry check.
 	if time.Now().Unix() > session.Expiry {
 		return nil, fmt.Errorf("session expired")
 	}
@@ -433,14 +457,50 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 	return session, nil
 }
 
+// encryptSessionData marshals and AES-GCM encrypts full session data for
+// cookie-only mode (no server-side store). This is the pre-Valkey behaviour.
+func (b *baseAuth) encryptSessionData(session sessionData) (string, error) {
+	data, err := json.Marshal(session)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal session: %w", err)
+	}
+	sealed, err := sealGCM(b.gcm, data)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(sealed), nil
+}
+
+// decryptSessionData decrypts and unmarshals full session data from a
+// cookie-only mode token.
+func (b *baseAuth) decryptSessionData(encrypted string) (*sessionData, error) {
+	data, err := base64.URLEncoding.DecodeString(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	plaintext, err := openGCM(b.gcm, data)
+	if err != nil {
+		return nil, err
+	}
+	var session sessionData
+	if err := json.Unmarshal(plaintext, &session); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
+	}
+	return &session, nil
+}
+
 func (b *baseAuth) encryptSession(ctx context.Context, session sessionData) (string, error) {
-	// Generate a random session ID
+	// Cookie-only mode: encrypt full session data directly into the cookie
+	if b.sessionStore == nil {
+		return b.encryptSessionData(session)
+	}
+
+	// Server-side mode: generate a random session ID and store data in Valkey
 	sessionID, err := generateRandomString(32)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
-	// Store the full session data server-side
 	ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
 	if ttl <= 0 {
 		ttl = sessionDuration
@@ -463,13 +523,17 @@ func (b *baseAuth) encryptString(plaintext string) (string, error) {
 }
 
 func (b *baseAuth) decryptSession(ctx context.Context, encrypted string) (*sessionData, error) {
-	// Decrypt to get the session ID
+	// Cookie-only mode: decrypt full session data from the cookie
+	if b.sessionStore == nil {
+		return b.decryptSessionData(encrypted)
+	}
+
+	// Server-side mode: decrypt the session ID, then load from store
 	sessionID, err := b.decryptString(encrypted)
 	if err != nil {
 		return nil, err
 	}
 
-	// Load full session data from the server-side store
 	session, err := b.sessionStore.Load(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("session store load failed: %w", err)

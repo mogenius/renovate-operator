@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -219,24 +220,170 @@ func TestCookieSize_WithManyGroups(t *testing.T) {
 	}
 }
 
-// --- Valkey store tests (using miniredis — wire-compatible) ---
+// --- Cookie-only session tests (no server-side store) ---
 
-func newTestValkeyStore(t *testing.T) (SessionStore, *miniredis.Miniredis) {
+func TestCookieOnlySession_RoundTrip(t *testing.T) {
+	key, err := ComputeEncryptionKey("test-secret-key-with-32-chars!!!")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+	// sessionStore=nil triggers cookie-only mode
+	base, err := newBaseAuth(key, logr.Discard(), nil)
+	if err != nil {
+		t.Fatalf("Failed to create baseAuth: %v", err)
+	}
+
+	session := sessionData{
+		Email:       "cookie@example.com",
+		Name:        "Cookie User",
+		Groups:      []string{"team-a", "team-b"},
+		AccessToken: "gho_test_token",
+		Expiry:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	ctx := context.Background()
+	encrypted, err := base.encryptSession(ctx, session)
+	if err != nil {
+		t.Fatalf("encryptSession failed: %v", err)
+	}
+
+	decrypted, err := base.decryptSession(ctx, encrypted)
+	if err != nil {
+		t.Fatalf("decryptSession failed: %v", err)
+	}
+
+	if decrypted.Email != session.Email {
+		t.Errorf("Email mismatch: got %s, want %s", decrypted.Email, session.Email)
+	}
+	if decrypted.Name != session.Name {
+		t.Errorf("Name mismatch: got %s, want %s", decrypted.Name, session.Name)
+	}
+	if len(decrypted.Groups) != 2 || decrypted.Groups[0] != "team-a" || decrypted.Groups[1] != "team-b" {
+		t.Errorf("Groups mismatch: got %v", decrypted.Groups)
+	}
+	if decrypted.AccessToken != session.AccessToken {
+		t.Errorf("AccessToken mismatch: got %s, want %s", decrypted.AccessToken, session.AccessToken)
+	}
+}
+
+// --- KVStore tests (using miniredis — wire-compatible) ---
+
+func newTestValkeyKVStore(t *testing.T) (KVStore, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)
+	store, err := NewValkeyKVStore("redis://" + mr.Addr() + "/0")
+	if err != nil {
+		t.Fatalf("NewValkeyKVStore failed: %v", err)
+	}
+	return store, mr
+}
+
+func TestKVStore_PutAndGet(t *testing.T) {
+	store, _ := newTestValkeyKVStore(t)
+	ctx := context.Background()
+
+	value := []byte("hello world")
+	if err := store.Put(ctx, "key-1", value, 1*time.Hour); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	got, err := store.Get(ctx, "key-1")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if string(got) != string(value) {
+		t.Errorf("Value mismatch: got %q, want %q", got, value)
+	}
+}
+
+func TestKVStore_GetNotFound(t *testing.T) {
+	store, _ := newTestValkeyKVStore(t)
+	ctx := context.Background()
+
+	_, err := store.Get(ctx, "nonexistent")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Errorf("Expected ErrKeyNotFound, got %v", err)
+	}
+}
+
+func TestKVStore_Del(t *testing.T) {
+	store, _ := newTestValkeyKVStore(t)
+	ctx := context.Background()
+
+	if err := store.Put(ctx, "key-del", []byte("value"), 1*time.Hour); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := store.Del(ctx, "key-del"); err != nil {
+		t.Fatalf("Del failed: %v", err)
+	}
+
+	_, err := store.Get(ctx, "key-del")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Errorf("Expected ErrKeyNotFound after Del, got %v", err)
+	}
+}
+
+func TestKVStore_Expiry(t *testing.T) {
+	store, mr := newTestValkeyKVStore(t)
+	ctx := context.Background()
+
+	if err := store.Put(ctx, "key-exp", []byte("value"), 10*time.Second); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Verify it exists before expiry
+	if _, err := store.Get(ctx, "key-exp"); err != nil {
+		t.Fatalf("Get before expiry failed: %v", err)
+	}
+
+	// Fast-forward miniredis clock past the TTL
+	mr.FastForward(11 * time.Second)
+
+	_, err := store.Get(ctx, "key-exp")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Errorf("Expected ErrKeyNotFound after expiry, got %v", err)
+	}
+}
+
+func TestKVStore_BinaryData(t *testing.T) {
+	store, _ := newTestValkeyKVStore(t)
+	ctx := context.Background()
+
+	// Store raw binary data (not valid UTF-8)
+	value := []byte{0x00, 0x01, 0xFF, 0xFE, 0x80, 0x90}
+	if err := store.Put(ctx, "key-bin", value, 1*time.Hour); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	got, err := store.Get(ctx, "key-bin")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if string(got) != string(value) {
+		t.Errorf("Binary value mismatch: got %v, want %v", got, value)
+	}
+}
+
+// --- Valkey session store tests (using KVStore + encryption) ---
+
+func newTestValkeySessionStore(t *testing.T) (SessionStore, *miniredis.Miniredis) {
+	t.Helper()
+	kvStore, mr := newTestValkeyKVStore(t)
 	key, err := ComputeEncryptionKey("test-valkey-secret")
 	if err != nil {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
-	store, err := NewValkeySessionStore("redis://"+mr.Addr()+"/0", key)
+	store, err := NewSessionStore(kvStore, key)
 	if err != nil {
-		t.Fatalf("NewValkeySessionStore failed: %v", err)
+		t.Fatalf("NewSessionStore failed: %v", err)
 	}
 	return store, mr
 }
 
 func TestValkeyStore_SaveAndLoad(t *testing.T) {
-	store, _ := newTestValkeyStore(t)
+	store, _ := newTestValkeySessionStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
@@ -267,7 +414,7 @@ func TestValkeyStore_SaveAndLoad(t *testing.T) {
 }
 
 func TestValkeyStore_Delete(t *testing.T) {
-	store, _ := newTestValkeyStore(t)
+	store, _ := newTestValkeySessionStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
@@ -290,7 +437,7 @@ func TestValkeyStore_Delete(t *testing.T) {
 }
 
 func TestValkeyStore_NotFound(t *testing.T) {
-	store, _ := newTestValkeyStore(t)
+	store, _ := newTestValkeySessionStore(t)
 	ctx := context.Background()
 
 	_, err := store.Load(ctx, "nonexistent")
@@ -300,7 +447,7 @@ func TestValkeyStore_NotFound(t *testing.T) {
 }
 
 func TestValkeyStore_Expiry(t *testing.T) {
-	store, mr := newTestValkeyStore(t)
+	store, mr := newTestValkeySessionStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
@@ -328,7 +475,7 @@ func TestValkeyStore_Expiry(t *testing.T) {
 }
 
 func TestValkeyStore_EncryptionAtRest(t *testing.T) {
-	store, mr := newTestValkeyStore(t)
+	store, mr := newTestValkeySessionStore(t)
 	ctx := context.Background()
 
 	session := sessionData{
@@ -342,20 +489,39 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 		t.Fatalf("Save failed: %v", err)
 	}
 
+	// Verify the key has the "session:" prefix
+	keys := mr.Keys()
+	found := false
+	for _, k := range keys {
+		if k == JoinKey("session", "rs-enc") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected key %q in Valkey, got keys: %v", JoinKey("session", "rs-enc"), keys)
+	}
+
 	// Read the raw value from miniredis — it should NOT be plaintext JSON
-	raw, err := mr.Get(valkeyKeyPrefix + "rs-enc")
+	raw, err := mr.Get(JoinKey("session", "rs-enc"))
 	if err != nil {
 		t.Fatalf("Failed to read raw value from miniredis: %v", err)
 	}
 
-	// Verify raw value is not valid JSON (i.e., it's encrypted)
+	// The raw value is base64-encoded (by KVStore), decode it first
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		t.Fatalf("Failed to base64-decode raw value: %v", err)
+	}
+
+	// Verify decoded value is not valid JSON (i.e., it's encrypted)
 	var probe json.RawMessage
-	if json.Unmarshal([]byte(raw), &probe) == nil {
+	if json.Unmarshal(decoded, &probe) == nil {
 		t.Error("Raw Valkey value is valid JSON — session data is NOT encrypted at rest")
 	}
 
 	// Verify the email is not in the raw value as plaintext
-	if strings.Contains(raw, "secret@example.com") {
+	if strings.Contains(raw, "secret@example.com") || strings.Contains(string(decoded), "secret@example.com") {
 		t.Error("Raw Valkey value contains plaintext email — session data is NOT encrypted at rest")
 	}
 }
@@ -401,87 +567,112 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 	}
 }
 
-func TestNewSessionStore_EmptyConfig_ReturnsMemory(t *testing.T) {
-	key, err := ComputeEncryptionKey("test-secret")
+func TestNewKVStore_EmptyConfig_ReturnsNil(t *testing.T) {
+	store, err := NewKVStore(ValkeyConfig{})
 	if err != nil {
-		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+		t.Fatalf("NewKVStore failed: %v", err)
 	}
-
-	store, storeType, storeErr := NewSessionStore(ValkeyConfig{}, key)
-	if storeErr != nil {
-		t.Fatalf("NewSessionStore failed: %v", storeErr)
-	}
-	if storeType != "memory" {
-		t.Errorf("Expected store type 'memory', got %q", storeType)
-	}
-	if store == nil {
-		t.Fatal("Expected non-nil store")
+	if store != nil {
+		t.Fatal("Expected nil store for empty config")
 	}
 }
 
-func TestNewSessionStore_WithValkeyURL_ReturnsValkey(t *testing.T) {
+func TestNewKVStore_WithValkeyURL(t *testing.T) {
 	mr := miniredis.RunT(t)
-	key, err := ComputeEncryptionKey("test-secret")
-	if err != nil {
-		t.Fatalf("ComputeEncryptionKey failed: %v", err)
-	}
 
-	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
+	store, err := NewKVStore(ValkeyConfig{
 		URL: "redis://" + mr.Addr() + "/0",
-	}, key)
-	if storeErr != nil {
-		t.Fatalf("NewSessionStore failed: %v", storeErr)
-	}
-	if storeType != "valkey" {
-		t.Errorf("Expected store type 'valkey', got %q", storeType)
+	})
+	if err != nil {
+		t.Fatalf("NewKVStore failed: %v", err)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")
 	}
 }
 
-func TestNewSessionStore_WithHost_ReturnsValkey(t *testing.T) {
+func TestNewKVStore_WithHost(t *testing.T) {
 	mr := miniredis.RunT(t)
-	key, err := ComputeEncryptionKey("test-secret")
-	if err != nil {
-		t.Fatalf("ComputeEncryptionKey failed: %v", err)
-	}
 
-	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
+	store, err := NewKVStore(ValkeyConfig{
 		Host: mr.Host(),
 		Port: mr.Port(),
-	}, key)
-	if storeErr != nil {
-		t.Fatalf("NewSessionStore failed: %v", storeErr)
-	}
-	if storeType != "valkey" {
-		t.Errorf("Expected store type 'valkey', got %q", storeType)
+	})
+	if err != nil {
+		t.Fatalf("NewKVStore failed: %v", err)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")
 	}
 }
 
-func TestNewSessionStore_URLTakesPrecedenceOverHost(t *testing.T) {
+func TestNewKVStore_URLTakesPrecedenceOverHost(t *testing.T) {
 	mr := miniredis.RunT(t)
-	key, err := ComputeEncryptionKey("test-secret")
-	if err != nil {
-		t.Fatalf("ComputeEncryptionKey failed: %v", err)
-	}
 
 	// URL points to miniredis, Host points to nowhere
-	store, storeType, storeErr := NewSessionStore(ValkeyConfig{
+	store, err := NewKVStore(ValkeyConfig{
 		URL:  "redis://" + mr.Addr() + "/0",
 		Host: "nonexistent.invalid",
 		Port: "9999",
-	}, key)
-	if storeErr != nil {
-		t.Fatalf("NewSessionStore failed: %v", storeErr)
-	}
-	if storeType != "valkey" {
-		t.Errorf("Expected store type 'valkey', got %q", storeType)
+	})
+	if err != nil {
+		t.Fatalf("NewKVStore failed: %v", err)
 	}
 	if store == nil {
 		t.Fatal("Expected non-nil store")
+	}
+}
+
+func TestNewSessionStore_NilKVStore_ReturnsNil(t *testing.T) {
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	store, storeErr := NewSessionStore(nil, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if store != nil {
+		t.Fatal("Expected nil store for nil KVStore (cookie mode)")
+	}
+}
+
+func TestNewSessionStore_WithKVStore(t *testing.T) {
+	mr := miniredis.RunT(t)
+	key, err := ComputeEncryptionKey("test-secret")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+
+	kvStore, kvErr := NewValkeyKVStore("redis://" + mr.Addr() + "/0")
+	if kvErr != nil {
+		t.Fatalf("NewValkeyKVStore failed: %v", kvErr)
+	}
+
+	store, storeErr := NewSessionStore(kvStore, key)
+	if storeErr != nil {
+		t.Fatalf("NewSessionStore failed: %v", storeErr)
+	}
+	if store == nil {
+		t.Fatal("Expected non-nil store")
+	}
+}
+
+func TestJoinKey(t *testing.T) {
+	tests := []struct {
+		parts    []string
+		expected string
+	}{
+		{[]string{"session", "abc123"}, "session:abc123"},
+		{[]string{"cache", "user", "42"}, "cache:user:42"},
+		{[]string{"single"}, "single"},
+	}
+
+	for _, tt := range tests {
+		result := JoinKey(tt.parts...)
+		if result != tt.expected {
+			t.Errorf("JoinKey(%v) = %q, want %q", tt.parts, result, tt.expected)
+		}
 	}
 }

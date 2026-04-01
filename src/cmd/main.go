@@ -52,6 +52,7 @@ func splitAndTrim(s, sep string) []string {
 
 type authSetup struct {
 	provider             ui.AuthProvider
+	kvStore              ui.KVStore
 	defaultAllowedGroups []string
 	cleanup              func()
 }
@@ -82,23 +83,30 @@ func initAuth() authSetup {
 	// encryption so a compromise of one does not affect the other.
 	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
 
-	// Initialize session store (Valkey if configured, otherwise cookie-based)
-	sessionStore, storeType, storeErr := ui.NewSessionStore(ui.ValkeyConfig{
+	// Initialize KV store (Valkey if configured, otherwise nil)
+	kvStore, kvErr := ui.NewKVStore(ui.ValkeyConfig{
 		URL:      config.GetValue("VALKEY_URL"),
 		Host:     config.GetValue("VALKEY_HOST"),
 		Port:     config.GetValue("VALKEY_PORT"),
 		Password: config.GetValue("VALKEY_PASSWORD"),
-	}, storeKey)
+	})
+	assert.NoError(kvErr, "failed to initialize KV store")
+
+	// Wrap KV store with session-specific encryption and key prefix
+	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
 	assert.NoError(storeErr, "failed to initialize session store")
-	log.Info("Using session store", "type", storeType)
-	if storeType == "cookie" {
+
+	if kvStore != nil {
+		log.Info("Using session store", "type", "valkey")
+	} else {
+		log.Info("Using session store", "type", "cookie")
 		log.Info("Cookie-based sessions: session data is stored in the browser cookie. If users belong to many groups, the cookie may exceed browser size limits; configure Valkey to avoid this. For multi-replica deployments, Valkey is recommended for session sharing across pods.")
 	}
 
 	cleanup := func() {
-		if sessionStore != nil {
-			if err := sessionStore.Close(); err != nil {
-				log.Error(err, "failed to close session store")
+		if kvStore != nil {
+			if err := kvStore.Close(); err != nil {
+				log.Error(err, "failed to close KV store")
 			}
 		}
 	}
@@ -168,6 +176,7 @@ func initAuth() authSetup {
 
 	return authSetup{
 		provider:             authProvider,
+		kvStore:              kvStore,
 		defaultAllowedGroups: defaultAllowedGroups,
 		cleanup:              cleanup,
 	}

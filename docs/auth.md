@@ -122,13 +122,13 @@ The operator requests the `read:user` and `user:email` scopes. On logout, the OA
 
 ## Session Security
 
-Sessions are stored **server-side** (in-memory by default, or in Valkey) and expire after **24 hours**. The browser cookie holds only an AES-256-GCM encrypted session ID (~100 bytes), avoiding the ~4096 byte browser cookie size limit that can cause auth loops for users with many groups.
+Sessions expire after **24 hours**. Two session storage modes are available:
 
-**In-memory store** (default): sessions are lost on pod restart and not shared across replicas. Suitable for single-replica deployments.
+**Cookie-based** (default): the full session is AES-256-GCM encrypted and stored directly in the browser cookie. This is stateless — sessions survive pod restarts and require no external infrastructure. However, if users belong to many groups the encrypted cookie may exceed the ~4096 byte browser limit, causing authentication failures.
 
-**Valkey store**: sessions survive pod restarts and are shared across replicas. Recommended for multi-replica deployments.
+**Valkey** (opt-in): only an encrypted session ID (~100 bytes) is stored in the cookie; the full session data lives server-side in Valkey. This avoids cookie size limits regardless of group count, and sessions are shared across replicas. Recommended for multi-replica deployments or when users have many group memberships.
 
-If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session ID cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
 
 ### Valkey Session Store
 

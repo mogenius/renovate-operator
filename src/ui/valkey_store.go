@@ -2,35 +2,29 @@ package ui
 
 import (
 	"context"
-	"crypto/cipher"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
 )
 
-const valkeyKeyPrefix = "session:"
-
-// valkeySessionStore is a SessionStore backed by Valkey.
-// Sessions survive pod restarts and are shared across replicas.
-// Session data is encrypted at rest using AES-GCM.
-type valkeySessionStore struct {
+// valkeyKVStore is a KVStore backed by Valkey.
+// It stores raw bytes (base64-encoded for wire safety) with no
+// encryption or key prefixing — those concerns belong to consumers.
+type valkeyKVStore struct {
 	client valkey.Client
-	gcm    cipher.AEAD
 }
 
-// NewValkeySessionStore creates a new Valkey-backed session store.
+// NewValkeyKVStore creates a new Valkey-backed KVStore.
 // The valkeyURL should include credentials and DB if needed
 // (e.g. "redis://:password@valkey:6379/0").
-// The encryptionKey is used to encrypt session data at rest.
-func NewValkeySessionStore(valkeyURL string, encryptionKey [32]byte) (SessionStore, error) {
+func NewValkeyKVStore(valkeyURL string) (KVStore, error) {
 	opts, err := valkey.ParseURL(valkeyURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid Valkey URL: %w", err)
 	}
-	// Disable client-side caching — we don't need it for session storage
+	// Disable client-side caching — we don't need it for KV storage
 	// and it requires RESP3 + CLIENT TRACKING support on the server.
 	opts.DisableCache = true
 
@@ -47,62 +41,36 @@ func NewValkeySessionStore(valkeyURL string, encryptionKey [32]byte) (SessionSto
 		return nil, fmt.Errorf("failed to connect to Valkey: %w", err)
 	}
 
-	gcm, err := newGCM(encryptionKey)
-	if err != nil {
-		client.Close()
-		return nil, fmt.Errorf("failed to create GCM for Valkey store: %w", err)
-	}
-
-	return &valkeySessionStore{client: client, gcm: gcm}, nil
+	return &valkeyKVStore{client: client}, nil
 }
 
-func (v *valkeySessionStore) Save(ctx context.Context, id string, data sessionData, ttl time.Duration) error {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal session data: %w", err)
-	}
-
-	sealed, err := sealGCM(v.gcm, payload)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt session data: %w", err)
-	}
-	encoded := base64.StdEncoding.EncodeToString(sealed)
-
-	return v.client.Do(ctx, v.client.B().Set().Key(valkeyKeyPrefix+id).Value(encoded).Ex(ttl).Build()).Error()
+func (v *valkeyKVStore) Put(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	encoded := base64.StdEncoding.EncodeToString(value)
+	return v.client.Do(ctx, v.client.B().Set().Key(key).Value(encoded).Ex(ttl).Build()).Error()
 }
 
-func (v *valkeySessionStore) Load(ctx context.Context, id string) (*sessionData, error) {
-	val, err := v.client.Do(ctx, v.client.B().Get().Key(valkeyKeyPrefix+id).Build()).ToString()
+func (v *valkeyKVStore) Get(ctx context.Context, key string) ([]byte, error) {
+	val, err := v.client.Do(ctx, v.client.B().Get().Key(key).Build()).ToString()
 	if valkey.IsValkeyNil(err) {
-		return nil, ErrSessionNotFound
+		return nil, ErrKeyNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to load session from Valkey: %w", err)
+		return nil, fmt.Errorf("failed to get key from Valkey: %w", err)
 	}
 
-	ciphertext, err := base64.StdEncoding.DecodeString(val)
+	decoded, err := base64.StdEncoding.DecodeString(val)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode session data: %w", err)
+		return nil, fmt.Errorf("failed to decode value: %w", err)
 	}
 
-	plaintext, err := openGCM(v.gcm, ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt session data: %w", err)
-	}
-
-	var data sessionData
-	if err := json.Unmarshal(plaintext, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
-	}
-
-	return &data, nil
+	return decoded, nil
 }
 
-func (v *valkeySessionStore) Delete(ctx context.Context, id string) error {
-	return v.client.Do(ctx, v.client.B().Del().Key(valkeyKeyPrefix+id).Build()).Error()
+func (v *valkeyKVStore) Del(ctx context.Context, key string) error {
+	return v.client.Do(ctx, v.client.B().Del().Key(key).Build()).Error()
 }
 
-func (v *valkeySessionStore) Close() error {
+func (v *valkeyKVStore) Close() error {
 	v.client.Close()
 	return nil
 }
