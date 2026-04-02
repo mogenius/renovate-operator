@@ -1128,7 +1128,35 @@
           key: "status",
           direction: "asc",
         });
-        const sortedProjects = useMemo(() => getSortedProjects(job.projects, sortConfig), [job.projects, sortConfig]);
+        const STATUS_FILTERS = ["Onboarding Closed", "Disabled", "No Config"];
+        const [hiddenStatuses, setHiddenStatuses] = useState(() => {
+          try {
+            const stored = JSON.parse(localStorage.getItem('hiddenStatuses') || '[]');
+            return Array.isArray(stored) ? stored : [];
+          } catch {
+            return [];
+          }
+        });
+        const toggleStatusFilter = (status) => {
+          setHiddenStatuses((prev) => {
+            const next = prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status];
+            try { localStorage.setItem('hiddenStatuses', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        };
+        const sortedProjects = useMemo(() => {
+          const sorted = getSortedProjects(job.projects, sortConfig);
+          if (hiddenStatuses.length === 0) return sorted;
+          return sorted.filter((p) => !hiddenStatuses.includes(p.renovateResultStatus));
+        }, [job.projects, sortConfig, hiddenStatuses]);
+        const statusCounts = useMemo(() => {
+          const counts = {};
+          for (const s of STATUS_FILTERS) counts[s] = 0;
+          for (const p of (job.projects || [])) {
+            if (STATUS_FILTERS.includes(p.renovateResultStatus)) counts[p.renovateResultStatus]++;
+          }
+          return counts;
+        }, [job.projects]);
         const [expandedProjects, setExpandedProjects] = useState(() => new Set());
         const toggleProjectExpanded = (name) => {
           setExpandedProjects((prev) => {
@@ -1276,7 +1304,7 @@
                       <div className="fixed inset-0 z-10" onClick={() => setShowOptions(false)} />
                       <div className="absolute right-0 top-8 z-20 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Execution Options</h3>
-                        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                        <label className="flex items-center gap-2 mb-3 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={debugOption}
@@ -1294,6 +1322,22 @@
                         >
                           Save
                         </button>
+                        <div className="border-t border-gray-200 dark:border-slate-700 mt-3 pt-3">
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-2">Hide Projects</h3>
+                          {STATUS_FILTERS.map((status) => (
+                            <label key={status} className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hiddenStatuses.includes(status)}
+                                onChange={() => toggleStatusFilter(status)}
+                                className="w-4 h-4 rounded border-gray-300 accent-primary"
+                              />
+                              <span className="text-sm text-gray-700 dark:text-slate-300">
+                                {status}{statusCounts[status] > 0 ? ` (${statusCounts[status]})` : ""}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </>
                   )}
