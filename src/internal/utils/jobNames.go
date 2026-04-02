@@ -3,8 +3,14 @@ package utils
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	api "renovate-operator/api/v1alpha1"
 	"strings"
+)
+
+var (
+	invalidChars    = regexp.MustCompile(`[^a-z0-9-]+`)
+	multipleHyphens = regexp.MustCompile(`-{2,}`)
 )
 
 // jobname for the executor job for a project. normalized for kubernetes resourcenames
@@ -25,11 +31,11 @@ func ExecutorJobName(in *api.RenovateJob, project string) string {
 }
 
 func kubernetesCompatibleName(name string) string {
-	name = strings.ReplaceAll(name, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
-	name = strings.ReplaceAll(name, "_", "-")
-	name = strings.ReplaceAll(name, ".", "-")
-	name = strings.ReplaceAll(name, "~", "-")
 	name = strings.ToLower(name) // Ensure lowercase for consistency
+	name = invalidChars.ReplaceAllString(name, "-")
+	name = multipleHyphens.ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-")
+
 	return name
 }
 
