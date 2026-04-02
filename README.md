@@ -82,6 +82,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Image Pull Secrets](./docs/image-pull-secrets.md)
 - [Scheduling](./docs/scheduling.md)
 - [Metrics](./docs/metrics.md)
+- [PR Activity](./docs/pr-activity.md)
 - [Authentication](./docs/auth.md)
 
 ## Contributing
