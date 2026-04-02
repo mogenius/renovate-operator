@@ -56,19 +56,3 @@ func DiscoveryJobName(in *api.RenovateJob) string {
 
 	return baseName + "-discovery-" + hashStr
 }
-
-// LEGACY functions - to be removed February 2026
-func LegacyExecutorJobName(in *api.RenovateJob, project string) string {
-	jobName := in.Name + "-" + project
-	jobName = strings.ReplaceAll(jobName, "/", "-") // Replace slashes to avoid issues with Kubernetes naming
-	jobName = strings.ReplaceAll(jobName, "_", "-")
-	jobName = strings.ReplaceAll(jobName, ".", "-")
-	jobName = strings.ToLower(jobName) // Ensure lowercase for consistency
-	return jobName
-}
-
-// LEGACY functions - to be removed February 2026
-func LegacyDiscoveryJobName(in *api.RenovateJob) string {
-	jobName := in.Name + "-discovery"
-	return jobName
-}
