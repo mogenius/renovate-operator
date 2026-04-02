@@ -132,8 +132,6 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
-	baseDir := getBaseDir(job.Spec.ExtraEnv)
-
 	volumes := []v1.Volume{
 		{
 			Name: "tmp",
@@ -148,19 +146,6 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 			Name:      "tmp",
 			MountPath: "/tmp",
 		},
-	}
-
-	if baseDir != "/tmp" {
-		volumes = append(volumes, v1.Volume{
-			Name: "base-dir",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		})
-		volumeMounts = append(volumeMounts, v1.VolumeMount{
-			Name:      "base-dir",
-			MountPath: baseDir,
-		})
 	}
 
 	batchJob := &batchv1.Job{
@@ -361,17 +346,6 @@ func getDNSPolicy(spec api.RenovateJobSpec) v1.DNSPolicy {
 	}
 
 	return v1.DNSClusterFirst
-}
-
-// getBaseDir returns the value of RENOVATE_BASE_DIR from the extra env vars,
-// falling back to /tmp if not set.
-func getBaseDir(extraEnv []v1.EnvVar) string {
-	for _, env := range extraEnv {
-		if env.Name == "RENOVATE_BASE_DIR" && env.Value != "" {
-			return env.Value
-		}
-	}
-	return "/tmp"
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv
