@@ -27,7 +27,8 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *"
-  discoveryFilter: "Group1/*"
+  discoveryFilters: 
+    - "Group1/*"
   ...
 ```
 

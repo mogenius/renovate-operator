@@ -177,8 +177,8 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	}
 
 	topic := syncCfg.Topic
-	if topic == "" {
-		topic = renovateJob.Spec.DiscoverTopics
+	if topic == "" && len(renovateJob.Spec.DiscoverTopics) > 0 {
+		topic = renovateJob.Spec.DiscoverTopics[0]
 	}
 
 	webhookURL := syncCfg.WebhookURL
@@ -224,10 +224,10 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 }
 
 // syncFingerprint produces a string that changes when any sync-relevant config changes.
-func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, endpoint, defaultTopic, namespace, jobName string) string {
+func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, endpoint string, defaultTopic []string, namespace, jobName string) string {
 	topic := cfg.Topic
-	if topic == "" {
-		topic = defaultTopic
+	if topic == "" && len(defaultTopic) > 0 {
+		topic = defaultTopic[0]
 	}
 	tokenRef := ""
 	if cfg.TokenSecretRef != nil {
