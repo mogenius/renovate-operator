@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -37,7 +38,7 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobs(ctx)
 	if err != nil {
@@ -59,7 +60,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobsFull(ctx)
 	if err != nil {
@@ -89,7 +90,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 
 	// shorten retries for tests
@@ -163,7 +164,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -225,7 +226,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -287,7 +288,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{})
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
 	ctx := context.Background()
 
 	list, err := mgr.GetProjectsByStatus(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusCompleted)
