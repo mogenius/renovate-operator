@@ -68,6 +68,9 @@ config:
   jobTTLSecondsAfterFinished: -1
   # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
   globalParallelismLimit: 0
+  logStorage:
+    # -- log store mode: "disabled" (default, no-op) or "memory" (cache logs in-memory after job completion)
+    mode: disabled
 
 ingress:
   # -- whether to enable the ingress renovate-operator

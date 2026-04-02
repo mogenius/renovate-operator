@@ -14,6 +14,7 @@ import (
 	"renovate-operator/metricStore"
 
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
@@ -35,24 +36,26 @@ type RenovateExecutor interface {
 }
 
 type renovateExecutor struct {
-	scheme  *runtime.Scheme
-	client  client.Client
-	logger  logr.Logger
-	health  health.HealthCheck
-	manager crdManager.RenovateJobManager
+	scheme   *runtime.Scheme
+	client   client.Client
+	logger   logr.Logger
+	health   health.HealthCheck
+	manager  crdManager.RenovateJobManager
+	logStore logStore.LogStore
 }
 
 type executionOptions struct {
 	globalParallelism int
 }
 
-func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck) RenovateExecutor {
+func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore) RenovateExecutor {
 	return &renovateExecutor{
-		client:  client,
-		scheme:  scheme,
-		manager: manager,
-		logger:  logger,
-		health:  health,
+		client:   client,
+		scheme:   scheme,
+		manager:  manager,
+		logger:   logger,
+		health:   health,
+		logStore: ls,
 	}
 }
 
@@ -170,6 +173,7 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 				cp := clientProvider.StaticClientProvider()
 				if clientset, err := cp.K8sClientSet(); err == nil {
 					if logs, err := crdManager.GetLastJobLog(ctx, clientset, k8sJob); err == nil {
+						e.logStore.Save(renovateJob.Namespace, renovateJob.Name, project.Name, logs)
 						parseResult := parser.ParseRenovateLogs(logs)
 						hasIssues = parseResult.HasIssues
 						newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
