@@ -177,7 +177,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 						{
 							Name:            "renovate",
 							Command:         []string{"renovate"},
-							Args:            []string{"--base-dir", baseDir, project},
+							Args:            []string{project},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -223,6 +223,10 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		{
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
+		},
+		{
+			Name:  "RENOVATE_BASE_DIR",
+			Value: "/tmp",
 		},
 	}
 
