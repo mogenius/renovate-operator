@@ -8,7 +8,8 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *"
-  discoveryFilter: "Group1/*"
+  discoveryFilters: 
+    - "Group1/*"
   image: renovate/renovate:41.43.3 # renovate
   secretRef: "renovate-secret"
   provider:

@@ -91,8 +91,8 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				Name:     "gitlab",
 				Endpoint: "gitlab.example.com",
 			},
-			DiscoveryFilter: "org/*",
-			DiscoverTopics:  "renovate",
+			DiscoveryFilters: []string{"org1/*", "org2/repo1"},
+			DiscoverTopics:   []string{"renovate", "!skipRenovate"},
 			Metadata: &api.RenovateJobMetadata{
 				Labels: map[string]string{"a": "b"},
 			},
@@ -201,8 +201,8 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 	// env vars
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
-	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org/*")
-	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate")
+	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org1/*,org2/repo1")
+	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate,!skipRenovate")
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
 	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")

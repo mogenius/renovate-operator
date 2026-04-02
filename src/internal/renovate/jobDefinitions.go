@@ -8,6 +8,7 @@ import (
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 	"strconv"
+	"strings"
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -18,16 +19,18 @@ import (
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
 
-	if job.Spec.DiscoveryFilter != "" {
+	if len(job.Spec.DiscoveryFilters) > 0 {
+		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_FILTER",
-			Value: job.Spec.DiscoveryFilter,
+			Value: filter,
 		})
 	}
-	if job.Spec.DiscoverTopics != "" {
+	if len(job.Spec.DiscoverTopics) > 0 {
+		filter := strings.Join(job.Spec.DiscoverTopics, ",")
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_TOPICS",
-			Value: job.Spec.DiscoverTopics,
+			Value: filter,
 		})
 	}
 
