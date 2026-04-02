@@ -61,14 +61,14 @@ func TestRenovateJob_JobNames(t *testing.T) {
 			name:              "complex project name",
 			jobName:           "renovate",
 			project:           "Org/.github",
-			expectedExecutor:  "renovate-org--github-3ff30a25",
+			expectedExecutor:  "renovate-org-github-cb19908c",
 			expectedDiscovery: "renovate-discovery-df3ed160",
 		},
 		{
 			name:              "long project name",
 			jobName:           "renovate",
-			project:           "Your-very-long-org-name/with.a.lot_of.parts_and--symbols",
-			expectedExecutor:  "renovate-your-very-long-org-name-with-a-lot-of-parts-a-2648694c",
+			project:           "Your-very-long-org-name/with.a(lot_of)parts_@nd-,-symbols",
+			expectedExecutor:  "renovate-your-very-long-org-name-with-a-lot-of-parts-n-9b77a3d1",
 			expectedDiscovery: "renovate-discovery-df3ed160",
 		},
 		{
@@ -82,7 +82,7 @@ func TestRenovateJob_JobNames(t *testing.T) {
 			name:              "bitbucket user folder",
 			jobName:           "renovate",
 			project:           "~/user/repo",
-			expectedExecutor:  "renovate---user-repo-780152db",
+			expectedExecutor:  "renovate-user-repo-50f171b1",
 			expectedDiscovery: "renovate-discovery-df3ed160",
 		},
 	}
