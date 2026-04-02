@@ -19,10 +19,10 @@ type RenovateJobSpec struct {
 	Image string `json:"image"`
 	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
 	Provider *RenovateProvider `json:"provider"`
-	// Filter to select which projects to process
-	DiscoveryFilter string `json:"discoveryFilter,omitempty"`
-	// Topics to discover projects from
-	DiscoverTopics string `json:"discoverTopics,omitempty"`
+	// Filter to select which projects to process, will be concatenated using , separator
+	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
+	// Topics to discover projects from, will be concatenated using , separator
+	DiscoverTopics []string `json:"discoverTopics,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
 	SkipForks bool `json:"skipForks,omitempty"`
 	// Reference to the secret containing the renovate config
@@ -79,8 +79,8 @@ type RenovateJobSecurityContext struct {
 
 // configuration for webhooks that can be used to trigger renovate runs
 type RenovateWebhook struct {
-	Enabled        bool                 `json:"enabled"`
-	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
+	Enabled        bool                    `json:"enabled"`
+	Authentication *RenovateWebhookAuth    `json:"authentication,omitempty"`
 	Forgejo        *RenovateWebhookForgejo `json:"forgejo,omitempty"`
 }
 
