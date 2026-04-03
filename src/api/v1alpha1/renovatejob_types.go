@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -51,6 +52,10 @@ type RenovateJobSpec struct {
 	SecurityContext *RenovateJobSecurityContext `json:"securityContext,omitempty"`
 	// Configuration for webhooks to trigger renovate runs
 	Webhook *RenovateWebhook `json:"webhook,omitempty"`
+	// RenovateBaseDir sets RENOVATE_BASE_DIR and the mount path for the built-in scratch emptyDir (volume name "scratch"). Default /tmp when empty. extraEnv cannot override this; do not set RENOVATE_BASE_DIR in extraEnv.
+	RenovateBaseDir string `json:"renovateBaseDir,omitempty"`
+	// ScratchVolume configures the built-in emptyDir for RENOVATE_BASE_DIR (see renovateBaseDir; default mount /tmp).
+	ScratchVolume *RenovateJobScratchVolume `json:"scratchVolume,omitempty"`
 	// Additional volumes to mount in the renovate pods
 	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
 	// Additional volume mounts for the renovate pods
@@ -63,6 +68,18 @@ type RenovateJobSpec struct {
 	// If empty or not set, the job is hidden from all users.
 	// +optional
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
+}
+
+// RenovateJobScratchVolume configures the built-in emptyDir mounted at RENOVATE_BASE_DIR (volume name "scratch").
+type RenovateJobScratchVolume struct {
+	// Medium for the emptyDir volume. Empty uses the node's default medium; Memory uses a tmpfs (corev1.StorageMediumMemory).
+	Medium corev1.StorageMedium `json:"medium,omitempty"`
+	// SizeLimit caps how large the emptyDir may grow (Kubernetes emptyDir.sizeLimit).
+	SizeLimit *resource.Quantity `json:"sizeLimit,omitempty"`
+	// EphemeralStorageRequest is merged into container resources.requests under the ephemeral-storage resource name.
+	EphemeralStorageRequest *resource.Quantity `json:"ephemeralStorageRequest,omitempty"`
+	// EphemeralStorageLimit is merged into container resources.limits under the ephemeral-storage resource name.
+	EphemeralStorageLimit *resource.Quantity `json:"ephemeralStorageLimit,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
