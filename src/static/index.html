@@ -173,6 +173,28 @@
         return null;
       };
 
+      const buildSinglePRUrl = (platform, endpoint, projectName, prNumber) => {
+        if (!prNumber) return null;
+        if (!platform || platform === 'github') {
+          let base = 'https://github.com';
+          if (endpoint && !endpoint.includes('api.github.com')) {
+            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          }
+          return `${base}/${projectName}/pull/${prNumber}`;
+        } else if (platform === 'gitlab') {
+          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+          return `${base}/${projectName}/-/merge_requests/${prNumber}`;
+        } else if (platform === 'bitbucket') {
+          return `https://bitbucket.org/${projectName}/pull-requests/${prNumber}`;
+        } else if (platform === 'gitea' || platform === 'forgejo') {
+          if (endpoint) {
+            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+            return `${base}/${projectName}/pulls/${prNumber}`;
+          }
+        }
+        return null;
+      };
+
       function ThemeToggle() {
         const [theme, setTheme] = useState(() => window.ThemeUtils.getTheme());
         const isDark = useMemo(() => window.ThemeUtils.isDark(theme), [theme]);
@@ -1095,7 +1117,7 @@
         );
       }
 
-      function PRDetailRow({ prActivity, projectName }) {
+      function PRDetailRow({ prActivity, projectName, platform, platformEndpoint }) {
         if (!prActivity || !prActivity.prs || prActivity.prs.length === 0) return null;
 
         return (
@@ -1103,27 +1125,33 @@
             <td colSpan="7" className="px-6 py-0">
               <div className="py-3 pl-4 border-l-2 border-gray-200 dark:border-slate-600 max-h-64 overflow-y-auto">
                 <div className="space-y-1.5">
-                  {prActivity.prs.map((pr, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-sm">
-                      <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>
-                      {pr.url ? (
-                        <a
-                          href={pr.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:text-primary-hover hover:underline truncate"
-                          title={pr.title || pr.url}
-                        >
-                          {pr.title || pr.url}
-                        </a>
-                      ) : (
-                        <span className="text-gray-700 dark:text-slate-300 truncate" title={pr.title}>{pr.title || "Untitled PR"}</span>
-                      )}
-                      {pr.number && (
-                        <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>
-                      )}
-                    </div>
-                  ))}
+                  {prActivity.prs.map((pr, idx) => {
+                    const prUrl = pr.url || buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
+                    return (
+                      <div key={idx} className="flex items-center gap-2 text-sm">
+                        <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>
+                        {prUrl ? (
+                          <a
+                            href={prUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:text-primary-hover hover:underline truncate"
+                            title={pr.title || prUrl}
+                          >
+                            {pr.title || prUrl}
+                          </a>
+                        ) : (
+                          <span className="text-gray-700 dark:text-slate-300 truncate" title={pr.title}>{pr.title || "Untitled PR"}</span>
+                        )}
+                        {pr.number && prUrl && (
+                          <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>
+                        )}
+                        {pr.number && !prUrl && (
+                          <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                   {prActivity.truncated && (
                     <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">
                       Some PRs omitted (list truncated)
@@ -1762,7 +1790,7 @@
                             </td>
                           </tr>
                           {expandedProjects.has(project.name) && project.prActivity && (
-                            <PRDetailRow prActivity={project.prActivity} projectName={project.name} />
+                            <PRDetailRow prActivity={project.prActivity} projectName={project.name} platform={job.platform} platformEndpoint={job.platformEndpoint} />
                           )}
                           {expandedIssues.has(project.name) && project.logIssues && (
                             <IssueDetailRow logIssues={project.logIssues} projectName={project.name} />
@@ -1841,17 +1869,19 @@
                             <div className="space-y-1.5">
                               {project.prActivity.prs.map((pr, idx) => {
                                 const actionClass = prActionBadgeClass(pr.action);
+                                const prUrl = pr.url || buildSinglePRUrl(job.platform, job.platformEndpoint, project.name, pr.number);
                                 return (
                                   <div key={idx} className="flex items-center gap-2 text-sm">
                                     <span className={actionClass}>{pr.action}</span>
-                                    {pr.url ? (
-                                      <a href={pr.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary-hover hover:underline truncate text-xs" title={pr.title || pr.url}>
-                                        {pr.title || pr.url}
+                                    {prUrl ? (
+                                      <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary-hover hover:underline truncate text-xs" title={pr.title || prUrl}>
+                                        {pr.title || prUrl}
                                       </a>
                                     ) : (
                                       <span className="text-gray-700 dark:text-slate-300 truncate text-xs" title={pr.title}>{pr.title || "Untitled PR"}</span>
                                     )}
-                                    {pr.number && <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>}
+                                    {pr.number && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>}
+                                    {pr.number && !prUrl && <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>}
                                   </div>
                                 );
                               })}
