@@ -16,11 +16,18 @@ import (
 // MaxPRDetails is the maximum number of individual PR details stored to prevent CRD bloat.
 const MaxPRDetails = 100
 
+// MaxLogIssues is the maximum number of individual log issue messages stored.
+const MaxLogIssues = 20
+
+// MaxIssueMessageLen is the maximum length of a single issue message.
+const MaxIssueMessageLen = 256
+
 // LogParseResult contains the result of parsing Renovate logs.
 type LogParseResult struct {
 	HasIssues            bool            // true if any WARN (level 40) or ERROR (level 50) found
 	RenovateResultStatus *string         // nil = unknown; "Disabled", "No Config", "Onboarding Closed", or raw result string
 	PRActivity           *api.PRActivity // nil when logs are empty/unparseable, non-nil (possibly zero counts) when logs were parsed successfully
+	LogIssues            *api.LogIssues  // nil when logs are empty/unparseable, non-nil when logs were parsed successfully
 }
 
 // renovateLogEntry represents a single line in Renovate's JSON log output.
@@ -109,6 +116,12 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	branchMap := make(map[string]*api.PRDetail)
 	parsedAnyLine := false
 
+	// Issue accumulation
+	var warnCount, errorCount int
+	var issues []api.LogIssue
+	seenMessages := make(map[string]bool)
+	issuesTruncated := false
+
 	scanner := bufio.NewScanner(strings.NewReader(logs))
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max
 	for scanner.Scan() {
@@ -128,6 +141,23 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		// Renovate log levels: 10=trace, 20=debug, 30=info, 40=warn, 50=error, 60=fatal
 		if entry.Level >= 40 {
 			result.HasIssues = true
+			if entry.Level >= 50 {
+				errorCount++
+			} else {
+				warnCount++
+			}
+			msg := entry.Msg
+			if len(msg) > MaxIssueMessageLen {
+				msg = msg[:MaxIssueMessageLen]
+			}
+			if msg != "" && !seenMessages[msg] {
+				seenMessages[msg] = true
+				if len(issues) < MaxLogIssues {
+					issues = append(issues, api.LogIssue{Level: entry.Level, Message: msg})
+				} else {
+					issuesTruncated = true
+				}
+			}
 		}
 
 		// Dispatch by message type (mutually exclusive)
@@ -251,9 +281,15 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		}
 	}
 
-	// Build PRActivity if we parsed any log lines
+	// Build PRActivity and LogIssues if we parsed any log lines
 	if parsedAnyLine {
 		result.PRActivity = buildPRActivity(branchMap)
+		result.LogIssues = &api.LogIssues{
+			WarnCount:  warnCount,
+			ErrorCount: errorCount,
+			Issues:     issues,
+			Truncated:  issuesTruncated,
+		}
 	}
 
 	return result

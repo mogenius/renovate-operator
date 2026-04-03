@@ -83,6 +83,7 @@ type RenovateProjectStatus struct {
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
 	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
+	LogIssues            *api.LogIssues            `json:"logIssues,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore) RenovateJobManager {
@@ -134,6 +135,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
 				PRActivity:           project.PRActivity,
+				LogIssues:            project.LogIssues,
 			})
 		}
 	}
@@ -157,6 +159,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
 			PRActivity:           project.PRActivity,
+			LogIssues:            project.LogIssues,
 		})
 	}
 	return result, nil

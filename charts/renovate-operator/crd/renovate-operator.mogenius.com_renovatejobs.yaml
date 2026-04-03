@@ -4011,6 +4011,34 @@ spec:
                     lastRun:
                       format: date-time
                       type: string
+                    logIssues:
+                      description: LogIssues contains aggregate warning/error counts
+                        and individual issue messages from a Renovate run.
+                      properties:
+                        errorCount:
+                          type: integer
+                        issues:
+                          items:
+                            description: LogIssue represents a single warning or error
+                              from Renovate logs.
+                            properties:
+                              level:
+                                type: integer
+                              message:
+                                type: string
+                            required:
+                            - level
+                            - message
+                            type: object
+                          type: array
+                        truncated:
+                          type: boolean
+                        warnCount:
+                          type: integer
+                      required:
+                      - warnCount
+                      - errorCount
+                      type: object
                     name:
                       type: string
                     prActivity:

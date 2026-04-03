@@ -155,6 +155,20 @@ type PRActivity struct {
 	Truncated  bool       `json:"truncated,omitempty"`
 }
 
+// LogIssue represents a single warning or error from Renovate logs.
+type LogIssue struct {
+	Level   int    `json:"level"`
+	Message string `json:"message"`
+}
+
+// LogIssues contains aggregate counts and individual issue messages from a Renovate run.
+type LogIssues struct {
+	WarnCount  int        `json:"warnCount"`
+	ErrorCount int        `json:"errorCount"`
+	Issues     []LogIssue `json:"issues,omitempty"`
+	Truncated  bool       `json:"truncated,omitempty"`
+}
+
 /*
 Status of a single project within a RenovateJob
 */
@@ -166,6 +180,7 @@ type ProjectStatus struct {
 	Priority             int32                 `json:"priority,omitempty"`
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
+	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -238,6 +253,14 @@ func (in *ProjectStatus) DeepCopyInto(out *ProjectStatus) {
 		if in.PRActivity.PRs != nil {
 			out.PRActivity.PRs = make([]PRDetail, len(in.PRActivity.PRs))
 			copy(out.PRActivity.PRs, in.PRActivity.PRs)
+		}
+	}
+	if in.LogIssues != nil {
+		out.LogIssues = new(LogIssues)
+		*out.LogIssues = *in.LogIssues
+		if in.LogIssues.Issues != nil {
+			out.LogIssues.Issues = make([]LogIssue, len(in.LogIssues.Issues))
+			copy(out.LogIssues.Issues, in.LogIssues.Issues)
 		}
 	}
 }
