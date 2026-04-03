@@ -755,3 +755,160 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 		t.Error("HasIssues should be false")
 	}
 }
+
+func TestParseRenovateLogsLogIssues(t *testing.T) {
+	tests := []struct {
+		name           string
+		logs           string
+		wantNil        bool
+		wantWarnCount  int
+		wantErrorCount int
+		wantIssueCount int
+		wantTruncated  bool
+		checkIssues    func(t *testing.T, issues []api.LogIssue)
+	}{
+		{
+			name:    "empty logs - nil LogIssues",
+			logs:    "",
+			wantNil: true,
+		},
+		{
+			name:           "no warnings or errors - zero counts",
+			logs:           `{"level":30,"msg":"Info message"}`,
+			wantWarnCount:  0,
+			wantErrorCount: 0,
+			wantIssueCount: 0,
+		},
+		{
+			name:           "single warning",
+			logs:           `{"level":40,"msg":"Config validation issue"}`,
+			wantWarnCount:  1,
+			wantErrorCount: 0,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				if issues[0].Level != 40 {
+					t.Errorf("issue level = %d, want 40", issues[0].Level)
+				}
+				if issues[0].Message != "Config validation issue" {
+					t.Errorf("issue message = %q, want %q", issues[0].Message, "Config validation issue")
+				}
+			},
+		},
+		{
+			name:           "single error",
+			logs:           `{"level":50,"msg":"Failed to look up dependency"}`,
+			wantWarnCount:  0,
+			wantErrorCount: 1,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				if issues[0].Level != 50 {
+					t.Errorf("issue level = %d, want 50", issues[0].Level)
+				}
+			},
+		},
+		{
+			name: "mixed warnings and errors",
+			logs: `{"level":40,"msg":"Warn 1"}` + "\n" +
+				`{"level":50,"msg":"Error 1"}` + "\n" +
+				`{"level":40,"msg":"Warn 2"}` + "\n" +
+				`{"level":50,"msg":"Error 2"}`,
+			wantWarnCount:  2,
+			wantErrorCount: 2,
+			wantIssueCount: 4,
+		},
+		{
+			name: "fatal counts as error",
+			logs: `{"level":60,"msg":"Fatal error"}`,
+			wantWarnCount:  0,
+			wantErrorCount: 1,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				if issues[0].Level != 60 {
+					t.Errorf("issue level = %d, want 60", issues[0].Level)
+				}
+			},
+		},
+		{
+			name: "deduplication - same message counted but stored once",
+			logs: `{"level":40,"msg":"Duplicate warning"}` + "\n" +
+				`{"level":40,"msg":"Duplicate warning"}` + "\n" +
+				`{"level":40,"msg":"Duplicate warning"}`,
+			wantWarnCount:  3,
+			wantErrorCount: 0,
+			wantIssueCount: 1,
+		},
+		{
+			name: "message truncation at 256 chars",
+			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", 300)),
+			wantWarnCount:  1,
+			wantErrorCount: 0,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				if len(issues[0].Message) != MaxIssueMessageLen {
+					t.Errorf("message length = %d, want %d", len(issues[0].Message), MaxIssueMessageLen)
+				}
+			},
+		},
+		{
+			name: "cap at MaxLogIssues with truncated flag",
+			logs: func() string {
+				var lines []string
+				for i := 0; i < MaxLogIssues+5; i++ {
+					lines = append(lines, fmt.Sprintf(`{"level":40,"msg":"Unique warning %d"}`, i))
+				}
+				return strings.Join(lines, "\n")
+			}(),
+			wantWarnCount:  MaxLogIssues + 5,
+			wantErrorCount: 0,
+			wantIssueCount: MaxLogIssues,
+			wantTruncated:  true,
+		},
+		{
+			name: "empty message is not stored",
+			logs: `{"level":40,"msg":""}` + "\n" +
+				`{"level":40,"msg":"Real warning"}`,
+			wantWarnCount:  2,
+			wantErrorCount: 0,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				if issues[0].Message != "Real warning" {
+					t.Errorf("issue message = %q, want %q", issues[0].Message, "Real warning")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseRenovateLogs(tt.logs)
+
+			if tt.wantNil {
+				if result.LogIssues != nil {
+					t.Errorf("LogIssues = %+v, want nil", result.LogIssues)
+				}
+				return
+			}
+
+			if result.LogIssues == nil {
+				t.Fatal("LogIssues is nil, want non-nil")
+			}
+
+			if result.LogIssues.WarnCount != tt.wantWarnCount {
+				t.Errorf("WarnCount = %d, want %d", result.LogIssues.WarnCount, tt.wantWarnCount)
+			}
+			if result.LogIssues.ErrorCount != tt.wantErrorCount {
+				t.Errorf("ErrorCount = %d, want %d", result.LogIssues.ErrorCount, tt.wantErrorCount)
+			}
+			if len(result.LogIssues.Issues) != tt.wantIssueCount {
+				t.Errorf("len(Issues) = %d, want %d", len(result.LogIssues.Issues), tt.wantIssueCount)
+			}
+			if result.LogIssues.Truncated != tt.wantTruncated {
+				t.Errorf("Truncated = %v, want %v", result.LogIssues.Truncated, tt.wantTruncated)
+			}
+
+			if tt.checkIssues != nil && len(result.LogIssues.Issues) > 0 {
+				tt.checkIssues(t, result.LogIssues.Issues)
+			}
+		})
+	}
+}

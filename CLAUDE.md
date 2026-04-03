@@ -25,7 +25,7 @@ src/
 ├── internal/
 │   ├── crdManager/        # CRUD on RenovateJob CRDs and Kubernetes Jobs
 │   ├── forgejo/           # Forgejo-specific webhook sync
-│   ├── parser/            # Extracts discovered repos from Renovate logs
+│   ├── parser/            # Extracts discovered repos and dependency issues from Renovate logs
 │   ├── renovate/          # Core engine: discovery, executor, job definitions
 │   ├── types/             # Shared internal types
 │   └── utils/             # Platform endpoints, job naming helpers
