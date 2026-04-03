@@ -289,15 +289,12 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "PR URL from git push - Forgejo format (/pulls/N)",
+			name: "git push extracts PR number - Forgejo format (/pulls/N)",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/helm-3.x","title":"Update helm to v3.15"}` + "\n" +
 				`{"level":20,"msg":"git push","branch":"renovate/helm-3.x","result":{"remoteMessages":{"all":["Visit the existing pull request:","https://git.example.com/org/repo/pulls/101 merges into main"]}}}`,
 			wantCreated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
-				if prs[0].URL != "https://git.example.com/org/repo/pulls/101" {
-					t.Errorf("url = %q, want %q", prs[0].URL, "https://git.example.com/org/repo/pulls/101")
-				}
 				if prs[0].Number != 101 {
 					t.Errorf("number = %d, want %d", prs[0].Number, 101)
 				}
@@ -307,42 +304,33 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "PR URL - GitHub format (/pull/N)",
+			name: "git push extracts PR number - GitHub format (/pull/N)",
 			logs: `{"level":20,"msg":"git push","branch":"renovate/lodash-4.x","result":{"remoteMessages":{"all":["Create a pull request:","https://github.com/org/repo/pull/42"]}}}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
-				if prs[0].URL != "https://github.com/org/repo/pull/42" {
-					t.Errorf("url = %q, want %q", prs[0].URL, "https://github.com/org/repo/pull/42")
-				}
 				if prs[0].Number != 42 {
 					t.Errorf("number = %d, want %d", prs[0].Number, 42)
 				}
 			},
 		},
 		{
-			name: "PR URL - GitLab format (/merge_requests/N)",
+			name: "git push extracts PR number - GitLab format (/merge_requests/N)",
 			logs: `{"level":20,"msg":"git push","branch":"renovate/axios-1.x","result":{"remoteMessages":{"all":["To create a merge request:","https://gitlab.com/org/repo/-/merge_requests/99"]}}}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
-				if prs[0].URL != "https://gitlab.com/org/repo/-/merge_requests/99" {
-					t.Errorf("url = %q, want %q", prs[0].URL, "https://gitlab.com/org/repo/-/merge_requests/99")
-				}
 				if prs[0].Number != 99 {
 					t.Errorf("number = %d, want %d", prs[0].Number, 99)
 				}
 			},
 		},
 		{
-			name: "partial data - PR with title but no URL",
+			name: "partial data - PR with title but no number",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/dep-a","title":"Update dep-a"}`,
 			wantCreated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
-				if prs[0].URL != "" {
-					t.Errorf("url = %q, want empty", prs[0].URL)
-				}
 				if prs[0].Title != "Update dep-a" {
 					t.Errorf("title = %q, want %q", prs[0].Title, "Update dep-a")
 				}
@@ -373,7 +361,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			wantPRCount: 2,
 		},
 		{
-			name: "git push URL enriches existing branch entry",
+			name: "git push enriches existing branch entry with PR number",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/dep-x","title":"Update dep-x"}` + "\n" +
 				`{"level":20,"msg":"git push","branch":"renovate/dep-x","result":{"remoteMessages":{"all":["Visit:","https://git.example.com/org/repo/pulls/200 merges into main"]}}}`,
 			wantCreated: 1,
@@ -381,9 +369,6 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
 				if prs[0].Title != "Update dep-x" {
 					t.Errorf("title = %q, want %q", prs[0].Title, "Update dep-x")
-				}
-				if prs[0].URL != "https://git.example.com/org/repo/pulls/200" {
-					t.Errorf("url = %q, want %q", prs[0].URL, "https://git.example.com/org/repo/pulls/200")
 				}
 				if prs[0].Number != 200 {
 					t.Errorf("number = %d, want %d", prs[0].Number, 200)
@@ -399,7 +384,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name: "URL backfill - unchanged PRs get URL from created PR's pattern",
+			name: "created and unchanged PRs all have numbers",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/dep-a","title":"Update dep-a"}` + "\n" +
 				`{"level":20,"msg":"git push","branch":"renovate/dep-a","result":{"remoteMessages":{"all":["Visit:","https://git.example.com/org/repo/pulls/100 merges into main"]}}}` + "\n" +
 				`{"level":20,"msg":"Pull Request #200 does not need updating","branch":"renovate/dep-b"}` + "\n" +
@@ -412,30 +397,14 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				for _, pr := range prs {
 					prsByBranch[pr.Branch] = pr
 				}
-				// Created PR has URL from git push
-				if prsByBranch["renovate/dep-a"].URL != "https://git.example.com/org/repo/pulls/100" {
-					t.Errorf("dep-a url = %q, want original URL", prsByBranch["renovate/dep-a"].URL)
+				if prsByBranch["renovate/dep-a"].Number != 100 {
+					t.Errorf("dep-a number = %d, want 100", prsByBranch["renovate/dep-a"].Number)
 				}
-				// Unchanged PRs get backfilled URLs
-				if prsByBranch["renovate/dep-b"].URL != "https://git.example.com/org/repo/pulls/200" {
-					t.Errorf("dep-b url = %q, want backfilled URL", prsByBranch["renovate/dep-b"].URL)
+				if prsByBranch["renovate/dep-b"].Number != 200 {
+					t.Errorf("dep-b number = %d, want 200", prsByBranch["renovate/dep-b"].Number)
 				}
-				if prsByBranch["renovate/dep-c"].URL != "https://git.example.com/org/repo/pulls/300" {
-					t.Errorf("dep-c url = %q, want backfilled URL", prsByBranch["renovate/dep-c"].URL)
-				}
-			},
-		},
-		{
-			name: "URL backfill - no URLs available, numbers stay as plain text",
-			logs: `{"level":20,"msg":"Pull Request #50 does not need updating","branch":"renovate/dep-x"}` + "\n" +
-				`{"level":20,"msg":"Pull Request #60 does not need updating","branch":"renovate/dep-y"}`,
-			wantUnchanged: 2,
-			wantPRCount:   2,
-			checkDetails: func(t *testing.T, prs []api.PRDetail) {
-				for _, pr := range prs {
-					if pr.URL != "" {
-						t.Errorf("pr %q url = %q, want empty (no URL source for backfill)", pr.Branch, pr.URL)
-					}
+				if prsByBranch["renovate/dep-c"].Number != 300 {
+					t.Errorf("dep-c number = %d, want 300", prsByBranch["renovate/dep-c"].Number)
 				}
 			},
 		},
@@ -713,14 +682,11 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 	if golang.Title != "Update golang Docker tag to v1.22" {
 		t.Errorf("golang title = %q, want %q", golang.Title, "Update golang Docker tag to v1.22")
 	}
-	if golang.URL != "https://git.example.com/org/repo/pulls/900" {
-		t.Errorf("golang url = %q, want %q", golang.URL, "https://git.example.com/org/repo/pulls/900")
-	}
 	if golang.Number != 900 {
 		t.Errorf("golang number = %d, want 900", golang.Number)
 	}
 
-	// Check unchanged PR has number and backfilled URL (derived from created/updated PRs' URL pattern)
+	// Check unchanged PR has number
 	traefik, ok := prsByBranch["renovate/traefik-30.x"]
 	if !ok {
 		t.Fatal("missing PR for renovate/traefik-30.x")
@@ -731,9 +697,6 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 	if traefik.Number != 800 {
 		t.Errorf("traefik number = %d, want 800", traefik.Number)
 	}
-	if traefik.URL != "https://git.example.com/org/repo/pulls/800" {
-		t.Errorf("traefik url = %q, want backfilled URL", traefik.URL)
-	}
 
 	// Check updated PR
 	rook, ok := prsByBranch["renovate/rook-ceph-1.x"]
@@ -743,8 +706,8 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 	if rook.Action != api.PRActionUpdated {
 		t.Errorf("rook action = %q, want %q", rook.Action, api.PRActionUpdated)
 	}
-	if rook.URL != "https://git.example.com/org/repo/pulls/850" {
-		t.Errorf("rook url = %q, want %q", rook.URL, "https://git.example.com/org/repo/pulls/850")
+	if rook.Number != 850 {
+		t.Errorf("rook number = %d, want 850", rook.Number)
 	}
 
 	// Verify existing parsing still works
