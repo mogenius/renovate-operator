@@ -151,47 +151,40 @@
         return null;
       };
 
-      const buildPRUrl = (platform, endpoint, projectName) => {
+      const _platformWebBase = (platform, endpoint) => {
         if (!platform || platform === 'github') {
-          let base = 'https://github.com';
           if (endpoint && !endpoint.includes('api.github.com')) {
-            // GitHub Enterprise: strip /api/vN/ suffix to get web URL
-            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+            return endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
           }
-          return `${base}/${projectName}/pulls`;
+          return 'https://github.com';
         } else if (platform === 'gitlab') {
-          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
-          return `${base}/${projectName}/-/merge_requests`;
+          return (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
         } else if (platform === 'bitbucket') {
-          return `https://bitbucket.org/${projectName}/pull-requests`;
+          return 'https://bitbucket.org';
         } else if (platform === 'gitea' || platform === 'forgejo') {
-          if (endpoint) {
-            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
-            return `${base}/${projectName}/pulls`;
-          }
+          return endpoint ? endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '') : null;
         }
+        return null;
+      };
+
+      const buildPRUrl = (platform, endpoint, projectName) => {
+        const base = _platformWebBase(platform, endpoint);
+        if (!base) return null;
+        if (!platform || platform === 'github') return `${base}/${projectName}/pulls`;
+        if (platform === 'gitlab') return `${base}/${projectName}/-/merge_requests`;
+        if (platform === 'bitbucket') return `${base}/${projectName}/pull-requests`;
+        if (platform === 'gitea' || platform === 'forgejo') return `${base}/${projectName}/pulls`;
         return null;
       };
 
       const buildSinglePRUrl = (platform, endpoint, projectName, prNumber) => {
         if (!prNumber) return null;
-        if (!platform || platform === 'github') {
-          let base = 'https://github.com';
-          if (endpoint && !endpoint.includes('api.github.com')) {
-            base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
-          }
-          return `${base}/${projectName}/pull/${prNumber}`;
-        } else if (platform === 'gitlab') {
-          const base = (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
-          return `${base}/${projectName}/-/merge_requests/${prNumber}`;
-        } else if (platform === 'bitbucket') {
-          return `https://bitbucket.org/${projectName}/pull-requests/${prNumber}`;
-        } else if (platform === 'gitea' || platform === 'forgejo') {
-          if (endpoint) {
-            const base = endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
-            return `${base}/${projectName}/pulls/${prNumber}`;
-          }
-        }
+        const base = _platformWebBase(platform, endpoint);
+        if (!base) return null;
+        if (!platform || platform === 'github') return `${base}/${projectName}/pull/${prNumber}`;
+        if (platform === 'gitlab') return `${base}/${projectName}/-/merge_requests/${prNumber}`;
+        if (platform === 'bitbucket') return `${base}/${projectName}/pull-requests/${prNumber}`;
+        if (platform === 'gitea' || platform === 'forgejo') return `${base}/${projectName}/pulls/${prNumber}`;
         return null;
       };
 
@@ -1869,7 +1862,7 @@
                             <div className="space-y-1.5">
                               {project.prActivity.prs.map((pr, idx) => {
                                 const actionClass = prActionBadgeClass(pr.action);
-                                const prUrl = pr.url || buildSinglePRUrl(job.platform, job.platformEndpoint, project.name, pr.number);
+                                const prUrl = buildSinglePRUrl(job.platform, job.platformEndpoint, project.name, pr.number);
                                 return (
                                   <div key={idx} className="flex items-center gap-2 text-sm">
                                     <span className={actionClass}>{pr.action}</span>
