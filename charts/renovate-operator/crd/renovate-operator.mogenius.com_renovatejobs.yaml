@@ -4012,8 +4012,8 @@ spec:
                       format: date-time
                       type: string
                     logIssues:
-                      description: LogIssues contains aggregate warning/error counts
-                        and individual issue messages from a Renovate run.
+                      description: LogIssues contains aggregate counts and individual
+                        issue messages from a Renovate run.
                       properties:
                         errorCount:
                           type: integer
@@ -4036,8 +4036,8 @@ spec:
                         warnCount:
                           type: integer
                       required:
-                      - warnCount
                       - errorCount
+                      - warnCount
                       type: object
                     name:
                       type: string
@@ -4063,8 +4063,6 @@ spec:
                               number:
                                 type: integer
                               title:
-                                type: string
-                              url:
                                 type: string
                             required:
                             - action

@@ -215,7 +215,6 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 				for _, msg := range gp.Result.RemoteMessages.All {
 					if matches := prURLRegex.FindStringSubmatch(msg); len(matches) == 2 {
 						detail := getOrCreateDetail(branchMap, gp.Branch)
-						detail.URL = matches[0]
 						if num, err := strconv.Atoi(matches[1]); err == nil {
 							detail.Number = num
 						}
@@ -315,29 +314,8 @@ func buildPRActivity(branchMap map[string]*api.PRDetail) *api.PRActivity {
 
 	// Default action for branches that only appeared in "git push" or "PR created" messages
 	for _, detail := range branchMap {
-		if detail.Action == "" && (detail.URL != "" || detail.Number > 0) {
+		if detail.Action == "" && detail.Number > 0 {
 			detail.Action = api.PRActionUpdated
-		}
-	}
-
-	// Backfill URLs: if any PR has a URL, derive the base prefix and apply to PRs with number but no URL.
-	// All PRs in a single run come from the same forge, so the first URL found is representative.
-	// Map iteration order is non-deterministic, but all URLs share the same prefix so the result is stable.
-	var urlPrefix string
-	for _, detail := range branchMap {
-		if detail.URL != "" && detail.Number > 0 {
-			idx := strings.LastIndex(detail.URL, "/"+strconv.Itoa(detail.Number))
-			if idx > 0 {
-				urlPrefix = detail.URL[:idx+1] // includes trailing /
-				break
-			}
-		}
-	}
-	if urlPrefix != "" {
-		for _, detail := range branchMap {
-			if detail.URL == "" && detail.Number > 0 {
-				detail.URL = urlPrefix + strconv.Itoa(detail.Number)
-			}
 		}
 	}
 

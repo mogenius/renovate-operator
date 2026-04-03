@@ -1126,7 +1126,7 @@
               <div className="py-3 pl-4 border-l-2 border-gray-200 dark:border-slate-600 max-h-64 overflow-y-auto">
                 <div className="space-y-1.5">
                   {prActivity.prs.map((pr, idx) => {
-                    const prUrl = pr.url || buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
+                    const prUrl = buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
                     return (
                       <div key={idx} className="flex items-center gap-2 text-sm">
                         <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>

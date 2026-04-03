@@ -140,7 +140,6 @@ const (
 type PRDetail struct {
 	Branch string   `json:"branch"`
 	Number int      `json:"number,omitempty"`
-	URL    string   `json:"url,omitempty"`
 	Title  string   `json:"title,omitempty"`
 	Action PRAction `json:"action"`
 }
