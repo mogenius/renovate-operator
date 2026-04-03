@@ -46,6 +46,7 @@ metadata:
   name: {{ include "renovate-operator.fullname" . }}-crd
   namespace: {{ .Release.Namespace }}
   annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
     helm.sh/hook-weight: "-5"
