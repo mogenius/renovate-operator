@@ -15,6 +15,8 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+const defaultRenovateBaseDir = "/tmp"
+
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
@@ -48,21 +50,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
-	volumes := []v1.Volume{
-		{
-			Name: "tmp",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		},
-	}
-
-	volumeMounts := []v1.VolumeMount{
-		{
-			Name:      "tmp",
-			MountPath: "/tmp",
-		},
-	}
+	containerEnv := mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars)
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
@@ -78,12 +66,12 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json 2>&1 && cat /tmp/repos.json || cat /tmp/logs.json"},
+							Args:            []string{`renovate --autodiscover --write-discovered-repos "$RENOVATE_BASE_DIR/repos.json" >> "$RENOVATE_BASE_DIR/logs.json" 2>&1 && cat "$RENOVATE_BASE_DIR/repos.json" || cat "$RENOVATE_BASE_DIR/logs.json"`},
 							Image:           job.Spec.Image,
-							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
+							Env:             containerEnv,
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
-							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
+							VolumeMounts:    job.Spec.ExtraVolumeMounts,
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -95,7 +83,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
-					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
+					Volumes:                      job.Spec.ExtraVolumes,
 				},
 			},
 		},
@@ -132,21 +120,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
-	volumes := []v1.Volume{
-		{
-			Name: "tmp",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		},
-	}
-
-	volumeMounts := []v1.VolumeMount{
-		{
-			Name:      "tmp",
-			MountPath: "/tmp",
-		},
-	}
+	containerEnv := mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars)
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
@@ -164,10 +138,10 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 							Command:         []string{"renovate"},
 							Args:            []string{project},
 							Image:           job.Spec.Image,
-							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
+							Env:             containerEnv,
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
-							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
+							VolumeMounts:    job.Spec.ExtraVolumeMounts,
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -179,7 +153,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
-					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
+					Volumes:                      job.Spec.ExtraVolumes,
 				},
 			},
 		},
@@ -211,7 +185,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		},
 		{
 			Name:  "RENOVATE_BASE_DIR",
-			Value: "/tmp",
+			Value: defaultRenovateBaseDir,
 		},
 	}
 

@@ -2,9 +2,9 @@
 
 The Renovate Operator allows you to mount additional volumes in the Renovate job pods. This is useful for providing custom configuration files, credentials, or other resources that Renovate needs to access.
 
-## Default Volume
+## Default `RENOVATE_BASE_DIR`
 
-By default, the operator automatically creates and mounts a volume named `tmp` to `/tmp` in all Renovate job pods. This temporary volume is used by Renovate for its working directory and cache.
+The operator sets `RENOVATE_BASE_DIR=/tmp` on the renovate and discovery containers unless you override it with `extraEnv` (or with keys loaded via `extraEnvFrom`). It does **not** mount any volume at that path by default. If you need a dedicated writable directory (emptyDir, PVC, generic ephemeral volume, etc.), declare it under `extraVolumes` / `extraVolumeMounts` and set `RENOVATE_BASE_DIR` to match the mount path.
 
 ## Adding Extra Volumes
 
@@ -56,7 +56,7 @@ spec:
 
 - The volume name in `extraVolumes` must match the name referenced in `extraVolumeMounts`.
 - Both discovery jobs and renovate execution jobs will have the same extra volumes mounted.
-- The default `tmp` volume is always present and cannot be overridden.
+- Keep `RENOVATE_BASE_DIR` aligned with your scratch mount: same path in `extraEnv` (or secret/config) and `extraVolumeMounts`.
 - Make sure the `mountPath` in your volume mount does not conflict with existing paths used by Renovate.
 
 ## Use Cases
