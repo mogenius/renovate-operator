@@ -178,6 +178,7 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 						hasIssues = parseResult.HasIssues
 						newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
 						newProjectStatus.PRActivity = parseResult.PRActivity
+						newProjectStatus.LogIssues = parseResult.LogIssues
 					} else {
 						e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 					}

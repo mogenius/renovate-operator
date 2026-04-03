@@ -262,6 +262,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
 				PRActivity:           p.PRActivity,
+				LogIssues:            p.LogIssues,
 			})
 		}
 
