@@ -122,11 +122,42 @@ The operator requests the `read:user` and `user:email` scopes. On logout, the OA
 
 ## Session Security
 
-Sessions are stored as AES-256-GCM encrypted cookies and expire after **24 hours**.
+Sessions expire after **24 hours**. Two session storage modes are available:
 
-If you run multiple operator replicas, you **must** set a static session secret. Otherwise each pod generates its own key and users will be logged out when requests hit a different replica.
+**Cookie-based** (default): the full session is AES-256-GCM encrypted and stored directly in the browser cookie. This is stateless — sessions survive pod restarts and require no external infrastructure. However, if users belong to many groups the encrypted cookie may exceed the ~4096 byte browser limit, causing authentication failures.
 
-Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+**Valkey** (opt-in): only an encrypted session ID (~100 bytes) is stored in the cookie; the full session data lives server-side in Valkey. This avoids cookie size limits regardless of group count, and sessions are shared across replicas. Recommended for multi-replica deployments or when users have many group memberships.
+
+If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
+
+### Valkey Session Store
+
+To use Valkey for session storage, either deploy a Valkey instance via the bundled subchart or provide an external Valkey URL via a secret:
+
+**Option 1: Bundled Valkey subchart**
+
+```yaml
+valkey:
+  enabled: true
+  auth:
+    enabled: true
+    aclUsers:
+      default:
+        password: ""
+        permissions: "~* &* +@all"
+  dataStorage:
+    enabled: false  # sessions are ephemeral
+```
+
+**Option 2: Valkey URL from an existing secret**
+
+```yaml
+valkey:
+  existingSecret: "my-valkey-secret"
+  existingSecretKey: "valkey-url"   # key containing e.g. "redis://:password@valkey:6379/0"
+```
+
+For TLS connections, use the `rediss://` scheme in the secret value.
 
 ---
 

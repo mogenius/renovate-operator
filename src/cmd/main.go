@@ -51,6 +51,138 @@ func splitAndTrim(s, sep string) []string {
 	return result
 }
 
+type authSetup struct {
+	provider             ui.AuthProvider
+	kvStore              ui.KVStore
+	defaultAllowedGroups []string
+	cleanup              func()
+}
+
+func initAuth() authSetup {
+	log := ctrl.Log.WithName("auth")
+
+	// Determine the session secret for the active auth provider so we can
+	// derive the encryption key early (needed for both the Valkey store and
+	// the auth provider itself).
+	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
+	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
+	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
+	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
+	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
+
+	var sessionSecret string
+	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
+		sessionSecret = config.GetValue("OIDC_SESSION_SECRET")
+	} else if githubClientID != "" && githubClientSecret != "" {
+		sessionSecret = config.GetValue("GITHUB_SESSION_SECRET")
+	}
+
+	encryptionKey, encKeyErr := ui.ComputeEncryptionKey(sessionSecret)
+	assert.NoError(encKeyErr, "failed to compute session encryption key")
+
+	// Derive separate keys for cookie encryption and session store at-rest
+	// encryption so a compromise of one does not affect the other.
+	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
+
+	// Initialize KV store (Valkey if configured, otherwise nil)
+	kvStore, kvErr := ui.NewKVStore(ui.ValkeyConfig{
+		URL:      config.GetValue("VALKEY_URL"),
+		Host:     config.GetValue("VALKEY_HOST"),
+		Port:     config.GetValue("VALKEY_PORT"),
+		Password: config.GetValue("VALKEY_PASSWORD"),
+	})
+	assert.NoError(kvErr, "failed to initialize KV store")
+
+	// Wrap KV store with session-specific encryption and key prefix
+	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
+	assert.NoError(storeErr, "failed to initialize session store")
+
+	if kvStore != nil {
+		log.Info("Using session store", "type", "valkey")
+	} else {
+		log.Info("Using session store", "type", "cookie")
+		log.Info("Cookie-based sessions: session data is stored in the browser cookie. If users belong to many groups, the cookie may exceed browser size limits; configure Valkey to avoid this. For multi-replica deployments, Valkey is recommended for session sharing across pods.")
+	}
+
+	cleanup := func() {
+		if kvStore != nil {
+			if err := kvStore.Close(); err != nil {
+				log.Error(err, "failed to close KV store")
+			}
+		}
+	}
+
+	// Initialize authentication provider (OIDC or GitHub OAuth)
+	var authProvider ui.AuthProvider
+
+	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
+		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer oidcCancel()
+		oidcAuth, oidcErr := ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
+			IssuerURL:           oidcIssuer,
+			ClientID:            oidcClientID,
+			ClientSecret:        oidcClientSecret,
+			RedirectURL:         config.GetValue("OIDC_REDIRECT_URL"),
+			InsecureSkipVerify:  config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
+			LogoutURL:           config.GetValue("OIDC_LOGOUT_URL"),
+			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
+			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
+			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
+			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
+		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
+		assert.NoError(oidcErr, "failed to initialize OIDC provider")
+		authProvider = oidcAuth
+		log.Info("OIDC authentication enabled", "issuer", oidcIssuer)
+
+		// Log group filtering configuration
+		if config.GetValue("OIDC_ALLOWED_GROUP_PREFIX") != "" {
+			log.Info("OIDC group prefix filter enabled",
+				"prefix", config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"))
+		}
+		if config.GetValue("OIDC_ALLOWED_GROUP_PATTERN") != "" {
+			log.Info("OIDC group pattern filter enabled",
+				"pattern", config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"))
+		}
+	} else if githubClientID != "" && githubClientSecret != "" {
+		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
+			ClientID:     githubClientID,
+			ClientSecret: githubClientSecret,
+			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
+		}, cookieKey, ctrl.Log.WithName("github-oauth"), sessionStore)
+		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
+		authProvider = ghAuth
+		log.Info("GitHub OAuth authentication enabled")
+	} else {
+		log.Info("No authentication configured, UI access is unauthenticated")
+	}
+
+	// Parse default allowed groups (comma-separated)
+	var defaultAllowedGroups []string
+	defaultGroupsStr := config.GetValue("DEFAULT_ALLOWED_GROUPS")
+	if defaultGroupsStr != "" {
+		for _, group := range splitAndTrim(defaultGroupsStr, ",") {
+			if group != "" {
+				normalized := strings.ToLower(strings.TrimSpace(group))
+				defaultAllowedGroups = append(defaultAllowedGroups, normalized)
+			}
+		}
+		log.Info("Default allowed groups configured", "groups", defaultAllowedGroups)
+	}
+
+	if authProvider != nil && !authProvider.SupportsGroups() && len(defaultAllowedGroups) > 0 {
+		log.Error(nil,
+			"auth provider does not support group claims -- DEFAULT_ALLOWED_GROUPS is configured but will have no effect, all jobs will be hidden from all users",
+			"ignored_groups", defaultAllowedGroups)
+	}
+
+	return authSetup{
+		provider:             authProvider,
+		kvStore:              kvStore,
+		defaultAllowedGroups: defaultAllowedGroups,
+		cleanup:              cleanup,
+	}
+}
+
 func main() {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{
@@ -214,6 +346,26 @@ func main() {
 			Default:  "false",
 		},
 		{
+			Key:      "VALKEY_URL",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "VALKEY_HOST",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "VALKEY_PORT",
+			Optional: true,
+			Default:  "6379",
+		},
+		{
+			Key:      "VALKEY_PASSWORD",
+			Optional: true,
+			Default:  "",
+		},
+		{
 			Key:      "LOG_STORE_MODE",
 			Optional: true,
 			Default:  "disabled",
@@ -292,78 +444,11 @@ func main() {
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
-	// Initialize authentication provider (OIDC or GitHub OAuth)
-	var authProvider ui.AuthProvider
-	oidcIssuer := config.GetValue("OIDC_ISSUER_URL")
-	oidcClientID := config.GetValue("OIDC_CLIENT_ID")
-	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
-	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
-	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
-
-	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
-		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer oidcCancel()
-		oidcAuth, oidcErr := ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
-			IssuerURL:           oidcIssuer,
-			ClientID:            oidcClientID,
-			ClientSecret:        oidcClientSecret,
-			RedirectURL:         config.GetValue("OIDC_REDIRECT_URL"),
-			SessionSecret:       config.GetValue("OIDC_SESSION_SECRET"),
-			InsecureSkipVerify:  config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
-			LogoutURL:           config.GetValue("OIDC_LOGOUT_URL"),
-			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
-			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
-			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
-			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
-		}, ctrl.Log.WithName("oidc"))
-		assert.NoError(oidcErr, "failed to initialize OIDC provider")
-		authProvider = oidcAuth
-		ctrl.Log.WithName("auth").Info("OIDC authentication enabled", "issuer", oidcIssuer)
-
-		// Log group filtering configuration
-		if config.GetValue("OIDC_ALLOWED_GROUP_PREFIX") != "" {
-			ctrl.Log.WithName("auth").Info("OIDC group prefix filter enabled",
-				"prefix", config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"))
-		}
-		if config.GetValue("OIDC_ALLOWED_GROUP_PATTERN") != "" {
-			ctrl.Log.WithName("auth").Info("OIDC group pattern filter enabled",
-				"pattern", config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"))
-		}
-	} else if githubClientID != "" && githubClientSecret != "" {
-		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
-			ClientID:      githubClientID,
-			ClientSecret:  githubClientSecret,
-			RedirectURL:   config.GetValue("GITHUB_REDIRECT_URL"),
-			SessionSecret: config.GetValue("GITHUB_SESSION_SECRET"),
-		}, ctrl.Log.WithName("github-oauth"))
-		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
-		authProvider = ghAuth
-		ctrl.Log.WithName("auth").Info("GitHub OAuth authentication enabled")
-	} else {
-		ctrl.Log.WithName("auth").Info("No authentication configured, UI access is unauthenticated")
-	}
-
-	// Parse default allowed groups (comma-separated)
-	var defaultAllowedGroups []string
-	defaultGroupsStr := config.GetValue("DEFAULT_ALLOWED_GROUPS")
-	if defaultGroupsStr != "" {
-		for _, group := range splitAndTrim(defaultGroupsStr, ",") {
-			if group != "" {
-				normalized := strings.ToLower(strings.TrimSpace(group))
-				defaultAllowedGroups = append(defaultAllowedGroups, normalized)
-			}
-		}
-		ctrl.Log.WithName("auth").Info("Default allowed groups configured", "groups", defaultAllowedGroups)
-	}
-
-	if authProvider != nil && !authProvider.SupportsGroups() && len(defaultAllowedGroups) > 0 {
-		ctrl.Log.WithName("auth").Error(nil,
-			"auth provider does not support group claims -- DEFAULT_ALLOWED_GROUPS is configured but will have no effect, all jobs will be hidden from all users",
-			"ignored_groups", defaultAllowedGroups)
-	}
+	auth := initAuth()
+	defer auth.cleanup()
 
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, authProvider, defaultAllowedGroups)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups)
 	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
