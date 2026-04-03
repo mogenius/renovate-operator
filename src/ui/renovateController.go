@@ -261,6 +261,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
+				PRActivity:           p.PRActivity,
 			})
 		}
 
@@ -424,6 +425,11 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	jobIdentifier := crdmanager.RenovateJobIdentifier{
 		Name:      params.name,
 		Namespace: params.namespace,
@@ -519,6 +525,11 @@ func (s *Server) updateExecutionOptions(w http.ResponseWriter, r *http.Request) 
 	}
 	if params.RenovateJob == "" || params.Namespace == "" {
 		badRequestError(w, nil, "missing parameters")
+		return
+	}
+
+	if !s.authorizeJobAccess(r, params.Namespace, params.RenovateJob) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 

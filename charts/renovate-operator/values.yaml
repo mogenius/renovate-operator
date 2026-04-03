@@ -66,6 +66,11 @@ config:
   deleteSuccessfulJobs: false
   # -- TTL for finished renovate jobs in seconds, -1 means they are kept forever
   jobTTLSecondsAfterFinished: -1
+  # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
+  globalParallelismLimit: 0
+  logStorage:
+    # -- log store mode: "disabled" (default, no-op) or "memory" (cache logs in-memory after job completion)
+    mode: disabled
 
 ingress:
   # -- whether to enable the ingress renovate-operator
@@ -97,11 +102,16 @@ route:
   # -- parentRefs to place on the HTTPRoute
   parentRefs: []
   # -- group to place on the HTTPRoute
-  group: ''
+  group: ""
   # -- kind to place on the HTTPRoute
   kind: Service
   # -- weight to place on the HTTPRoute
   weight: 1
+  # -- Any custom rules you want to specify
+  additionalRules: []
+    # - timeouts:
+    #     request: 30s
+    #     backendRequest: 30s
 
 webhook:
   enabled: false
@@ -135,11 +145,16 @@ webhook:
     # -- parentRefs to place on the HTTPRoute
     parentRefs: []
     # -- group to place on the HTTPRoute
-    group: ''
+    group: ""
     # -- kind to place on the HTTPRoute
     kind: Service
     # -- weight to place on the HTTPRoute
     weight: 1
+    # -- Any custom rules you want to specify
+    additionalRules: []
+      # - timeouts:
+      #     request: 30s
+      #     backendRequest: 30s
 
 auth:
   # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
@@ -228,6 +243,8 @@ tolerations: []
 affinity: {}
 # -- topologySpreadConstraints for the operator pod
 topologySpreadConstraints: []
+# -- priorityClassName for the operator pod
+priorityClassName: ""
 
 serviceAccount:
   # -- name of the serviceaccount, if not set a name is generated using the fullname template

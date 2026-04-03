@@ -9,7 +9,8 @@ metadata:
   name: renovate-github
   namespace: renovate-operator
 spec:
-  discoveryFilter: ###GITHUB_USERNAME###/*
+  discoveryFilters: 
+    - ###GITHUB_USERNAME###/*
   provider:
     name: github
     endpoint: ""  # optional, defaults to https://api.github.com

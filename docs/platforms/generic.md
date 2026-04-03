@@ -14,7 +14,8 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *" # Hourly
-  discoveryFilter: "MyOrg/*" # Optional: filter discovered repositories
+  discoveryFilters: 
+    - "MyOrg/*" # Optional: filter discovered repositories
   image: renovate/renovate:latest # renovate
   secretRef: "renovate-secret"
   provider:

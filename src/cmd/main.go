@@ -20,6 +20,7 @@ import (
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
@@ -364,6 +365,33 @@ func main() {
 			Optional: true,
 			Default:  "",
 		},
+		{
+			Key:      "LOG_STORE_MODE",
+			Optional: true,
+			Default:  "disabled",
+			Validate: func(value string) error {
+				switch value {
+				case "disabled", "memory":
+					return nil
+				}
+				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory")
+			},
+		},
+		{
+			Key:      "GLOBAL_PARALLELISM_LIMIT",
+			Optional: true,
+			Default:  "0",
+			Validate: func(value string) error {
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' needs to be an integer: %s", err.Error())
+				}
+				if parsed < 0 {
+					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' must be 0 (unlimited) or a positive integer")
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -404,7 +432,9 @@ func main() {
 
 	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
 
-	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"))
+	ls := logStore.NewLogStore(config.GetValue("LOG_STORE_MODE"))
+
+	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls)
 
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
@@ -432,6 +462,7 @@ func main() {
 		mgr.GetClient(),
 		ctrl.Log.WithName("renovate-executor"),
 		health,
+		ls,
 	)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.

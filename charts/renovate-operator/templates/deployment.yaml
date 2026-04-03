@@ -50,6 +50,9 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
       {{- with .Values.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -198,6 +201,10 @@ spec:
               value: {{ .Values.auth.defaultAllowedGroups | quote }}
             {{- end }}
             {{- end }}
+            - name: GLOBAL_PARALLELISM_LIMIT
+              value: {{ .Values.config.globalParallelismLimit | quote }}
+            - name: LOG_STORE_MODE
+              value: {{ .Values.config.logStorage.mode | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

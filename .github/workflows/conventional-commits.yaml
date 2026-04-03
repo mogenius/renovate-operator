@@ -1,0 +1,56 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+
+jobs:
+  check-commits:
+    name: Validate commit messages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+
+          # Conventional Commits pattern:
+          #   <type>(<scope>)?!?: <description>
+          # Allowed types: feat, fix, docs, chore, refactor, test, perf, ci, build, revert
+          # Scope is optional; any lowercase alphanumeric / hyphen value is accepted
+          PATTERN='^(feat|fix|docs|chore|refactor|test|perf|ci|build|revert)(\([a-z0-9-]+\))?!?: .+'
+
+          COMMITS=$(git log --format="%s" "$BASE".."$HEAD")
+
+          if [[ -z "$COMMITS" ]]; then
+            echo "No commits found between base and head — nothing to validate."
+            exit 0
+          fi
+
+          FAILED=0
+          while IFS= read -r msg; do
+            [[ -z "$msg" ]] && continue
+            if echo "$msg" | grep -qE "$PATTERN"; then
+              echo "OK  $msg"
+            else
+              echo "ERR $msg"
+              FAILED=1
+            fi
+          done <<< "$COMMITS"
+
+          if [[ $FAILED -ne 0 ]]; then
+            echo ""
+            echo "One or more commit messages do not follow the Conventional Commits format."
+            echo "Expected: <type>(<scope>): <description>"
+            echo "  Types : feat, fix, docs, chore, refactor, test, perf, ci, build, revert"
+            echo "  Scopes: operator, helm, docs, deps  (optional but encouraged)"
+            echo "  Example: feat(operator): add parallel job execution"
+            exit 1
+          fi

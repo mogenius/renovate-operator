@@ -1,3 +1,59 @@
+# [4.0.0](https://github.com/mogenius/renovate-operator/compare/3.10.1...4.0.0) (2026-04-02)
+
+
+* feat(operator)!: convert discoveryFilter and discoverTopics to lists ([d0b3005](https://github.com/mogenius/renovate-operator/commit/d0b3005bd05f8813d29fd1fdaf725bc07000bef7))
+* fix!: make job name sanatization conform to k8s naming rules ([553b47c](https://github.com/mogenius/renovate-operator/commit/553b47cd4a661ba325e7fd080a4ad95fd646448a)), closes [#236](https://github.com/mogenius/renovate-operator/issues/236)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/netresearch/go-cron to v0.13.4 ([3cdc76e](https://github.com/mogenius/renovate-operator/commit/3cdc76eec6ea590e3171eef36c8117e57027bf36))
+* respect RENOVATE_BASE_DIR env var instead of hardcoding /tmp (fixes [#226](https://github.com/mogenius/renovate-operator/issues/226)) ([dc36281](https://github.com/mogenius/renovate-operator/commit/dc362813e2d98af7d22bbf5614d4cbb31a99a02d))
+* **ui:** if no acitivity is found display - instead of no PRs ([063cb65](https://github.com/mogenius/renovate-operator/commit/063cb65d7fdfe248008b51001fa191be82869876))
+* **ui:** rename PR Activity to Activity ([c033ea2](https://github.com/mogenius/renovate-operator/commit/c033ea2a825bbb4623db1d4716fa4d522408f3e1))
+
+
+### Features
+
+* adding an option to allow for setting a globale parallelism setting ([e80c39e](https://github.com/mogenius/renovate-operator/commit/e80c39e11e04c3b397960a9e7448feb8e6ad28bb)), closes [#220](https://github.com/mogenius/renovate-operator/issues/220)
+* adding in memory log store to fall back to if the pod has been deleted ([42b2527](https://github.com/mogenius/renovate-operator/commit/42b25279f09b56eb81573e9624ac129e86add218)), closes [#181](https://github.com/mogenius/renovate-operator/issues/181)
+* show PR activity per run in operator UI ([c67e8d6](https://github.com/mogenius/renovate-operator/commit/c67e8d604f280b025f590eaeec5f8b0602a44d81)), closes [#115](https://github.com/mogenius/renovate-operator/issues/115)
+
+
+### BREAKING CHANGES
+
+* discoveryFilter is renamed to discoveryFilters and is now a []string. discoverTopics becomes a []string as well. Both are joined with , before being passed to RENOVATE_AUTODISCOVER_FILTER and RENOVATE_AUTODISCOVER_TOPICS respectively.
+* Generated jobs will no longer contain double hyphens (e.g.: renovate-org--github).
+Depending on your configuration this might lead to jobs not getting deleted. Check your configuration before merging.
+
+## [3.10.1](https://github.com/mogenius/renovate-operator/compare/3.10.0...3.10.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **deps:** update k8s.io/utils digest to 28399d8 ([73cadc7](https://github.com/mogenius/renovate-operator/commit/73cadc765b586f2a6bea2248e3cb600a72cf01ea))
+
+# [3.10.0](https://github.com/mogenius/renovate-operator/compare/3.9.0...3.10.0) (2026-03-28)
+
+
+### Features
+
+* **chart:** add additionalRules field for httproutes ([994c936](https://github.com/mogenius/renovate-operator/commit/994c9365465e1a806ae59484500470180a8feb7c))
+
+# [3.9.0](https://github.com/mogenius/renovate-operator/compare/3.8.4...3.9.0) (2026-03-25)
+
+
+### Features
+
+* **chart:** add priorityClassName support for operator deployment ([e132416](https://github.com/mogenius/renovate-operator/commit/e13241635cbc96a8dbcfa9941539302ee706d9bd))
+
+## [3.8.4](https://github.com/mogenius/renovate-operator/compare/3.8.3...3.8.4) (2026-03-23)
+
+
+### Bug Fixes
+
+* add missing authorization checks to runRenovateForAllProjects and updateExecutionOptions ([8af636d](https://github.com/mogenius/renovate-operator/commit/8af636db2466e578a9b9ee9ef48f3a8b80e0a745))
+
 ## [3.8.3](https://github.com/mogenius/renovate-operator/compare/3.8.2...3.8.3) (2026-03-19)
 
 

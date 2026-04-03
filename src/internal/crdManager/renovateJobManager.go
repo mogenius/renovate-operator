@@ -14,6 +14,7 @@ import (
 	"renovate-operator/clientProvider"
 	"renovate-operator/gitProviderClients"
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
+	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
@@ -62,6 +63,7 @@ type renovateJobManager struct {
 	gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory
 	logger                   logr.Logger
 	lock                     *sync.RWMutex
+	logStore                 logStore.LogStore
 }
 
 type RenovateJobIdentifier struct {
@@ -80,14 +82,16 @@ type RenovateProjectStatus struct {
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
+	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
 }
 
-func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger) RenovateJobManager {
+func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore) RenovateJobManager {
 	return &renovateJobManager{
 		client:                   client,
 		gitProviderClientFactory: gitProviderClientFactory,
 		logger:                   logger,
 		lock:                     &sync.RWMutex{},
+		logStore:                 ls,
 	}
 }
 
@@ -129,6 +133,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Priority:             project.Priority,
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
+				PRActivity:           project.PRActivity,
 			})
 		}
 	}
@@ -151,6 +156,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Priority:             project.Priority,
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
+			PRActivity:           project.PRActivity,
 		})
 	}
 	return result, nil
@@ -307,52 +313,54 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 	})
 }
 
-func (r *renovateJobManager) UpdateProjectConfigStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *string) error {
-	defer r.globalManagerLock(false)()
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-		if err != nil {
-			return err
-		}
-		for i := range renovateJob.Status.Projects {
-			if renovateJob.Status.Projects[i].Name == project {
-				renovateJob.Status.Projects[i].RenovateResultStatus = status
-				_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-				return err
-			}
-		}
-		return nil
-	})
-}
-
 func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error) {
 	defer r.globalManagerLock(true)()
 	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
 	if err != nil {
-		return "failed to load renovate job", err
+		return "", fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	// Determine whether the project is currently running.
+	projectRunning := false
+	for _, p := range renovateJob.Status.Projects {
+		if p.Name == project && p.Status == api.JobStatusRunning {
+			projectRunning = true
+			break
+		}
 	}
 
 	executorJobName := utils.ExecutorJobName(renovateJob, project)
 
-	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
+	executorJob, jobErr := GetJobByLabel(ctx, r.client, JobSelector{
 		JobName:   executorJobName,
 		JobType:   ExecutorJobType,
 		Namespace: job.Namespace,
 	})
-	if err != nil {
-		return "failed to get job", err
+
+	if jobErr == nil {
+		cp := clientProvider.StaticClientProvider()
+		clientset, err := cp.K8sClientSet()
+		if err != nil {
+			return "", fmt.Errorf("failed to create client: %w", err)
+		}
+		logs, err := GetLastJobLog(ctx, clientset, executorJob)
+		if err == nil {
+			return logs, nil
+		}
+		// Pod is gone — fall through to store only if job is not running.
+		if projectRunning {
+			return "", fmt.Errorf("failed to get pod logs for running project: %w", err)
+		}
+	} else if projectRunning {
+		return "", fmt.Errorf("failed to get job for running project: %w", jobErr)
 	}
 
-	cp := clientProvider.StaticClientProvider()
-	client, err := cp.K8sClientSet()
-	if err != nil {
-		return "failed to create client", err
+	// Job or pod not available and project is not running — try the log store.
+	if logs, ok := r.logStore.Get(job.Namespace, job.Name, project); ok {
+		return logs, nil
 	}
 
-	logs, err := GetLastJobLog(ctx, client, executorJob)
-
-	return logs, err
+	return "", fmt.Errorf("logs not available: pod has been cleaned up and no cached logs found")
 }
 
 func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.RenovateJob) ([]string, error) {

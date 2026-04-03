@@ -5,7 +5,7 @@ go 1.25.4
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/netresearch/go-cron v0.13.1
+	github.com/netresearch/go-cron v0.13.4
 	github.com/valkey-io/valkey-go v1.0.73
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
@@ -71,7 +71,7 @@ require (
 	k8s.io/client-go v0.35.3
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
-	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
+	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )

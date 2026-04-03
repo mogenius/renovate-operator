@@ -7,10 +7,10 @@ import (
 	"net/url"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/gitProviderClients/forgejoProvider"
-	"renovate-operator/internal/forgejo"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
+	"renovate-operator/internal/webhookSync"
 	"renovate-operator/scheduler"
 	"strings"
 	"time"
@@ -42,7 +42,7 @@ type RenovateJobReconciler struct {
 }
 
 type webhookSyncerEntry struct {
-	syncer      *forgejo.WebhookSyncer
+	syncer      *webhookSync.WebhookSyncer
 	fingerprint string
 }
 
@@ -177,8 +177,8 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	}
 
 	topic := syncCfg.Topic
-	if topic == "" {
-		topic = renovateJob.Spec.DiscoverTopics
+	if topic == "" && len(renovateJob.Spec.DiscoverTopics) > 0 {
+		topic = renovateJob.Spec.DiscoverTopics[0]
 	}
 
 	webhookURL := syncCfg.WebhookURL
@@ -199,7 +199,7 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 	}
 
 	forgejoClient := forgejoProvider.NewClient(providerEndpoint, forgejoToken)
-	syncer := forgejo.NewWebhookSyncer(
+	syncer := webhookSync.NewWebhookSyncer(
 		forgejoClient,
 		webhookURL,
 		authToken,
@@ -224,10 +224,10 @@ func (r *RenovateJobReconciler) ensureWebhookSyncer(ctx context.Context, logger 
 }
 
 // syncFingerprint produces a string that changes when any sync-relevant config changes.
-func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, endpoint, defaultTopic, namespace, jobName string) string {
+func syncFingerprint(cfg *api.RenovateWebhookForgejoSync, endpoint string, defaultTopic []string, namespace, jobName string) string {
 	topic := cfg.Topic
-	if topic == "" {
-		topic = defaultTopic
+	if topic == "" && len(defaultTopic) > 0 {
+		topic = defaultTopic[0]
 	}
 	tokenRef := ""
 	if cfg.TokenSecretRef != nil {
@@ -256,7 +256,7 @@ func (r *RenovateJobReconciler) loadWebhookSyncState(renovateJob *api.RenovateJo
 	return state
 }
 
-func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger logr.Logger, jobName, jobNamespace string, syncer *forgejo.WebhookSyncer, state map[string]int64) {
+func (r *RenovateJobReconciler) saveWebhookSyncState(ctx context.Context, logger logr.Logger, jobName, jobNamespace string, syncer *webhookSync.WebhookSyncer, state map[string]int64) {
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, jobName, jobNamespace)
 	if err != nil {
 		logger.Error(err, "failed to fetch RenovateJob for saving webhook sync state")

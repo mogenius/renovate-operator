@@ -3,16 +3,18 @@ package renovate
 import (
 	context "context"
 	"fmt"
+	"sort"
+	"strconv"
+	"time"
+
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
-	"sort"
-	"sync"
-	"time"
 
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
@@ -33,36 +35,40 @@ type RenovateExecutor interface {
 	Start(ctx context.Context) error
 }
 
-type RenovateJobInfo struct {
-	Name      string
-	Namespace string
-	Projects  []api.ProjectStatus
-}
 type renovateExecutor struct {
-	syncer        map[string]*sync.Mutex
-	scheme        *runtime.Scheme
-	updateJobSync map[string]*sync.Mutex
-	client        client.Client
-	logger        logr.Logger
-	health        health.HealthCheck
-	manager       crdManager.RenovateJobManager
+	scheme   *runtime.Scheme
+	client   client.Client
+	logger   logr.Logger
+	health   health.HealthCheck
+	manager  crdManager.RenovateJobManager
+	logStore logStore.LogStore
 }
 
-func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck) RenovateExecutor {
+type executionOptions struct {
+	globalParallelism int
+}
+
+func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore) RenovateExecutor {
 	return &renovateExecutor{
-		syncer:        make(map[string]*sync.Mutex),
-		updateJobSync: make(map[string]*sync.Mutex),
-		client:        client,
-		scheme:        scheme,
-		manager:       manager,
-		logger:        logger,
-		health:        health,
+		client:   client,
+		scheme:   scheme,
+		manager:  manager,
+		logger:   logger,
+		health:   health,
+		logStore: ls,
 	}
 }
 
 func (e *renovateExecutor) Start(ctx context.Context) error {
+	globalParallelism, err := strconv.Atoi(config.GetValue("GLOBAL_PARALLELISM_LIMIT"))
+	if err != nil {
+		return fmt.Errorf("failed to parse GLOBAL_PARALLELISM_LIMIT: %w", err)
+	}
+	options := executionOptions{
+		globalParallelism: globalParallelism,
+	}
+
 	go func() {
-		// set healthcheck to running
 		e.health.SetExecutorHealth(func(eHealth *health.ExecutorHealth) *health.ExecutorHealth {
 			eHealth.Running = true
 			return eHealth
@@ -74,11 +80,10 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 				e.logger.Info("executor loop stopped due to context cancellation")
 				return
 			default:
-				err := e.execute()
+				err := e.execute(options)
 				if err != nil {
 					e.logger.Error(err, "an error occured in execution loop")
 				}
-				// Wait for 10 seconds or until context is done
 				select {
 				case <-ctx.Done():
 					e.logger.Info("executor loop stopped during sleep due to context cancellation")
@@ -91,127 +96,88 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (e *renovateExecutor) execute() error {
+func (e *renovateExecutor) execute(options executionOptions) error {
 	ctx := context.Background()
 
-	renovateJobs, err := e.manager.ListRenovateJobs(ctx)
+	renovateJobs, err := e.manager.ListRenovateJobsFull(ctx)
 	if err != nil {
 		return nil
 	}
 	e.logger.V(2).Info("Executing renovate loop for projects", "count", len(renovateJobs))
-	for _, job := range renovateJobs {
-		err := e.executeRenovateJob(ctx, &job)
-		if err != nil {
-			e.logger.Error(err, "renovate loop execution failed for job")
-		}
-	}
-	return nil
-}
 
-func (e *renovateExecutor) syncOnJobExecution(name string) (bool, func()) {
-	lock := e.syncer[name]
-	if lock == nil {
-		lock = &sync.Mutex{}
-		e.syncer[name] = lock
-	}
-
-	locker := lock.TryLock()
-	e.health.SetExecutorHealth(func(eHealth *health.ExecutorHealth) *health.ExecutorHealth {
-		eHealth.Executor[name] = health.SingleExecutorHealth{
-			IsRunning: locker,
-		}
-		return eHealth
-	})
-
-	if !locker {
-		return false, func() {}
-	}
-
-	return true, func() {
-		e.health.SetExecutorHealth(func(eHealth *health.ExecutorHealth) *health.ExecutorHealth {
-			eHealth.Executor[name] = health.SingleExecutorHealth{
-				IsRunning: false,
-			}
-			return eHealth
-		})
-		lock.Unlock()
-	}
-}
-
-func (e *renovateExecutor) executeRenovateJob(ctx context.Context, job *crdManager.RenovateJobIdentifier) error {
-	name := job.Fullname()
-	locked, unlock := e.syncOnJobExecution(name)
-	if !locked {
-		e.logger.Info("another renovate execution is still running - skipping")
-		return nil
-	}
-	defer unlock()
-
-	e.logger.V(2).Info("Executing RenovateJob", "job", name)
-
-	renovateJob, err := e.manager.GetRenovateJob(ctx, job.Name, job.Namespace)
+	// Pass 1: check all currently running projects across all jobs, update their statuses,
+	// and count how many are still running globally and per job.
+	globalRunning, perJobRunning, err := e.reconcileRunning(ctx, renovateJobs)
 	if err != nil {
 		return err
 	}
-	return e.reconcileProjects(ctx, renovateJob)
+
+	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
+	// and dispatch new jobs up to the global and per-job limits.
+	return e.dispatchScheduled(ctx, renovateJobs, globalRunning, perJobRunning, options)
 }
 
-func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *api.RenovateJob) error {
-	// determine how many projects are currently running
-	runningProjects := 0
-	for i := range renovateJob.Status.Projects {
-		project := &renovateJob.Status.Projects[i]
-		if project.Status == api.JobStatusRunning {
-			runningProjects++
-		}
-	}
+// reconcileRunning iterates over all Running projects across all RenovateJobs, checks their
+// Kubernetes Job status, updates finished ones, and returns the number of still-running projects
+// globally and per job (keyed by job fullname).
+func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []api.RenovateJob) (int, map[string]int, error) {
+	globalRunning := 0
+	perJobRunning := make(map[string]int, len(renovateJobs))
 
-	jobId := crdManager.RenovateJobIdentifier{
-		Name:      renovateJob.Name,
-		Namespace: renovateJob.Namespace,
-	}
+	for i := range renovateJobs {
+		renovateJob := &renovateJobs[i]
+		jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+		key := jobId.Fullname()
+		perJobRunning[key] = 0
 
-	// Pass 1: process running projects to free slots
-	for i := range renovateJob.Status.Projects {
-		project := &renovateJob.Status.Projects[i]
-		if project.Status != api.JobStatusRunning {
-			continue
-		}
-
-		job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-			JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-			JobType:   crdManager.ExecutorJobType,
-			Namespace: renovateJob.Namespace,
-		})
-
-		var newStatus api.RenovateProjectStatus
-		var durationStr string
-		if err != nil {
-			if errors.IsNotFound(err) {
-				newStatus = api.JobStatusFailed
-			} else {
-				return err
+		for j := range renovateJob.Status.Projects {
+			project := &renovateJob.Status.Projects[j]
+			if project.Status != api.JobStatusRunning {
+				continue
 			}
-		} else {
-			newStatus, durationStr, err = getJobStatus(job)
+
+			k8sJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
+				JobType:   crdManager.ExecutorJobType,
+				Namespace: renovateJob.Namespace,
+			})
+
+			var newStatus api.RenovateProjectStatus
+			var durationStr string
 			if err != nil {
-				return err
+				if errors.IsNotFound(err) {
+					newStatus = api.JobStatusFailed
+				} else {
+					return 0, nil, err
+				}
+			} else {
+				newStatus, durationStr, err = getJobStatus(k8sJob)
+				if err != nil {
+					return 0, nil, err
+				}
 			}
-		}
 
-		if newStatus != api.JobStatusRunning {
+			if newStatus == api.JobStatusRunning {
+				globalRunning++
+				perJobRunning[key]++
+				continue
+			}
+
+			// Job finished — collect metrics and update CRD status.
 			newProjectStatus := &types.RenovateStatusUpdate{
 				Status:   newStatus,
 				Duration: &durationStr,
 			}
 			hasIssues := false
-			if job != nil {
+			if k8sJob != nil {
 				cp := clientProvider.StaticClientProvider()
 				if clientset, err := cp.K8sClientSet(); err == nil {
-					if logs, err := crdManager.GetLastJobLog(ctx, clientset, job); err == nil {
+					if logs, err := crdManager.GetLastJobLog(ctx, clientset, k8sJob); err == nil {
+						e.logStore.Save(renovateJob.Namespace, renovateJob.Name, project.Name, logs)
 						parseResult := parser.ParseRenovateLogs(logs)
 						hasIssues = parseResult.HasIssues
 						newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
+						newProjectStatus.PRActivity = parseResult.PRActivity
 					} else {
 						e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 					}
@@ -224,57 +190,108 @@ func (e *renovateExecutor) reconcileProjects(ctx context.Context, renovateJob *a
 			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
 			metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
 
-			err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus)
-			runningProjects--
-			if err != nil {
-				return err
+			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus); err != nil {
+				return 0, nil, err
 			}
 
-			deleteSuccessfulJobs := config.GetValue("DELETE_SUCCESSFUL_JOBS")
-			if newStatus == api.JobStatusCompleted && deleteSuccessfulJobs == "true" && job != nil {
-				err = crdManager.DeleteJob(ctx, e.client, job)
-				if err != nil {
-					return err
+			if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && k8sJob != nil {
+				if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
+					return 0, nil, err
 				}
 			}
 		}
 	}
 
-	// Pass 2: sort by priority descending, then start scheduled projects in priority order
-	sort.SliceStable(renovateJob.Status.Projects, func(i, j int) bool {
-		return renovateJob.Status.Projects[i].Priority > renovateJob.Status.Projects[j].Priority
+	return globalRunning, perJobRunning, nil
+}
+
+// scheduledCandidate is a project ready to be dispatched together with its parent RenovateJob.
+type scheduledCandidate struct {
+	project     api.ProjectStatus
+	renovateJob *api.RenovateJob
+	// jobOldestWait is the smallest LastRun time among all Scheduled projects in the same
+	// RenovateJob. Used as the fairness key: jobs whose projects have been waiting the longest
+	// are dispatched first to prevent starvation.
+	jobOldestWait time.Time
+}
+
+// dispatchScheduled collects all Scheduled projects across all RenovateJobs, sorts them for
+// fairness, and launches Kubernetes Jobs until the global or per-job parallelism limits are reached.
+func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs []api.RenovateJob, globalRunning int, perJobRunning map[string]int, options executionOptions) error {
+	var candidates []scheduledCandidate
+
+	for i := range renovateJobs {
+		renovateJob := &renovateJobs[i]
+
+		// Find the oldest LastRun among this job's Scheduled projects to use as
+		// the fairness sort key for all candidates from this RenovateJob.
+		oldestWait := time.Now()
+		for _, p := range renovateJob.Status.Projects {
+			if p.Status == api.JobStatusScheduled && p.LastRun.Time.Before(oldestWait) {
+				oldestWait = p.LastRun.Time
+			}
+		}
+
+		for _, p := range renovateJob.Status.Projects {
+			if p.Status != api.JobStatusScheduled {
+				continue
+			}
+			candidates = append(candidates, scheduledCandidate{
+				project:       p,
+				renovateJob:   renovateJob,
+				jobOldestWait: oldestWait,
+			})
+		}
+	}
+
+	// Primary sort: higher priority projects go first.
+	// Secondary sort: among equal-priority candidates, the RenovateJob that has been waiting longest goes first.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].project.Priority != candidates[j].project.Priority {
+			return candidates[i].project.Priority > candidates[j].project.Priority
+		}
+		return candidates[i].jobOldestWait.Before(candidates[j].jobOldestWait)
 	})
 
-	for i := range renovateJob.Status.Projects {
-		project := &renovateJob.Status.Projects[i]
-		if project.Status != api.JobStatusScheduled {
+	for _, candidate := range candidates {
+		renovateJob := candidate.renovateJob
+		project := candidate.project
+		jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+		key := jobId.Fullname()
+
+		// Stop entirely if the global limit is reached.
+		if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
+			e.logger.V(2).Info("global parallelism limit reached, stopping dispatch", "limit", options.globalParallelism)
+			break
+		}
+
+		// Skip this candidate if its job has reached its per-job limit.
+		if perJobRunning[key] >= int(renovateJob.Spec.Parallelism) {
 			continue
 		}
 
-		if runningProjects < int(renovateJob.Spec.Parallelism) {
-			job := newRenovateJob(renovateJob, project.Name)
-			if err := controllerutil.SetControllerReference(renovateJob, job, e.scheme); err != nil {
-				return fmt.Errorf("failed to set controller reference: %w", err)
-			}
-
-			_, err := crdManager.CreateJobWithGeneration(ctx, e.client, job, crdManager.JobSelector{
-				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-				JobType:   crdManager.ExecutorJobType,
-				Namespace: renovateJob.Namespace,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
-			}
-			runningProjects++
-
-			err = e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
-				Status: api.JobStatusRunning,
-			})
-			if err != nil {
-				return err
-			}
-
+		k8sJob := newRenovateJob(renovateJob, project.Name)
+		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
+
+		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
+			JobName:   utils.ExecutorJobName(renovateJob, project.Name),
+			JobType:   crdManager.ExecutorJobType,
+			Namespace: renovateJob.Namespace,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+		}
+
+		if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
+			Status: api.JobStatusRunning,
+		}); err != nil {
+			return err
+		}
+
+		globalRunning++
+		perJobRunning[key]++
 	}
 
 	return nil

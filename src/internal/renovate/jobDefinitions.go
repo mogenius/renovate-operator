@@ -8,6 +8,7 @@ import (
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 	"strconv"
+	"strings"
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -18,16 +19,18 @@ import (
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
 
-	if job.Spec.DiscoveryFilter != "" {
+	if len(job.Spec.DiscoveryFilters) > 0 {
+		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_FILTER",
-			Value: job.Spec.DiscoveryFilter,
+			Value: filter,
 		})
 	}
-	if job.Spec.DiscoverTopics != "" {
+	if len(job.Spec.DiscoverTopics) > 0 {
+		filter := strings.Join(job.Spec.DiscoverTopics, ",")
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_TOPICS",
-			Value: job.Spec.DiscoverTopics,
+			Value: filter,
 		})
 	}
 
@@ -159,7 +162,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 						{
 							Name:            "renovate",
 							Command:         []string{"renovate"},
-							Args:            []string{"--base-dir", "/tmp", project},
+							Args:            []string{project},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -205,6 +208,10 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		{
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
+		},
+		{
+			Name:  "RENOVATE_BASE_DIR",
+			Value: "/tmp",
 		},
 	}
 
