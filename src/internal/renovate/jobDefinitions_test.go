@@ -2,6 +2,7 @@ package renovate
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -79,6 +80,122 @@ func TestGetDNSPolicy(t *testing.T) {
 			t.Fatalf("expected %s, got %s", v1.DNSClusterFirst, got)
 		}
 	})
+}
+
+func TestNewJobs_RenovateBaseDir(t *testing.T) {
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec: api.RenovateJobSpec{
+			Image:           "img",
+			RenovateBaseDir: "/var/renovate",
+		},
+	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("config init: %v", err)
+	}
+
+	discoveryBatchJob := newDiscoveryJob(job)
+	discoveryContainer := expectContainer(t, discoveryBatchJob)
+	expectEnvVar(t, discoveryContainer, "RENOVATE_BASE_DIR", "/var/renovate")
+	if len(discoveryContainer.VolumeMounts) < 1 || discoveryContainer.VolumeMounts[0].MountPath != "/var/renovate" {
+		t.Fatalf("expected scratch mount /var/renovate, got %+v", discoveryContainer.VolumeMounts)
+	}
+	if !strings.Contains(discoveryContainer.Args[0], `"$RENOVATE_BASE_DIR/repos.json"`) {
+		t.Fatalf("discovery args should use RENOVATE_BASE_DIR for repos path, got %q", discoveryContainer.Args[0])
+	}
+
+	renovateBatchJob := newRenovateJob(job, "proj")
+	renovateContainer := expectContainer(t, renovateBatchJob)
+	expectEnvVar(t, renovateContainer, "RENOVATE_BASE_DIR", "/var/renovate")
+	if len(renovateContainer.VolumeMounts) < 1 || renovateContainer.VolumeMounts[0].MountPath != "/var/renovate" {
+		t.Fatalf("expected scratch mount /var/renovate, got %+v", renovateContainer.VolumeMounts)
+	}
+}
+
+func TestNewJobs_RenovateBaseDir_ExtraEnvRenovateBaseDirIgnored(t *testing.T) {
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec: api.RenovateJobSpec{
+			Image:           "img",
+			RenovateBaseDir: "/from-spec",
+			ExtraEnv: []v1.EnvVar{
+				{Name: "RENOVATE_BASE_DIR", Value: "/from-extra"},
+				{Name: "OTHER", Value: "x"},
+			},
+		},
+	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("config init: %v", err)
+	}
+
+	discoveryContainer := expectContainer(t, newDiscoveryJob(job))
+	expectEnvVar(t, discoveryContainer, "RENOVATE_BASE_DIR", "/from-spec")
+	expectEnvVar(t, discoveryContainer, "OTHER", "x")
+	if len(discoveryContainer.VolumeMounts) < 1 || discoveryContainer.VolumeMounts[0].MountPath != "/from-spec" {
+		t.Fatalf("expected scratch mount from renovateBaseDir only, got %+v", discoveryContainer.VolumeMounts)
+	}
+}
+
+func TestNewJobs_ScratchVolume(t *testing.T) {
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec: api.RenovateJobSpec{
+			Image: "img",
+			ScratchVolume: &api.RenovateJobScratchVolume{
+				Medium:                  v1.StorageMediumMemory,
+				SizeLimit:               ptr.To(resource.MustParse("2Gi")),
+				EphemeralStorageRequest: ptr.To(resource.MustParse("1Gi")),
+				EphemeralStorageLimit:   ptr.To(resource.MustParse("3Gi")),
+			},
+			Resources: v1.ResourceRequirements{
+				Limits: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("500m"),
+					v1.ResourceMemory: resource.MustParse("256Mi"),
+				},
+			},
+		},
+	}
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"}})
+	if err != nil {
+		t.Fatalf("config init: %v", err)
+	}
+
+	for _, testCase := range []struct {
+		name     string
+		batchJob *batchv1.Job
+	}{
+		{"discovery", newDiscoveryJob(job)},
+		{"renovate", newRenovateJob(job, "proj")},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			vols := testCase.batchJob.Spec.Template.Spec.Volumes
+			if len(vols) < 1 || vols[0].Name != "scratch" || vols[0].EmptyDir == nil {
+				t.Fatalf("expected scratch emptyDir volume first, got %+v", vols)
+			}
+			emptyDir := vols[0].EmptyDir
+			if emptyDir.Medium != v1.StorageMediumMemory {
+				t.Fatalf("expected medium Memory, got %q", emptyDir.Medium)
+			}
+			if emptyDir.SizeLimit == nil || emptyDir.SizeLimit.Cmp(resource.MustParse("2Gi")) != 0 {
+				t.Fatalf("expected sizeLimit 2Gi, got %v", emptyDir.SizeLimit)
+			}
+			container := expectContainer(t, testCase.batchJob)
+			ephemReq := container.Resources.Requests[v1.ResourceEphemeralStorage]
+			if ephemReq.Cmp(resource.MustParse("1Gi")) != 0 {
+				t.Fatalf("expected ephemeral-storage request 1Gi, got %v", ephemReq)
+			}
+			ephemLim := container.Resources.Limits[v1.ResourceEphemeralStorage]
+			if ephemLim.Cmp(resource.MustParse("3Gi")) != 0 {
+				t.Fatalf("expected ephemeral-storage limit 3Gi, got %v", ephemLim)
+			}
+			cpuLim := container.Resources.Limits[v1.ResourceCPU]
+			if cpuLim.Cmp(resource.MustParse("500m")) != 0 {
+				t.Fatalf("expected CPU limit preserved from spec.resources")
+			}
+		})
+	}
 }
 
 func TestNewJobs_WithSettings(t *testing.T) {
@@ -188,65 +305,65 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	}
 
 	// test discovery job
-	dj := newDiscoveryJob(job)
-	djContainer := expectContainer(t, dj)
+	discoveryBatchJob := newDiscoveryJob(job)
+	discoveryContainer := expectContainer(t, discoveryBatchJob)
 	// basic fields
-	expectJobName(t, dj, "rj-discovery-6987b484")
-	expectJobNamespace(t, dj, "ns")
-	expectLabels(t, dj, map[string]string{"a": "b"}, string(crdManager.DiscoveryJobType), "rj-discovery-6987b484")
-	expectImage(t, djContainer, "img")
-	expectRestartPolicy(t, dj, v1.RestartPolicyNever)
-	expectActiveDeadlineSeconds(t, dj, 10)
-	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
+	expectJobName(t, discoveryBatchJob, "rj-discovery-6987b484")
+	expectJobNamespace(t, discoveryBatchJob, "ns")
+	expectLabels(t, discoveryBatchJob, map[string]string{"a": "b"}, string(crdManager.DiscoveryJobType), "rj-discovery-6987b484")
+	expectImage(t, discoveryContainer, "img")
+	expectRestartPolicy(t, discoveryBatchJob, v1.RestartPolicyNever)
+	expectActiveDeadlineSeconds(t, discoveryBatchJob, 10)
+	expectTtlSecondsAfterFinished(t, discoveryBatchJob, ptr.To(int32(360)))
 
 	// env vars
-	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
-	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org1/*,org2/repo1")
-	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate,!skipRenovate")
-	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
-	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
-	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
-	expectEnvFromSecret(t, djContainer, "sref")
+	expectEnvVar(t, discoveryContainer, "LOG_FORMAT", "console")
+	expectEnvVar(t, discoveryContainer, "RENOVATE_AUTODISCOVER_FILTER", "org1/*,org2/repo1")
+	expectEnvVar(t, discoveryContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate,!skipRenovate")
+	expectEnvVar(t, discoveryContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
+	expectEnvVar(t, discoveryContainer, "RENOVATE_PLATFORM", "gitlab")
+	expectEnvVar(t, discoveryContainer, "LOG_LEVEL", "debug")
+	expectEnvFromSecret(t, discoveryContainer, "sref")
 	// volumes
-	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
-	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
+	expectVolumeMounts(t, discoveryContainer, []v1.VolumeMount{{Name: "scratch", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
+	expectVolumes(t, discoveryBatchJob, []v1.Volume{{Name: "scratch"}, {Name: "extra-vol"}})
 	// other
-	expectServiceAccountSettings(t, dj, "test", ptr.To(true))
-	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
-	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
+	expectServiceAccountSettings(t, discoveryBatchJob, "test", ptr.To(true))
+	expectSecurityContext(t, discoveryBatchJob, discoveryContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectImagePullSecrets(t, discoveryBatchJob, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
-	expectAffinity(t, dj, job.Spec.Affinity)
-	expectNodeSelector(t, dj, map[string]string{"disktype": "ssd"})
-	expectTolerations(t, dj, job.Spec.Tolerations)
-	expectTopologySpreadConstraints(t, dj, job.Spec.TopologySpreadConstraints)
+	expectAffinity(t, discoveryBatchJob, job.Spec.Affinity)
+	expectNodeSelector(t, discoveryBatchJob, map[string]string{"disktype": "ssd"})
+	expectTolerations(t, discoveryBatchJob, job.Spec.Tolerations)
+	expectTopologySpreadConstraints(t, discoveryBatchJob, job.Spec.TopologySpreadConstraints)
 
 	// test renovate job
-	rj := newRenovateJob(job, "proj")
-	rjContainer := expectContainer(t, rj)
+	renovateBatchJob := newRenovateJob(job, "proj")
+	renovateContainer := expectContainer(t, renovateBatchJob)
 	// basic fields
-	expectJobName(t, rj, "rj-proj-701b9b0a")
-	expectJobNamespace(t, rj, "ns")
-	expectLabels(t, rj, map[string]string{"a": "b"}, string(crdManager.ExecutorJobType), "rj-proj-701b9b0a")
-	expectImage(t, rjContainer, "img")
-	expectRestartPolicy(t, rj, v1.RestartPolicyNever)
-	expectActiveDeadlineSeconds(t, rj, 10)
-	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
+	expectJobName(t, renovateBatchJob, "rj-proj-701b9b0a")
+	expectJobNamespace(t, renovateBatchJob, "ns")
+	expectLabels(t, renovateBatchJob, map[string]string{"a": "b"}, string(crdManager.ExecutorJobType), "rj-proj-701b9b0a")
+	expectImage(t, renovateContainer, "img")
+	expectRestartPolicy(t, renovateBatchJob, v1.RestartPolicyNever)
+	expectActiveDeadlineSeconds(t, renovateBatchJob, 10)
+	expectTtlSecondsAfterFinished(t, renovateBatchJob, ptr.To(int32(360)))
 
 	// env vars
-	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
-	expectEnvFromSecret(t, rjContainer, "sref")
+	expectEnvVar(t, renovateContainer, "LOG_FORMAT", "console")
+	expectEnvFromSecret(t, renovateContainer, "sref")
 	// volumes
-	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
-	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
+	expectVolumeMounts(t, renovateContainer, []v1.VolumeMount{{Name: "scratch", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
+	expectVolumes(t, renovateBatchJob, []v1.Volume{{Name: "scratch"}, {Name: "extra-vol"}})
 	// other
-	expectServiceAccountSettings(t, rj, "test", ptr.To(true))
-	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
-	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
+	expectServiceAccountSettings(t, renovateBatchJob, "test", ptr.To(true))
+	expectSecurityContext(t, renovateBatchJob, renovateContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectImagePullSecrets(t, renovateBatchJob, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
-	expectAffinity(t, rj, job.Spec.Affinity)
-	expectNodeSelector(t, rj, map[string]string{"disktype": "ssd"})
-	expectTolerations(t, rj, job.Spec.Tolerations)
-	expectTopologySpreadConstraints(t, rj, job.Spec.TopologySpreadConstraints)
+	expectAffinity(t, renovateBatchJob, job.Spec.Affinity)
+	expectNodeSelector(t, renovateBatchJob, map[string]string{"disktype": "ssd"})
+	expectTolerations(t, renovateBatchJob, job.Spec.Tolerations)
+	expectTopologySpreadConstraints(t, renovateBatchJob, job.Spec.TopologySpreadConstraints)
 }
 
 func TestNewJob_WithoutSettings(t *testing.T) {
@@ -265,17 +382,17 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	}
 
 	// test discovery job
-	dj := newDiscoveryJob(job)
-	djContainer := expectContainer(t, dj)
+	discoveryBatchJob := newDiscoveryJob(job)
+	discoveryContainer := expectContainer(t, discoveryBatchJob)
 	// basic fields
-	expectJobName(t, dj, "nofilter-discovery-3006fe8c")
-	expectJobNamespace(t, dj, "ns")
-	expectImage(t, djContainer, "renovate:dev")
-	expectTtlSecondsAfterFinished(t, dj, nil)
+	expectJobName(t, discoveryBatchJob, "nofilter-discovery-3006fe8c")
+	expectJobNamespace(t, discoveryBatchJob, "ns")
+	expectImage(t, discoveryContainer, "renovate:dev")
+	expectTtlSecondsAfterFinished(t, discoveryBatchJob, nil)
 
 	// env vars - only defaults, no optional ones
-	expectEnvVar(t, djContainer, "LOG_FORMAT", "json")
-	for _, env := range djContainer.Env {
+	expectEnvVar(t, discoveryContainer, "LOG_FORMAT", "json")
+	for _, env := range discoveryContainer.Env {
 		if env.Name == "RENOVATE_AUTODISCOVER_FILTER" {
 			t.Errorf("did not expect RENOVATE_AUTODISCOVER_FILTER env var")
 		}
@@ -284,52 +401,52 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 			t.Errorf("did not expect RENOVATE_AUTODISCOVER_TOPICS env var")
 		}
 	}
-	if len(djContainer.EnvFrom) != 0 {
-		t.Errorf("expected no EnvFrom, got %+v", djContainer.EnvFrom)
+	if len(discoveryContainer.EnvFrom) != 0 {
+		t.Errorf("expected no EnvFrom, got %+v", discoveryContainer.EnvFrom)
 	}
 
 	// volumes
-	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
-	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}})
+	expectVolumeMounts(t, discoveryContainer, []v1.VolumeMount{{Name: "scratch", MountPath: "/tmp"}})
+	expectVolumes(t, discoveryBatchJob, []v1.Volume{{Name: "scratch"}})
 
-	expectServiceAccountSettings(t, dj, "", ptr.To(false))
-	expectSecurityContext(t, dj, djContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
-	expectImagePullSecrets(t, dj, nil)
+	expectServiceAccountSettings(t, discoveryBatchJob, "", ptr.To(false))
+	expectSecurityContext(t, discoveryBatchJob, discoveryContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
+	expectImagePullSecrets(t, discoveryBatchJob, nil)
 
 	// scheduling
-	expectAffinity(t, dj, nil)
-	expectNodeSelector(t, dj, nil)
-	expectTolerations(t, dj, nil)
-	expectTopologySpreadConstraints(t, dj, nil)
+	expectAffinity(t, discoveryBatchJob, nil)
+	expectNodeSelector(t, discoveryBatchJob, nil)
+	expectTolerations(t, discoveryBatchJob, nil)
+	expectTopologySpreadConstraints(t, discoveryBatchJob, nil)
 
 	// test renovate job
-	rj := newRenovateJob(job, "myproj")
-	rjContainer := expectContainer(t, rj)
+	renovateBatchJob := newRenovateJob(job, "myproj")
+	renovateContainer := expectContainer(t, renovateBatchJob)
 	// basic fields
-	expectJobName(t, rj, "nofilter-myproj-496e220d")
-	expectJobNamespace(t, rj, "ns")
-	expectImage(t, rjContainer, "renovate:dev")
-	expectTtlSecondsAfterFinished(t, rj, nil)
+	expectJobName(t, renovateBatchJob, "nofilter-myproj-496e220d")
+	expectJobNamespace(t, renovateBatchJob, "ns")
+	expectImage(t, renovateContainer, "renovate:dev")
+	expectTtlSecondsAfterFinished(t, renovateBatchJob, nil)
 
 	// env vars - only defaults
-	expectEnvVar(t, rjContainer, "LOG_FORMAT", "json")
-	if len(rjContainer.EnvFrom) != 0 {
-		t.Errorf("expected no EnvFrom, got %+v", rjContainer.EnvFrom)
+	expectEnvVar(t, renovateContainer, "LOG_FORMAT", "json")
+	if len(renovateContainer.EnvFrom) != 0 {
+		t.Errorf("expected no EnvFrom, got %+v", renovateContainer.EnvFrom)
 	}
 
 	// volumes
-	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
-	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}})
+	expectVolumeMounts(t, renovateContainer, []v1.VolumeMount{{Name: "scratch", MountPath: "/tmp"}})
+	expectVolumes(t, renovateBatchJob, []v1.Volume{{Name: "scratch"}})
 
-	expectServiceAccountSettings(t, rj, "", ptr.To(false))
-	expectSecurityContext(t, rj, rjContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
-	expectImagePullSecrets(t, rj, nil)
+	expectServiceAccountSettings(t, renovateBatchJob, "", ptr.To(false))
+	expectSecurityContext(t, renovateBatchJob, renovateContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
+	expectImagePullSecrets(t, renovateBatchJob, nil)
 
 	// scheduling
-	expectAffinity(t, rj, nil)
-	expectNodeSelector(t, rj, nil)
-	expectTolerations(t, rj, nil)
-	expectTopologySpreadConstraints(t, rj, nil)
+	expectAffinity(t, renovateBatchJob, nil)
+	expectNodeSelector(t, renovateBatchJob, nil)
+	expectTolerations(t, renovateBatchJob, nil)
+	expectTopologySpreadConstraints(t, renovateBatchJob, nil)
 }
 
 func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
@@ -346,11 +463,11 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
 			Spec:       api.RenovateJobSpec{Image: "img"},
 		}
-		dj := newDiscoveryJob(job)
-		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
+		discoveryBatchJob := newDiscoveryJob(job)
+		expectImagePullSecrets(t, discoveryBatchJob, []v1.LocalObjectReference{{Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj")
-		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "default-secret"}})
+		renovateBatchJob := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, renovateBatchJob, []v1.LocalObjectReference{{Name: "default-secret"}})
 	})
 
 	t.Run("spec and default secrets are combined", func(t *testing.T) {
@@ -361,11 +478,11 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 				ImagePullSecrets: []v1.LocalObjectReference{{Name: "spec-secret"}},
 			},
 		}
-		dj := newDiscoveryJob(job)
-		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+		discoveryBatchJob := newDiscoveryJob(job)
+		expectImagePullSecrets(t, discoveryBatchJob, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj")
-		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
+		renovateBatchJob := newRenovateJob(job, "proj")
+		expectImagePullSecrets(t, renovateBatchJob, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 	})
 }
 

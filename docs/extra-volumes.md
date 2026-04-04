@@ -4,7 +4,7 @@ The Renovate Operator allows you to mount additional volumes in the Renovate job
 
 ## Default Volume
 
-By default, the operator automatically creates and mounts a volume named `tmp` to `/tmp` in all Renovate job pods. This temporary volume is used by Renovate for its working directory and cache.
+By default, the operator creates an emptyDir volume named `scratch` mounted at the path from `spec.renovateBaseDir` (default `/tmp` when unset). That field also sets `RENOVATE_BASE_DIR`; do not set `RENOVATE_BASE_DIR` in `extraEnv`. Optional `spec.scratchVolume` can set `sizeLimit`, `medium`, and ephemeral-storage request/limit for that volume.
 
 ## Adding Extra Volumes
 

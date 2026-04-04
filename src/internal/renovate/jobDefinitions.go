@@ -15,6 +15,9 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// builtInScratchVolumeName is the Kubernetes volume name for the emptyDir backing RENOVATE_BASE_DIR.
+const builtInScratchVolumeName = "scratch"
+
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
@@ -48,19 +51,23 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
+	containerEnv := withCanonicalRenovateBaseDir(mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars), job.Spec)
+	scratchPath := defaultRenovateBaseDir(job.Spec)
+
+	scratchVolSrc := scratchEmptyDirVolumeSource(job.Spec)
 	volumes := []v1.Volume{
 		{
-			Name: "tmp",
+			Name: builtInScratchVolumeName,
 			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
+				EmptyDir: &scratchVolSrc,
 			},
 		},
 	}
 
 	volumeMounts := []v1.VolumeMount{
 		{
-			Name:      "tmp",
-			MountPath: "/tmp",
+			Name:      builtInScratchVolumeName,
+			MountPath: scratchPath,
 		},
 	}
 
@@ -78,11 +85,11 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json 2>&1 && cat /tmp/repos.json || cat /tmp/logs.json"},
+							Args:            []string{`renovate --autodiscover --write-discovered-repos "$RENOVATE_BASE_DIR/repos.json" >> "$RENOVATE_BASE_DIR/logs.json" 2>&1 && cat "$RENOVATE_BASE_DIR/repos.json" || cat "$RENOVATE_BASE_DIR/logs.json"`},
 							Image:           job.Spec.Image,
-							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
+							Env:             containerEnv,
 							EnvFrom:         envFromSecrets,
-							Resources:       job.Spec.Resources,
+							Resources:       mergeResourcesWithScratchVolume(job.Spec.Resources, job.Spec.ScratchVolume),
 							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
@@ -132,19 +139,23 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
+	containerEnv := withCanonicalRenovateBaseDir(mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars), job.Spec)
+	scratchPath := defaultRenovateBaseDir(job.Spec)
+
+	scratchVolSrc := scratchEmptyDirVolumeSource(job.Spec)
 	volumes := []v1.Volume{
 		{
-			Name: "tmp",
+			Name: builtInScratchVolumeName,
 			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
+				EmptyDir: &scratchVolSrc,
 			},
 		},
 	}
 
 	volumeMounts := []v1.VolumeMount{
 		{
-			Name:      "tmp",
-			MountPath: "/tmp",
+			Name:      builtInScratchVolumeName,
+			MountPath: scratchPath,
 		},
 	}
 
@@ -164,9 +175,9 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 							Command:         []string{"renovate"},
 							Args:            []string{project},
 							Image:           job.Spec.Image,
-							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
+							Env:             containerEnv,
 							EnvFrom:         envFromSecrets,
-							Resources:       job.Spec.Resources,
+							Resources:       mergeResourcesWithScratchVolume(job.Spec.Resources, job.Spec.ScratchVolume),
 							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
@@ -198,6 +209,44 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	return batchJob
 }
 
+func scratchEmptyDirVolumeSource(spec api.RenovateJobSpec) v1.EmptyDirVolumeSource {
+	src := v1.EmptyDirVolumeSource{}
+	if spec.ScratchVolume == nil {
+		return src
+	}
+	if spec.ScratchVolume.Medium != "" {
+		src.Medium = spec.ScratchVolume.Medium
+	}
+	if spec.ScratchVolume.SizeLimit != nil {
+		src.SizeLimit = spec.ScratchVolume.SizeLimit
+	}
+	return src
+}
+
+func mergeResourcesWithScratchVolume(base v1.ResourceRequirements, scratch *api.RenovateJobScratchVolume) v1.ResourceRequirements {
+	if scratch == nil || (scratch.EphemeralStorageRequest == nil && scratch.EphemeralStorageLimit == nil) {
+		return base
+	}
+	merged := base
+	if scratch.EphemeralStorageRequest != nil {
+		if merged.Requests == nil {
+			merged.Requests = v1.ResourceList{}
+		} else {
+			merged.Requests = maps.Clone(merged.Requests)
+		}
+		merged.Requests[v1.ResourceEphemeralStorage] = *scratch.EphemeralStorageRequest
+	}
+	if scratch.EphemeralStorageLimit != nil {
+		if merged.Limits == nil {
+			merged.Limits = v1.ResourceList{}
+		} else {
+			merged.Limits = maps.Clone(merged.Limits)
+		}
+		merged.Limits[v1.ResourceEphemeralStorage] = *scratch.EphemeralStorageLimit
+	}
+	return merged
+}
+
 func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 
 	predefinedEnvVars := []v1.EnvVar{
@@ -211,7 +260,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		},
 		{
 			Name:  "RENOVATE_BASE_DIR",
-			Value: "/tmp",
+			Value: defaultRenovateBaseDir(job.Spec),
 		},
 	}
 
@@ -346,6 +395,27 @@ func getDNSPolicy(spec api.RenovateJobSpec) v1.DNSPolicy {
 	}
 
 	return v1.DNSClusterFirst
+}
+
+func defaultRenovateBaseDir(spec api.RenovateJobSpec) string {
+	if spec.RenovateBaseDir != "" {
+		return spec.RenovateBaseDir
+	}
+	return "/tmp"
+}
+
+// withCanonicalRenovateBaseDir drops any RENOVATE_BASE_DIR from env (e.g. extraEnv) and appends
+// the value from spec.renovateBaseDir so the scratch mount and env stay a single source of truth.
+func withCanonicalRenovateBaseDir(env []v1.EnvVar, spec api.RenovateJobSpec) []v1.EnvVar {
+	dir := defaultRenovateBaseDir(spec)
+	envExcludingRenovateBaseDir := make([]v1.EnvVar, 0, len(env)+1)
+	for _, e := range env {
+		if e.Name == "RENOVATE_BASE_DIR" {
+			continue
+		}
+		envExcludingRenovateBaseDir = append(envExcludingRenovateBaseDir, e)
+	}
+	return append(envExcludingRenovateBaseDir, v1.EnvVar{Name: "RENOVATE_BASE_DIR", Value: dir})
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv
