@@ -1,3 +1,19 @@
+# [4.1.0](https://github.com/mogenius/renovate-operator/compare/4.0.0...4.1.0) (2026-04-04)
+
+
+### Bug Fixes
+
+* **helm:** automatically use server side apply for crd in argocd ([db70281](https://github.com/mogenius/renovate-operator/commit/db702810ebb2f6b576e64b8de0bea0da5dcc9538))
+* remove pr url from crd as the can build that for us ([f6fe377](https://github.com/mogenius/renovate-operator/commit/f6fe3777b0aa3eabedb841c11ac3cd8394d7d129))
+* **ui:** unify pr page building methods in the ui ([3e7980e](https://github.com/mogenius/renovate-operator/commit/3e7980e277c6f90f13662e95fd6204b0f07799fb))
+
+
+### Features
+
+* **ui:** add settings to hide projects by status ([9632ebc](https://github.com/mogenius/renovate-operator/commit/9632ebc08794a24065bd237037130ba0bfe5dbab))
+* **ui:** make PR activity items clickable links ([#249](https://github.com/mogenius/renovate-operator/issues/249)) ([d16e87b](https://github.com/mogenius/renovate-operator/commit/d16e87b53ba5efbd01dfa3e1fbf42cd4e1994c61))
+* **ui:** surface dependency issues and warnings in dashboard ([7d62106](https://github.com/mogenius/renovate-operator/commit/7d621064559a874820237fb1d36da46aaf2f7dd2))
+
 # [4.0.0](https://github.com/mogenius/renovate-operator/compare/3.10.1...4.0.0) (2026-04-02)
 
 
