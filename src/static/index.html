@@ -540,6 +540,7 @@
             completed: 0,
             failed: 0,
             withIssues: 0,
+            openPRs: 0,
           };
           jobsList.forEach((job) => {
             if (Array.isArray(job.projects)) {
@@ -550,6 +551,11 @@
                 }
                 if (project.logIssues && (project.logIssues.warnCount > 0 || project.logIssues.errorCount > 0)) {
                   newStats.withIssues++;
+                }
+                if (project.prActivity) {
+                  newStats.openPRs += (project.prActivity.created || 0)
+                    + (project.prActivity.updated || 0)
+                    + (project.prActivity.unchanged || 0);
                 }
               });
             }
@@ -793,7 +799,7 @@
                       />
                       <div className="flex items-center gap-2">
                         <div className="w-1 h-5 sm:h-6 bg-gradient-to-b from-primary to-primary-hover rounded-full"></div>
-                        <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide">
+                        <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide whitespace-nowrap">
                           Renovate: The{" "}
                           <span className="text-primary font-semibold">
                             Kubernetes-Native
@@ -812,65 +818,48 @@
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
-                    <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                      <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                        Failed
-                      </div>
-                      <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-error">
-                        {loading ? "—" : stats.failed}
-                      </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">Failed</span>
+                      <span className="text-sm font-bold text-error">{loading ? "—" : stats.failed}</span>
                     </div>
-                    <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                      <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                        Scheduled
-                      </div>
-                      <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-warning">
-                        {loading ? "—" : stats.scheduled}
-                      </div>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">Scheduled</span>
+                      <span className="text-sm font-bold text-warning">{loading ? "—" : stats.scheduled}</span>
                     </div>
-                    <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                      <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                        Running
-                      </div>
-                      <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-primary">
-                        {loading ? "—" : stats.running}
-                      </div>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">Running</span>
+                      <span className="text-sm font-bold text-primary">{loading ? "—" : stats.running}</span>
                     </div>
-                    <div className="bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                      <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                        Completed
-                      </div>
-                      <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-success">
-                        {loading ? "—" : stats.completed}
-                      </div>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">Completed</span>
+                      <span className="text-sm font-bold text-success">{loading ? "—" : stats.completed}</span>
                     </div>
-                    {stats.withIssues > 0 && (
-                      <div className="bg-white dark:bg-slate-700 rounded-lg border border-amber-300 dark:border-amber-600 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 shadow-sm hover:shadow-md transition-all">
-                        <div className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                          With Issues
-                        </div>
-                        <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-500">
-                          {loading ? "—" : stats.withIssues}
-                        </div>
+                    <div className="hidden lg:block basis-full h-0" />
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-blue-200 dark:border-blue-700 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">Open PRs</span>
+                      <span className="text-sm font-bold text-blue-500">{loading ? "—" : stats.openPRs}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-700 rounded-lg border border-amber-300 dark:border-amber-600 px-3 py-1.5 shadow-sm hover:shadow-md transition-all">
+                      <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider">With Issues</span>
+                      <span className="text-sm font-bold text-amber-500">{loading ? "—" : stats.withIssues}</span>
+                    </div>
+                  </div>
+                  <div className="hidden md:flex flex-col items-end gap-2 shrink-0">
+                    <ThemeToggle />
+                    {authInfo && authInfo.enabled && authInfo.authenticated && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[150px]" title={authInfo.email}>
+                          {authInfo.name || authInfo.email}
+                        </span>
+                        <a
+                          href="/auth/logout"
+                          className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+                        >
+                          Logout
+                        </a>
                       </div>
                     )}
-                    <div className="hidden md:flex flex-col items-end gap-2">
-                      <ThemeToggle />
-                      {authInfo && authInfo.enabled && authInfo.authenticated && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[150px]" title={authInfo.email}>
-                            {authInfo.name || authInfo.email}
-                          </span>
-                          <a
-                            href="/auth/logout"
-                            className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
-                          >
-                            Logout
-                          </a>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>
