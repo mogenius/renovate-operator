@@ -1,3 +1,18 @@
+# [4.2.0](https://github.com/mogenius/renovate-operator/compare/4.1.0...4.2.0) (2026-04-07)
+
+
+### Bug Fixes
+
+* **ui:** set a fixxed min badge size ([ff807c2](https://github.com/mogenius/renovate-operator/commit/ff807c2b3193f0a3dc4c120b5837f2a0efba8dec))
+
+
+### Features
+
+* **ui:** adding a footer with link to the repository ([9dc2788](https://github.com/mogenius/renovate-operator/commit/9dc2788ba0c2b341f3cda1e13ad23ed884829064))
+* **ui:** adding a new page to investigate renovate job logs ([710c509](https://github.com/mogenius/renovate-operator/commit/710c50985fc6703be53a81b3e8828275b289efd1))
+* **ui:** adding filter to filter out projects without issues or prs ([320fb65](https://github.com/mogenius/renovate-operator/commit/320fb65a949cb990792365c2570e98ac1ee08147)), closes [#259](https://github.com/mogenius/renovate-operator/issues/259)
+* **ui:** adding open pr count badge to the header ([61a2eeb](https://github.com/mogenius/renovate-operator/commit/61a2eebab4aed1b1f49c588da1d9cec206bf01c5)), closes [#259](https://github.com/mogenius/renovate-operator/issues/259)
+
 # [4.1.0](https://github.com/mogenius/renovate-operator/compare/4.0.0...4.1.0) (2026-04-04)
 
 
