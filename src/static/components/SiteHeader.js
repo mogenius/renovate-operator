@@ -5,11 +5,13 @@ export function SiteHeader({ version, authInfo, children }) {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 sm:gap-6">
           <div className="flex items-center justify-between md:justify-start gap-3">
             <div className="flex flex-col items-start gap-2 sm:gap-3">
-              <img
-                src="/assets/logo.png"
-                alt="Renovate Operator Logo"
-                className="w-32 h-16 sm:w-40 sm:h-20 object-contain dark:brightness-0 dark:invert"
-              />
+              <a href="/">
+                <img
+                  src="/assets/logo.png"
+                  alt="Renovate Operator Logo"
+                  className="w-32 h-16 sm:w-40 sm:h-20 object-contain dark:brightness-0 dark:invert"
+                />
+              </a>
               <div className="flex items-center gap-2">
                 <div className="w-1 h-5 sm:h-6 bg-gradient-to-b from-primary to-primary-hover rounded-full"></div>
                 <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide whitespace-nowrap">
