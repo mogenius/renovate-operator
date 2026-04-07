@@ -142,7 +142,7 @@ jobs:
           go-version: ">=1.23.2"
 
       - name: Run helm-docs
-        uses: losisin/helm-docs-github-action@a57fae5676e4c55a228ea654a1bcaec8dd3cf5b5 # v1.6.2
+        uses: losisin/helm-docs-github-action@2ccf3e77eb70dc80d62f8cc26f15d0a96b75fef4 # v1.8.0
         with:
           chart-search-root: charts/renovate-operator
 
