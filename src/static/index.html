@@ -787,7 +787,7 @@
         }, [loadJobs]);
 
         return (
-          <>
+          <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             <SiteHeader version={version} authInfo={authInfo}>
@@ -800,7 +800,7 @@
               <StatBadge label="With Issues" value={loading ? "—" : stats.withIssues} valueClass="text-amber-500" borderClass="border-amber-300 dark:border-amber-600" />
             </SiteHeader>
 
-            <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
+            <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
               {loading && jobs.length === 0 && (
                 <div className="space-y-6">
                   <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-gray-200 dark:border-slate-700 shadow-sm animate-pulse">
@@ -890,7 +890,7 @@
               )}
             </main>
             <Footer />
-          </>
+          </div>
         );
       }
 
