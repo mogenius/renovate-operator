@@ -1,3 +1,11 @@
+## [4.2.2](https://github.com/mogenius/renovate-operator/compare/4.2.1...4.2.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* **ui:** footer sizing if the page does not contain any data ([68e0def](https://github.com/mogenius/renovate-operator/commit/68e0defe93e4af92f809a5607b0f3bd034341a11))
+* **ui:** layout had wrong colSpan for empty renovateJobs ([1d13ee5](https://github.com/mogenius/renovate-operator/commit/1d13ee57dfe6be74a2e99fd48c5af1dd60ae4d4f))
+
 ## [4.2.1](https://github.com/mogenius/renovate-operator/compare/4.2.0...4.2.1) (2026-04-08)
 
 
