@@ -1,3 +1,10 @@
+## [4.2.1](https://github.com/mogenius/renovate-operator/compare/4.2.0...4.2.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* revert back to cosign install v4.0.0 which does not use envsubst ([8a1087f](https://github.com/mogenius/renovate-operator/commit/8a1087f18ee12fec0d95c2da073cb5fdc3941a9a))
+
 # [4.2.0](https://github.com/mogenius/renovate-operator/compare/4.1.0...4.2.0) (2026-04-07)
 
 
