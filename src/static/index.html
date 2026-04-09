@@ -566,6 +566,10 @@
           );
         }, []);
 
+        const clearStatFilter = useCallback(() => {
+          setSelectedStatFilter(null);
+        }, []);
+
         const filteredJobs = useMemo(() => {
           if (!selectedStatFilter) {
             return jobs;
@@ -916,7 +920,7 @@
               {selectedStatFilter && (
                 <button
                   type="button"
-                  onClick={() => setSelectedStatFilter(null)}
+                  onClick={clearStatFilter}
                   className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 dark:bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors"
                 >
                   Clear filter
@@ -984,7 +988,7 @@
                       </p>
                       <button
                         type="button"
-                        onClick={() => setSelectedStatFilter(null)}
+                        onClick={clearStatFilter}
                         className="self-start sm:self-auto text-sm font-medium text-primary hover:text-primary-hover transition-colors"
                       >
                         Clear filter
@@ -1030,7 +1034,7 @@
                       {selectedStatFilter && (
                         <button
                           type="button"
-                          onClick={() => setSelectedStatFilter(null)}
+                          onClick={clearStatFilter}
                           className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
                         >
                           Show all jobs
