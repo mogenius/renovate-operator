@@ -135,6 +135,40 @@
         }
       };
 
+      const getProjectOpenPRCount = (project) => {
+        const activity = project?.prActivity;
+        if (!activity) {
+          return 0;
+        }
+
+        return (activity.created || 0)
+          + (activity.updated || 0)
+          + (activity.unchanged || 0);
+      };
+
+      const projectHasIssues = (project) => {
+        return !!(
+          project?.logIssues
+          && ((project.logIssues.warnCount || 0) > 0
+            || (project.logIssues.errorCount || 0) > 0)
+        );
+      };
+
+      const projectMatchesStatFilter = (project, filterKey) => {
+        if (!filterKey) {
+          return true;
+        }
+
+        switch (filterKey) {
+          case "withIssues":
+            return projectHasIssues(project);
+          case "openPRs":
+            return getProjectOpenPRCount(project) > 0;
+          default:
+            return (project?.status || "").toLowerCase() === filterKey;
+        }
+      };
+
       const buildDashboardUrl = (platform, endpoint, projectName) => {
         if (!platform || platform === 'github') {
           let base = 'https://github.com';
@@ -515,6 +549,47 @@
         const [toasts, setToasts] = useState([]);
         const nextToastIdRef = useRef(0);
         const [authInfo, setAuthInfo] = useState(null);
+        const [selectedStatFilter, setSelectedStatFilter] = useState(null);
+
+        const STAT_FILTER_LABELS = {
+          failed: "Failed",
+          scheduled: "Scheduled",
+          running: "Running",
+          completed: "Completed",
+          openPRs: "Open PRs",
+          withIssues: "With Issues",
+        };
+
+        const toggleStatFilter = useCallback((filterKey) => {
+          setSelectedStatFilter((current) =>
+            current === filterKey ? null : filterKey
+          );
+        }, []);
+
+        const filteredJobs = useMemo(() => {
+          if (!selectedStatFilter) {
+            return jobs;
+          }
+
+          return jobs
+            .map((job) => {
+              const projects = (Array.isArray(job.projects) ? job.projects : [])
+                .filter((project) => projectMatchesStatFilter(project, selectedStatFilter));
+
+              return {
+                ...job,
+                projects,
+              };
+            })
+            .filter((job) => job.projects.length > 0);
+        }, [jobs, selectedStatFilter]);
+
+        const filteredProjectCount = useMemo(() => {
+          return filteredJobs.reduce(
+            (total, job) => total + (Array.isArray(job.projects) ? job.projects.length : 0),
+            0
+          );
+        }, [filteredJobs]);
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -552,14 +627,10 @@
                 if (newStats.hasOwnProperty(status)) {
                   newStats[status]++;
                 }
-                if (project.logIssues && (project.logIssues.warnCount > 0 || project.logIssues.errorCount > 0)) {
+                if (projectHasIssues(project)) {
                   newStats.withIssues++;
                 }
-                if (project.prActivity) {
-                  newStats.openPRs += (project.prActivity.created || 0)
-                    + (project.prActivity.updated || 0)
-                    + (project.prActivity.unchanged || 0);
-                }
+                newStats.openPRs += getProjectOpenPRCount(project);
               });
             }
           });
@@ -791,13 +862,66 @@
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             <SiteHeader version={version} authInfo={authInfo}>
-              <StatBadge label="Failed"    value={loading ? "—" : stats.failed}     valueClass="text-error" />
-              <StatBadge label="Scheduled" value={loading ? "—" : stats.scheduled}  valueClass="text-warning" />
-              <StatBadge label="Running"   value={loading ? "—" : stats.running}    valueClass="text-primary" />
-              <StatBadge label="Completed" value={loading ? "—" : stats.completed}  valueClass="text-success" />
+              <StatBadge
+                label="Failed"
+                value={loading ? "—" : stats.failed}
+                valueClass="text-error"
+                onClick={() => toggleStatFilter("failed")}
+                selected={selectedStatFilter === "failed"}
+                title="Show only jobs with failed projects"
+              />
+              <StatBadge
+                label="Scheduled"
+                value={loading ? "—" : stats.scheduled}
+                valueClass="text-warning"
+                onClick={() => toggleStatFilter("scheduled")}
+                selected={selectedStatFilter === "scheduled"}
+                title="Show only jobs with scheduled projects"
+              />
+              <StatBadge
+                label="Running"
+                value={loading ? "—" : stats.running}
+                valueClass="text-primary"
+                onClick={() => toggleStatFilter("running")}
+                selected={selectedStatFilter === "running"}
+                title="Show only jobs with running projects"
+              />
+              <StatBadge
+                label="Completed"
+                value={loading ? "—" : stats.completed}
+                valueClass="text-success"
+                onClick={() => toggleStatFilter("completed")}
+                selected={selectedStatFilter === "completed"}
+                title="Show only jobs with completed projects"
+              />
               <div className="hidden lg:block basis-full h-0" />
-              <StatBadge label="Open PRs"    value={loading ? "—" : stats.openPRs}    valueClass="text-blue-500"  borderClass="border-blue-200 dark:border-blue-700" />
-              <StatBadge label="With Issues" value={loading ? "—" : stats.withIssues} valueClass="text-amber-500" borderClass="border-amber-300 dark:border-amber-600" />
+              <StatBadge
+                label="Open PRs"
+                value={loading ? "—" : stats.openPRs}
+                valueClass="text-blue-500"
+                borderClass="border-blue-200 dark:border-blue-700"
+                onClick={() => toggleStatFilter("openPRs")}
+                selected={selectedStatFilter === "openPRs"}
+                title="Show only jobs with open pull requests or merge requests"
+              />
+              <StatBadge
+                label="With Issues"
+                value={loading ? "—" : stats.withIssues}
+                valueClass="text-amber-500"
+                borderClass="border-amber-300 dark:border-amber-600"
+                onClick={() => toggleStatFilter("withIssues")}
+                selected={selectedStatFilter === "withIssues"}
+                title="Show only jobs with warnings or errors"
+              />
+              {selectedStatFilter && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatFilter(null)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 dark:bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors"
+                >
+                  Clear filter
+                </button>
+              )}
             </SiteHeader>
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
@@ -851,7 +975,24 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {jobs.map((job) => (
+                  {selectedStatFilter && (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
+                      <p className="text-sm text-gray-700 dark:text-slate-300">
+                        Showing <span className="font-semibold text-primary">{filteredProjectCount}</span>{" "}
+                        matching project{filteredProjectCount === 1 ? "" : "s"} in {filteredJobs.length}{" "}
+                        job{filteredJobs.length === 1 ? "" : "s"} for <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStatFilter(null)}
+                        className="self-start sm:self-auto text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                      >
+                        Clear filter
+                      </button>
+                    </div>
+                  )}
+
+                  {filteredJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
@@ -862,8 +1003,8 @@
                     />
                   ))}
 
-                  {jobs.length === 0 && !loading && !error && (
-                    <div className="text-center py-12">
+                  {filteredJobs.length === 0 && !loading && !error && (
+                    <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
                       <svg
                         className="w-16 h-16 text-gray-400 mx-auto mb-4"
                         fill="none"
@@ -879,11 +1020,22 @@
                         />
                       </svg>
                       <h3 className="text-lg font-semibold text-gray-700 dark:text-slate-300 mb-2">
-                        No Renovate Jobs Found
+                        {selectedStatFilter ? "No jobs match this filter" : "No Renovate Jobs Found"}
                       </h3>
-                      <p className="text-gray-500 dark:text-slate-400">
-                        Create a RenovateJob resource to get started.
+                      <p className="text-gray-500 dark:text-slate-400 mb-4">
+                        {selectedStatFilter
+                          ? `Try clearing the ${STAT_FILTER_LABELS[selectedStatFilter]} filter to see all jobs again.`
+                          : "Create a RenovateJob resource to get started."}
                       </p>
+                      {selectedStatFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatFilter(null)}
+                          className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                        >
+                          Show all jobs
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
