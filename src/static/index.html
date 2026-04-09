@@ -535,6 +535,16 @@
             return next;
           });
         }, []);
+        const visibleJobs = useMemo(() => {
+          if (headerFilter !== 'openPRs') return jobs;
+          return jobs.filter((job) => {
+            if (!Array.isArray(job.projects)) return false;
+            return job.projects.some((p) => {
+              const pa = p.prActivity;
+              return !!pa && ((pa.created || 0) + (pa.updated || 0) + (pa.unchanged || 0)) > 0;
+            });
+          });
+        }, [jobs, headerFilter]);
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -879,7 +889,7 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {jobs.map((job) => (
+                  {visibleJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
@@ -912,6 +922,14 @@
                       </h3>
                       <p className="text-gray-500 dark:text-slate-400">
                         Create a RenovateJob resource to get started.
+                      </p>
+                    </div>
+                  )}
+
+                  {visibleJobs.length === 0 && jobs.length > 0 && !loading && headerFilter === 'openPRs' && (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500 dark:text-slate-400">
+                        No jobs have projects with open PRs. Click the <span className="font-semibold text-blue-500">Open PRs</span> badge to clear the filter.
                       </p>
                     </div>
                   )}
