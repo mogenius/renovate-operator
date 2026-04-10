@@ -98,12 +98,18 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 
 func (e *renovateExecutor) execute(options executionOptions) error {
 	ctx := context.Background()
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metricStore.ObserveExecutorLoopDuration(duration)
+		e.logger.V(2).Info("Executed renovate executor loop", "duration", duration)
+	}()
 
 	renovateJobs, err := e.manager.ListRenovateJobsFull(ctx)
 	if err != nil {
 		return nil
 	}
-	e.logger.V(2).Info("Executing renovate loop for projects", "count", len(renovateJobs))
+	e.logger.V(2).Info("Executing renovate executor loop for projects", "count", len(renovateJobs))
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.

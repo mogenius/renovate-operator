@@ -136,6 +136,13 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 - **Global parallelism limit** — `GLOBAL_PARALLELISM_LIMIT` env var (Helm: `config.globalParallelismLimit`, default `0` = unlimited) caps total concurrent executor jobs across all RenovateJobs. Per-job `Spec.Parallelism` is still enforced as an additional gate.
 - **Anti-starvation via priority-then-oldest-wait sort** — in Pass 2, candidates are sorted first by `Priority` descending, then by the oldest `LastRun` time among Scheduled projects in their RenovateJob. Among equal-priority candidates, the job that has been waiting longest dispatches first, preventing starvation.
 
+# Verification
+
+Use the following commands to validate the code:
+- `just build`
+- `just test-unit`
+- `just generate`
+
 # Important
 
 Every change to the structure should be adapted here!
