@@ -544,6 +544,8 @@
           running: 0,
           completed: 0,
           failed: 0,
+          withIssues: 0,
+          openPRs: 0,
         });
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
@@ -917,15 +919,6 @@
                 selected={selectedStatFilter === "withIssues"}
                 title="Show only jobs with warnings or errors"
               />
-              {selectedStatFilter && (
-                <button
-                  type="button"
-                  onClick={clearStatFilter}
-                  className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 dark:bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors"
-                >
-                  Clear filter
-                </button>
-              )}
             </SiteHeader>
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
