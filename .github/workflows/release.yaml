@@ -153,6 +153,11 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Add Helm repositories
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm repo update
+
       - name: package and push
         run: |
           VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
