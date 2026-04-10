@@ -1,11 +1,21 @@
 package metricStore
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 var (
+	executorLoopDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "renovate_operator_executor_loop_duration_seconds",
+			Help:    "Duration of a single executor loop tick in seconds",
+			Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		},
+	)
+
 	projectRuns = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "renovate_operator_project_executions_total",
@@ -29,9 +39,14 @@ var (
 )
 
 func Register(registry ctrlmetrics.RegistererGatherer) {
+	registry.MustRegister(executorLoopDuration)
 	registry.MustRegister(projectRuns)
 	registry.MustRegister(runFailed)
 	registry.MustRegister(dependencyIssues)
+}
+
+func ObserveExecutorLoopDuration(duration time.Duration) {
+	executorLoopDuration.Observe(duration.Seconds())
 }
 
 func CaptureRenovateProjectExecution(namespace, job, project, status string) {
