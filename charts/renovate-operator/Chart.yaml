@@ -14,3 +14,8 @@ maintainers:
   - email: lukas@mogenius.com
     name: Lukas Hankeln @mogenius
     url: https://mogenius.com
+dependencies:
+  - name: valkey
+    version: "0.9.3"
+    repository: https://valkey.io/valkey-helm/
+    condition: valkey.enabled

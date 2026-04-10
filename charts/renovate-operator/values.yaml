@@ -157,7 +157,7 @@ webhook:
       #     backendRequest: 30s
 
 auth:
-  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = jobs hidden by default, secure)
+  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
   defaultAllowedGroups: ""
   oidc:
     # -- whether to enable OIDC authentication for the UI
@@ -261,6 +261,28 @@ logging:
   level: "info"
   # -- log format for the operator, one of: json, console
   format: "json"
+
+# -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
+valkey:
+  enabled: false
+  # -- name of an existing secret containing the Valkey URL for session storage
+  # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
+  # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
+  existingSecret: ""
+  # -- key in the existing secret that contains the Valkey URL
+  existingSecretKey: "valkey-url"
+  auth:
+    enabled: true
+    aclUsers:
+      default:
+        password: ""
+        permissions: "~* &* +@all"
+  dataStorage:
+    enabled: false
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
 
 metrics:
   enabled: false
