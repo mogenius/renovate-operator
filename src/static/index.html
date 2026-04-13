@@ -978,7 +978,7 @@
 
       // Shared badge class for PR action types
       const prActionBadgeClass = (action) => {
-        const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+        const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
         switch (action) {
           case "automerged": return `${base} bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-1 ring-purple-300 dark:ring-purple-700`;
           case "created": return `${base} bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-300 dark:ring-green-700`;
@@ -1083,7 +1083,7 @@
       }
 
       const issueLevelBadgeClass = (level) => {
-        const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+        const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
         if (level >= 50) return `${base} bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-700`;
         return `${base} bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700`;
       };
@@ -1247,7 +1247,7 @@
 
         const getBadgeClass = (status) => {
           const base =
-            "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium";
+            "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap";
           switch (status) {
             case "scheduled":
               return `${base} bg-warning/10 text-warning`;
@@ -1634,9 +1634,9 @@
                                 <tr
                                   ref={containerRef}
                                   {...tooltipProps}
-                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
+                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
                                 >
-                                  <td className={`px-6 py-4 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
+                                  <td className="px-6 py-4">
                               <div className="flex items-center gap-2 w-full justify-between">
                                 <span className={`font-medium min-w-0 break-words ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
