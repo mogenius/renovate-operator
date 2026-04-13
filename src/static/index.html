@@ -1786,12 +1786,12 @@
                                   className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10" : ""}`}
                                 >
                                   <td className={`px-6 py-4 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "border-l-4 border-amber-400 dark:border-amber-500" : ""}`}>
-                              <div className="flex items-center gap-2">
-                                <span className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                              <div className="flex items-center gap-2 w-full justify-between">
+                                <span className={`font-medium min-w-0 break-words ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
                                 </span>
                                 {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
-                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
                                     {project.renovateResultStatus}
                                   </span>
                                 )}
@@ -1953,12 +1953,12 @@
                             >
                           <div className="flex items-start justify-between">
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                 {project.name}
                               </p>
                               {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
-                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
                                   {project.renovateResultStatus}
                                 </span>
                               )}
