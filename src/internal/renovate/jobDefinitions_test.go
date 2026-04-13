@@ -369,6 +369,114 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 	})
 }
 
+func TestScratchVolume(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+	})
+
+	baseJob := func(sv *api.RenovateJobScratchVolume) *api.RenovateJob {
+		return &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec:       api.RenovateJobSpec{Image: "img", ScratchVolume: sv},
+		}
+	}
+
+	t.Run("nil scratchVolume creates default emptyDir at /tmp", func(t *testing.T) {
+		job := baseJob(nil)
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			c := expectContainer(t, bj)
+			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
+			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
+			expectEnvVar(t, c, "RENOVATE_BASE_DIR", "/tmp")
+			vol := bj.Spec.Template.Spec.Volumes[0]
+			if vol.EmptyDir == nil {
+				t.Fatalf("expected emptyDir volume source")
+			}
+		}
+	})
+
+	t.Run("enabled=true explicitly creates scratch volume", func(t *testing.T) {
+		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true})
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			c := expectContainer(t, bj)
+			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
+			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
+			expectEnvVar(t, c, "RENOVATE_BASE_DIR", "/tmp")
+		}
+	})
+
+	t.Run("enabled=false disables scratch volume and RENOVATE_BASE_DIR", func(t *testing.T) {
+		job := baseJob(&api.RenovateJobScratchVolume{Enabled: false})
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			c := expectContainer(t, bj)
+			if len(bj.Spec.Template.Spec.Volumes) != 0 {
+				t.Fatalf("expected no volumes, got %v", bj.Spec.Template.Spec.Volumes)
+			}
+			if len(c.VolumeMounts) != 0 {
+				t.Fatalf("expected no volume mounts, got %v", c.VolumeMounts)
+			}
+			for _, env := range c.Env {
+				if env.Name == "RENOVATE_BASE_DIR" {
+					t.Fatalf("expected no RENOVATE_BASE_DIR env var when scratch disabled")
+				}
+			}
+		}
+	})
+
+	t.Run("custom path sets mount and RENOVATE_BASE_DIR", func(t *testing.T) {
+		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true, Path: "/workspace"})
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			c := expectContainer(t, bj)
+			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/workspace"}})
+			expectEnvVar(t, c, "RENOVATE_BASE_DIR", "/workspace")
+		}
+	})
+
+	t.Run("memory medium and sizeLimit applied to emptyDir", func(t *testing.T) {
+		sl := resource.MustParse("512Mi")
+		job := baseJob(&api.RenovateJobScratchVolume{
+			Enabled:   true,
+			Medium:    v1.StorageMediumMemory,
+			SizeLimit: &sl,
+		})
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			vol := bj.Spec.Template.Spec.Volumes[0]
+			if vol.EmptyDir == nil {
+				t.Fatalf("expected emptyDir volume source")
+			}
+			if vol.EmptyDir.Medium != v1.StorageMediumMemory {
+				t.Fatalf("expected Memory medium, got %s", vol.EmptyDir.Medium)
+			}
+			if vol.EmptyDir.SizeLimit == nil || vol.EmptyDir.SizeLimit.Cmp(sl) != 0 {
+				t.Fatalf("expected sizeLimit 512Mi, got %v", vol.EmptyDir.SizeLimit)
+			}
+		}
+	})
+
+	t.Run("ephemeral volume source used when set", func(t *testing.T) {
+		storageClass := "fast"
+		job := baseJob(&api.RenovateJobScratchVolume{
+			Enabled: true,
+			Ephemeral: &v1.EphemeralVolumeSource{
+				VolumeClaimTemplate: &v1.PersistentVolumeClaimTemplate{
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &storageClass,
+					},
+				},
+			},
+		})
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+			vol := bj.Spec.Template.Spec.Volumes[0]
+			if vol.Ephemeral == nil {
+				t.Fatalf("expected ephemeral volume source")
+			}
+			if vol.EmptyDir != nil {
+				t.Fatalf("expected no emptyDir when ephemeral is set")
+			}
+		}
+	})
+}
+
 // ##### HELPERS #####
 func expectContainer(t *testing.T, job *batchv1.Job) *v1.Container {
 	containers := job.Spec.Template.Spec.Containers

@@ -2,9 +2,35 @@
 
 The Renovate Operator allows you to mount additional volumes in the Renovate job pods. This is useful for providing custom configuration files, credentials, or other resources that Renovate needs to access.
 
-## Default Volume
+## Scratch Volume
 
-By default, the operator automatically creates and mounts a volume named `tmp` to `/tmp` in all Renovate job pods. This temporary volume is used by Renovate for its working directory and cache.
+By default, the operator automatically creates and mounts a volume named `tmp` to `/tmp` in all Renovate job pods. This volume is used as Renovate's working directory (`RENOVATE_BASE_DIR`).
+
+The scratch volume can be customized via the `scratchVolume` field:
+
+```yaml
+spec:
+  scratchVolume:
+    # Set to false to disable the scratch volume entirely
+    enabled: true
+    # Override the mount path (RENOVATE_BASE_DIR will be set to this path)
+    path: /tmp
+    # Use a tmpfs (in-memory) emptyDir
+    medium: Memory
+    # Cap the size of the emptyDir
+    sizeLimit: 1Gi
+    # Or use a generic ephemeral volume (medium and sizeLimit are ignored when set)
+    ephemeral:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: fast
+          resources:
+            requests:
+              storage: 5Gi
+```
+
+All fields are optional. When `scratchVolume` is omitted or `enabled` is not set to `false`, a default `emptyDir` volume is created at `/tmp`.
 
 ## Adding Extra Volumes
 
@@ -56,7 +82,7 @@ spec:
 
 - The volume name in `extraVolumes` must match the name referenced in `extraVolumeMounts`.
 - Both discovery jobs and renovate execution jobs will have the same extra volumes mounted.
-- The default `tmp` volume is always present and cannot be overridden.
+- The default `tmp` volume is always present unless `scratchVolume.enabled` is set to `false`.
 - Make sure the `mountPath` in your volume mount does not conflict with existing paths used by Renovate.
 
 ## Use Cases
