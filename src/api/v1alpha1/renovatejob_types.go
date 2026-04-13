@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -63,6 +64,28 @@ type RenovateJobSpec struct {
 	// If empty or not set, the job is hidden from all users.
 	// +optional
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
+	// Configuration for the scratch volume
+	// +optional
+	ScratchVolume *RenovateJobScratchVolume `json:"scratchVolume,omitempty"`
+}
+
+type RenovateJobScratchVolume struct {
+	// If enabled a scratch volume will be created and RENOVATE_BASE_DIR will be set accordingly
+	// +kubebuilder:default=true
+	// +optional
+	Enabled bool `json:"enabled"`
+	// Path within the container where the scratch volume will be mounted, RENOVATE_BASE_DIR will be set to this path.
+	// +kubebuilder:default="/tmp"
+	// +optional
+	Path string `json:"path"`
+	// Ephemeral uses a Kubernetes generic ephemeral volume for scratch (volume.ephemeral).
+	// When set, Medium and SizeLimit are ignored.
+	Ephemeral *corev1.EphemeralVolumeSource `json:"ephemeral,omitempty"`
+	// Medium for the emptyDir volume. Ignored when Ephemeral is set.
+	// Empty uses the node's default medium; Memory uses a tmpfs (corev1.StorageMediumMemory).
+	Medium corev1.StorageMedium `json:"medium,omitempty"`
+	// SizeLimit caps how large the emptyDir may grow (Kubernetes emptyDir.sizeLimit). Ignored when Ephemeral is set.
+	SizeLimit *resource.Quantity `json:"sizeLimit,omitempty"`
 }
 
 // configuration regarding serviceaccounts for the resulting pod
@@ -213,10 +236,27 @@ type RenovateJob struct {
 	Status RenovateJobStatus `json:"status,omitempty"`
 }
 
+// DeepCopyInto deep copies a RenovateJobScratchVolume into out.
+func (in *RenovateJobScratchVolume) DeepCopyInto(out *RenovateJobScratchVolume) {
+	*out = *in
+	if in.SizeLimit != nil {
+		sl := in.SizeLimit.DeepCopy()
+		out.SizeLimit = &sl
+	}
+	if in.Ephemeral != nil {
+		out.Ephemeral = new(corev1.EphemeralVolumeSource)
+		in.Ephemeral.DeepCopyInto(out.Ephemeral)
+	}
+}
+
 // DeepCopyInto deep copies a RenovateJob into out.
 func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 	*out = *in
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	if in.Spec.ScratchVolume != nil {
+		out.Spec.ScratchVolume = new(RenovateJobScratchVolume)
+		in.Spec.ScratchVolume.DeepCopyInto(out.Spec.ScratchVolume)
+	}
 	// Deep copy Status.Projects (contains pointer and slice fields)
 	if in.Status.Projects != nil {
 		out.Status.Projects = make([]ProjectStatus, len(in.Status.Projects))

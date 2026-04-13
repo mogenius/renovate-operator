@@ -48,21 +48,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
-	volumes := []v1.Volume{
-		{
-			Name: "tmp",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		},
-	}
-
-	volumeMounts := []v1.VolumeMount{
-		{
-			Name:      "tmp",
-			MountPath: "/tmp",
-		},
-	}
+	volumes, volumeMounts := getVolumeAndMounts(job)
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
@@ -78,12 +64,12 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{"renovate --autodiscover --write-discovered-repos /tmp/repos.json >> /tmp/logs.json 2>&1 && cat /tmp/repos.json || cat /tmp/logs.json"},
+							Args:            []string{`BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
-							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
+							VolumeMounts:    volumeMounts,
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -95,7 +81,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
-					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
+					Volumes:                      volumes,
 				},
 			},
 		},
@@ -132,21 +118,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 		envFromSecrets = append(envFromSecrets, job.Spec.ExtraEnvFrom...)
 	}
 
-	volumes := []v1.Volume{
-		{
-			Name: "tmp",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		},
-	}
-
-	volumeMounts := []v1.VolumeMount{
-		{
-			Name:      "tmp",
-			MountPath: "/tmp",
-		},
-	}
+	volumes, volumeMounts := getVolumeAndMounts(job)
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
@@ -167,7 +139,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
-							VolumeMounts:    append(volumeMounts, job.Spec.ExtraVolumeMounts...),
+							VolumeMounts:    volumeMounts,
 							SecurityContext: getContainerSecurityContext(job.Spec),
 						},
 					},
@@ -179,7 +151,7 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					Affinity:                     job.Spec.Affinity,
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
-					Volumes:                      append(volumes, job.Spec.ExtraVolumes...),
+					Volumes:                      volumes,
 				},
 			},
 		},
@@ -209,10 +181,15 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
 		},
-		{
+	}
+
+	if job.Spec.ScratchVolume == nil || job.Spec.ScratchVolume.Enabled {
+		path := getScratchVolumePath(job.Spec.ScratchVolume)
+
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_BASE_DIR",
-			Value: "/tmp",
-		},
+			Value: path,
+		})
 	}
 
 	if job.Spec.Provider != nil {
@@ -369,4 +346,56 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 	}
 
 	return result
+}
+
+func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
+	volumes := []v1.Volume{}
+	volumeMounts := []v1.VolumeMount{}
+
+	if job.Spec.ScratchVolume == nil || job.Spec.ScratchVolume.Enabled {
+		volumeName := "tmp"
+		path := getScratchVolumePath(job.Spec.ScratchVolume)
+		volumeSource := v1.VolumeSource{}
+
+		if job.Spec.ScratchVolume != nil {
+
+			if job.Spec.ScratchVolume.Ephemeral != nil {
+				volumeSource.Ephemeral = job.Spec.ScratchVolume.Ephemeral
+			} else {
+				volumeSource.EmptyDir = &v1.EmptyDirVolumeSource{
+					Medium:    job.Spec.ScratchVolume.Medium,
+					SizeLimit: job.Spec.ScratchVolume.SizeLimit,
+				}
+			}
+		} else {
+			volumeSource.EmptyDir = &v1.EmptyDirVolumeSource{}
+		}
+
+		volume := v1.Volume{
+			Name:         volumeName,
+			VolumeSource: volumeSource,
+		}
+		mount := v1.VolumeMount{
+			Name:      volumeName,
+			MountPath: path,
+		}
+		volumes = append(volumes, volume)
+		volumeMounts = append(volumeMounts, mount)
+	}
+
+	if job.Spec.ExtraVolumes != nil {
+		volumes = append(volumes, job.Spec.ExtraVolumes...)
+	}
+	if job.Spec.ExtraVolumeMounts != nil {
+		volumeMounts = append(volumeMounts, job.Spec.ExtraVolumeMounts...)
+	}
+
+	return volumes, volumeMounts
+}
+
+func getScratchVolumePath(scratch *api.RenovateJobScratchVolume) string {
+	if scratch != nil && scratch.Path != "" {
+		return scratch.Path
+	}
+	return "/tmp"
 }
