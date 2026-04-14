@@ -1,3 +1,21 @@
+# [4.3.0](https://github.com/mogenius/renovate-operator/compare/4.2.2...4.3.0) (2026-04-14)
+
+
+### Bug Fixes
+
+* **actions:** helm repo add needed for valkey dependency ([3177687](https://github.com/mogenius/renovate-operator/commit/31776871394397a0e20bf278f3fdd995c1fc946e))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.18.0 ([24bfd4d](https://github.com/mogenius/renovate-operator/commit/24bfd4ddef84ccd456c772722b7680d6c15fa465))
+* **ui:** alignments and wrapping were broken ([721f390](https://github.com/mogenius/renovate-operator/commit/721f39090f8a9ad005fff0152e4c5e88ede50bbe))
+* **ui:** removed strange pixel in every regular row and added nowrap for all badges ([f303b56](https://github.com/mogenius/renovate-operator/commit/f303b56d2a6411c16aac776ae0a17b17fb41a6da))
+
+
+### Features
+
+* **auth:** Store sessions server-side to prevent cookie size overflow ([#225](https://github.com/mogenius/renovate-operator/issues/225)) ([125f19f](https://github.com/mogenius/renovate-operator/commit/125f19fe319394c6b286818911a1cd19633114de))
+* **crd:** adding scratch volume settings ([790e534](https://github.com/mogenius/renovate-operator/commit/790e5341327363b8d92e0ec1034859f86f7b2bd8)), closes [#256](https://github.com/mogenius/renovate-operator/issues/256)
+* **executor:** adding executor loop duration metrics ([5f0db94](https://github.com/mogenius/renovate-operator/commit/5f0db9470c0f36fb92aaebd183ef28cb2ee4fe9c)), closes [#274](https://github.com/mogenius/renovate-operator/issues/274) [#35](https://github.com/mogenius/renovate-operator/issues/35)
+* **ui:** turn stat badges into filter buttons ([7d659ba](https://github.com/mogenius/renovate-operator/commit/7d659bacb728888f7cd73278b6dc636f951bd4d6)), closes [#275](https://github.com/mogenius/renovate-operator/issues/275)
+
 ## [4.2.2](https://github.com/mogenius/renovate-operator/compare/4.2.1...4.2.2) (2026-04-08)
 
 
