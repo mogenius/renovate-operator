@@ -490,8 +490,6 @@
         const [toasts, setToasts] = useState([]);
         const nextToastIdRef = useRef(0);
         const [authInfo, setAuthInfo] = useState(null);
-        const [selectedStatFilter, setSelectedStatFilter] = useState(null);
-
         const STAT_FILTER_LABELS = {
           failed: "Failed",
           scheduled: "Scheduled",
@@ -501,14 +499,36 @@
           withIssues: "With Issues",
         };
 
+        const [selectedStatFilter, setSelectedStatFilter] = useState(() => {
+          try {
+            const stored = localStorage.getItem('selectedStatFilter');
+            return stored && STAT_FILTER_LABELS[stored] ? stored : null;
+          } catch {
+            return null;
+          }
+        });
+
+        const persistStatFilter = (value) => {
+          try {
+            if (value === null) {
+              localStorage.removeItem('selectedStatFilter');
+            } else {
+              localStorage.setItem('selectedStatFilter', value);
+            }
+          } catch {}
+        };
+
         const toggleStatFilter = useCallback((filterKey) => {
-          setSelectedStatFilter((current) =>
-            current === filterKey ? null : filterKey
-          );
+          setSelectedStatFilter((current) => {
+            const next = current === filterKey ? null : filterKey;
+            persistStatFilter(next);
+            return next;
+          });
         }, []);
 
         const clearStatFilter = useCallback(() => {
           setSelectedStatFilter(null);
+          persistStatFilter(null);
         }, []);
 
         const filteredJobs = useMemo(() => {
