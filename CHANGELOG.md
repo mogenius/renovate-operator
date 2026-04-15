@@ -1,3 +1,10 @@
+## [4.3.2](https://github.com/mogenius/renovate-operator/compare/4.3.1...4.3.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* **ui:** persist dashboard stat-badge filter across reloads ([#289](https://github.com/mogenius/renovate-operator/issues/289)) ([e214d38](https://github.com/mogenius/renovate-operator/commit/e214d38d847d19f496560ff2ab0fdb3a776c3fb7))
+
 ## [4.3.1](https://github.com/mogenius/renovate-operator/compare/4.3.0...4.3.1) (2026-04-15)
 
 
