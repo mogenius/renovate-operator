@@ -22,6 +22,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -403,6 +404,16 @@ func main() {
 	adaptKubeConfig(cfg)
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	otelShutdown, otelErr := telemetry.SetupOTelSDK(context.Background(), Version)
+	if otelErr != nil {
+		ctrl.Log.WithName("telemetry").Error(otelErr, "failed to initialize OpenTelemetry")
+	}
+	defer func() {
+		if shutdownErr := otelShutdown(context.Background()); shutdownErr != nil {
+			ctrl.Log.WithName("telemetry").Error(shutdownErr, "failed to shut down OpenTelemetry")
+		}
+	}()
 
 	metricStore.Register(ctrlmetrics.Registry)
 
