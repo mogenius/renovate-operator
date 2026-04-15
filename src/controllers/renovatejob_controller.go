@@ -16,6 +16,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 
@@ -26,6 +31,8 @@ import (
 
 	crdManager "renovate-operator/internal/crdManager"
 )
+
+var reconcilerTracer = otel.Tracer("renovate-operator/reconciler")
 
 const webhookSyncStateAnnotation = "renovate-operator.mogenius.com/webhook-sync-managed-repos"
 
@@ -47,21 +54,28 @@ type webhookSyncerEntry struct {
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ctx, span := reconcilerTracer.Start(ctx, "RenovateJob.Reconcile",
+		trace.WithAttributes(
+			semconv.K8SNamespaceName(req.Namespace),
+		),
+	)
+	defer span.End()
+
 	logger := log.FromContext(ctx).WithName("renovatejob-controller")
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
 
 	if err == nil {
-		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookSyncer(ctx, logger, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
-		// renovatejob cannot be found -> delete the schedule
 		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
 		delete(r.webhookSyncers, name)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Error(err, "Failed to get RenovateJob")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
@@ -75,20 +89,34 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	f := func() {
 		logger = logger.WithName(name)
 		ctx := context.Background()
+		ctx, span := reconcilerTracer.Start(ctx, "RenovateJob.ScheduledRun",
+			trace.WithAttributes(
+				semconv.K8SNamespaceName(jobNamespace),
+			),
+		)
+		defer span.End()
+
 		logger.V(2).Info("Executing schedule for RenovateJob")
 
 		// Re-fetch the RenovateJob to get the latest spec (e.g. updated container image)
 		currentJob, err := reconciler.Manager.GetRenovateJob(ctx, jobName, jobNamespace)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			logger.Error(err, "Failed to get current RenovateJob")
 			return
 		}
 
 		projects, err := reconciler.Discovery.Discover(ctx, currentJob)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			logger.Error(err, "Failed to discover projects for RenovateJob")
 			return
 		}
+		span.AddEvent("discovery.complete", trace.WithAttributes(
+			attribute.Int("project.count", len(projects)),
+		))
 		logger.V(2).Info("Successfully discovered projects", "count", len(projects))
 
 		err = reconciler.Manager.ReconcileProjects(ctx, currentJob, projects)

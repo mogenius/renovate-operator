@@ -10,12 +10,19 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+var discoveryTracer = otel.Tracer("renovate-operator/discovery")
 
 /*
 DiscoveryAgent is the interface for discovering projects for a RenovateJob CRD.
@@ -58,8 +65,24 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	name := job.Fullname()
 
+	ctx, span := discoveryTracer.Start(ctx, "discovery.run",
+		trace.WithAttributes(
+			semconv.K8SNamespaceName(job.Namespace),
+		),
+	)
+	defer span.End()
+
 	e.logger.V(2).Info("Discovering projects for RenovateJob", "job", name)
-	return e.discoverIntern(ctx, job)
+	projects, err := e.discoverIntern(ctx, job)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.AddEvent("discovery.complete", trace.WithAttributes(
+		attribute.Int("project.count", len(projects)),
+	))
+	return projects, nil
 }
 
 func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {

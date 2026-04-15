@@ -20,10 +20,33 @@ import (
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+)
+
+var (
+	executorTracer = otel.Tracer("renovate-operator/executor")
+	executorMeter  = otel.Meter("renovate-operator/executor")
+)
+
+var (
+	otelExecutorLoopDuration, _ = executorMeter.Float64Histogram(
+		"renovate_operator.executor.loop.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of each executor loop tick"),
+	)
+	otelProjectExecutions, _ = executorMeter.Int64Counter(
+		"renovate_operator.project.executions",
+		metric.WithUnit("{execution}"),
+		metric.WithDescription("Total executed Renovate project runs"),
+	)
 )
 
 /*
@@ -98,10 +121,16 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 
 func (e *renovateExecutor) execute(options executionOptions) error {
 	ctx := context.Background()
+	ctx, span := executorTracer.Start(ctx, "executor.tick")
+	defer span.End()
+
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
 		metricStore.ObserveExecutorLoopDuration(duration)
+		if otelExecutorLoopDuration.Enabled(ctx) {
+			otelExecutorLoopDuration.Record(ctx, duration.Seconds())
+		}
 		e.logger.V(2).Info("Executed renovate executor loop", "duration", duration)
 	}()
 
@@ -197,6 +226,23 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
 			metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
 
+			if otelProjectExecutions.Enabled(ctx) {
+				otelProjectExecutions.Add(ctx, 1,
+					metric.WithAttributes(
+						semconv.K8SNamespaceName(renovateJob.Namespace),
+						attribute.String("k8s.job.name", renovateJob.Name),
+						attribute.String("cicd.pipeline.result", string(newStatus)),
+					),
+				)
+			}
+			if span := trace.SpanFromContext(ctx); span.IsRecording() {
+				span.AddEvent("project.completed", trace.WithAttributes(
+					semconv.K8SNamespaceName(renovateJob.Namespace),
+					attribute.String("k8s.job.name", utils.ExecutorJobName(renovateJob, project.Name)),
+					attribute.String("cicd.pipeline.result", string(newStatus)),
+				))
+			}
+
 			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus); err != nil {
 				return 0, nil, err
 			}
@@ -289,6 +335,13 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+		}
+
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			span.AddEvent("job.created", trace.WithAttributes(
+				semconv.K8SNamespaceName(renovateJob.Namespace),
+				attribute.String("k8s.job.name", utils.ExecutorJobName(renovateJob, project.Name)),
+			))
 		}
 
 		if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
