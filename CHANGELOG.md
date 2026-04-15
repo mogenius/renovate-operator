@@ -1,3 +1,10 @@
+## [4.3.1](https://github.com/mogenius/renovate-operator/compare/4.3.0...4.3.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **operator:** honor OS theme changes and allow returning to system theme ([c52c54f](https://github.com/mogenius/renovate-operator/commit/c52c54f753551ce5ef4b3a0b84cab7e1a57fda2f))
+
 # [4.3.0](https://github.com/mogenius/renovate-operator/compare/4.2.2...4.3.0) (2026-04-14)
 
 
