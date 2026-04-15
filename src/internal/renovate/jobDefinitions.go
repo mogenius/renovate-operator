@@ -3,6 +3,7 @@ package renovate
 import (
 	"encoding/json"
 	"maps"
+	"os"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -18,6 +19,7 @@ import (
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 
 	if len(job.Spec.DiscoveryFilters) > 0 {
 		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
@@ -103,6 +105,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 // create a Job spec for renovate run on project...
 func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -346,6 +349,32 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 	}
 
 	return result
+}
+
+// otelEnvVarsForJobs returns OTEL_* env vars to forward to Renovate Jobs when
+// RENOVATE_FORWARD_OTEL is set to "true". This enables Renovate's built-in OTLP
+// export in Job containers. Returns nil when forwarding is disabled.
+func otelEnvVarsForJobs() []v1.EnvVar {
+	if os.Getenv("RENOVATE_FORWARD_OTEL") != "true" {
+		return nil
+	}
+
+	forwardVars := []string{
+		"OTEL_EXPORTER_OTLP_ENDPOINT",
+		"OTEL_EXPORTER_OTLP_PROTOCOL",
+		"OTEL_SERVICE_NAMESPACE",
+	}
+	var envs []v1.EnvVar
+	for _, key := range forwardVars {
+		if val := os.Getenv(key); val != "" {
+			envs = append(envs, v1.EnvVar{Name: key, Value: val})
+		}
+	}
+	envs = append(envs,
+		v1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: "renovate"},
+		v1.EnvVar{Name: "RENOVATE_USE_CLOUD_METADATA_SERVICES", Value: "false"},
+	)
+	return envs
 }
 
 func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
