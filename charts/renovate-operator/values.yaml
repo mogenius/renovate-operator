@@ -306,3 +306,14 @@ metrics:
       instanceSelector:
         matchLabels:
           grafana.internal/instance: "grafana"
+
+# -- OpenTelemetry configuration for the operator
+telemetry:
+  # -- enable OTLP export of traces, metrics, and logs from the operator
+  enabled: false
+  # -- OTLP collector endpoint (e.g. "otel-collector.observability.svc.cluster.local:4317")
+  endpoint: ""
+  # -- OTLP protocol: "grpc" or "http/protobuf"
+  protocol: "grpc"
+  # -- forward OTEL_* env vars to Renovate Jobs created by the operator
+  forwardToJobs: false
