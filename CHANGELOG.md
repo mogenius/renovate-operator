@@ -1,3 +1,12 @@
+## [4.3.3](https://github.com/mogenius/renovate-operator/compare/4.3.2...4.3.3) (2026-04-16)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.35.4 (patch) ([7b7d208](https://github.com/mogenius/renovate-operator/commit/7b7d2086318938f1f436d8a4ba433788b14e9bb7))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.74 ([894d924](https://github.com/mogenius/renovate-operator/commit/894d92450854b9e3e14a6e8fc5d72206b95a3d45))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.35.4 ([0e2e0cc](https://github.com/mogenius/renovate-operator/commit/0e2e0ccd51053b800944f115779ebefbfe5df741))
+
 ## [4.3.2](https://github.com/mogenius/renovate-operator/compare/4.3.1...4.3.2) (2026-04-15)
 
 
