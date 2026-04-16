@@ -6,7 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/netresearch/go-cron v0.13.4
-	github.com/valkey-io/valkey-go v1.0.73
+	github.com/valkey-io/valkey-go v1.0.74
 	k8s.io/api v0.35.4
 	k8s.io/apimachinery v0.35.4
 	sigs.k8s.io/controller-runtime v0.23.3
