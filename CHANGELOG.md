@@ -1,3 +1,10 @@
+## [4.3.5](https://github.com/mogenius/renovate-operator/compare/4.3.4...4.3.5) (2026-04-18)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/netresearch/go-cron to v0.14.0 ([862649e](https://github.com/mogenius/renovate-operator/commit/862649ebcc9dc59004202a918638d2cce1e5b75d))
+
 ## [4.3.4](https://github.com/mogenius/renovate-operator/compare/4.3.3...4.3.4) (2026-04-17)
 
 
