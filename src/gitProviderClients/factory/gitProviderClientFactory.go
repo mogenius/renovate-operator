@@ -11,6 +11,7 @@ import (
 	"renovate-operator/gitProviderClients/giteaProvider"
 	"renovate-operator/gitProviderClients/githubProvider"
 	"renovate-operator/gitProviderClients/gitlabProvider"
+	"renovate-operator/github"
 	"renovate-operator/internal/utils"
 	"time"
 
@@ -42,7 +43,7 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return nil, fmt.Errorf("skipForks requires a provider to be configured")
 	}
 
-	token, err := readToken(ctx, f.client, job)
+	token, err := readToken(ctx, f.client, job, platform)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read platform token for fork filtering: %w", err)
 	}
@@ -68,18 +69,25 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 
 // readToken reads the platform API token from the Kubernetes secret referenced
 // by the RenovateJob. It checks common key names used by Renovate.
-func readToken(ctx context.Context, c client.Client, job *api.RenovateJob) (string, error) {
-	if job.Spec.SecretRef == "" {
+func readToken(ctx context.Context, c client.Client, job *api.RenovateJob, platform string) (string, error) {
+
+	secretName := job.Spec.SecretRef
+
+	if job.Spec.GithubAppReference != nil && platform == "github" {
+		secretName = github.GetNameForGithubAppSecret(job)
+	}
+
+	if secretName == "" {
 		return "", fmt.Errorf("secretRef must be set when skipForks is enabled")
 	}
 
 	secret := &corev1.Secret{}
 	err := c.Get(ctx, client.ObjectKey{
-		Name:      job.Spec.SecretRef,
+		Name:      secretName,
 		Namespace: job.Namespace,
 	}, secret)
 	if err != nil {
-		return "", fmt.Errorf("failed to get secret %s: %w", job.Spec.SecretRef, err)
+		return "", fmt.Errorf("failed to get secret %s: %w", secretName, err)
 	}
 
 	// Try common token key names in order of preference
