@@ -20,6 +20,7 @@ import (
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/health"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/metricStore"
@@ -53,7 +54,7 @@ func splitAndTrim(s, sep string) []string {
 
 type authSetup struct {
 	provider             ui.AuthProvider
-	kvStore              ui.KVStore
+	kvStore              kvstore.KVStore
 	defaultAllowedGroups []string
 	cleanup              func()
 }
@@ -85,7 +86,7 @@ func initAuth() authSetup {
 	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
 
 	// Initialize KV store (Valkey if configured, otherwise nil)
-	kvStore, kvErr := ui.NewKVStore(ui.ValkeyConfig{
+	kvStore, kvErr := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		URL:      config.GetValue("VALKEY_URL"),
 		Host:     config.GetValue("VALKEY_HOST"),
 		Port:     config.GetValue("VALKEY_PORT"),

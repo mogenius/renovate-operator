@@ -6,6 +6,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/utils"
 	"strconv"
 	"strings"
@@ -207,6 +208,22 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "LOG_LEVEL",
 			Value: "debug",
+		})
+	}
+
+	valkeyURL := config.GetValue("VALKEY_URL")
+	if valkeyURL == "" {
+		valkeyURL = kvstore.BuildValkeyURL(
+			config.GetValue("VALKEY_HOST"),
+			config.GetValue("VALKEY_PORT"),
+			config.GetValue("VALKEY_PASSWORD"),
+		)
+	}
+
+	if valkeyURL != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_REDIS_URL",
+			Value: valkeyURL,
 		})
 	}
 	return predefinedEnvVars

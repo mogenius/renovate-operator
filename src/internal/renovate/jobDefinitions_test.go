@@ -182,6 +182,10 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
 		{Key: "JOB_TTL_SECONDS_AFTER_FINISHED", Optional: true, Default: "360"},
+		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379"},
+		{Key: "VALKEY_HOST", Optional: true, Default: ""},
+		{Key: "VALKEY_PORT", Optional: true, Default: "6379"},
+		{Key: "VALKEY_PASSWORD", Optional: true, Default: ""},
 	})
 	if err != nil {
 		t.Fatalf("expected to initialize config module without error, got %v", err)
@@ -206,6 +210,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
 	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
+	expectEnvVar(t, djContainer, "RENOVATE_REDIS_URL", "redis://redis.svc.cluster.local:6379")
 	expectEnvFromSecret(t, djContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
@@ -234,6 +239,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 	// env vars
 	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
+	expectEnvVar(t, rjContainer, "RENOVATE_REDIS_URL", "redis://redis.svc.cluster.local:6379")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})

@@ -1,4 +1,4 @@
-package ui
+package kvstore
 
 import (
 	"context"
@@ -40,7 +40,7 @@ type ValkeyConfig struct {
 func NewKVStore(cfg ValkeyConfig) (KVStore, error) {
 	valkeyURL := cfg.URL
 	if valkeyURL == "" {
-		valkeyURL = buildValkeyURL(cfg.Host, cfg.Port, cfg.Password)
+		valkeyURL = BuildValkeyURL(cfg.Host, cfg.Port, cfg.Password)
 	}
 
 	if valkeyURL != "" {
@@ -50,9 +50,9 @@ func NewKVStore(cfg ValkeyConfig) (KVStore, error) {
 	return nil, nil
 }
 
-// buildValkeyURL constructs a Valkey URL from host, port, and password.
+// BuildValkeyURL constructs a Valkey URL from host, port, and password.
 // Returns "" if host is empty. Uses the redis:// scheme (wire-compatible protocol).
-func buildValkeyURL(host, port, password string) string {
+func BuildValkeyURL(host, port, password string) string {
 	if host == "" {
 		return ""
 	}
