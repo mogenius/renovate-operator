@@ -17,8 +17,15 @@ import (
 )
 
 // create job spec for a discovery job
-func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
+func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+
+	if traceparent != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "TRACEPARENT",
+			Value: traceparent,
+		})
+	}
 
 	if len(job.Spec.DiscoveryFilters) > 0 {
 		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
@@ -102,8 +109,15 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 }
 
 // create a Job spec for renovate run on project...
-func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
+func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+
+	if traceparent != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "TRACEPARENT",
+			Value: traceparent,
+		})
+	}
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {

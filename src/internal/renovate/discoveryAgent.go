@@ -5,17 +5,27 @@ import (
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
 	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var discoveryTracer = otel.Tracer("renovate-operator/discovery")
 
 /*
 DiscoveryAgent is the interface for discovering projects for a RenovateJob CRD.
@@ -58,8 +68,26 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
 	name := job.Fullname()
 
-	e.logger.V(2).Info("Discovering projects for RenovateJob", "job", name)
-	return e.discoverIntern(ctx, job)
+	ctx, span := discoveryTracer.Start(ctx, "discovery.run",
+		trace.WithAttributes(
+			semconv.K8SNamespaceName(job.Namespace),
+			semconv.CICDPipelineName(job.Name),
+		),
+	)
+	defer span.End()
+	ctx = telemetry.ContextWithTraceLogger(ctx, e.logger)
+
+	log.FromContext(ctx).V(2).Info("Discovering projects for RenovateJob", "job", name)
+	projects, err := e.discoverIntern(ctx, job)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.AddEvent("discovery.complete", trace.WithAttributes(
+		attribute.Int("project.count", len(projects)),
+	))
+	return projects, nil
 }
 
 func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {
@@ -176,7 +204,9 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", fmt.Errorf("failed to ensure redis url secret: %w", err)
 	}
 
-	discoveryJob := newDiscoveryJob(&renovateJob)
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)
 	}

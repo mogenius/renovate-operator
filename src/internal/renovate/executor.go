@@ -16,15 +16,57 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var (
+	executorTracer = otel.Tracer("renovate-operator/executor")
+	executorMeter  = otel.Meter("renovate-operator/executor")
+)
+
+// OTel metric instruments are created at package init time. The OTel SDK returns
+// no-op instruments when creation fails, so errors are logged but not fatal.
+var (
+	otelExecutorLoopDuration, _ = executorMeter.Float64Histogram(
+		"renovate_operator.executor.loop.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of each executor loop tick"),
+	)
+	otelProjectExecutions, _ = executorMeter.Int64Counter(
+		"renovate_operator.project.executions",
+		metric.WithUnit("{execution}"),
+		metric.WithDescription("Total executed Renovate project runs"),
+	)
+)
+
+// mapPipelineResult maps internal RenovateProjectStatus values to OTel semconv
+// cicd.pipeline.result enum values for interoperability with tracing backends.
+func mapPipelineResult(status api.RenovateProjectStatus) attribute.KeyValue {
+	switch status {
+	case api.JobStatusCompleted:
+		return semconv.CICDPipelineResultSuccess
+	case api.JobStatusFailed:
+		return semconv.CICDPipelineResultFailure
+	default:
+		return semconv.CICDPipelineResultKey.String(string(status))
+	}
+}
 
 /*
 RenovateExecutor is the interface that periodically executes RenovateJob CRDs.
@@ -80,9 +122,9 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 				e.logger.Info("executor loop stopped due to context cancellation")
 				return
 			default:
-				err := e.execute(options)
+				err := e.execute(ctx, options)
 				if err != nil {
-					e.logger.Error(err, "an error occured in execution loop")
+					e.logger.Error(err, "an error occurred in execution loop")
 				}
 				select {
 				case <-ctx.Done():
@@ -96,31 +138,47 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (e *renovateExecutor) execute(options executionOptions) error {
-	ctx := context.Background()
+func (e *renovateExecutor) execute(ctx context.Context, options executionOptions) error {
+	ctx, span := executorTracer.Start(ctx, "executor.tick")
+	defer span.End()
+	ctx = telemetry.ContextWithTraceLogger(ctx, e.logger)
+
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
 		metricStore.ObserveExecutorLoopDuration(duration)
-		e.logger.V(2).Info("Executed renovate executor loop", "duration", duration)
+		if otelExecutorLoopDuration.Enabled(ctx) {
+			otelExecutorLoopDuration.Record(ctx, duration.Seconds())
+		}
+		log.FromContext(ctx).V(2).Info("Executed renovate executor loop", "duration", duration)
 	}()
 
 	renovateJobs, err := e.manager.ListRenovateJobsFull(ctx)
 	if err != nil {
-		return nil
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return fmt.Errorf("failed to list renovate jobs: %w", err)
 	}
-	e.logger.V(2).Info("Executing renovate executor loop for projects", "count", len(renovateJobs))
+	span.SetAttributes(attribute.Int("renovate_operator.jobs.count", len(renovateJobs)))
+	log.FromContext(ctx).V(2).Info("Executing renovate executor loop for jobs", "count", len(renovateJobs))
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
 	globalRunning, perJobRunning, err := e.reconcileRunning(ctx, renovateJobs)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
 	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
 	// and dispatch new jobs up to the global and per-job limits.
-	return e.dispatchScheduled(ctx, renovateJobs, globalRunning, perJobRunning, options)
+	err = e.dispatchScheduled(ctx, renovateJobs, globalRunning, perJobRunning, options)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	return err
 }
 
 // reconcileRunning iterates over all Running projects across all RenovateJobs, checks their
@@ -186,16 +244,33 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 						newProjectStatus.PRActivity = parseResult.PRActivity
 						newProjectStatus.LogIssues = parseResult.LogIssues
 					} else {
-						e.logger.Error(err, "failed to get logs for metrics parsing", "project", project.Name)
+						log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project.Name)
 					}
 				} else {
-					e.logger.Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
+					log.FromContext(ctx).Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
 				}
 			}
 
 			metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
 			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
 			metricStore.CaptureRenovateProjectExecution(renovateJob.Namespace, renovateJob.Name, project.Name, string(newStatus))
+
+			if otelProjectExecutions.Enabled(ctx) {
+				otelProjectExecutions.Add(ctx, 1,
+					metric.WithAttributes(
+						semconv.K8SNamespaceName(renovateJob.Namespace),
+						semconv.CICDPipelineName(renovateJob.Name),
+						mapPipelineResult(newStatus),
+					),
+				)
+			}
+			if span := trace.SpanFromContext(ctx); span.IsRecording() {
+				span.AddEvent("project.completed", trace.WithAttributes(
+					semconv.K8SNamespaceName(renovateJob.Namespace),
+					semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
+					mapPipelineResult(newStatus),
+				))
+			}
 
 			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus); err != nil {
 				return 0, nil, err
@@ -268,7 +343,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 
 		// Stop entirely if the global limit is reached.
 		if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
-			e.logger.V(2).Info("global parallelism limit reached, stopping dispatch", "limit", options.globalParallelism)
+			log.FromContext(ctx).V(2).Info("global parallelism limit reached, stopping dispatch", "limit", options.globalParallelism)
 			break
 		}
 
@@ -281,7 +356,9 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			return fmt.Errorf("failed to ensure redis url secret: %w", err)
 		}
 
-		k8sJob := newRenovateJob(renovateJob, project.Name)
+		carrier := propagation.MapCarrier{}
+		otel.GetTextMapPropagator().Inject(ctx, carrier)
+		k8sJob := newRenovateJob(renovateJob, project.Name, carrier.Get("traceparent"))
 		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
@@ -293,6 +370,13 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+		}
+
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			span.AddEvent("job.created", trace.WithAttributes(
+				semconv.K8SNamespaceName(renovateJob.Namespace),
+				semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
+			))
 		}
 
 		if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
