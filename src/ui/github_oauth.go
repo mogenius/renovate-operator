@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"renovate-operator/internal/telemetry"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -40,7 +41,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.L
 	return &GitHubOAuth{
 		baseAuth:     base,
 		oauth2Config: oauth2Cfg,
-		httpClient:   &http.Client{},
+		httpClient:   &http.Client{Transport: telemetry.WrapTransport(http.DefaultTransport)},
 	}, nil
 }
 

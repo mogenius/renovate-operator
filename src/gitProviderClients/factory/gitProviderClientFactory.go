@@ -11,6 +11,7 @@ import (
 	"renovate-operator/gitProviderClients/giteaProvider"
 	"renovate-operator/gitProviderClients/githubProvider"
 	"renovate-operator/gitProviderClients/gitlabProvider"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
 	"time"
 
@@ -47,7 +48,10 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return nil, fmt.Errorf("failed to read platform token for fork filtering: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: telemetry.WrapTransport(http.DefaultTransport),
+	}
 
 	switch platform {
 	case "github":

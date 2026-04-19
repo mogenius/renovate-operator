@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"renovate-operator/internal/telemetry"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		logger.Info("WARNING: OIDC TLS verification is disabled. Do not use this in production!")
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
 	}
-	httpClient := &http.Client{Transport: transport}
+	httpClient := &http.Client{Transport: telemetry.WrapTransport(transport)}
 
 	oidcCtx := oidc.ClientContext(ctx, httpClient)
 	provider, err := oidc.NewProvider(oidcCtx, cfg.IssuerURL)
