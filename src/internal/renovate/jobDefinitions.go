@@ -23,13 +23,6 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
 
-	if traceparent != "" {
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "TRACEPARENT",
-			Value: traceparent,
-		})
-	}
-
 	if len(job.Spec.DiscoveryFilters) > 0 {
 		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -118,13 +111,6 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 	predefinedEnvVars := getDefaultEnvVars(job)
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
-
-	if traceparent != "" {
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "TRACEPARENT",
-			Value: traceparent,
-		})
-	}
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
