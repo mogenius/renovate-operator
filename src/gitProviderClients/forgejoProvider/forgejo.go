@@ -11,6 +11,8 @@ import (
 	"renovate-operator/gitProviderClients"
 	"strconv"
 	"strings"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // ForgejoClient implements GitProviderClient for the Forgejo API.
@@ -24,7 +26,7 @@ func NewClient(endpoint, token string) *ForgejoClient {
 	return &ForgejoClient{
 		Endpoint:   endpoint,
 		Token:      token,
-		HTTPClient: http.DefaultClient,
+		HTTPClient: &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 

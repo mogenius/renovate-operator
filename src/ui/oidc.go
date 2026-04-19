@@ -12,6 +12,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/oauth2"
 )
 
@@ -51,7 +52,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		logger.Info("WARNING: OIDC TLS verification is disabled. Do not use this in production!")
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
 	}
-	httpClient := &http.Client{Transport: transport}
+	httpClient := &http.Client{Transport: otelhttp.NewTransport(transport)}
 
 	oidcCtx := oidc.ClientContext(ctx, httpClient)
 	provider, err := oidc.NewProvider(oidcCtx, cfg.IssuerURL)
