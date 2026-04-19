@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -22,6 +23,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -402,7 +404,30 @@ func main() {
 	cfg := ctrl.GetConfigOrDie()
 	adaptKubeConfig(cfg)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	// Initialize OTel before the logger so we can tee logs to OTLP.
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+	otelShutdown, otelEnabled, otelErr := telemetry.SetupOTelSDK(initCtx, Version)
+
+	// Build the primary zap logger, then tee with otellogr when OTel is active.
+	zapLogger := zap.New(zap.UseFlagOptions(&opts))
+	if otelEnabled && otelErr == nil {
+		otelSink := telemetry.NewOTelLogSink("renovate-operator")
+		tee := telemetry.NewTeeLogSink(zapLogger.GetSink(), otelSink)
+		zapLogger = logr.New(tee)
+	}
+	ctrl.SetLogger(zapLogger)
+
+	if otelErr != nil {
+		ctrl.Log.WithName("telemetry").Error(otelErr, "failed to initialize OpenTelemetry")
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if shutdownErr := otelShutdown(shutdownCtx); shutdownErr != nil {
+			ctrl.Log.WithName("telemetry").Error(shutdownErr, "failed to shut down OpenTelemetry")
+		}
+	}()
 
 	metricStore.Register(ctrlmetrics.Registry)
 

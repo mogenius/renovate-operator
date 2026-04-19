@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 )
@@ -40,7 +41,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.L
 	return &GitHubOAuth{
 		baseAuth:     base,
 		oauth2Config: oauth2Cfg,
-		httpClient:   &http.Client{},
+		httpClient:   &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}, nil
 }
 

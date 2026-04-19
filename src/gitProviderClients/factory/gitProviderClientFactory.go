@@ -14,6 +14,7 @@ import (
 	"renovate-operator/internal/utils"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,7 +48,10 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return nil, fmt.Errorf("failed to read platform token for fork filtering: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
 
 	switch platform {
 	case "github":

@@ -306,3 +306,17 @@ metrics:
       instanceSelector:
         matchLabels:
           grafana.internal/instance: "grafana"
+
+# -- OpenTelemetry configuration for the operator
+telemetry:
+  # -- enable OTLP export of traces and metrics from the operator
+  enabled: false
+  # -- OTLP collector endpoint (e.g. "otel-collector.observability.svc.cluster.local:4317")
+  endpoint: ""
+  # -- OTLP protocol for the operator. Only "grpc" is currently supported.
+  protocol: "grpc"
+  # -- forward OTEL_* env vars to Renovate Jobs (uses Renovate's native OTLP/HTTP exporter)
+  forwardToJobs: false
+  # -- OTLP endpoint for Renovate Jobs (defaults to telemetry.endpoint). Set this when the
+  # -- operator uses gRPC (port 4317) but Jobs need the OTLP/HTTP port (4318).
+  jobEndpoint: ""

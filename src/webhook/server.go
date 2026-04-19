@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 )
 
 type Server struct {
@@ -36,6 +37,7 @@ func (s *Server) Run() {
 	assert.Assert(s.manager != nil, "failed to start server. manager must not be nil")
 
 	router := mux.NewRouter()
+	router.Use(otelmux.Middleware("renovate-operator-webhook"))
 	sub := router.PathPrefix("/webhook/v1").Subrouter()
 	sub.HandleFunc("/schedule", s.runRenovate).Methods("POST")
 	sub.HandleFunc("/gitlab", s.gitLabWebhook).Methods("POST")

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 )
 
 type Server struct {
@@ -96,6 +97,7 @@ func (s *Server) Run() {
 	assert.Assert(s.health != nil, "failed to start server. health check must not be nil")
 
 	router := mux.NewRouter()
+	router.Use(otelmux.Middleware("renovate-operator-ui"))
 
 	s.registerAuthRoutes(router)
 	s.registerApiV1Routes(router)
