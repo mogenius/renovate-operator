@@ -3,6 +3,7 @@ package renovate
 import (
 	"encoding/json"
 	"maps"
+	"os"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -19,6 +20,8 @@ import (
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
+	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
 
 	if traceparent != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -58,6 +61,8 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
+	discoveryCmd := `BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
@@ -72,7 +77,7 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{`BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`},
+							Args:            []string{discoveryCmd},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -111,6 +116,8 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 // create a Job spec for renovate run on project...
 func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
+	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
 
 	if traceparent != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -135,6 +142,9 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
+	command := []string{"renovate"}
+	args := []string{project}
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
@@ -148,8 +158,8 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 					Containers: []v1.Container{
 						{
 							Name:            "renovate",
-							Command:         []string{"renovate"},
-							Args:            []string{project},
+							Command:         command,
+							Args:            args,
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -375,6 +385,51 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 	}
 
 	return result
+}
+
+// otelEnvVarsForJobs returns OTEL_* env vars to forward to Renovate Jobs when
+// RENOVATE_FORWARD_OTEL is set to "true". This enables Renovate's built-in OTLP
+// export in Job containers. Returns nil when forwarding is disabled or no OTLP
+// endpoint is resolved.
+// Note: OTEL_EXPORTER_OTLP_PROTOCOL is intentionally not forwarded because
+// Renovate uses OTLP/HTTP while the operator uses gRPC. The endpoint is read
+// from RENOVATE_JOB_OTEL_ENDPOINT first (allows pointing Jobs at the HTTP port),
+// falling back to OTEL_EXPORTER_OTLP_ENDPOINT.
+func otelEnvVarsForJobs() []v1.EnvVar {
+	if os.Getenv("RENOVATE_FORWARD_OTEL") != "true" {
+		return nil
+	}
+
+	// Prefer dedicated job endpoint (HTTP/4318) over operator endpoint (gRPC/4317)
+	jobEndpoint := os.Getenv("RENOVATE_JOB_OTEL_ENDPOINT")
+	if jobEndpoint == "" {
+		jobEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	}
+	if jobEndpoint == "" {
+		return nil
+	}
+
+	envs := []v1.EnvVar{
+		{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: jobEndpoint},
+	}
+	if val := os.Getenv("OTEL_SERVICE_NAMESPACE"); val != "" {
+		envs = append(envs, v1.EnvVar{Name: "OTEL_SERVICE_NAMESPACE", Value: val})
+	}
+	envs = append(envs,
+		v1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: "renovate"},
+	)
+	return envs
+}
+
+// traceparentEnvVar returns a TRACEPARENT env var for W3C trace context
+// propagation into Renovate Jobs. This is injected independently of OTEL_*
+// forwarding so that trace correlation is available even when full OTel export
+// is not configured for Jobs.
+func traceparentEnvVar(traceparent string) []v1.EnvVar {
+	if traceparent == "" {
+		return nil
+	}
+	return []v1.EnvVar{{Name: "TRACEPARENT", Value: traceparent}}
 }
 
 func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {

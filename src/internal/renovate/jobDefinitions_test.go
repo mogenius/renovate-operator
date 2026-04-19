@@ -485,6 +485,65 @@ func TestScratchVolume(t *testing.T) {
 	})
 }
 
+func TestOtelEnvVarsForJobs(t *testing.T) {
+	t.Run("returns OTEL vars when forwarding enabled with endpoint", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "true")
+		t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+		envs := otelEnvVarsForJobs()
+
+		var hasEndpoint bool
+		for _, env := range envs {
+			if env.Name == "OTEL_EXPORTER_OTLP_ENDPOINT" {
+				hasEndpoint = true
+			}
+			if env.Name == "OTEL_EXPORTER_OTLP_PROTOCOL" {
+				t.Fatal("OTEL_EXPORTER_OTLP_PROTOCOL should not be forwarded to Renovate jobs")
+			}
+			if env.Name == "TRACEPARENT" {
+				t.Fatal("TRACEPARENT should not be in otelEnvVarsForJobs")
+			}
+		}
+		if !hasEndpoint {
+			t.Fatal("expected OTEL_EXPORTER_OTLP_ENDPOINT to be present")
+		}
+	})
+
+	t.Run("returns nil when forwarding disabled", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "false")
+
+		envs := otelEnvVarsForJobs()
+		if envs != nil {
+			t.Fatalf("expected nil when forwarding disabled, got %v", envs)
+		}
+	})
+
+	t.Run("returns nil when no endpoint resolved", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "true")
+
+		envs := otelEnvVarsForJobs()
+		if envs != nil {
+			t.Fatalf("expected nil when no endpoint, got %v", envs)
+		}
+	})
+}
+
+func TestTraceparentEnvVar(t *testing.T) {
+	t.Run("injects TRACEPARENT when provided", func(t *testing.T) {
+		envs := traceparentEnvVar("00-abc123-def456-01")
+		if len(envs) != 1 || envs[0].Name != "TRACEPARENT" || envs[0].Value != "00-abc123-def456-01" {
+			t.Fatalf("expected single TRACEPARENT env var, got %v", envs)
+		}
+	})
+
+	t.Run("returns nil when empty", func(t *testing.T) {
+		envs := traceparentEnvVar("")
+		if envs != nil {
+			t.Fatalf("expected nil when traceparent is empty, got %v", envs)
+		}
+	})
+}
+
 // ##### HELPERS #####
 func expectContainer(t *testing.T, job *batchv1.Job) *v1.Container {
 	containers := job.Spec.Template.Spec.Containers
