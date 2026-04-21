@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const redisURLSecretName = "renovate-redis-url"
+const redisURLSecretName = "renovate-operator-job-redis-cache"
 
 func getValkeyURL() string {
 	valkeyURL := config.GetValue("VALKEY_URL")
@@ -55,6 +55,10 @@ func ensureRedisURLSecret(ctx context.Context, c client.Client, namespace string
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      redisURLSecretName,
 			Namespace: namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "renovate-operator",
+				"app.kubernetes.io/component":  "renovate-valkey-cache",
+			},
 		},
 		Data: map[string][]byte{
 			"redis-url": []byte(valkeyURL),

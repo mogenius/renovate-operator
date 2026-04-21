@@ -212,7 +212,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
 	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
 	expectEnvFromSecret(t, djContainer, "sref")
-	expectEnvVarFromSecretKey(t, djContainer, "RENOVATE_REDIS_URL", "renovate-redis-url", "redis-url")
+	expectEnvVarFromSecretKey(t, djContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
@@ -241,7 +241,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 	// env vars
 	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
-	expectEnvVarFromSecretKey(t, rjContainer, "RENOVATE_REDIS_URL", "renovate-redis-url", "redis-url")
+	expectEnvVarFromSecretKey(t, rjContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
