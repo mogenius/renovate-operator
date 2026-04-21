@@ -215,7 +215,7 @@ spec:
             - name: RENOVATE_FORWARD_OTEL
               value: "true"
             - name: RENOVATE_JOB_OTEL_ENDPOINT
-              value: {{ default .Values.telemetry.endpoint .Values.telemetry.jobEndpoint | quote }}
+              value: {{ required "telemetry.forwardToJobs requires telemetry.jobEndpoint or telemetry.endpoint to be set" (default .Values.telemetry.endpoint .Values.telemetry.jobEndpoint) | quote }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
