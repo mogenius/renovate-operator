@@ -186,6 +186,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 		{Key: "VALKEY_HOST", Optional: true, Default: ""},
 		{Key: "VALKEY_PORT", Optional: true, Default: "6379"},
 		{Key: "VALKEY_PASSWORD", Optional: true, Default: ""},
+		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "true"},
 	})
 	if err != nil {
 		t.Fatalf("expected to initialize config module without error, got %v", err)

@@ -71,6 +71,8 @@ config:
   logStorage:
     # -- log store mode: "disabled" (default, no-op) or "memory" (cache logs in-memory after job completion)
     mode: disabled
+  # -- wether to forward valkey cache to renovatejobs - valkey needs to be configured
+  forwardCacheToJobs: true
 
 ingress:
   # -- whether to enable the ingress renovate-operator
