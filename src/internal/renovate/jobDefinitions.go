@@ -12,6 +12,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+
 	"k8s.io/utils/ptr"
 )
 
@@ -207,6 +208,20 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "LOG_LEVEL",
 			Value: "debug",
+		})
+	}
+
+	if getValkeyURL() != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name: "RENOVATE_REDIS_URL",
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: redisURLSecretName,
+					},
+					Key: "redis-url",
+				},
+			},
 		})
 	}
 	return predefinedEnvVars
