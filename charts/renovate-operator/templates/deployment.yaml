@@ -176,7 +176,6 @@ spec:
               value: {{ $githubRedirectUrl | quote }}
             {{- end }}
             {{- end }}
-            {{- if or .Values.auth.oidc.enabled .Values.auth.github.enabled }}
             {{- if .Values.valkey.existingSecret }}
             - name: VALKEY_URL
               valueFrom:
@@ -195,7 +194,8 @@ spec:
                   name: {{ .Release.Name }}-valkey-auth
                   key: default-password
             {{- end }}
-            {{- end }}
+            - name: VALKEY_FORWARD_CACHE_TO_JOBS
+              value: {{ .Values.config.forwardCacheToJobs | quote }}
             {{- if .Values.auth.defaultAllowedGroups }}
             - name: DEFAULT_ALLOWED_GROUPS
               value: {{ .Values.auth.defaultAllowedGroups | quote }}

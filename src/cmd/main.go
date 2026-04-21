@@ -367,6 +367,11 @@ func main() {
 			Default:  "",
 		},
 		{
+			Key:      "VALKEY_FORWARD_CACHE_TO_JOBS",
+			Optional: true,
+			Default:  "true",
+		},
+		{
 			Key:      "LOG_STORE_MODE",
 			Optional: true,
 			Default:  "disabled",

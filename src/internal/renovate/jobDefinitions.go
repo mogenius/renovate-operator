@@ -211,7 +211,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		})
 	}
 
-	if getValkeyURL() != "" {
+	if config.GetValue("VALKEY_FORWARD_CACHE_TO_JOBS") == "true" && getValkeyURL() != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name: "RENOVATE_REDIS_URL",
 			ValueFrom: &v1.EnvVarSource{
