@@ -1,3 +1,16 @@
+# [4.4.0](https://github.com/mogenius/renovate-operator/compare/4.3.5...4.4.0) (2026-04-21)
+
+
+### Bug Fixes
+
+* adding managed by label to redis secret ([24a5ec9](https://github.com/mogenius/renovate-operator/commit/24a5ec9674cd926725f39b2dc122afc51e075c6c))
+* allow the user to disable cache forwarding to renovate jobs ([d1cebd7](https://github.com/mogenius/renovate-operator/commit/d1cebd7a5706d4570c3fdf623d52f9995297b437))
+
+
+### Features
+
+* add valkey configuration to renovate jobs for caching ([#301](https://github.com/mogenius/renovate-operator/issues/301)) ([9706a76](https://github.com/mogenius/renovate-operator/commit/9706a7663a9bcaff789a5b010336b6527fcd67c2))
+
 ## [4.3.5](https://github.com/mogenius/renovate-operator/compare/4.3.4...4.3.5) (2026-04-18)
 
 
