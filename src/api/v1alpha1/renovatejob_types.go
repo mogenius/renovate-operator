@@ -75,6 +75,10 @@ type RenovateJobSpec struct {
 	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
 	// +optional
 	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
+	// Hook to run before renovate execution
+	PreUpgrade *RenovateHook `json:"preUpgrade,omitempty"`
+	// Hook to run after renovate execution
+	PostUpgrade *RenovateHook `json:"postUpgrade,omitempty"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -153,6 +157,26 @@ type RenovateJobMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+// Hook configuration for running commands before or after renovate execution
+type RenovateHook struct {
+	// Container image to use for the hook
+	Image string `json:"image"`
+	// Command to execute (e.g., ["/bin/sh", "-c"])
+	Command []string `json:"command,omitempty"`
+	// Arguments for the command
+	Args []string `json:"args,omitempty"`
+	// Environment variables for the hook
+	Env []corev1.EnvVar `json:"env,omitempty"`
+	// Environment from secrets/configmaps
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+	// Whether hook failure should block execution (default: true)
+	FailOnError *bool `json:"failOnError,omitempty"`
+	// Resource requirements for the hook container
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	// Volume mounts for the hook container
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+}
+
 /*
 Renovate Provider Information
 This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
@@ -215,6 +239,8 @@ type ProjectStatus struct {
 	Duration             *string               `json:"duration,omitempty"`
 	Status               RenovateProjectStatus `json:"status"`
 	Priority             int32                 `json:"priority,omitempty"`
+	// Current execution phase (preUpgrade, postUpgrade, or empty for renovate)
+	SubStatus            *string               `json:"subStatus,omitempty"`
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`

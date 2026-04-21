@@ -46,8 +46,10 @@ const (
 type JobType string
 
 const (
-	DiscoveryJobType JobType = "discovery"
-	ExecutorJobType  JobType = "executor"
+	DiscoveryJobType   JobType = "discovery"
+	ExecutorJobType    JobType = "executor"
+	PreUpgradeJobType  JobType = "preUpgrade"
+	PostUpgradeJobType JobType = "postUpgrade"
 )
 
 type JobSelector struct {

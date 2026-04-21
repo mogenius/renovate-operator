@@ -28,6 +28,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -135,7 +136,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
-	globalRunning, perJobRunning := e.countRunningProjects(renovateJobs)
+	globalRunning, perJobRunning := e.countRunningProjects(ctx, renovateJobs)
 
 	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
 	// and dispatch new jobs up to the global and per-job limits.
@@ -149,7 +150,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 // countRunningProjects returns the number of still-running projects globally and per job
 // (keyed by job fullname).
-func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int) {
+func (e *renovateExecutor) countRunningProjects(ctx context.Context, renovateJobs []api.RenovateJob) (int, map[string]int) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
 
@@ -164,6 +165,24 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 			if project.Status != api.JobStatusRunning {
 				continue
 			}
+
+			// Check substatus to determine which phase we're in
+			if project.SubStatus != nil && *project.SubStatus == "preUpgrade" {
+				if err := e.handlePreUpgradeHook(ctx, renovateJob, project, &jobId); err != nil {
+					e.logger.Error(err, "failed to handle preUpgrade hook", "project", project.Name)
+				}
+				globalRunning++
+				perJobRunning[key]++
+				continue
+			} else if project.SubStatus != nil && *project.SubStatus == "postUpgrade" {
+				if err := e.handlePostUpgradeHook(ctx, renovateJob, project, &jobId); err != nil {
+					e.logger.Error(err, "failed to handle postUpgrade hook", "project", project.Name)
+				}
+				globalRunning++
+				perJobRunning[key]++
+				continue
+			}
+
 			globalRunning++
 			perJobRunning[key]++
 		}
@@ -349,36 +368,205 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
-		k8sJob := newRenovateJob(renovateJob, project.Name, carrier.Get("traceparent"))
-		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
+		traceparent := carrier.Get("traceparent")
 
-		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
-			JobType:         crdManager.ExecutorJobType,
-			Namespace:       renovateJob.Namespace,
-			RenovateJobName: renovateJob.Name,
-			Project:         project.Name,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
-		}
+		if renovateJob.Spec.PreUpgrade != nil {
+			preUpgradeJob := newHookJob(renovateJob, project.Name, renovateJob.Spec.PreUpgrade, crdManager.PreUpgradeJobType)
+			if err := controllerutil.SetControllerReference(renovateJob, preUpgradeJob, e.scheme); err != nil {
+				return fmt.Errorf("failed to set controller reference for preUpgrade hook: %w", err)
+			}
 
-		if span := trace.SpanFromContext(ctx); span.IsRecording() {
-			span.AddEvent("job.created", trace.WithAttributes(
-				semconv.K8SNamespaceName(renovateJob.Namespace),
-				semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
-			))
-		}
+			_, err := crdManager.CreateJobWithGeneration(ctx, e.client, preUpgradeJob, crdManager.JobSelector{
+				RenovateJobName: renovateJob.Name,
+				Project:         project.Name,
+				JobType:         crdManager.PreUpgradeJobType,
+				Namespace:       renovateJob.Namespace,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create preUpgrade hook for project %s: %w", project.Name, err)
+			}
 
-		if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
-			Status: api.JobStatusRunning,
-		}); err != nil {
-			return err
+			preUpgradeSubStatus := "preUpgrade"
+			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
+				Status:    api.JobStatusRunning,
+				SubStatus: &preUpgradeSubStatus,
+			}); err != nil {
+				return err
+			}
+			e.logger.Info("started preUpgrade hook", "project", project.Name)
+		} else {
+			k8sJob := newRenovateJob(renovateJob, project.Name, traceparent)
+			if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
+				return fmt.Errorf("failed to set controller reference: %w", err)
+			}
+
+			_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
+				JobType:         crdManager.ExecutorJobType,
+				Namespace:       renovateJob.Namespace,
+				RenovateJobName: renovateJob.Name,
+				Project:         project.Name,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+			}
+
+			if span := trace.SpanFromContext(ctx); span.IsRecording() {
+				span.AddEvent("job.created", trace.WithAttributes(
+					semconv.K8SNamespaceName(renovateJob.Namespace),
+					semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
+				))
+			}
+
+			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, &types.RenovateStatusUpdate{
+				Status: api.JobStatusRunning,
+			}); err != nil {
+				return err
+			}
 		}
 
 		globalRunning++
 		perJobRunning[key]++
+	}
+
+	return nil
+}
+
+// handlePreUpgradeHook monitors the preUpgrade hook job and transitions to the main renovate job.
+func (e *renovateExecutor) handlePreUpgradeHook(ctx context.Context, renovateJob *api.RenovateJob, project *api.ProjectStatus, jobId *crdManager.RenovateJobIdentifier) error {
+	job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		RenovateJobName: renovateJob.Name,
+		Project:         project.Name,
+		JobType:         crdManager.PreUpgradeJobType,
+		Namespace:       renovateJob.Namespace,
+	})
+
+	var newStatus api.RenovateProjectStatus
+	var durationStr string
+	if err != nil {
+		if errors.IsNotFound(err) {
+			newStatus = api.JobStatusFailed
+		} else {
+			return err
+		}
+	} else {
+		newStatus, durationStr, err = getJobStatus(job)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Hook job has finished
+	if newStatus != api.JobStatusRunning {
+		failOnError := getFailOnError(renovateJob.Spec.PreUpgrade)
+
+		if newStatus == api.JobStatusFailed && failOnError {
+			e.logger.Error(nil, "preUpgrade hook failed, failing project", "project", project.Name)
+			err = e.manager.UpdateProjectStatus(ctx, project.Name, *jobId, &types.RenovateStatusUpdate{
+				Status:    api.JobStatusFailed,
+				SubStatus: nil,
+				Duration:  &durationStr,
+			})
+			return err
+		}
+
+		if newStatus == api.JobStatusFailed && !failOnError {
+			e.logger.Info("preUpgrade hook failed but failOnError=false, continuing", "project", project.Name)
+		}
+
+		// PreUpgrade succeeded or failed with failOnError=false, create main renovate job
+		carrier := propagation.MapCarrier{}
+		otel.GetTextMapPropagator().Inject(ctx, carrier)
+		renovateJobObj := newRenovateJob(renovateJob, project.Name, carrier.Get("traceparent"))
+		if err := controllerutil.SetControllerReference(renovateJob, renovateJobObj, e.scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference for renovate job: %w", err)
+		}
+
+		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, renovateJobObj, crdManager.JobSelector{
+			RenovateJobName: renovateJob.Name,
+			Project:         project.Name,
+			JobType:         crdManager.ExecutorJobType,
+			Namespace:       renovateJob.Namespace,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create renovate job for project %s: %w", project.Name, err)
+		}
+
+		err = e.manager.UpdateProjectStatus(ctx, project.Name, *jobId, &types.RenovateStatusUpdate{
+			Status:    api.JobStatusRunning,
+			SubStatus: nil,
+		})
+		if err != nil {
+			return err
+		}
+		e.logger.Info("preUpgrade hook completed, started renovate job", "project", project.Name)
+
+		if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && job != nil {
+			err = crdManager.DeleteJob(ctx, e.client, job)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// handlePostUpgradeHook monitors the postUpgrade hook job and finalizes the project status
+func (e *renovateExecutor) handlePostUpgradeHook(ctx context.Context, renovateJob *api.RenovateJob, project *api.ProjectStatus, jobId *crdManager.RenovateJobIdentifier) error {
+	job, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		RenovateJobName: renovateJob.Name,
+		Project:         project.Name,
+		JobType:         crdManager.PostUpgradeJobType,
+		Namespace:       renovateJob.Namespace,
+	})
+
+	var newStatus api.RenovateProjectStatus
+	var durationStr string
+	if err != nil {
+		if errors.IsNotFound(err) {
+			newStatus = api.JobStatusFailed
+		} else {
+			return err
+		}
+	} else {
+		newStatus, durationStr, err = getJobStatus(job)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Hook job has finished
+	if newStatus != api.JobStatusRunning {
+		failOnError := getFailOnError(renovateJob.Spec.PostUpgrade)
+
+		var finalStatus api.RenovateProjectStatus
+		if newStatus == api.JobStatusFailed && failOnError {
+			e.logger.Error(nil, "postUpgrade hook failed, failing project", "project", project.Name)
+			finalStatus = api.JobStatusFailed
+		} else {
+			if newStatus == api.JobStatusFailed && !failOnError {
+				e.logger.Info("postUpgrade hook failed but failOnError=false, using completed status", "project", project.Name)
+			}
+			// Use completed status (renovate must have succeeded to reach postUpgrade)
+			finalStatus = api.JobStatusCompleted
+		}
+
+		err = e.manager.UpdateProjectStatus(ctx, project.Name, *jobId, &types.RenovateStatusUpdate{
+			Status:    finalStatus,
+			SubStatus: nil,
+			Duration:  &durationStr,
+		})
+		if err != nil {
+			return err
+		}
+		e.logger.Info("postUpgrade hook completed", "project", project.Name, "finalStatus", finalStatus)
+
+		if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && job != nil {
+			err = crdManager.DeleteJob(ctx, e.client, job)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
