@@ -34,6 +34,7 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
+	updateSubStatus(projectStatus, desiredStatus.SubStatus)
 	return projectStatus
 }
 
@@ -47,6 +48,7 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
+	updateSubStatus(projectStatus, desiredStatus.SubStatus)
 	return projectStatus
 }
 
@@ -61,6 +63,7 @@ func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredSta
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
+	updateSubStatus(projectStatus, desiredStatus.SubStatus)
 	return projectStatus
 }
 
@@ -75,6 +78,7 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
+	updateSubStatus(projectStatus, desiredStatus.SubStatus)
 	return projectStatus
 }
 
@@ -94,4 +98,9 @@ func updateLogIssues(projectStatus *api.ProjectStatus, issues *api.LogIssues) {
 	if issues != nil {
 		projectStatus.LogIssues = issues
 	}
+}
+
+func updateSubStatus(projectStatus *api.ProjectStatus, subStatus *string) {
+	// Always update SubStatus, even if it's nil (to clear it)
+	projectStatus.SubStatus = subStatus
 }
