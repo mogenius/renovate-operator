@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"renovate-operator/internal/kvstore"
 )
 
 // Sentinel errors for session store operations.
@@ -29,7 +31,7 @@ type SessionStore interface {
 
 // NewSessionStore creates a SessionStore wrapping the provided KVStore.
 // If kvStore is nil, returns (nil, nil) — indicating cookie-only mode.
-func NewSessionStore(kvStore KVStore, encryptionKey [32]byte) (SessionStore, error) {
+func NewSessionStore(kvStore kvstore.KVStore, encryptionKey [32]byte) (SessionStore, error) {
 	if kvStore == nil {
 		return nil, nil
 	}
@@ -46,7 +48,7 @@ func NewSessionStore(kvStore KVStore, encryptionKey [32]byte) (SessionStore, err
 // It handles JSON marshaling and AES-GCM encryption, delegating
 // raw storage to the underlying KVStore with a "session:" key prefix.
 type valkeySessionStore struct {
-	store KVStore
+	store kvstore.KVStore
 	gcm   cipher.AEAD
 }
 
@@ -61,12 +63,12 @@ func (v *valkeySessionStore) Save(ctx context.Context, id string, data sessionDa
 		return fmt.Errorf("failed to encrypt session data: %w", err)
 	}
 
-	return v.store.Put(ctx, JoinKey("session", id), sealed, ttl)
+	return v.store.Put(ctx, kvstore.JoinKey("session", id), sealed, ttl)
 }
 
 func (v *valkeySessionStore) Load(ctx context.Context, id string) (*sessionData, error) {
-	raw, err := v.store.Get(ctx, JoinKey("session", id))
-	if errors.Is(err, ErrKeyNotFound) {
+	raw, err := v.store.Get(ctx, kvstore.JoinKey("session", id))
+	if errors.Is(err, kvstore.ErrKeyNotFound) {
 		return nil, ErrSessionNotFound
 	}
 	if err != nil {
@@ -87,7 +89,7 @@ func (v *valkeySessionStore) Load(ctx context.Context, id string) (*sessionData,
 }
 
 func (v *valkeySessionStore) Delete(ctx context.Context, id string) error {
-	return v.store.Del(ctx, JoinKey("session", id))
+	return v.store.Del(ctx, kvstore.JoinKey("session", id))
 }
 
 func (v *valkeySessionStore) Close() error {

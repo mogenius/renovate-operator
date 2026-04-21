@@ -97,15 +97,6 @@ func (f *fakeDiscovery) WaitForDiscoveryJob(ctx context.Context, job *api.Renova
 	return []string{}, nil
 }
 
-// fakeGitProviderClient implements gitprovider.GitProviderClient for tests.
-type fakeGitProviderClient struct {
-	isForkFn func(ctx context.Context, project string) (bool, error)
-}
-
-func (f *fakeGitProviderClient) IsFork(ctx context.Context, project string) (bool, error) {
-	return f.isForkFn(ctx, project)
-}
-
 type fakeScheduler struct {
 	addedExpr    string
 	addedName    string

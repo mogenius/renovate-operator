@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"renovate-operator/internal/kvstore"
 	"strings"
 	"testing"
 	"time"
@@ -268,10 +269,10 @@ func TestCookieOnlySession_RoundTrip(t *testing.T) {
 
 // --- KVStore tests (using miniredis — wire-compatible) ---
 
-func newTestValkeyKVStore(t *testing.T) (KVStore, *miniredis.Miniredis) {
+func newTestValkeyKVStore(t *testing.T) (kvstore.KVStore, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)
-	store, err := NewValkeyKVStore("redis://" + mr.Addr() + "/0")
+	store, err := kvstore.NewValkeyKVStore("redis://" + mr.Addr() + "/0")
 	if err != nil {
 		t.Fatalf("NewValkeyKVStore failed: %v", err)
 	}
@@ -302,7 +303,7 @@ func TestKVStore_GetNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.Get(ctx, "nonexistent")
-	if !errors.Is(err, ErrKeyNotFound) {
+	if !errors.Is(err, kvstore.ErrKeyNotFound) {
 		t.Errorf("Expected ErrKeyNotFound, got %v", err)
 	}
 }
@@ -319,7 +320,7 @@ func TestKVStore_Del(t *testing.T) {
 	}
 
 	_, err := store.Get(ctx, "key-del")
-	if !errors.Is(err, ErrKeyNotFound) {
+	if !errors.Is(err, kvstore.ErrKeyNotFound) {
 		t.Errorf("Expected ErrKeyNotFound after Del, got %v", err)
 	}
 }
@@ -341,7 +342,7 @@ func TestKVStore_Expiry(t *testing.T) {
 	mr.FastForward(11 * time.Second)
 
 	_, err := store.Get(ctx, "key-exp")
-	if !errors.Is(err, ErrKeyNotFound) {
+	if !errors.Is(err, kvstore.ErrKeyNotFound) {
 		t.Errorf("Expected ErrKeyNotFound after expiry, got %v", err)
 	}
 }
@@ -493,17 +494,17 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 	keys := mr.Keys()
 	found := false
 	for _, k := range keys {
-		if k == JoinKey("session", "rs-enc") {
+		if k == kvstore.JoinKey("session", "rs-enc") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("Expected key %q in Valkey, got keys: %v", JoinKey("session", "rs-enc"), keys)
+		t.Errorf("Expected key %q in Valkey, got keys: %v", kvstore.JoinKey("session", "rs-enc"), keys)
 	}
 
 	// Read the raw value from miniredis — it should NOT be plaintext JSON
-	raw, err := mr.Get(JoinKey("session", "rs-enc"))
+	raw, err := mr.Get(kvstore.JoinKey("session", "rs-enc"))
 	if err != nil {
 		t.Fatalf("Failed to read raw value from miniredis: %v", err)
 	}
@@ -529,14 +530,14 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 // --- Factory and URL builder tests ---
 
 func TestBuildValkeyURL_EmptyHost(t *testing.T) {
-	result := buildValkeyURL("", "6379", "")
+	result := kvstore.BuildValkeyURL("", "6379", "")
 	if result != "" {
 		t.Errorf("Expected empty string for empty host, got %q", result)
 	}
 }
 
 func TestBuildValkeyURL_HostAndPort(t *testing.T) {
-	result := buildValkeyURL("valkey.example.com", "6380", "")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6380", "")
 	expected := "redis://valkey.example.com:6380/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -544,7 +545,7 @@ func TestBuildValkeyURL_HostAndPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_DefaultPort(t *testing.T) {
-	result := buildValkeyURL("valkey.example.com", "", "")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "", "")
 	expected := "redis://valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -552,7 +553,7 @@ func TestBuildValkeyURL_DefaultPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_WithPassword(t *testing.T) {
-	result := buildValkeyURL("valkey.example.com", "6379", "s3cret")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "s3cret")
 	expected := "redis://:s3cret@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -560,7 +561,7 @@ func TestBuildValkeyURL_WithPassword(t *testing.T) {
 }
 
 func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
-	result := buildValkeyURL("valkey.example.com", "6379", "p@ss:word/123")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "p@ss:word/123")
 	expected := "redis://:p%40ss%3Aword%2F123@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -568,7 +569,7 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 }
 
 func TestNewKVStore_EmptyConfig_ReturnsNil(t *testing.T) {
-	store, err := NewKVStore(ValkeyConfig{})
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{})
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}
@@ -580,7 +581,7 @@ func TestNewKVStore_EmptyConfig_ReturnsNil(t *testing.T) {
 func TestNewKVStore_WithValkeyURL(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	store, err := NewKVStore(ValkeyConfig{
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		URL: "redis://" + mr.Addr() + "/0",
 	})
 	if err != nil {
@@ -594,7 +595,7 @@ func TestNewKVStore_WithValkeyURL(t *testing.T) {
 func TestNewKVStore_WithHost(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	store, err := NewKVStore(ValkeyConfig{
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		Host: mr.Host(),
 		Port: mr.Port(),
 	})
@@ -610,7 +611,7 @@ func TestNewKVStore_URLTakesPrecedenceOverHost(t *testing.T) {
 	mr := miniredis.RunT(t)
 
 	// URL points to miniredis, Host points to nowhere
-	store, err := NewKVStore(ValkeyConfig{
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		URL:  "redis://" + mr.Addr() + "/0",
 		Host: "nonexistent.invalid",
 		Port: "9999",
@@ -645,7 +646,7 @@ func TestNewSessionStore_WithKVStore(t *testing.T) {
 		t.Fatalf("ComputeEncryptionKey failed: %v", err)
 	}
 
-	kvStore, kvErr := NewValkeyKVStore("redis://" + mr.Addr() + "/0")
+	kvStore, kvErr := kvstore.NewValkeyKVStore("redis://" + mr.Addr() + "/0")
 	if kvErr != nil {
 		t.Fatalf("NewValkeyKVStore failed: %v", kvErr)
 	}
@@ -670,7 +671,7 @@ func TestJoinKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := JoinKey(tt.parts...)
+		result := kvstore.JoinKey(tt.parts...)
 		if result != tt.expected {
 			t.Errorf("JoinKey(%v) = %q, want %q", tt.parts, result, tt.expected)
 		}
