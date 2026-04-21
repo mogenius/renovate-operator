@@ -306,3 +306,6 @@ metrics:
       instanceSelector:
         matchLabels:
           grafana.internal/instance: "grafana"
+
+# -- list of extra manifests
+extraManifests: []
