@@ -6,13 +6,13 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/utils"
 	"strconv"
 	"strings"
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+
 	"k8s.io/utils/ptr"
 )
 
@@ -211,19 +211,17 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		})
 	}
 
-	valkeyURL := config.GetValue("VALKEY_URL")
-	if valkeyURL == "" {
-		valkeyURL = kvstore.BuildValkeyURL(
-			config.GetValue("VALKEY_HOST"),
-			config.GetValue("VALKEY_PORT"),
-			config.GetValue("VALKEY_PASSWORD"),
-		)
-	}
-
-	if valkeyURL != "" {
+	if getValkeyURL() != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_REDIS_URL",
-			Value: valkeyURL,
+			Name: "RENOVATE_REDIS_URL",
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: redisURLSecretName,
+					},
+					Key: "redis-url",
+				},
+			},
 		})
 	}
 	return predefinedEnvVars

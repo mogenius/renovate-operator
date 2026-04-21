@@ -172,6 +172,10 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	lock.Lock()
 	defer lock.Unlock()
 
+	if err := ensureRedisURLSecret(ctx, e.client, renovateJob.Namespace); err != nil {
+		return "", fmt.Errorf("failed to ensure redis url secret: %w", err)
+	}
+
 	discoveryJob := newDiscoveryJob(&renovateJob)
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)

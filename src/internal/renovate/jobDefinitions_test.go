@@ -182,7 +182,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
 		{Key: "JOB_TTL_SECONDS_AFTER_FINISHED", Optional: true, Default: "360"},
-		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379"},
+		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379/0"},
 		{Key: "VALKEY_HOST", Optional: true, Default: ""},
 		{Key: "VALKEY_PORT", Optional: true, Default: "6379"},
 		{Key: "VALKEY_PASSWORD", Optional: true, Default: ""},
@@ -210,8 +210,9 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
 	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
-	expectEnvVar(t, djContainer, "RENOVATE_REDIS_URL", "redis://redis.svc.cluster.local:6379")
 	expectEnvFromSecret(t, djContainer, "sref")
+	expectEnvVarFromSecretKey(t, djContainer, "RENOVATE_REDIS_URL", "renovate-redis-url", "redis-url")
+
 	// volumes
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
 	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
@@ -239,7 +240,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 	// env vars
 	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
-	expectEnvVar(t, rjContainer, "RENOVATE_REDIS_URL", "redis://redis.svc.cluster.local:6379")
+	expectEnvVarFromSecretKey(t, rjContainer, "RENOVATE_REDIS_URL", "renovate-redis-url", "redis-url")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
@@ -586,6 +587,22 @@ func expectEnvVar(t *testing.T, container *v1.Container, name, expectedValue str
 			}
 			return
 		}
+	}
+	t.Fatalf("expected env var %s not found", name)
+}
+
+func expectEnvVarFromSecretKey(t *testing.T, container *v1.Container, name, secretName, secretKey string) {
+	for _, env := range container.Env {
+		if env.Name != name {
+			continue
+		}
+		if env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil {
+			t.Fatalf("expected env var %s to use secret key ref, got %+v", name, env)
+		}
+		if env.ValueFrom.SecretKeyRef.Name != secretName || env.ValueFrom.SecretKeyRef.Key != secretKey {
+			t.Fatalf("expected env var %s to use %s/%s, got %+v", name, secretName, secretKey, env.ValueFrom.SecretKeyRef)
+		}
+		return
 	}
 	t.Fatalf("expected env var %s not found", name)
 }
