@@ -1,3 +1,11 @@
+## [4.5.1](https://github.com/mogenius/renovate-operator/compare/4.5.0...4.5.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **helm:** always pass VALKEY_FORWARD_CACHE_TO_JOBS so that it also works with existing valkey instances ([c2e01ea](https://github.com/mogenius/renovate-operator/commit/c2e01eaa79ab55f390e330a016a1e1a6a0bc5d56))
+* **helm:** always render DEFAULT_ALLOWED_GROUPS env ([7e81e2e](https://github.com/mogenius/renovate-operator/commit/7e81e2e3d0335cd93c70a23c0994c8168c39cf6e))
+
 # [4.5.0](https://github.com/mogenius/renovate-operator/compare/4.4.0...4.5.0) (2026-04-22)
 
 
