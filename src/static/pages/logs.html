@@ -177,7 +177,13 @@
         DEBUG: "text-gray-400 dark:text-slate-500",
       };
 
-      const [selectedLevels, setSelectedLevels] = useState(new Set(ALL_LEVELS));
+      const initialLevels = useMemo(() => {
+        const raw = params.get("levels");
+        if (!raw) return new Set(ALL_LEVELS);
+        const requested = raw.split(",").map(s => s.trim().toUpperCase()).filter(s => ALL_LEVELS.includes(s));
+        return requested.length > 0 ? new Set(requested) : new Set(ALL_LEVELS);
+      }, []);
+      const [selectedLevels, setSelectedLevels] = useState(initialLevels);
       const [filterOpen, setFilterOpen] = useState(false);
       const filterRef = useRef(null);
 

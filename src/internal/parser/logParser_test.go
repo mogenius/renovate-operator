@@ -801,14 +801,30 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			wantIssueCount: 1,
 		},
 		{
-			name: "message truncation at 256 chars",
-			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", 300)),
+			name: "message truncation with ellipsis suffix",
+			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen+50)),
+			wantWarnCount:  1,
+			wantErrorCount: 0,
+			wantIssueCount: 1,
+			checkIssues: func(t *testing.T, issues []api.LogIssue) {
+				wantLen := MaxIssueMessageLen + len("…")
+				if len(issues[0].Message) != wantLen {
+					t.Errorf("message length = %d, want %d", len(issues[0].Message), wantLen)
+				}
+				if !strings.HasSuffix(issues[0].Message, "…") {
+					t.Errorf("message does not end with ellipsis")
+				}
+			},
+		},
+		{
+			name: "message exactly at MaxIssueMessageLen - no ellipsis",
+			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen)),
 			wantWarnCount:  1,
 			wantErrorCount: 0,
 			wantIssueCount: 1,
 			checkIssues: func(t *testing.T, issues []api.LogIssue) {
 				if len(issues[0].Message) != MaxIssueMessageLen {
-					t.Errorf("message length = %d, want %d", len(issues[0].Message), MaxIssueMessageLen)
+					t.Errorf("message length = %d, want %d (no ellipsis expected)", len(issues[0].Message), MaxIssueMessageLen)
 				}
 			},
 		},

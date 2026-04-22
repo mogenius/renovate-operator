@@ -148,7 +148,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 			msg := entry.Msg
 			if len(msg) > MaxIssueMessageLen {
-				msg = msg[:MaxIssueMessageLen]
+				msg = msg[:MaxIssueMessageLen] + "…"
 			}
 			if msg != "" && !seenMessages[msg] {
 				seenMessages[msg] = true
