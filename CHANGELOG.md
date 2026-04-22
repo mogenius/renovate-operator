@@ -1,3 +1,16 @@
+# [4.5.0](https://github.com/mogenius/renovate-operator/compare/4.4.0...4.5.0) (2026-04-22)
+
+
+### Bug Fixes
+
+* **ui:** allow re-prioritizing scheduled projects via Trigger button ([10d1c4f](https://github.com/mogenius/renovate-operator/commit/10d1c4f12b76fcce95eb9f9cad1eb778c44ca1c5)), closes [mogenius/renovate-operator#309](https://github.com/mogenius/renovate-operator/issues/309)
+* **ui:** make the errors and warnings under issues a deeplink so i can see the whole message ([#311](https://github.com/mogenius/renovate-operator/issues/311)) ([701ff86](https://github.com/mogenius/renovate-operator/commit/701ff862d26f3fb53cfec580252cbb4a0bfb6ddd))
+
+
+### Features
+
+* **helm:** adding of extraManifests in the operator values ([#306](https://github.com/mogenius/renovate-operator/issues/306)) ([3acd75e](https://github.com/mogenius/renovate-operator/commit/3acd75ec578bb2b361c889898896dea87afc1537)), closes [#303](https://github.com/mogenius/renovate-operator/issues/303)
+
 # [4.4.0](https://github.com/mogenius/renovate-operator/compare/4.3.5...4.4.0) (2026-04-21)
 
 
