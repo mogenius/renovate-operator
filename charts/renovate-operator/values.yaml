@@ -308,3 +308,15 @@ metrics:
       instanceSelector:
         matchLabels:
           grafana.internal/instance: "grafana"
+
+# -- list of extra manifests
+extraManifests: []
+  #- | 
+  #  apiVersion: v1
+  #  data:
+  #    client-secret: XXXXXXXXXXXXXXXXXXX
+  #  kind: Secret
+  #  metadata:
+  #    name: oidc-secret
+  #    namespace: renovate-operator
+  #  type: Opaque
