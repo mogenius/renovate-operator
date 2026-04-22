@@ -414,3 +414,99 @@ func getScratchVolumePath(scratch *api.RenovateJobScratchVolume) string {
 	}
 	return "/tmp"
 }
+
+// getFailOnError returns true if the hook should fail the execution on error (default: true)
+func getFailOnError(hook *api.RenovateHook) bool {
+	if hook.FailOnError == nil {
+		return true
+	}
+	return *hook.FailOnError
+}
+
+// create a Job spec for a hook (preUpgrade or postUpgrade)
+func newHookJob(job *api.RenovateJob, project string, hook *api.RenovateHook, hookType crdmanager.JobType) *batchv1.Job {
+	// Build volumes - same as renovate job
+	volumes := []v1.Volume{
+		{
+			Name: "tmp",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{},
+			},
+		},
+	}
+	volumes = append(volumes, job.Spec.ExtraVolumes...)
+
+	// Build volume mounts - use hook's custom mounts or default to /tmp
+	volumeMounts := hook.VolumeMounts
+	if len(volumeMounts) == 0 {
+		volumeMounts = []v1.VolumeMount{
+			{
+				Name:      "tmp",
+				MountPath: "/tmp",
+			},
+		}
+	}
+
+	// Build container spec with hook configuration
+	container := v1.Container{
+		Name:            string(hookType),
+		Image:           hook.Image,
+		Command:         hook.Command,
+		Args:            hook.Args,
+		Env:             hook.Env,
+		EnvFrom:         hook.EnvFrom,
+		Resources:       hook.Resources,
+		VolumeMounts:    volumeMounts,
+		SecurityContext: getContainerSecurityContext(job.Spec),
+	}
+
+	// Create the job
+	batchJob := &batchv1.Job{
+		Spec: batchv1.JobSpec{
+			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
+			BackoffLimit:            getJobBackOffLimit(),
+			TTLSecondsAfterFinished: getJobTTLSecondsAfterFinished(),
+			Template: v1.PodTemplateSpec{
+				Spec: v1.PodSpec{
+					ServiceAccountName:            getServiceAccountName(job.Spec),
+					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					Containers:                    []v1.Container{container},
+					SecurityContext:               getPodSecurityContext(job.Spec),
+					AutomountServiceAccountToken:  getAutoMountServiceAccountToken(job.Spec),
+					RestartPolicy:                 v1.RestartPolicyOnFailure,
+					DNSPolicy:                     getDNSPolicy(job.Spec),
+					NodeSelector:                  job.Spec.NodeSelector,
+					Affinity:                      job.Spec.Affinity,
+					Tolerations:                   job.Spec.Tolerations,
+					TopologySpreadConstraints:     job.Spec.TopologySpreadConstraints,
+					Volumes:                       volumes,
+				},
+			},
+		},
+	}
+
+	// Set job name based on hook type
+	var jobName string
+	if hookType == crdmanager.PreUpgradeJobType {
+		jobName = utils.PreUpgradeJobName(job, project)
+	} else {
+		jobName = utils.PostUpgradeJobName(job, project)
+	}
+
+	batchJob.GenerateName = jobName
+	batchJob.Namespace = job.Namespace
+
+	// Apply metadata annotations if configured
+	if job.Spec.Metadata != nil {
+		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
+		batchJob.Annotations = job.Spec.Metadata.Annotations
+	}
+
+	// Set labels
+	labels := getJobLabels(job.Spec.Metadata, hookType, jobName)
+	batchJob.Labels = labels
+	batchJob.Spec.Template.Labels = labels
+
+	return batchJob
+}

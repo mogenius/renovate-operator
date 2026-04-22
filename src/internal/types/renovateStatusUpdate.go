@@ -9,6 +9,7 @@ import (
 type RenovateStatusUpdate struct {
 	Status               api.RenovateProjectStatus
 	Priority             int32
+	SubStatus            *string
 	RenovateResultStatus *string
 	PRActivity           *api.PRActivity
 	LogIssues            *api.LogIssues
