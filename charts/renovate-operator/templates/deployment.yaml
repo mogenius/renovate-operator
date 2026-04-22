@@ -196,10 +196,10 @@ spec:
             {{- end }}
             - name: VALKEY_FORWARD_CACHE_TO_JOBS
               value: {{ .Values.config.forwardCacheToJobs | quote }}
+            {{- end }}
             {{- if .Values.auth.defaultAllowedGroups }}
             - name: DEFAULT_ALLOWED_GROUPS
               value: {{ .Values.auth.defaultAllowedGroups | quote }}
-            {{- end }}
             {{- end }}
             - name: GLOBAL_PARALLELISM_LIMIT
               value: {{ .Values.config.globalParallelismLimit | quote }}
