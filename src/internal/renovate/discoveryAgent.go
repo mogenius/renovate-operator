@@ -131,7 +131,7 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
 	}
-	e.logger.V(2).Info("Discovered projects", "count", len(projects), "job", job.Fullname())
+	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", job.Fullname())
 
 	return projects, nil
 }

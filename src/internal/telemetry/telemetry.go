@@ -155,7 +155,8 @@ func NewOTelLogSink(name string) *otellogr.LogSink {
 }
 
 // TeeLogSink fans out log calls to a primary and secondary logr.LogSink.
-// The primary sink controls Enabled(); both sinks receive all log calls.
+// The primary sink controls Enabled(); the secondary only receives entries that
+// pass the primary's Enabled check (logr short-circuits before calling Info).
 type TeeLogSink struct {
 	primary   logr.LogSink
 	secondary logr.LogSink

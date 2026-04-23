@@ -41,7 +41,7 @@ var (
 )
 
 // OTel metric instruments are created at package init time. The OTel SDK returns
-// no-op instruments when creation fails, so errors are logged but not fatal.
+// no-op instruments when creation fails, so the returned errors are safely ignored.
 var (
 	otelExecutorLoopDuration, _ = executorMeter.Float64Histogram(
 		"renovate_operator.executor.loop.duration",
