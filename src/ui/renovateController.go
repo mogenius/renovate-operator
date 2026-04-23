@@ -15,16 +15,27 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
+// UIProjectStatus extends the crdmanager project status with UI-specific fields.
+type UIProjectStatus struct {
+	Name                 string                    `json:"name"`
+	Status               api.RenovateProjectStatus `json:"status"`
+	LastRun              time.Time                 `json:"lastRun,omitempty"`
+	Priority             int32                     `json:"priority,omitempty"`
+	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
+	Duration             *string                   `json:"duration,omitempty"`
+	CanWrite             *bool                     `json:"canWrite,omitempty"`
+}
+
 type RenovateJobInfo struct {
-	Name             string                             `json:"name"`
-	Namespace        string                             `json:"namespace"`
-	CronExpression   string                             `json:"cronExpression"`
-	NextSchedule     time.Time                          `json:"nextSchedule"`
-	DiscoveryStatus  api.RenovateProjectStatus          `json:"discoveryStatus"`
-	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
-	Platform         string                             `json:"platform,omitempty"`
-	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
-	ExecutionOptions *ExecutionOptions                  `json:"executionOptions,omitempty"`
+	Name             string                    `json:"name"`
+	Namespace        string                    `json:"namespace"`
+	CronExpression   string                    `json:"cronExpression"`
+	NextSchedule     time.Time                 `json:"nextSchedule"`
+	DiscoveryStatus  api.RenovateProjectStatus `json:"discoveryStatus"`
+	Projects         []UIProjectStatus         `json:"projects"`
+	Platform         string                    `json:"platform,omitempty"`
+	PlatformEndpoint string                    `json:"platformEndpoint,omitempty"`
+	ExecutionOptions *ExecutionOptions         `json:"executionOptions,omitempty"`
 }
 
 type ExecutionOptions struct {
@@ -252,9 +263,12 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 
 		platform, platformEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 
-		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
+		// Resolve user's repo permissions for this job's platform
+		userRepos := getUserRepos(r.Context(), session, platform, platformEndpoint, s.repoCache, s.logger)
+
+		crdProjects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {
-			projects = append(projects, crdmanager.RenovateProjectStatus{
+			crdProjects = append(crdProjects, crdmanager.RenovateProjectStatus{
 				Name:                 p.Name,
 				Status:               p.Status,
 				LastRun:              p.LastRun.Time,
@@ -264,6 +278,29 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				PRActivity:           p.PRActivity,
 				LogIssues:            p.LogIssues,
 			})
+		}
+
+		// Filter projects by user's repo access on the git platform
+		crdProjects = filterProjectsByAccess(r.Context(), session, platform, platformEndpoint, crdProjects, s.repoCache, s.logger)
+
+		// Build UI project list with write permission annotations
+		projects := make([]UIProjectStatus, 0, len(crdProjects))
+		for _, p := range crdProjects {
+			proj := UIProjectStatus{
+				Name:                 p.Name,
+				Status:               p.Status,
+				LastRun:              p.LastRun,
+				Priority:             p.Priority,
+				RenovateResultStatus: p.RenovateResultStatus,
+				Duration:             p.Duration,
+			}
+			if userRepos != nil {
+				if perm, ok := userRepos[p.Name]; ok {
+					canWrite := perm.CanWrite
+					proj.CanWrite = &canWrite
+				}
+			}
+			projects = append(projects, proj)
 		}
 
 		result = append(result, RenovateJobInfo{
@@ -386,10 +423,26 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authorization check
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+	// Authorization check (returns job to check platform permissions)
+	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
+	if !authorized {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
+	}
+
+	// Check write permission on the specific repo
+	session := getSessionFromContext(r)
+	if job != nil {
+		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
+		if !canUserWriteRepo(r.Context(), session, platform, endpoint, params.project, s.repoCache, s.logger) {
+			s.logger.Info("Write access denied for repo",
+				"user", session.Email,
+				"project", params.project,
+				"renovateJob", params.name,
+				"namespace", params.namespace)
+			http.Error(w, "forbidden: write access required", http.StatusForbidden)
+			return
+		}
 	}
 
 	err = s.manager.UpdateProjectStatus(
@@ -426,9 +479,18 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
+	if !authorized {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
+	}
+
+	// Resolve writable repos so we only trigger projects the user can write to
+	var userRepos map[string]RepoPermission
+	session := getSessionFromContext(r)
+	if job != nil {
+		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
+		userRepos = getUserRepos(r.Context(), session, platform, endpoint, s.repoCache, s.logger)
 	}
 
 	jobIdentifier := crdmanager.RenovateJobIdentifier{
@@ -439,7 +501,17 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 	err = s.manager.UpdateProjectStatusBatched(
 		r.Context(),
 		func(p api.ProjectStatus) bool {
-			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
+			if p.Status == api.JobStatusRunning || p.Status == api.JobStatusScheduled {
+				return false
+			}
+			// Skip projects the user doesn't have write access to
+			if userRepos != nil {
+				perm, ok := userRepos[p.Name]
+				if !ok || !perm.CanWrite {
+					return false
+				}
+			}
+			return true
 		},
 		jobIdentifier,
 		&types.RenovateStatusUpdate{
