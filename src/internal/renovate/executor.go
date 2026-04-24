@@ -375,7 +375,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {
 			span.AddEvent("job.created", trace.WithAttributes(
 				semconv.K8SNamespaceName(renovateJob.Namespace),
-				semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
+				semconv.K8SJobName(k8sJob.Name),
 			))
 		}
 
