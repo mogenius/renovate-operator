@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"renovate-operator/gitProviderClients"
+	"renovate-operator/internal/telemetry"
 	"strconv"
 	"strings"
 )
@@ -24,7 +25,7 @@ func NewClient(endpoint, token string) *ForgejoClient {
 	return &ForgejoClient{
 		Endpoint:   endpoint,
 		Token:      token,
-		HTTPClient: http.DefaultClient,
+		HTTPClient: &http.Client{Transport: telemetry.WrapTransport(http.DefaultTransport)},
 	}
 }
 

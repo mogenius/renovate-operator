@@ -10,6 +10,7 @@ import (
 	"renovate-operator/health"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/scheduler"
 
 	"github.com/go-logr/logr"
@@ -96,6 +97,7 @@ func (s *Server) Run() {
 	assert.Assert(s.health != nil, "failed to start server. health check must not be nil")
 
 	router := mux.NewRouter()
+	router.Use(telemetry.MuxMiddleware("renovate-operator-ui"))
 
 	s.registerAuthRoutes(router)
 	s.registerApiV1Routes(router)

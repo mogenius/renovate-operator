@@ -193,7 +193,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	}
 
 	// test discovery job
-	dj := newDiscoveryJob(job)
+	dj := newDiscoveryJob(job, "")
 	djContainer := expectContainer(t, dj)
 	// basic fields
 	expectJobName(t, dj, "rj-discovery-6987b484")
@@ -228,7 +228,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectTopologySpreadConstraints(t, dj, job.Spec.TopologySpreadConstraints)
 
 	// test renovate job
-	rj := newRenovateJob(job, "proj")
+	rj := newRenovateJob(job, "proj", "")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
 	expectJobName(t, rj, "rj-proj-701b9b0a")
@@ -273,7 +273,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	}
 
 	// test discovery job
-	dj := newDiscoveryJob(job)
+	dj := newDiscoveryJob(job, "")
 	djContainer := expectContainer(t, dj)
 	// basic fields
 	expectJobName(t, dj, "nofilter-discovery-3006fe8c")
@@ -311,7 +311,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectTopologySpreadConstraints(t, dj, nil)
 
 	// test renovate job
-	rj := newRenovateJob(job, "myproj")
+	rj := newRenovateJob(job, "myproj", "")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
 	expectJobName(t, rj, "nofilter-myproj-496e220d")
@@ -354,10 +354,10 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
 			Spec:       api.RenovateJobSpec{Image: "img"},
 		}
-		dj := newDiscoveryJob(job)
+		dj := newDiscoveryJob(job, "")
 		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj")
+		rj := newRenovateJob(job, "proj", "")
 		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "default-secret"}})
 	})
 
@@ -369,10 +369,10 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 				ImagePullSecrets: []v1.LocalObjectReference{{Name: "spec-secret"}},
 			},
 		}
-		dj := newDiscoveryJob(job)
+		dj := newDiscoveryJob(job, "")
 		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj")
+		rj := newRenovateJob(job, "proj", "")
 		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 	})
 }
@@ -391,7 +391,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("nil scratchVolume creates default emptyDir at /tmp", func(t *testing.T) {
 		job := baseJob(nil)
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			c := expectContainer(t, bj)
 			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
@@ -405,7 +405,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("enabled=true explicitly creates scratch volume", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			c := expectContainer(t, bj)
 			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
@@ -415,7 +415,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("enabled=false disables scratch volume and RENOVATE_BASE_DIR", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: false})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			c := expectContainer(t, bj)
 			if len(bj.Spec.Template.Spec.Volumes) != 0 {
 				t.Fatalf("expected no volumes, got %v", bj.Spec.Template.Spec.Volumes)
@@ -433,7 +433,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("custom path sets mount and RENOVATE_BASE_DIR", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true, Path: "/workspace"})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			c := expectContainer(t, bj)
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/workspace"}})
 			expectEnvVar(t, c, "RENOVATE_BASE_DIR", "/workspace")
@@ -447,7 +447,7 @@ func TestScratchVolume(t *testing.T) {
 			Medium:    v1.StorageMediumMemory,
 			SizeLimit: &sl,
 		})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			vol := bj.Spec.Template.Spec.Volumes[0]
 			if vol.EmptyDir == nil {
 				t.Fatalf("expected emptyDir volume source")
@@ -473,7 +473,7 @@ func TestScratchVolume(t *testing.T) {
 				},
 			},
 		})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job), newRenovateJob(job, "proj")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
 			vol := bj.Spec.Template.Spec.Volumes[0]
 			if vol.Ephemeral == nil {
 				t.Fatalf("expected ephemeral volume source")
@@ -481,6 +481,65 @@ func TestScratchVolume(t *testing.T) {
 			if vol.EmptyDir != nil {
 				t.Fatalf("expected no emptyDir when ephemeral is set")
 			}
+		}
+	})
+}
+
+func TestOtelEnvVarsForJobs(t *testing.T) {
+	t.Run("returns OTEL vars when forwarding enabled with endpoint", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "true")
+		t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+		envs := otelEnvVarsForJobs()
+
+		var hasEndpoint bool
+		for _, env := range envs {
+			if env.Name == "OTEL_EXPORTER_OTLP_ENDPOINT" {
+				hasEndpoint = true
+			}
+			if env.Name == "OTEL_EXPORTER_OTLP_PROTOCOL" {
+				t.Fatal("OTEL_EXPORTER_OTLP_PROTOCOL should not be forwarded to Renovate jobs")
+			}
+			if env.Name == "TRACEPARENT" {
+				t.Fatal("TRACEPARENT should not be in otelEnvVarsForJobs")
+			}
+		}
+		if !hasEndpoint {
+			t.Fatal("expected OTEL_EXPORTER_OTLP_ENDPOINT to be present")
+		}
+	})
+
+	t.Run("returns nil when forwarding disabled", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "false")
+
+		envs := otelEnvVarsForJobs()
+		if envs != nil {
+			t.Fatalf("expected nil when forwarding disabled, got %v", envs)
+		}
+	})
+
+	t.Run("returns nil when no endpoint resolved", func(t *testing.T) {
+		t.Setenv("RENOVATE_FORWARD_OTEL", "true")
+
+		envs := otelEnvVarsForJobs()
+		if envs != nil {
+			t.Fatalf("expected nil when no endpoint, got %v", envs)
+		}
+	})
+}
+
+func TestTraceparentEnvVar(t *testing.T) {
+	t.Run("injects TRACEPARENT when provided", func(t *testing.T) {
+		envs := traceparentEnvVar("00-abc123-def456-01")
+		if len(envs) != 1 || envs[0].Name != "TRACEPARENT" || envs[0].Value != "00-abc123-def456-01" {
+			t.Fatalf("expected single TRACEPARENT env var, got %v", envs)
+		}
+	})
+
+	t.Run("returns nil when empty", func(t *testing.T) {
+		envs := traceparentEnvVar("")
+		if envs != nil {
+			t.Fatalf("expected nil when traceparent is empty, got %v", envs)
 		}
 	})
 }

@@ -311,7 +311,7 @@ metrics:
 
 # -- list of extra manifests
 extraManifests: []
-  #- | 
+  #- |
   #  apiVersion: v1
   #  data:
   #    client-secret: XXXXXXXXXXXXXXXXXXX
@@ -320,3 +320,18 @@ extraManifests: []
   #    name: oidc-secret
   #    namespace: renovate-operator
   #  type: Opaque
+
+# -- OpenTelemetry configuration for the operator
+telemetry:
+  # -- enable OTLP export of traces, metrics, and logs from the operator
+  enabled: false
+  # -- OTLP gRPC endpoint for the operator (host:port format, e.g. "my-collector:4317")
+  endpoint: ""
+  # -- OTLP protocol for the operator. Only "grpc" is currently supported.
+  protocol: "grpc"
+  # -- forward OTEL_* env vars to Renovate Jobs (uses Renovate's native OTLP/HTTP exporter)
+  forwardToJobs: false
+  # -- OTLP/HTTP endpoint for Renovate Jobs (full URL, e.g. "http://my-collector:4318").
+  # -- Defaults to telemetry.endpoint. Set this explicitly when the operator endpoint is a
+  # -- gRPC host:port so that Jobs receive a proper HTTP URL for Renovate's OTLP/HTTP exporter.
+  jobEndpoint: ""

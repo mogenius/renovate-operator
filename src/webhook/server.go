@@ -13,6 +13,7 @@ import (
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -36,6 +37,7 @@ func (s *Server) Run() {
 	assert.Assert(s.manager != nil, "failed to start server. manager must not be nil")
 
 	router := mux.NewRouter()
+	router.Use(telemetry.MuxMiddleware("renovate-operator-webhook"))
 	sub := router.PathPrefix("/webhook/v1").Subrouter()
 	sub.HandleFunc("/schedule", s.runRenovate).Methods("POST")
 	sub.HandleFunc("/gitlab", s.gitLabWebhook).Methods("POST")

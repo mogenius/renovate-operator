@@ -205,6 +205,18 @@ spec:
               value: {{ .Values.config.globalParallelismLimit | quote }}
             - name: LOG_STORE_MODE
               value: {{ .Values.config.logStorage.mode | quote }}
+            {{- if .Values.telemetry.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ required "telemetry.endpoint must be set when telemetry.enabled is true" .Values.telemetry.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.telemetry.protocol | quote }}
+            {{- end }}
+            {{- if .Values.telemetry.forwardToJobs }}
+            - name: RENOVATE_FORWARD_OTEL
+              value: "true"
+            - name: RENOVATE_JOB_OTEL_ENDPOINT
+              value: {{ required "telemetry.forwardToJobs requires telemetry.jobEndpoint or telemetry.endpoint to be set" (default .Values.telemetry.endpoint .Values.telemetry.jobEndpoint) | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
