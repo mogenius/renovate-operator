@@ -264,10 +264,14 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 					),
 				)
 			}
+			k8sJobName := utils.ExecutorJobName(renovateJob, project.Name)
+			if k8sJob != nil {
+				k8sJobName = k8sJob.Name
+			}
 			if span := trace.SpanFromContext(ctx); span.IsRecording() {
 				span.AddEvent("project.completed", trace.WithAttributes(
 					semconv.K8SNamespaceName(renovateJob.Namespace),
-					semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
+					semconv.K8SJobName(k8sJobName),
 					mapPipelineResult(newStatus),
 				))
 			}
