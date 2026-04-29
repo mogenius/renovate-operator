@@ -27,6 +27,7 @@ type mockRenovateJobManager struct {
 	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFunc         func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
+	cancelProjectJobFunc          func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -107,6 +108,13 @@ func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, jo
 }
 
 func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+	return nil
+}
+
+func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
+	if m.cancelProjectJobFunc != nil {
+		return m.cancelProjectJobFunc(ctx, project, jobId)
+	}
 	return nil
 }
 

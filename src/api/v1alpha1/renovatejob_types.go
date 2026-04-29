@@ -212,6 +212,7 @@ const (
 	JobStatusRunning   RenovateProjectStatus = "running"
 	JobStatusCompleted RenovateProjectStatus = "completed"
 	JobStatusFailed    RenovateProjectStatus = "failed"
+	JobStatusCancelled RenovateProjectStatus = "cancelled"
 )
 
 // RenovateJobStatus defines the observed state of RenovateJob

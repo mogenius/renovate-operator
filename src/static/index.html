@@ -624,6 +624,7 @@
               if (Array.isArray(job.projects)) {
                 job.projects.forEach((project) => {
                   project.triggering = false;
+                  project.cancelling = false;
                 });
               }
             }
@@ -724,6 +725,52 @@
           } catch (err) {
             console.error("Error triggering renovate:", err);
             addToast("error", "Trigger Failed", err.message);
+          } finally {
+            loadJobs();
+          }
+        };
+
+        const cancelRenovate = async (job, project) => {
+          if (project.cancelling) return;
+
+          setJobs((prev) =>
+            prev.map((j) => {
+              if (j.name === job.name && j.namespace === job.namespace) {
+                return {
+                  ...j,
+                  projects: j.projects.map((p) =>
+                    p.name === project.name ? { ...p, cancelling: true } : p
+                  ),
+                };
+              }
+              return j;
+            })
+          );
+
+          try {
+            const response = await authFetch("/api/v1/renovate/cancel", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                renovateJob: job.name,
+                namespace: job.namespace,
+                project: project.name,
+              }),
+            });
+
+            if (response.ok) {
+              addToast(
+                "success",
+                "Renovate Cancelled",
+                `Job cancelled for ${project.name}`
+              );
+            } else {
+              const errorText = await response.text();
+              throw new Error(errorText || "Failed to cancel renovate");
+            }
+          } catch (err) {
+            console.error("Error cancelling renovate:", err);
+            addToast("error", "Cancel Failed", err.message);
           } finally {
             loadJobs();
           }
@@ -955,6 +1002,7 @@
                       onRunDiscovery={runDiscovery}
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
+                      onCancelRenovate={cancelRenovate}
                       onSaveExecutionOptions={saveExecutionOptions}
                     />
                   ))}
@@ -1292,7 +1340,62 @@
         );
       }
 
-      function JobCard({ job, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onSaveExecutionOptions }) {
+      function ActionButton({ project, onTrigger, onCancel, width }) {
+        const isRunning = project.status === "running";
+        const isScheduled = project.status === "scheduled";
+        const isPrioritized = isScheduled && (project.priority || 0) > 0;
+        const isTriggering = !!project.triggering;
+        const isCancelling = !!project.cancelling;
+
+        if (isRunning) {
+          return (
+            <button
+              onClick={onCancel}
+              disabled={isCancelling}
+              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
+              aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
+            >
+              <span>{isCancelling ? "Cancelling..." : "Cancel"}</span>
+            </button>
+          );
+        }
+
+        const label = isTriggering
+          ? "Triggering..."
+          : isPrioritized
+          ? "Prioritized"
+          : isScheduled
+          ? "Prioritize"
+          : "Trigger";
+
+        return (
+          <button
+            onClick={onTrigger}
+            disabled={isTriggering || isPrioritized}
+            className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
+            aria-label={
+              isTriggering
+                ? "Triggering renovate"
+                : isPrioritized
+                ? `Renovate already prioritized for ${project.name}`
+                : isScheduled
+                ? `Prioritize renovate for ${project.name}`
+                : `Trigger renovate for ${project.name}`
+            }
+          >
+            <span className="inline-flex items-center justify-center gap-1">
+              {isPrioritized && (
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l5 5a1 1 0 01-1.414 1.414L11 6.414V16a1 1 0 11-2 0V6.414L5.707 9.707a1 1 0 01-1.414-1.414l5-5A1 1 0 0110 3z" clipRule="evenodd" />
+                </svg>
+              )}
+              {label}
+            </span>
+          </button>
+        );
+      }
+
+      function JobCard({ job, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, onSaveExecutionOptions }) {
         const [open, setOpen] = useState(true);
         const [sortConfig, setSortConfig] = useState({
           key: "status",
@@ -1396,6 +1499,8 @@
               return `${base} bg-success/10 text-success`;
             case "failed":
               return `${base} bg-error/10 text-error`;
+            case "cancelled":
+              return `${base} bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-slate-300`;
             default:
               return `${base} bg-primary/10 text-primary`;
           }
@@ -1862,31 +1967,12 @@
                             </td>
                             <td className="px-6 py-4 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() =>
-                                    onTriggerRenovate(job, project)
-                                  }
-                                  disabled={
-                                    project.triggering ||
-                                    project.status === "running"
-                                  }
-                                  className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all w-[100px]`}
-                                  aria-label={
-                                    project.triggering
-                                      ? "Triggering renovate"
-                                      : project.status === "scheduled"
-                                      ? `Prioritize renovate for ${project.name}`
-                                      : `Trigger renovate for ${project.name}`
-                                  }
-                                >
-                                  <span>
-                                    {project.triggering
-                                      ? "Triggering..."
-                                      : project.status === "scheduled"
-                                      ? "Prioritize"
-                                      : "Trigger"}
-                                  </span>
-                                </button>
+                                <ActionButton
+                                  project={project}
+                                  onTrigger={() => onTriggerRenovate(job, project)}
+                                  onCancel={() => onCancelRenovate(job, project)}
+                                  width="w-[100px]"
+                                />
                                 <a
                                   href={`/logs?renovate=${encodeURIComponent(
                                     job.name
@@ -2047,29 +2133,12 @@
                           </div>
                         )}
                         <div className="flex gap-2 flex-wrap" data-no-tooltip="true">
-                          <button
-                            onClick={() => onTriggerRenovate(job, project)}
-                            disabled={
-                              project.triggering ||
-                              project.status === "running"
-                            }
-                            className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all w-[110px]`}
-                            aria-label={
-                              project.triggering
-                                ? "Triggering renovate"
-                                : project.status === "scheduled"
-                                ? `Prioritize renovate for ${project.name}`
-                                : `Trigger renovate for ${project.name}`
-                            }
-                          >
-                            <span>
-                              {project.triggering
-                                ? "Triggering..."
-                                : project.status === "scheduled"
-                                ? "Prioritize"
-                                : "Trigger"}
-                            </span>
-                          </button>
+                          <ActionButton
+                            project={project}
+                            onTrigger={() => onTriggerRenovate(job, project)}
+                            onCancel={() => onCancelRenovate(job, project)}
+                            width="w-[110px]"
+                          />
                           <a
                             href={`/logs?renovate=${encodeURIComponent(
                               job.name

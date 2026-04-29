@@ -209,6 +209,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
 	apiV1.HandleFunc("/renovate/all", s.runRenovateForAllProjects).Methods("POST")
+	apiV1.HandleFunc("/renovate/cancel", s.cancelRenovateForProject).Methods("POST")
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
@@ -412,6 +413,41 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
 	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
+}
+
+func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request) {
+	params, err := getRenovateJsonBody(r)
+	if err != nil {
+		badRequestError(w, err, "failed to parse request body")
+		return
+	}
+
+	if params.name == "" || params.namespace == "" || params.project == "" {
+		badRequestError(w, err, "Missing parameters")
+		return
+	}
+
+	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	err = s.manager.CancelProjectJob(
+		r.Context(),
+		params.project,
+		crdmanager.RenovateJobIdentifier{
+			Name:      params.name,
+			Namespace: params.namespace,
+		},
+	)
+	if err != nil {
+		s.logger.Error(err, "Failed to cancel Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+		internalServerError(w, err, "failed to cancel Renovate for project")
+		return
+	}
+
+	writeSuccess(w, SuccessResult{Message: "Renovate job cancelled for project"})
+	s.logger.V(2).Info("Successfully cancelled Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
 }
 
 func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {

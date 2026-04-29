@@ -56,6 +56,9 @@ type RenovateJobManager interface {
 	IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error)
 	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
 	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
+	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
+	// transitions its CRD status to cancelled, freeing the slot for the next dispatch.
+	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
 }
 
 type renovateJobManager struct {
@@ -439,6 +442,24 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 	}
 
 	return false, nil
+}
+
+func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error {
+	stub := &api.RenovateJob{ObjectMeta: v1.ObjectMeta{Name: job.Name, Namespace: job.Namespace}}
+	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
+		JobName:   utils.ExecutorJobName(stub, project),
+		JobType:   ExecutorJobType,
+		Namespace: job.Namespace,
+	})
+	if err == nil && executorJob != nil {
+		if delErr := DeleteJob(ctx, r.client, executorJob); delErr != nil {
+			return fmt.Errorf("failed to delete executor job: %w", delErr)
+		}
+	}
+
+	return r.UpdateProjectStatus(ctx, project, job, &types.RenovateStatusUpdate{
+		Status: api.JobStatusCancelled,
+	})
 }
 
 func (r *renovateJobManager) UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {

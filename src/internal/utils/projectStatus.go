@@ -18,6 +18,8 @@ func GetUpdateStatusForProject(projectStatus *api.ProjectStatus, desiredStatus *
 		return validateProjectStatusCompleted(projectStatus, desiredStatus)
 	case api.JobStatusFailed:
 		return validateProjectStatusFailed(projectStatus, desiredStatus)
+	case api.JobStatusCancelled:
+		return validateProjectStatusCancelled(projectStatus, desiredStatus)
 	default:
 		return projectStatus
 	}
@@ -68,6 +70,20 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	// can only set a running project to failed
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusFailed
+		projectStatus.Priority = 0
+		projectStatus.LastRun = v1.Now()
+	}
+	projectStatus.Duration = desiredStatus.Duration
+	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
+	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updateLogIssues(projectStatus, desiredStatus.LogIssues)
+	return projectStatus
+}
+
+func validateProjectStatusCancelled(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
+	// can only set a running project to cancelled
+	if projectStatus.Status == api.JobStatusRunning {
+		projectStatus.Status = api.JobStatusCancelled
 		projectStatus.Priority = 0
 		projectStatus.LastRun = v1.Now()
 	}
