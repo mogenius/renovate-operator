@@ -1,3 +1,10 @@
+## [4.6.2](https://github.com/mogenius/renovate-operator/compare/4.6.1...4.6.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* **deps:** update module go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp to v0.68.0 ([057bdae](https://github.com/mogenius/renovate-operator/commit/057bdaec486993d3f77f1b646f807462baa7a830))
+
 ## [4.6.1](https://github.com/mogenius/renovate-operator/compare/4.6.0...4.6.1) (2026-05-04)
 
 
