@@ -69,7 +69,7 @@ config:
   # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
   globalParallelismLimit: 0
   logStorage:
-    # -- log store mode: "disabled" (default, no-op) or "memory" (cache logs in-memory after job completion)
+    # -- log store mode: "disabled" (default, no-op), valkey (needs to be enabled) or "memory" (cache logs in-memory after job completion)
     mode: disabled
   # -- wether to forward valkey cache to renovatejobs - valkey needs to be configured
   forwardCacheToJobs: true

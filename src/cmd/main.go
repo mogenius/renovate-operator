@@ -61,7 +61,7 @@ type authSetup struct {
 	cleanup              func()
 }
 
-func initAuth() authSetup {
+func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 	log := ctrl.Log.WithName("auth")
 
 	// Determine the session secret for the active auth provider so we can
@@ -88,13 +88,8 @@ func initAuth() authSetup {
 	cookieKey, storeKey := ui.DeriveSubKeys(encryptionKey)
 
 	// Initialize KV store (Valkey if configured, otherwise nil)
-	kvStore, kvErr := kvstore.NewKVStore(kvstore.ValkeyConfig{
-		URL:      config.GetValue("VALKEY_URL"),
-		Host:     config.GetValue("VALKEY_HOST"),
-		Port:     config.GetValue("VALKEY_PORT"),
-		Password: config.GetValue("VALKEY_PASSWORD"),
-	})
-	assert.NoError(kvErr, "failed to initialize KV store")
+	kvStore, kvErr := kvstore.NewKVStore(valkeyConf, kvstore.ValkeyDataBaseSessionStore)
+	assert.Assert(kvErr == nil || kvErr == kvstore.ErrValkeyNotConfigured, "failed to initialize KV store")
 
 	// Wrap KV store with session-specific encryption and key prefix
 	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
@@ -379,10 +374,10 @@ func main() {
 			Default:  "disabled",
 			Validate: func(value string) error {
 				switch value {
-				case "disabled", "memory":
+				case "disabled", "memory", "valkey":
 					return nil
 				}
-				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory")
+				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory, valkey")
 			},
 		},
 		{
@@ -439,7 +434,15 @@ func main() {
 
 	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
 
-	ls := logStore.NewLogStore(config.GetValue("LOG_STORE_MODE"))
+	valkeyConf := kvstore.ValkeyConfig{
+		URL:      config.GetValue("VALKEY_URL"),
+		Host:     config.GetValue("VALKEY_HOST"),
+		Port:     config.GetValue("VALKEY_PORT"),
+		Password: config.GetValue("VALKEY_PASSWORD"),
+	}
+
+	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf)
+	assert.NoError(err, "failed to initialize logStore")
 
 	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls)
 
@@ -451,7 +454,7 @@ func main() {
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
 
-	auth := initAuth()
+	auth := initAuth(valkeyConf)
 	defer auth.cleanup()
 
 	// UI and webhook servers run on all replicas
