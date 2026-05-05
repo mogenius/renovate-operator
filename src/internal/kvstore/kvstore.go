@@ -35,7 +35,6 @@ func JoinKey(parts ...string) string {
 
 // ValkeyConfig holds the configuration for connecting to Valkey.
 // Either URL or Host must be set; URL takes precedence.
-// DB selects the Valkey database index; 0 means the default database.
 type ValkeyConfig struct {
 	URL      string
 	Host     string
@@ -92,7 +91,5 @@ func BuildValkeyURL(host, port, password string, db int) string {
 	if password != "" {
 		userInfo = ":" + url.QueryEscape(password) + "@"
 	}
-	url := fmt.Sprintf("redis://%s%s:%s/0", userInfo, host, port)
-
-	return withDB(url, db)
+	return fmt.Sprintf("redis://%s%s:%s/%d", userInfo, host, port, db)
 }

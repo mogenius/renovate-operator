@@ -1,14 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "github>mogenius/renovate-config//presets/golang.json#main"
   ],
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
-    {
-      "matchManagers": ["gomod","dockerfile"],
-      "semanticCommitType": "fix"
-    },
     {
       "matchPackageNames": ["registry.k8s.io/kubectl"],
       "semanticCommitType": "fix"
