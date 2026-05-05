@@ -218,6 +218,11 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 
 			metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
 			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
+			approvalsNeeded := 0
+			if newProjectStatus.PRActivity != nil {
+				approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
+			}
+			metricStore.SetApprovalsNeeded(renovateJob.Namespace, renovateJob.Name, project.Name, approvalsNeeded)
 			metricStore.CaptureRenovateProjectExecution(ctx, renovateJob.Namespace, renovateJob.Name, project.Name, newStatus)
 
 			if span := trace.SpanFromContext(ctx); span.IsRecording() {
