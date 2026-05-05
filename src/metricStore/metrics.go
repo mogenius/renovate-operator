@@ -46,6 +46,13 @@ var (
 			Help: "Whether the last Renovate run had WARN/ERROR log entries (1=issues found, 0=clean)",
 		},
 		[]string{"renovate_namespace", "renovate_job", "project"})
+
+	approvalsNeeded = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_approvals_needed",
+			Help: "Number of dependency updates awaiting approval after the last Renovate run",
+		},
+		[]string{"renovate_namespace", "renovate_job", "project"})
 )
 
 // OTel metrics — no-ops when OTel is not configured.
@@ -67,6 +74,7 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 	registry.MustRegister(projectRuns)
 	registry.MustRegister(runFailed)
 	registry.MustRegister(dependencyIssues)
+	registry.MustRegister(approvalsNeeded)
 }
 
 func ObserveExecutorLoopDuration(ctx context.Context, duration time.Duration) {
@@ -125,10 +133,16 @@ func SetDependencyIssues(namespace, job, project string, hasIssues bool) {
 	dependencyIssues.WithLabelValues(namespace, job, project).Set(value)
 }
 
+// SetApprovalsNeeded sets the count of dependency updates awaiting approval for a project.
+func SetApprovalsNeeded(namespace, job, project string, count int) {
+	approvalsNeeded.WithLabelValues(namespace, job, project).Set(float64(count))
+}
+
 // DeleteProjectMetrics removes all metrics for a project that was removed from discovery
 func DeleteProjectMetrics(namespace, job, project string) {
 	runFailed.DeleteLabelValues(namespace, job, project)
 	dependencyIssues.DeleteLabelValues(namespace, job, project)
+	approvalsNeeded.DeleteLabelValues(namespace, job, project)
 	// Note: projectRuns counter has an additional "status" label, so we delete both possible values
 	projectRuns.DeleteLabelValues(namespace, job, project, "completed")
 	projectRuns.DeleteLabelValues(namespace, job, project, "failed")

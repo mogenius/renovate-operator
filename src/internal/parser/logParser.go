@@ -95,7 +95,7 @@ var (
 	// prNumberRegex extracts the PR number from "Pull Request #N does not need updating" messages.
 	prNumberRegex = regexp.MustCompile(`Pull Request #(\d+)`)
 	// actionOrder defines the sort priority for PR actions (lower = sorted first).
-	actionOrder = map[api.PRAction]int{api.PRActionAutomerged: 0, api.PRActionCreated: 1, api.PRActionUpdated: 2, api.PRActionUnchanged: 3}
+	actionOrder = map[api.PRAction]int{api.PRActionAutomerged: 0, api.PRActionCreated: 1, api.PRActionUpdated: 2, api.PRActionNeedsApproval: 3, api.PRActionUnchanged: 4}
 )
 
 // ParseRenovateLogs parses Renovate JSON logs (NDJSON format) and detects warnings/errors,
@@ -266,11 +266,15 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 					}
 					// For new branches not yet in the map, only include those actively processed.
 					// Skip stale (already-existed), not-scheduled, and other non-active results.
-					if b.Result != "done" && b.Result != "automerged" && b.Result != "" {
+					if b.Result != "needs-approval" && b.Result != "done" && b.Result != "automerged" && b.Result != "" {
 						continue
 					}
 					detail := getOrCreateDetail(branchMap, b.BranchName)
-					detail.Action = api.PRActionUnchanged
+					if b.Result == "needs-approval" {
+						detail.Action = api.PRActionNeedsApproval
+					} else {
+						detail.Action = api.PRActionUnchanged
+					}
 					detail.Title = b.PRTitle
 					if b.PRNo != nil {
 						detail.Number = *b.PRNo
@@ -328,6 +332,8 @@ func buildPRActivity(branchMap map[string]*api.PRDetail) *api.PRActivity {
 			activity.Created++
 		case api.PRActionUpdated:
 			activity.Updated++
+		case api.PRActionNeedsApproval:
+			activity.NeedsApproval++
 		case api.PRActionUnchanged:
 			activity.Unchanged++
 		}

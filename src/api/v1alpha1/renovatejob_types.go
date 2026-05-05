@@ -153,10 +153,11 @@ type RenovateProvider struct {
 type PRAction string
 
 const (
-	PRActionAutomerged PRAction = "automerged"
-	PRActionCreated    PRAction = "created"
-	PRActionUpdated    PRAction = "updated"
-	PRActionUnchanged  PRAction = "unchanged"
+	PRActionAutomerged    PRAction = "automerged"
+	PRActionCreated       PRAction = "created"
+	PRActionUpdated       PRAction = "updated"
+	PRActionNeedsApproval PRAction = "needs-approval"
+	PRActionUnchanged     PRAction = "unchanged"
 )
 
 // PRDetail represents a single PR found in Renovate logs.
@@ -169,12 +170,13 @@ type PRDetail struct {
 
 // PRActivity contains aggregate counts and individual details of PR activity from a run.
 type PRActivity struct {
-	Automerged int        `json:"automerged"`
-	Created    int        `json:"created"`
-	Updated    int        `json:"updated"`
-	Unchanged  int        `json:"unchanged"`
-	PRs        []PRDetail `json:"prs,omitempty"`
-	Truncated  bool       `json:"truncated,omitempty"`
+	Automerged    int        `json:"automerged"`
+	Created       int        `json:"created"`
+	Updated       int        `json:"updated"`
+	NeedsApproval int        `json:"needsApproval"`
+	Unchanged     int        `json:"unchanged"`
+	PRs           []PRDetail `json:"prs,omitempty"`
+	Truncated     bool       `json:"truncated,omitempty"`
 }
 
 // LogIssue represents a single warning or error from Renovate logs.

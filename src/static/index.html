@@ -117,6 +117,7 @@
 
         return (activity.created || 0)
           + (activity.updated || 0)
+          + (activity.needsApproval || 0)
           + (activity.unchanged || 0);
       };
 
@@ -138,6 +139,8 @@
             return projectHasIssues(project);
           case "openPRs":
             return getProjectOpenPRCount(project) > 0;
+          case "pending":
+            return (project?.prActivity?.needsApproval || 0) > 0;
           default:
             return (project?.status || "").toLowerCase() === filterKey;
         }
@@ -485,6 +488,7 @@
           failed: 0,
           withIssues: 0,
           openPRs: 0,
+          pending: 0,
         });
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
@@ -496,6 +500,7 @@
           running: "Running",
           completed: "Completed",
           openPRs: "Open PRs",
+          pending: "Pending",
           withIssues: "With Issues",
         };
 
@@ -584,6 +589,7 @@
             failed: 0,
             withIssues: 0,
             openPRs: 0,
+            pending: 0,
           };
           jobsList.forEach((job) => {
             if (Array.isArray(job.projects)) {
@@ -596,6 +602,7 @@
                   newStats.withIssues++;
                 }
                 newStats.openPRs += getProjectOpenPRCount(project);
+                newStats.pending += project?.prActivity?.needsApproval || 0;
               });
             }
           });
@@ -917,6 +924,15 @@
                 title="Show only jobs with open pull requests or merge requests"
               />
               <StatBadge
+                label="Pending"
+                value={loading ? "—" : stats.pending}
+                valueClass="text-orange-500"
+                borderClass="border-orange-200 dark:border-orange-700"
+                onClick={() => toggleStatFilter("pending")}
+                selected={selectedStatFilter === "pending"}
+                title="Show only jobs with updates awaiting approval"
+              />
+              <StatBadge
                 label="With Issues"
                 value={loading ? "—" : stats.withIssues}
                 valueClass="text-amber-500"
@@ -1139,6 +1155,7 @@
           case "automerged": return `${base} bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-1 ring-purple-300 dark:ring-purple-700`;
           case "created": return `${base} bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-300 dark:ring-green-700`;
           case "updated": return `${base} bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700`;
+          case "needs-approval": return `${base} bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 ring-1 ring-orange-300 dark:ring-orange-700`;
           default: return `${base} bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 ring-1 ring-gray-300 dark:ring-gray-600`;
         }
       };
@@ -1146,8 +1163,8 @@
       function PRActivityBadges({ prActivity, expanded, onToggle, projectName }) {
         if (!prActivity) return <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>;
 
-        const { automerged = 0, created = 0, updated = 0, unchanged = 0 } = prActivity;
-        if (!automerged && !created && !updated && !unchanged) {
+        const { automerged = 0, created = 0, updated = 0, needsApproval = 0, unchanged = 0 } = prActivity;
+        if (!automerged && !created && !updated && !needsApproval && !unchanged) {
           return <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>;
         }
 
@@ -1161,6 +1178,9 @@
         );
         if (updated > 0) badges.push(
           <span key="updated" className={prActionBadgeClass("updated")}>{updated} updated</span>
+        );
+        if (needsApproval > 0) badges.push(
+          <span key="needs-approval" className={prActionBadgeClass("needs-approval")}>{needsApproval} needs approval</span>
         );
         if (unchanged > 0) badges.push(
           <span key="unchanged" className={prActionBadgeClass("unchanged")}>{unchanged} unchanged</span>

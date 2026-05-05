@@ -186,16 +186,17 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 
 func TestParseRenovateLogsPRActivity(t *testing.T) {
 	tests := []struct {
-		name          string
-		logs          string
-		wantNil        bool // expect PRActivity == nil
-		wantAutomerged int
-		wantCreated    int
-		wantUpdated    int
-		wantUnchanged  int
-		wantPRCount   int  // number of PRDetail entries
-		wantTruncated bool
-		checkDetails  func(t *testing.T, prs []api.PRDetail) // optional detailed assertions
+		name               string
+		logs               string
+		wantNil            bool // expect PRActivity == nil
+		wantAutomerged     int
+		wantCreated        int
+		wantUpdated        int
+		wantNeedsApproval  int
+		wantUnchanged      int
+		wantPRCount        int  // number of PRDetail entries
+		wantTruncated      bool
+		checkDetails       func(t *testing.T, prs []api.PRDetail) // optional detailed assertions
 	}{
 		{
 			name:    "empty logs - nil PRActivity",
@@ -531,6 +532,76 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "branches info extended: needs-approval branch gets correct action",
+			logs: `{"level":20,"msg":"branches info extended","branchesInformation":[` +
+				`{"branchName":"renovate/minor-update","prNo":null,"prTitle":"Update dep to v2.0","result":"needs-approval"}` +
+				`]}`,
+			wantNeedsApproval: 1,
+			wantPRCount:       1,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				if prs[0].Action != api.PRActionNeedsApproval {
+					t.Errorf("action = %q, want needs-approval", prs[0].Action)
+				}
+				if prs[0].Branch != "renovate/minor-update" {
+					t.Errorf("branch = %q, want renovate/minor-update", prs[0].Branch)
+				}
+				if prs[0].Title != "Update dep to v2.0" {
+					t.Errorf("title = %q, want %q", prs[0].Title, "Update dep to v2.0")
+				}
+				if prs[0].Number != 0 {
+					t.Errorf("number = %d, want 0 (no PR yet)", prs[0].Number)
+				}
+			},
+		},
+		{
+			name: "branches info extended: mixed needs-approval, done, and pr-created",
+			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/pin-dep","title":"fix: pin dep"}` + "\n" +
+				`{"level":30,"msg":"PR created","branch":"renovate/pin-dep","pr":2}` + "\n" +
+				`{"level":20,"msg":"branches info extended","branchesInformation":[` +
+				`{"branchName":"renovate/pin-dep","prNo":2,"prTitle":"fix: pin dep","result":"done"},` +
+				`{"branchName":"renovate/patch-update","prNo":3,"prTitle":"fix: patch update","result":"pr-created"},` +
+				`{"branchName":"renovate/minor-update","prNo":null,"prTitle":"fix: minor update","result":"needs-approval"}` +
+				`]}`,
+			wantCreated:       1,
+			wantNeedsApproval: 1,
+			wantPRCount:       2,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				prsByBranch := make(map[string]api.PRDetail)
+				for _, pr := range prs {
+					prsByBranch[pr.Branch] = pr
+				}
+				if prsByBranch["renovate/pin-dep"].Action != api.PRActionCreated {
+					t.Errorf("pin-dep action = %q, want created", prsByBranch["renovate/pin-dep"].Action)
+				}
+				if prsByBranch["renovate/minor-update"].Action != api.PRActionNeedsApproval {
+					t.Errorf("minor-update action = %q, want needs-approval", prsByBranch["renovate/minor-update"].Action)
+				}
+				// pr-created is not in the allowed results list, so patch-update should be excluded
+				if _, exists := prsByBranch["renovate/patch-update"]; exists {
+					t.Error("patch-update should be excluded (result=pr-created not in allowed list)")
+				}
+			},
+		},
+		{
+			name: "needs-approval sorted before unchanged",
+			logs: `{"level":20,"msg":"Pull Request #10 does not need updating","branch":"renovate/unchanged-dep"}` + "\n" +
+				`{"level":20,"msg":"branches info extended","branchesInformation":[` +
+				`{"branchName":"renovate/unchanged-dep","prNo":10,"prTitle":"Unchanged dep","result":"done"},` +
+				`{"branchName":"renovate/approval-dep","prNo":null,"prTitle":"Approval dep","result":"needs-approval"}` +
+				`]}`,
+			wantNeedsApproval: 1,
+			wantUnchanged:     1,
+			wantPRCount:       2,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				if prs[0].Action != api.PRActionNeedsApproval {
+					t.Errorf("first PR action = %q, want needs-approval", prs[0].Action)
+				}
+				if prs[1].Action != api.PRActionUnchanged {
+					t.Errorf("second PR action = %q, want unchanged", prs[1].Action)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -557,6 +628,9 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			}
 			if pa.Updated != tt.wantUpdated {
 				t.Errorf("Updated = %d, want %d", pa.Updated, tt.wantUpdated)
+			}
+			if pa.NeedsApproval != tt.wantNeedsApproval {
+				t.Errorf("NeedsApproval = %d, want %d", pa.NeedsApproval, tt.wantNeedsApproval)
 			}
 			if pa.Unchanged != tt.wantUnchanged {
 				t.Errorf("Unchanged = %d, want %d", pa.Unchanged, tt.wantUnchanged)
@@ -716,6 +790,70 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 	}
 	if result.HasIssues {
 		t.Error("HasIssues should be false")
+	}
+}
+
+func TestParseRenovateLogsNeedsApprovalGolden(t *testing.T) {
+	// Simulates the real-world "branches info extended" payload with a needs-approval branch.
+	logs := strings.Join([]string{
+		`{"level":20,"logContext":"90f34d5a-f358-4297-88c4-7c8814abc1ad","repository":"sandbox/trivy","branchesInformation":[` +
+			`{"branchName":"renovate/pin-dependencies","prNo":2,"prTitle":"fix(deps): pin registry.big-osp.de/docker/aquasec/trivy docker tag to 3d1f862","result":"done","upgrades":[{"datasource":"docker","depName":"registry.big-osp.de/docker/aquasec/trivy","updateType":"pinDigest"}]},` +
+			`{"branchName":"renovate/registry.big-osp.de-docker-aquasec-trivy-0.69.x","prNo":3,"prTitle":"fix(deps): update registry.big-osp.de/docker/aquasec/trivy docker tag to v0.69.3","result":"pr-created","upgrades":[{"datasource":"docker","depName":"registry.big-osp.de/docker/aquasec/trivy","updateType":"patch"}]},` +
+			`{"branchName":"renovate/registry.big-osp.de-docker-aquasec-trivy-0.x","prNo":null,"prTitle":"fix(deps): update registry.big-osp.de/docker/aquasec/trivy docker tag to v0.70.0","result":"needs-approval","upgrades":[{"datasource":"docker","depName":"registry.big-osp.de/docker/aquasec/trivy","updateType":"minor"}]}` +
+			`],"msg":"branches info extended","time":"2026-05-05T07:36:55.553Z","v":0}`,
+	}, "\n")
+
+	result := ParseRenovateLogs(logs)
+
+	if result.PRActivity == nil {
+		t.Fatal("PRActivity = nil, want non-nil")
+	}
+
+	pa := result.PRActivity
+
+	// "done" branch is backfilled as unchanged; "pr-created" is excluded; "needs-approval" gets its own action
+	if pa.Unchanged != 1 {
+		t.Errorf("Unchanged = %d, want 1 (done branch)", pa.Unchanged)
+	}
+	if pa.NeedsApproval != 1 {
+		t.Errorf("NeedsApproval = %d, want 1", pa.NeedsApproval)
+	}
+	if pa.Created != 0 || pa.Updated != 0 || pa.Automerged != 0 {
+		t.Errorf("unexpected counts: created=%d updated=%d automerged=%d", pa.Created, pa.Updated, pa.Automerged)
+	}
+	if len(pa.PRs) != 2 {
+		t.Fatalf("len(PRs) = %d, want 2", len(pa.PRs))
+	}
+
+	prsByBranch := make(map[string]api.PRDetail)
+	for _, pr := range pa.PRs {
+		prsByBranch[pr.Branch] = pr
+	}
+
+	// needs-approval branch: no PR number yet, correct title and action
+	minor := prsByBranch["renovate/registry.big-osp.de-docker-aquasec-trivy-0.x"]
+	if minor.Action != api.PRActionNeedsApproval {
+		t.Errorf("minor action = %q, want needs-approval", minor.Action)
+	}
+	if minor.Number != 0 {
+		t.Errorf("minor number = %d, want 0 (no PR created yet)", minor.Number)
+	}
+	if minor.Title != "fix(deps): update registry.big-osp.de/docker/aquasec/trivy docker tag to v0.70.0" {
+		t.Errorf("minor title = %q", minor.Title)
+	}
+
+	// done branch: backfilled as unchanged with PR number
+	pin := prsByBranch["renovate/pin-dependencies"]
+	if pin.Action != api.PRActionUnchanged {
+		t.Errorf("pin action = %q, want unchanged", pin.Action)
+	}
+	if pin.Number != 2 {
+		t.Errorf("pin number = %d, want 2", pin.Number)
+	}
+
+	// needs-approval should be sorted before unchanged
+	if pa.PRs[0].Action != api.PRActionNeedsApproval {
+		t.Errorf("first PR = %q, want needs-approval (sorted before unchanged)", pa.PRs[0].Action)
 	}
 }
 
