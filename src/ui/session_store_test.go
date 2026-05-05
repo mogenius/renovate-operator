@@ -530,14 +530,14 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 // --- Factory and URL builder tests ---
 
 func TestBuildValkeyURL_EmptyHost(t *testing.T) {
-	result := kvstore.BuildValkeyURL("", "6379", "")
+	result := kvstore.BuildValkeyURL("", "6379", "", 0)
 	if result != "" {
 		t.Errorf("Expected empty string for empty host, got %q", result)
 	}
 }
 
 func TestBuildValkeyURL_HostAndPort(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6380", "")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6380", "", 0)
 	expected := "redis://valkey.example.com:6380/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -545,7 +545,7 @@ func TestBuildValkeyURL_HostAndPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_DefaultPort(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "", "")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "", "", 0)
 	expected := "redis://valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -553,7 +553,7 @@ func TestBuildValkeyURL_DefaultPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_WithPassword(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "s3cret")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "s3cret", 0)
 	expected := "redis://:s3cret@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -561,7 +561,7 @@ func TestBuildValkeyURL_WithPassword(t *testing.T) {
 }
 
 func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "p@ss:word/123")
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "p@ss:word/123", 0)
 	expected := "redis://:p%40ss%3Aword%2F123@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -569,9 +569,9 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 }
 
 func TestNewKVStore_EmptyConfig_ReturnsNil(t *testing.T) {
-	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{})
-	if err != nil {
-		t.Fatalf("NewKVStore failed: %v", err)
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{}, 0)
+	if err != kvstore.ErrValkeyNotConfigured {
+		t.Fatalf("did not receive expected error: %v", err)
 	}
 	if store != nil {
 		t.Fatal("Expected nil store for empty config")
@@ -583,7 +583,7 @@ func TestNewKVStore_WithValkeyURL(t *testing.T) {
 
 	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		URL: "redis://" + mr.Addr() + "/0",
-	})
+	}, 0)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}
@@ -598,7 +598,7 @@ func TestNewKVStore_WithHost(t *testing.T) {
 	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		Host: mr.Host(),
 		Port: mr.Port(),
-	})
+	}, 0)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestNewKVStore_URLTakesPrecedenceOverHost(t *testing.T) {
 		URL:  "redis://" + mr.Addr() + "/0",
 		Host: "nonexistent.invalid",
 		Port: "9999",
-	})
+	}, 0)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}

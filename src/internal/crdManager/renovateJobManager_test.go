@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/types"
 
@@ -38,7 +39,11 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobs(ctx)
 	if err != nil {
@@ -60,7 +65,11 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobsFull(ctx)
 	if err != nil {
@@ -90,7 +99,11 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
 	// shorten retries for tests
@@ -126,7 +139,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}
 
 	// add new project via manager
-	err := mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+	err = mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != nil {
 		t.Fatalf("unexpected error adding project: %v", err)
 	}
@@ -164,7 +177,11 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -188,7 +205,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 
 	// predicate: mark non-running projects as scheduled
 	predicate := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
-	err := mgr.UpdateProjectStatusBatched(ctx, predicate, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
+	err = mgr.UpdateProjectStatusBatched(ctx, predicate, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
 	if err != nil {
 		t.Fatalf("unexpected error in batched update: %v", err)
 	}
@@ -226,7 +243,11 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 	cl := inner
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
 	// override status update implementation to avoid fake client Status() issues
@@ -248,7 +269,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("debug: loadRenovateJob direct error: %v", derr)
 	}
 
-	err := mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
+	err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
@@ -288,7 +309,11 @@ func TestGetProjectsFilters(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, logStore.NewLogStore("memory"))
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
 	list, err := mgr.GetProjectsByStatus(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusCompleted)
