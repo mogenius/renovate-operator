@@ -12,27 +12,26 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 )
 
 var (
 	defaultPodSecurityContext = &v1.PodSecurityContext{
-		RunAsUser:    ptr.To(int64(12021)),
-		RunAsGroup:   ptr.To(int64(12021)),
-		FSGroup:      ptr.To(int64(12021)),
-		RunAsNonRoot: ptr.To(true),
+		RunAsUser:    new(int64(12021)),
+		RunAsGroup:   new(int64(12021)),
+		FSGroup:      new(int64(12021)),
+		RunAsNonRoot: new(true),
 		SeccompProfile: &v1.SeccompProfile{
 			Type: v1.SeccompProfileTypeRuntimeDefault,
 		},
 	}
 
 	defaultContainerSecurityContext = &v1.SecurityContext{
-		RunAsUser:                ptr.To(int64(12021)),
-		RunAsGroup:               ptr.To(int64(12021)),
-		RunAsNonRoot:             ptr.To(true),
-		ReadOnlyRootFilesystem:   ptr.To(false),
-		Privileged:               ptr.To(false),
-		AllowPrivilegeEscalation: ptr.To(false),
+		RunAsUser:                new(int64(12021)),
+		RunAsGroup:               new(int64(12021)),
+		RunAsNonRoot:             new(true),
+		ReadOnlyRootFilesystem:   new(false),
+		Privileged:               new(false),
+		AllowPrivilegeEscalation: new(false),
 		SeccompProfile: &v1.SeccompProfile{
 			Type: v1.SeccompProfileTypeRuntimeDefault,
 		},
@@ -117,7 +116,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				},
 			},
 			ServiceAccount: &api.RenovateJobServiceAccount{
-				AutomountServiceAccountToken: ptr.To(true),
+				AutomountServiceAccountToken: new(true),
 				Name:                         "test",
 			},
 			NodeSelector: map[string]string{"disktype": "ssd"},
@@ -166,10 +165,10 @@ func TestNewJobs_WithSettings(t *testing.T) {
 			},
 			SecurityContext: &api.RenovateJobSecurityContext{
 				Pod: &v1.PodSecurityContext{
-					RunAsUser: ptr.To(int64(15000)),
+					RunAsUser: new(int64(15000)),
 				},
 				Container: &v1.SecurityContext{
-					RunAsUser: ptr.To(int64(16000)),
+					RunAsUser: new(int64(16000)),
 				},
 			},
 		},
@@ -202,7 +201,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectImage(t, djContainer, "img")
 	expectRestartPolicy(t, dj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, dj, 10)
-	expectTtlSecondsAfterFinished(t, dj, ptr.To(int32(360)))
+	expectTtlSecondsAfterFinished(t, dj, new(int32(360)))
 
 	// env vars
 	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
@@ -218,7 +217,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
 	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
-	expectServiceAccountSettings(t, dj, "test", ptr.To(true))
+	expectServiceAccountSettings(t, dj, "test", new(true))
 	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
 	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
@@ -237,7 +236,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectImage(t, rjContainer, "img")
 	expectRestartPolicy(t, rj, v1.RestartPolicyNever)
 	expectActiveDeadlineSeconds(t, rj, 10)
-	expectTtlSecondsAfterFinished(t, rj, ptr.To(int32(360)))
+	expectTtlSecondsAfterFinished(t, rj, new(int32(360)))
 
 	// env vars
 	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
@@ -247,7 +246,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}, {Name: "extra-vol", MountPath: "/extra"}})
 	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
-	expectServiceAccountSettings(t, rj, "test", ptr.To(true))
+	expectServiceAccountSettings(t, rj, "test", new(true))
 	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
 	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
@@ -300,7 +299,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectVolumeMounts(t, djContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
 	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}})
 
-	expectServiceAccountSettings(t, dj, "", ptr.To(false))
+	expectServiceAccountSettings(t, dj, "", new(false))
 	expectSecurityContext(t, dj, djContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
 	expectImagePullSecrets(t, dj, nil)
 
@@ -329,7 +328,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectVolumeMounts(t, rjContainer, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
 	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}})
 
-	expectServiceAccountSettings(t, rj, "", ptr.To(false))
+	expectServiceAccountSettings(t, rj, "", new(false))
 	expectSecurityContext(t, rj, rjContainer, defaultPodSecurityContext, defaultContainerSecurityContext)
 	expectImagePullSecrets(t, rj, nil)
 

@@ -13,8 +13,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
-
-	"k8s.io/utils/ptr"
 )
 
 // create job spec for a discovery job
@@ -65,7 +63,7 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
 					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 					Containers: []v1.Container{
 						{
 							Name:            "discovery",
@@ -140,7 +138,7 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 				Spec: v1.PodSpec{
 					ServiceAccountName:            getServiceAccountName(job.Spec),
 					ImagePullSecrets:              append(job.Spec.ImagePullSecrets, getDefaultImagePullSecrets()...),
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 					Containers: []v1.Container{
 						{
 							Name:            "renovate",
@@ -243,10 +241,10 @@ func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
 	}
 
 	return &v1.PodSecurityContext{
-		RunAsUser:    ptr.To(int64(12021)),
-		RunAsGroup:   ptr.To(int64(12021)),
-		FSGroup:      ptr.To(int64(12021)),
-		RunAsNonRoot: ptr.To(true),
+		RunAsUser:    new(int64(12021)),
+		RunAsGroup:   new(int64(12021)),
+		FSGroup:      new(int64(12021)),
+		RunAsNonRoot: new(true),
 		SeccompProfile: &v1.SeccompProfile{
 			Type: v1.SeccompProfileTypeRuntimeDefault,
 		},
@@ -258,15 +256,15 @@ func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
 	}
 
 	return &v1.SecurityContext{
-		RunAsUser:    ptr.To(int64(12021)),
-		RunAsGroup:   ptr.To(int64(12021)),
-		RunAsNonRoot: ptr.To(true),
+		RunAsUser:    new(int64(12021)),
+		RunAsGroup:   new(int64(12021)),
+		RunAsNonRoot: new(true),
 		SeccompProfile: &v1.SeccompProfile{
 			Type: v1.SeccompProfileTypeRuntimeDefault,
 		},
-		ReadOnlyRootFilesystem:   ptr.To(false),
-		Privileged:               ptr.To(false),
-		AllowPrivilegeEscalation: ptr.To(false),
+		ReadOnlyRootFilesystem:   new(false),
+		Privileged:               new(false),
+		AllowPrivilegeEscalation: new(false),
 		Capabilities: &v1.Capabilities{
 			Drop: []v1.Capability{"ALL"},
 		},
@@ -277,7 +275,7 @@ func getAutoMountServiceAccountToken(spec api.RenovateJobSpec) *bool {
 	if spec.ServiceAccount != nil && spec.ServiceAccount.AutomountServiceAccountToken != nil {
 		return spec.ServiceAccount.AutomountServiceAccountToken
 	}
-	return ptr.To(false)
+	return new(false)
 }
 
 func getServiceAccountName(spec api.RenovateJobSpec) string {
@@ -291,18 +289,18 @@ func getJobTimeoutSeconds() *int64 {
 	timeoutString := config.GetValue("JOB_TIMEOUT_SECONDS")
 	val, err := strconv.ParseInt(timeoutString, 10, 64)
 	if err != nil {
-		return ptr.To(int64(1800))
+		return new(int64(1800))
 	}
-	return ptr.To(val)
+	return new(val)
 }
 
 func getJobBackOffLimit() *int32 {
 	timeoutString := config.GetValue("JOB_BACKOFF_LIMIT")
 	val, err := strconv.ParseInt(timeoutString, 10, 32)
 	if err != nil {
-		return ptr.To(int32(1800))
+		return new(int32(1800))
 	}
-	return ptr.To(int32(val))
+	return new(int32(val))
 }
 
 func getJobTTLSecondsAfterFinished() *int32 {
@@ -315,7 +313,7 @@ func getJobTTLSecondsAfterFinished() *int32 {
 	if err != nil {
 		return nil
 	}
-	return ptr.To(int32(val))
+	return new(int32(val))
 }
 
 func getJobLabels(metadata *api.RenovateJobMetadata, jobType crdmanager.JobType, jobName string) map[string]string {
