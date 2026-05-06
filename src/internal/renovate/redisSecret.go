@@ -3,6 +3,7 @@ package renovate
 import (
 	context "context"
 	"fmt"
+	"net/url"
 
 	"renovate-operator/config"
 	"renovate-operator/internal/kvstore"
@@ -17,15 +18,21 @@ const redisURLSecretName = "renovate-operator-job-redis-cache"
 
 func getRenovateCacheURL() string {
 	valkeyURL := config.GetValue("VALKEY_URL")
-	if valkeyURL == "" {
-		valkeyURL = kvstore.BuildValkeyURL(
-			config.GetValue("VALKEY_HOST"),
-			config.GetValue("VALKEY_PORT"),
-			config.GetValue("VALKEY_PASSWORD"),
-			kvstore.ValkeyDataBaseRenovateCache,
-		)
+	if valkeyURL != "" {
+		u, err := url.Parse(valkeyURL)
+		if err != nil {
+			return valkeyURL
+		}
+		u.Path = fmt.Sprintf("/%d", kvstore.ValkeyDataBaseRenovateCache)
+		return u.String()
 	}
-	return valkeyURL
+
+	return kvstore.BuildValkeyURL(
+		config.GetValue("VALKEY_HOST"),
+		config.GetValue("VALKEY_PORT"),
+		config.GetValue("VALKEY_PASSWORD"),
+		kvstore.ValkeyDataBaseRenovateCache,
+	)
 }
 
 func ensureRedisURLSecret(ctx context.Context, c client.Client, namespace string) error {
