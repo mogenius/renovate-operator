@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	api "renovate-operator/api/v1alpha1"
-
-	"k8s.io/utils/ptr"
 )
 
 // MaxPRDetails is the maximum number of individual PR details stored to prevent CRD bloat.
@@ -39,6 +37,7 @@ type renovateLogEntry struct {
 type repositoryFinishedEntry struct {
 	Msg    string `json:"msg"`
 	Result string `json:"result,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // prCreateUpdateEntry is a targeted partial-unmarshal struct for "Creating PR" / "Updating PR" messages.
@@ -167,16 +166,21 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			if err := json.Unmarshal([]byte(line), &finished); err == nil {
 				switch finished.Result {
 				case "disabled-by-config":
-					result.RenovateResultStatus = ptr.To("Disabled")
+					result.RenovateResultStatus = new("Disabled")
 				case "disabled-closed-onboarding":
-					result.RenovateResultStatus = ptr.To("Onboarding Closed")
+					result.RenovateResultStatus = new("Onboarding Closed")
 				case "disabled-no-config":
-					result.RenovateResultStatus = ptr.To("No Config")
+					result.RenovateResultStatus = new("No Config")
 				default:
 					if finished.Result == "" {
-						result.RenovateResultStatus = ptr.To("Unknown")
+						switch finished.Status {
+						case "onboarding":
+							result.RenovateResultStatus = new("Onboarding")
+						default:
+							result.RenovateResultStatus = new("Unknown")
+						}
 					} else {
-						result.RenovateResultStatus = ptr.To(finished.Result)
+						result.RenovateResultStatus = new(finished.Result)
 					}
 				}
 			}

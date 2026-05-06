@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
-
-	"k8s.io/utils/ptr"
 )
 
 func TestParseRenovateLogs(t *testing.T) {
@@ -117,52 +115,57 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 		{
 			name:         "normal run without onboarding - has config",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Dependency extraction complete"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
-			configStatus: ptr.To("done"),
+			configStatus: new("done"),
 		},
 		{
 			name:         "onboarding detected - no config",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR is needed"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "onboarding case insensitive",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"ONBOARDING branch created"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "onboarding in mixed case message",
 			logs:         `{"level":30,"msg":"Ensuring onboarding PR"}` + "\n" + `{"level":30,"result":"disabled-closed-onboarding","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("Onboarding Closed"),
+			configStatus: new("Onboarding Closed"),
 		},
 		{
 			name:         "onboarding with warning - no config and has issues",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Onboarding PR needs update"}` + "\n" + `{"level":30,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "run with warnings but no onboarding - has config",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":40,"msg":"Dependency lookup failed"}` + "\n" + `{"level":30,"result":"done","onboarded":true,"msg":"Repository finished"}`,
-			configStatus: ptr.To("done"),
+			configStatus: new("done"),
 		},
 		{
 			name:         "onboarded false in Repository finished line - no config",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Repository finished","result":"disabled-no-config","onboarded":false,"status":"onboarding"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "onboarded false detected via raw fallback when line exceeds scanner buffer",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"Onboarding PR updated"}` + "\n" + `{"level":30,"cloned":true,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "real world: onboarded false with scanner-breaking stats line",
 			logs:         `{"level":30,"msg":"Repository started"}` + "\n" + `{"level":30,"msg":"stats","stats":{"data":"` + strings.Repeat("x", 70000) + `"}}` + "\n" + `{"level":30,"cloned":true,"result":"disabled-no-config","onboarded":false,"msg":"Repository finished"}`,
-			configStatus: ptr.To("No Config"),
+			configStatus: new("No Config"),
 		},
 		{
 			name:         "onboarded but disabled",
 			logs:         `{"level":30, "repository":"k8s/adguard-home", "result":"disabled-by-config", "status":"disabled", "enabled":false, "msg":"Repository finished"}`,
-			configStatus: ptr.To("Disabled"),
+			configStatus: new("Disabled"),
+		},
+		{
+			name:         "onboarding pr open",
+			logs:         `{"level": 30,"repository": "Sandbox/Renovate-Operator-Tests","cloned": true,"status": "onboarding","enabled": true,"onboarded": false,"msg": "Repository finished"}`,
+			configStatus: new("Onboarding"),
 		},
 	}
 
@@ -186,17 +189,17 @@ func TestParseRenovateLogsConfigDetection(t *testing.T) {
 
 func TestParseRenovateLogsPRActivity(t *testing.T) {
 	tests := []struct {
-		name               string
-		logs               string
-		wantNil            bool // expect PRActivity == nil
-		wantAutomerged     int
-		wantCreated        int
-		wantUpdated        int
-		wantNeedsApproval  int
-		wantUnchanged      int
-		wantPRCount        int  // number of PRDetail entries
-		wantTruncated      bool
-		checkDetails       func(t *testing.T, prs []api.PRDetail) // optional detailed assertions
+		name              string
+		logs              string
+		wantNil           bool // expect PRActivity == nil
+		wantAutomerged    int
+		wantCreated       int
+		wantUpdated       int
+		wantNeedsApproval int
+		wantUnchanged     int
+		wantPRCount       int // number of PRDetail entries
+		wantTruncated     bool
+		checkDetails      func(t *testing.T, prs []api.PRDetail) // optional detailed assertions
 	}{
 		{
 			name:    "empty logs - nil PRActivity",
@@ -215,8 +218,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			wantPRCount:   0,
 		},
 		{
-			name: "single PR created",
-			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/golang-1.x","title":"Update golang to v1.22"}`,
+			name:        "single PR created",
+			logs:        `{"level":30,"msg":"Creating PR","branch":"renovate/golang-1.x","title":"Update golang to v1.22"}`,
 			wantCreated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -232,8 +235,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "single PR updated",
-			logs: `{"level":30,"msg":"Updating PR","branch":"renovate/react-18.x","title":"Update react to v18.3"}`,
+			name:        "single PR updated",
+			logs:        `{"level":30,"msg":"Updating PR","branch":"renovate/react-18.x","title":"Update react to v18.3"}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -246,8 +249,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "single PR unchanged",
-			logs: `{"level":20,"msg":"Pull Request #101 does not need updating","branch":"renovate/rook-packages"}`,
+			name:          "single PR unchanged",
+			logs:          `{"level":20,"msg":"Pull Request #101 does not need updating","branch":"renovate/rook-packages"}`,
 			wantUnchanged: 1,
 			wantPRCount:   1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -305,8 +308,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "git push extracts PR number - GitHub format (/pull/N)",
-			logs: `{"level":20,"msg":"git push","branch":"renovate/lodash-4.x","result":{"remoteMessages":{"all":["Create a pull request:","https://github.com/org/repo/pull/42"]}}}`,
+			name:        "git push extracts PR number - GitHub format (/pull/N)",
+			logs:        `{"level":20,"msg":"git push","branch":"renovate/lodash-4.x","result":{"remoteMessages":{"all":["Create a pull request:","https://github.com/org/repo/pull/42"]}}}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -316,8 +319,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "git push extracts PR number - GitLab format (/merge_requests/N)",
-			logs: `{"level":20,"msg":"git push","branch":"renovate/axios-1.x","result":{"remoteMessages":{"all":["To create a merge request:","https://gitlab.com/org/repo/-/merge_requests/99"]}}}`,
+			name:        "git push extracts PR number - GitLab format (/merge_requests/N)",
+			logs:        `{"level":20,"msg":"git push","branch":"renovate/axios-1.x","result":{"remoteMessages":{"all":["To create a merge request:","https://gitlab.com/org/repo/-/merge_requests/99"]}}}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -327,8 +330,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "partial data - PR with title but no number",
-			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/dep-a","title":"Update dep-a"}`,
+			name:        "partial data - PR with title but no number",
+			logs:        `{"level":30,"msg":"Creating PR","branch":"renovate/dep-a","title":"Update dep-a"}`,
 			wantCreated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -338,8 +341,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "partial data - PR with number but no title",
-			logs: `{"level":20,"msg":"Pull Request #77 does not need updating","branch":"renovate/dep-b"}`,
+			name:          "partial data - PR with number but no title",
+			logs:          `{"level":20,"msg":"Pull Request #77 does not need updating","branch":"renovate/dep-b"}`,
 			wantUnchanged: 1,
 			wantPRCount:   1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -410,8 +413,8 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "git push only (no Creating/Updating message) defaults to updated",
-			logs: `{"level":20,"msg":"git push","branch":"renovate/dep-z","result":{"remoteMessages":{"all":["Visit the existing pull request:","https://forge.example.com/org/repo/pulls/555 merges into main"]}}}`,
+			name:        "git push only (no Creating/Updating message) defaults to updated",
+			logs:        `{"level":20,"msg":"git push","branch":"renovate/dep-z","result":{"remoteMessages":{"all":["Visit the existing pull request:","https://forge.example.com/org/repo/pulls/555 merges into main"]}}}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -918,8 +921,8 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			wantIssueCount: 4,
 		},
 		{
-			name: "fatal counts as error",
-			logs: `{"level":60,"msg":"Fatal error"}`,
+			name:           "fatal counts as error",
+			logs:           `{"level":60,"msg":"Fatal error"}`,
 			wantWarnCount:  0,
 			wantErrorCount: 1,
 			wantIssueCount: 1,
@@ -939,8 +942,8 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			wantIssueCount: 1,
 		},
 		{
-			name: "message truncation with ellipsis suffix",
-			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen+50)),
+			name:           "message truncation with ellipsis suffix",
+			logs:           fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen+50)),
 			wantWarnCount:  1,
 			wantErrorCount: 0,
 			wantIssueCount: 1,
@@ -955,8 +958,8 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			},
 		},
 		{
-			name: "message exactly at MaxIssueMessageLen - no ellipsis",
-			logs: fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen)),
+			name:           "message exactly at MaxIssueMessageLen - no ellipsis",
+			logs:           fmt.Sprintf(`{"level":40,"msg":"%s"}`, strings.Repeat("x", MaxIssueMessageLen)),
 			wantWarnCount:  1,
 			wantErrorCount: 0,
 			wantIssueCount: 1,
