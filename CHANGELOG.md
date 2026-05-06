@@ -1,3 +1,16 @@
+# [4.7.0](https://github.com/mogenius/renovate-operator/compare/4.6.2...4.7.0) (2026-05-06)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.24.0 ([f332cf0](https://github.com/mogenius/renovate-operator/commit/f332cf0d44e7ca9479979a6df3ebe2352720459c))
+
+
+### Features
+
+* adding valkey logStore as an option ([ef5570f](https://github.com/mogenius/renovate-operator/commit/ef5570f8bfc352e4fe6c340a77ed16d9bd5e2ade)), closes [#181](https://github.com/mogenius/renovate-operator/issues/181)
+* display PRs awaiting approvals and add metric for approvals needed ([a4fb9e7](https://github.com/mogenius/renovate-operator/commit/a4fb9e72f4bd4d20501e42c99d0272a83cc67d71))
+
 ## [4.6.2](https://github.com/mogenius/renovate-operator/compare/4.6.1...4.6.2) (2026-05-04)
 
 
