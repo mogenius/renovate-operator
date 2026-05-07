@@ -1,3 +1,10 @@
+## [4.7.1](https://github.com/mogenius/renovate-operator/compare/4.7.0...4.7.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* correctly display projects with open onboarding PR ([54df116](https://github.com/mogenius/renovate-operator/commit/54df1169d6b6db6fadef59539747f85cd2ffd4e6))
+
 # [4.7.0](https://github.com/mogenius/renovate-operator/compare/4.6.2...4.7.0) (2026-05-06)
 
 
