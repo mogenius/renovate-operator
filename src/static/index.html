@@ -482,6 +482,7 @@
         const [loading, setLoading] = useState(true);
         const [error, setError] = useState(null);
         const [stats, setStats] = useState({
+          total: 0,
           scheduled: 0,
           running: 0,
           completed: 0,
@@ -583,6 +584,7 @@
 
         const calculateStats = (jobsList) => {
           const newStats = {
+            total: 0,
             scheduled: 0,
             running: 0,
             completed: 0,
@@ -593,6 +595,7 @@
           };
           jobsList.forEach((job) => {
             if (Array.isArray(job.projects)) {
+              newStats.total += job.projects.length;
               job.projects.forEach((project) => {
                 const status = (project.status || "").toLowerCase();
                 if (newStats.hasOwnProperty(status)) {
@@ -881,6 +884,13 @@
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
             <SiteHeader version={version} authInfo={authInfo}>
+              <StatBadge
+                label="All"
+                value={loading ? "—" : stats.total}
+                onClick={clearStatFilter}
+                selected={!selectedStatFilter}
+                title="Show all projects"
+              />
               <StatBadge
                 label="Failed"
                 value={loading ? "—" : stats.failed}
