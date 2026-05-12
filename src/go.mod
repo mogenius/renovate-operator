@@ -3,7 +3,7 @@ module renovate-operator
 go 1.26.2
 
 require (
-	github.com/alicebob/miniredis/v2 v2.37.0
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/netresearch/go-cron v0.14.0
 	github.com/valkey-io/valkey-go v1.0.74
