@@ -225,7 +225,7 @@ type RenovateJobStatus struct {
 }
 
 type RenovateExecutionOptions struct {
-	// If true, the renovate job will be executed with LOG_LEVEL=debug
+	// If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
 	Debug bool `json:"debug,omitempty"`
 }
 

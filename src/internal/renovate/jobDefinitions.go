@@ -183,7 +183,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 
 	predefinedEnvVars := []v1.EnvVar{
 		{
-			Name:  "LOG_FORMAT",
+			Name:  "RENOVATE_LOG_FORMAT",
 			Value: "json",
 		},
 		{
@@ -214,7 +214,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 
 	if job.Status.ExecutionOptions != nil && job.Status.ExecutionOptions.Debug {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "LOG_LEVEL",
+			Name:  "RENOVATE_LOG_LEVEL",
 			Value: "debug",
 		})
 	}

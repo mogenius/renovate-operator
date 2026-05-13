@@ -111,7 +111,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 			},
 			ExtraEnv: []v1.EnvVar{
 				{
-					Name:  "LOG_FORMAT",
+					Name:  "RENOVATE_LOG_FORMAT",
 					Value: "console",
 				},
 			},
@@ -204,12 +204,12 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, dj, new(int32(360)))
 
 	// env vars
-	expectEnvVar(t, djContainer, "LOG_FORMAT", "console")
+	expectEnvVar(t, djContainer, "RENOVATE_LOG_FORMAT", "console")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_FILTER", "org1/*,org2/repo1")
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate,!skipRenovate")
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
-	expectEnvVar(t, djContainer, "LOG_LEVEL", "debug")
+	expectEnvVar(t, djContainer, "RENOVATE_LOG_LEVEL", "debug")
 	expectEnvFromSecret(t, djContainer, "sref")
 	expectEnvVarFromSecretKey(t, djContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 
@@ -239,7 +239,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, rj, new(int32(360)))
 
 	// env vars
-	expectEnvVar(t, rjContainer, "LOG_FORMAT", "console")
+	expectEnvVar(t, rjContainer, "RENOVATE_LOG_FORMAT", "console")
 	expectEnvVarFromSecretKey(t, rjContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
@@ -281,7 +281,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, dj, nil)
 
 	// env vars - only defaults, no optional ones
-	expectEnvVar(t, djContainer, "LOG_FORMAT", "json")
+	expectEnvVar(t, djContainer, "RENOVATE_LOG_FORMAT", "json")
 	for _, env := range djContainer.Env {
 		if env.Name == "RENOVATE_AUTODISCOVER_FILTER" {
 			t.Errorf("did not expect RENOVATE_AUTODISCOVER_FILTER env var")
@@ -319,7 +319,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectTtlSecondsAfterFinished(t, rj, nil)
 
 	// env vars - only defaults
-	expectEnvVar(t, rjContainer, "LOG_FORMAT", "json")
+	expectEnvVar(t, rjContainer, "RENOVATE_LOG_FORMAT", "json")
 	if len(rjContainer.EnvFrom) != 0 {
 		t.Errorf("expected no EnvFrom, got %+v", rjContainer.EnvFrom)
 	}
