@@ -190,6 +190,13 @@ auth:
     additionalScopes: []
     # -- optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo)
     fetchUserInfoGroups: false
+    caCert:
+      # -- name of an existing secret containing a PEM-encoded CA certificate to trust for OIDC TLS connections
+      existingSecret: ""
+      # -- key in the secret that contains the CA certificate
+      key: "ca.crt"
+      # -- mount path for the CA certificate inside the operator container
+      mountPath: "/etc/ssl/certs/oidc-ca.crt"
   github:
     # -- whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC)
     enabled: false
@@ -237,6 +244,10 @@ securityContext:
 resources: {}
 # -- extra environment variables for the operator container
 extraEnv: []
+# -- extra volumes to add to the operator pod (e.g. for CA certificates)
+extraVolumes: []
+# -- extra volume mounts to add to the operator container
+extraVolumeMounts: []
 # -- nodeSelector for the operator pod
 nodeSelector: {}
 # -- tolerations for the operator pod
