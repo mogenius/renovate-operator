@@ -52,10 +52,37 @@
       return { label: String(level), color: "debug" };
     }
 
-    function LogRow({ entry }) {
-      const [expanded, setExpanded] = useState(false);
+    function highlight(text, query) {
+      if (!query || !text) return text;
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const parts = String(text).split(new RegExp(`(${escaped})`, 'gi'));
+      if (parts.length === 1) return text;
+      return parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase()
+          ? <mark key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-inherit rounded-sm">{part}</mark>
+          : part
+      );
+    }
+
+    function LogRow({ entry, searchQuery }) {
       const level = entry.level;
       const { label, color } = levelInfo(level);
+      const q = searchQuery ? searchQuery.trim() : "";
+
+      const msgMatch = q ? String(entry.msg || '').toLowerCase().includes(q.toLowerCase()) : false;
+      const autoExpand = q !== "" && !msgMatch;
+
+      const [manuallySet, setManuallySet] = useState(false);
+      const [manualExpanded, setManualExpanded] = useState(false);
+
+      useEffect(() => { setManuallySet(false); }, [q]);
+
+      const expanded = manuallySet ? manualExpanded : autoExpand;
+
+      const handleClick = () => {
+        setManuallySet(true);
+        setManualExpanded(!expanded);
+      };
 
       const rowClass = color === "error"
         ? "bg-red-50 dark:bg-red-950/40 border-l-4 border-red-500"
@@ -80,17 +107,17 @@
       return (
         <div
           className={`${rowClass} px-3 py-1.5 font-mono text-xs leading-relaxed cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-all`}
-          onClick={() => setExpanded(e => !e)}
+          onClick={handleClick}
         >
           <div className="flex items-baseline gap-2 min-w-0">
             <span className="text-gray-400 dark:text-slate-500 shrink-0 tabular-nums">{time}</span>
             <span className={`font-bold shrink-0 w-11 ${labelClass}`}>{label}</span>
-            <span className="text-gray-800 dark:text-slate-200 break-all">{entry.msg}</span>
+            <span className="text-gray-800 dark:text-slate-200 break-all">{highlight(entry.msg, q)}</span>
             <span className="ml-auto shrink-0 text-gray-400 dark:text-slate-600 select-none">{expanded ? "▲" : "▼"}</span>
           </div>
           {expanded && (
             <pre className="mt-1 ml-[4.25rem] text-gray-600 dark:text-slate-400 whitespace-pre-wrap break-all text-[0.7rem] leading-relaxed">
-              {JSON.stringify(entry, null, 2)}
+              {highlight(JSON.stringify(entry, null, 2), q)}
             </pre>
           )}
         </div>
@@ -109,6 +136,7 @@
       const [version, setVersion] = useState(null);
       const [authInfo, setAuthInfo] = useState(null);
       const [copied, setCopied] = useState(false);
+      const [searchQuery, setSearchQuery] = useState("");
 
       const authFetch = async (url, options = {}) => {
         const response = await fetch(url, options);
@@ -204,12 +232,19 @@
 
       const filteredLogs = useMemo(() => {
         if (!logs) return null;
-        if (selectedLevels.size === ALL_LEVELS.length) return logs;
-        return logs.filter(e => {
-          const lv = e.level ?? 0;
-          return ALL_LEVELS.some(name => selectedLevels.has(name) && lv >= LEVEL_MIN[name] && lv <= LEVEL_MAX[name]);
-        });
-      }, [logs, selectedLevels]);
+        let result = logs;
+        if (selectedLevels.size < ALL_LEVELS.length) {
+          result = result.filter(e => {
+            const lv = e.level ?? 0;
+            return ALL_LEVELS.some(name => selectedLevels.has(name) && lv >= LEVEL_MIN[name] && lv <= LEVEL_MAX[name]);
+          });
+        }
+        if (searchQuery.trim()) {
+          const q = searchQuery.trim().toLowerCase();
+          result = result.filter(e => JSON.stringify(e).toLowerCase().includes(q));
+        }
+        return result;
+      }, [logs, selectedLevels, searchQuery]);
 
       const handleCopy = useCallback(() => {
         if (!filteredLogs) return;
@@ -229,15 +264,38 @@
           </SiteHeader>
 
           <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+              <div className="shrink-0">
                 <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Logs</h1>
                 {project && (
                   <p className="text-sm text-gray-500 dark:text-slate-400 font-mono break-all">{project}</p>
                 )}
               </div>
               {logs && logs.length > 0 && (
-                <div className="flex items-center gap-2 shrink-0">
+                <>
+                  <div className="flex-1 relative">
+                    <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search logs…"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-8 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                   {/* Level filter dropdown */}
                   <div className="relative" ref={filterRef}>
                     <button
@@ -290,6 +348,7 @@
                     )}
                   </button>
                 </div>
+                </>
               )}
             </div>
 
@@ -317,14 +376,16 @@
 
             {!loading && !error && filteredLogs && filteredLogs.length === 0 && logs && logs.length > 0 && (
               <div className="text-center py-16 text-gray-400 dark:text-slate-500 text-sm">
-                No log entries match the selected levels.
+                {searchQuery.trim()
+                  ? `No log entries match "${searchQuery.trim()}".`
+                  : "No log entries match the selected levels."}
               </div>
             )}
 
             {!loading && !error && filteredLogs && filteredLogs.length > 0 && (
               <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-700/50">
                 {filteredLogs.map((entry, i) => (
-                  <LogRow key={i} entry={entry} />
+                  <LogRow key={i} entry={entry} searchQuery={searchQuery} />
                 ))}
               </div>
             )}
