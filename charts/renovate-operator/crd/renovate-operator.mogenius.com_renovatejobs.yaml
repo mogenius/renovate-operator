@@ -4267,7 +4267,7 @@ spec:
               executionOptions:
                 properties:
                   debug:
-                    description: If true, the renovate job will be executed with LOG_LEVEL=debug
+                    description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
                     type: boolean
                 type: object
               projects:
