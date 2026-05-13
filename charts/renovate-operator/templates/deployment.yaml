@@ -135,6 +135,10 @@ spec:
             - name: OIDC_INSECURE_SKIP_VERIFY
               value: "true"
             {{- end }}
+            {{- if .Values.auth.oidc.caCert.existingSecret }}
+            - name: OIDC_CA_CERT_PATH
+              value: {{ .Values.auth.oidc.caCert.mountPath | quote }}
+            {{- end }}
             {{- if .Values.auth.oidc.logoutUrl }}
             - name: OIDC_LOGOUT_URL
               value: {{ .Values.auth.oidc.logoutUrl | quote }}
@@ -232,3 +236,26 @@ spec:
               name: webhook
               protocol: TCP
             {{- end }}
+          {{- if or .Values.extraVolumeMounts (and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret) }}
+          volumeMounts:
+            {{- if and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret }}
+            - name: oidc-ca-cert
+              mountPath: {{ .Values.auth.oidc.caCert.mountPath | quote }}
+              subPath: {{ .Values.auth.oidc.caCert.key | default "ca.crt" | quote }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.extraVolumes (and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret) }}
+      volumes:
+        {{- if and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret }}
+        - name: oidc-ca-cert
+          secret:
+            secretName: {{ .Values.auth.oidc.caCert.existingSecret }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
