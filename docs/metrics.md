@@ -26,7 +26,7 @@ The `renovate_operator_dependency_issues` metric detects issues by parsing Renov
 - Rate limiting issues
 - Invalid `renovate.json` configuration
 
-**Important**: This metric requires Renovate to output logs in JSON format. The operator sets `LOG_FORMAT=json` by default for all Renovate jobs. If you override this via `extraEnv` in your RenovateJob spec, the `renovate_operator_dependency_issues` metric will not function correctly and will always report 0.
+**Important**: This metric requires Renovate to output logs in JSON format. The operator sets `RENOVATE_LOG_FORMAT=json` by default for all Renovate jobs. If you override this via `extraEnv` in your RenovateJob spec, the `renovate_operator_dependency_issues` metric will not function correctly and will always report 0.
 
 ## Example Prometheus Alerting Rules
 

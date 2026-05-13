@@ -2,7 +2,7 @@
 
 After each Renovate run, the operator parses the job's logs and records PR activity in the project's CRD status under `.status.projects[*].prActivity`.
 
-> **Note:** PR activity parsing requires Renovate to run with debug logging enabled (`LOG_LEVEL=debug` via `extraEnv`). Without debug output, log messages such as `branches info extended` are not emitted and the operator cannot extract per-PR details.
+> **Note:** PR activity parsing requires Renovate to run with debug logging enabled (`RENOVATE_LOG_LEVEL=debug` via `extraEnv`). Without debug output, log messages such as `branches info extended` are not emitted and the operator cannot extract per-PR details.
 
 ## Status fields
 
