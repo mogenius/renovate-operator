@@ -122,6 +122,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			ClientSecret:        oidcClientSecret,
 			RedirectURL:         config.GetValue("OIDC_REDIRECT_URL"),
 			InsecureSkipVerify:  config.GetValue("OIDC_INSECURE_SKIP_VERIFY") == "true",
+			CACertPath:          config.GetValue("OIDC_CA_CERT_PATH"),
 			LogoutURL:           config.GetValue("OIDC_LOGOUT_URL"),
 			AllowedGroupPrefix:  config.GetValue("OIDC_ALLOWED_GROUP_PREFIX"),
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
@@ -297,6 +298,10 @@ func main() {
 			Key:      "OIDC_INSECURE_SKIP_VERIFY",
 			Optional: true,
 			Default:  "false",
+		},
+		{
+			Key:      "OIDC_CA_CERT_PATH",
+			Optional: true,
 		},
 		{
 			Key:      "OIDC_LOGOUT_URL",

@@ -3,9 +3,11 @@ package ui
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"renovate-operator/internal/telemetry"
 	"strings"
@@ -22,6 +24,7 @@ type OIDCConfig struct {
 	ClientSecret        string
 	RedirectURL         string
 	InsecureSkipVerify  bool
+	CACertPath          string
 	LogoutURL           string
 	AllowedGroupPrefix  string
 	AllowedGroupPattern string
@@ -51,6 +54,17 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 	if cfg.InsecureSkipVerify {
 		logger.Info("WARNING: OIDC TLS verification is disabled. Do not use this in production!")
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+	} else if cfg.CACertPath != "" {
+		pemData, err := os.ReadFile(cfg.CACertPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read OIDC CA cert %q: %w", cfg.CACertPath, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pemData) {
+			return nil, fmt.Errorf("no valid PEM certificates found in %q", cfg.CACertPath)
+		}
+		transport.TLSClientConfig = &tls.Config{RootCAs: pool}
+		logger.Info("Using custom CA certificate for OIDC TLS", "path", cfg.CACertPath)
 	}
 	httpClient := &http.Client{Transport: telemetry.WrapTransport(transport)}
 
