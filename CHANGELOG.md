@@ -1,3 +1,21 @@
+# [4.8.0](https://github.com/mogenius/renovate-operator/compare/4.7.1...4.8.0) (2026-05-14)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.38.0 ([d5498c3](https://github.com/mogenius/renovate-operator/commit/d5498c352e260be9559d873486a0498cdac0cb8a))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.75 ([3ba0336](https://github.com/mogenius/renovate-operator/commit/3ba0336407b17a65ab089acbe2506ee4841efb17))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.24.1 ([8e211a4](https://github.com/mogenius/renovate-operator/commit/8e211a430d4f7e190e72e08b76cac86212036e51))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.1 ([7233605](https://github.com/mogenius/renovate-operator/commit/72336053293f5490309297a7aff9cd8d05303829))
+* **renovate:** replace LOG_ env vars with RENOVATE_LOG_ ([88783d1](https://github.com/mogenius/renovate-operator/commit/88783d14928ff6032793ea23a62ada3467f4a168)), closes [#328](https://github.com/mogenius/renovate-operator/issues/328)
+
+
+### Features
+
+* adding options to add custom ca certificates for oidc ([0dccf76](https://github.com/mogenius/renovate-operator/commit/0dccf766f96b860b6e94082dcd22527122e8f8f3)), closes [#305](https://github.com/mogenius/renovate-operator/issues/305)
+* **ui:** add All filter badge to clear active project filter ([7869217](https://github.com/mogenius/renovate-operator/commit/786921771f97680e538301b06c29ea0ce6f14a96))
+* **ui:** adding search bar to logs with match highlighting ([318fa58](https://github.com/mogenius/renovate-operator/commit/318fa58a6c13c33b753b9cb38046384f7a9bf8c5)), closes [#333](https://github.com/mogenius/renovate-operator/issues/333)
+
 ## [4.7.1](https://github.com/mogenius/renovate-operator/compare/4.7.0...4.7.1) (2026-05-07)
 
 
