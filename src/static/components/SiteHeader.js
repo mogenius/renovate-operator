@@ -64,7 +64,7 @@ export function SiteHeader({ version, authInfo, children }) {
         {/* Stats strip */}
         {children && (
           <div className="px-3 sm:px-6 lg:px-8 py-3 border-t border-gray-200 dark:border-slate-700">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
               {children}
             </div>
           </div>
