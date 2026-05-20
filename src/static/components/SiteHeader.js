@@ -14,7 +14,7 @@ export function SiteHeader({ version, authInfo, children }) {
               </a>
               <div className="flex items-center gap-2">
                 <div className="w-1 h-5 sm:h-6 bg-gradient-to-b from-primary to-primary-hover rounded-full"></div>
-                <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide whitespace-nowrap">
+                <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide">
                   Renovate: The{" "}
                   <span className="text-primary font-semibold">
                     Kubernetes-Native
