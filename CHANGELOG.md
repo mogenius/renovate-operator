@@ -1,3 +1,10 @@
+## [4.8.1](https://github.com/mogenius/renovate-operator/compare/4.8.0...4.8.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **ui:** remove horizontal scrolling on dashboard and rearange header([#347](https://github.com/mogenius/renovate-operator/issues/347)) ([28d8f7f](https://github.com/mogenius/renovate-operator/commit/28d8f7f8c6a836d48cc5303536e6f061500f9797))
+
 # [4.8.0](https://github.com/mogenius/renovate-operator/compare/4.7.1...4.8.0) (2026-05-14)
 
 
