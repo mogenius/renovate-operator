@@ -32,9 +32,9 @@ export function SiteHeader({ version, authInfo, children }) {
               />
             </a>
 
-            {/* Tagline group — on mobile this drops to its own row (basis-full),
-                from sm: up it sits inline between logo and right cluster (flex-1) */}
-            <div className="order-3 sm:order-2 basis-full sm:basis-auto sm:flex-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0">
+            {/* Tagline group — below md: this drops to its own row (basis-full),
+                from md: up it sits inline between logo and right cluster (flex-1) */}
+            <div className="order-3 md:order-2 basis-full md:basis-auto md:flex-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-1 h-5 sm:h-6 bg-gradient-to-b from-primary to-primary-hover rounded-full flex-shrink-0"></div>
                 <p className="text-gray-700 dark:text-slate-300 font-medium text-sm sm:text-base tracking-wide">
@@ -52,9 +52,9 @@ export function SiteHeader({ version, authInfo, children }) {
               )}
             </div>
 
-            {/* Right cluster — on mobile sits at row 1 right via ml-auto + order-2;
-                from sm: it slides to the end of the inline row */}
-            <div className="order-2 sm:order-3 ml-auto sm:ml-0 flex items-center gap-2 shrink-0">
+            {/* Right cluster — below md: sits at row 1 right via ml-auto + order-2;
+                from md: it slides to the end of the inline row */}
+            <div className="order-2 md:order-3 ml-auto md:ml-0 flex items-center gap-2 shrink-0">
               {authBlock}
               <ThemeToggle />
             </div>
