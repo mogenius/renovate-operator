@@ -1,0 +1,42 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Template deployment
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: Test default valkey credential secret
+  set:
+    valkey:
+      enabled: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: renovate-operator-unittest-valkey-auth
+            key: default-password
+
+- it: Test existing valkey credential secret
+  set:
+    valkey:
+      enabled: true
+      usersExistingSecret: my-custom-secret
+      auth:
+        aclUsers:
+          default:
+            passwordKey: my-custom-secret-key
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-custom-secret
+            key: my-custom-secret-key

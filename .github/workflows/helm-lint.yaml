@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-        
+
       - name: Install Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
 
@@ -23,3 +23,12 @@ jobs:
       - name: Run Helm template
         run: |
           helm dependency update ./charts/renovate-operator && helm template --set=metrics.dashboard.enabled=true ./charts/renovate-operator
+
+      - env:
+          HELM_UNITTEST_VERSION: v1.0.0 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
+        name: Install helm-unittest
+        run: helm plugin install --verify=false --version "${HELM_UNITTEST_VERSION}" https://github.com/helm-unittest/helm-unittest
+
+      - name: Execute helm unittests
+        run: helm unittest --strict --file 'unittests/**/*.yaml' .
+        working-directory: ./charts/renovate-operator
