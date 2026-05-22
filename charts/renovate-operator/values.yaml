@@ -278,6 +278,10 @@ logging:
 # -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
 valkey:
   enabled: false
+
+  # Use an existing secret for user passwords. Key defaults to username.
+  usersExistingSecret: ""
+
   # -- name of an existing secret containing the Valkey URL for session storage
   # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
   # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
@@ -289,6 +293,7 @@ valkey:
     aclUsers:
       default:
         password: ""
+        passwordKey: ""
         permissions: "~* &* +@all"
   dataStorage:
     enabled: false

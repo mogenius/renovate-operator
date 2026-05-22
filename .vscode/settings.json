@@ -1,0 +1,7 @@
+{
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.0/schema/helm-testsuite.json": [
+      "/charts/renovate-operator/unittests/**/*.yaml"
+    ]
+  }
+}
