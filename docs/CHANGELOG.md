@@ -1,3 +1,9 @@
+> [!IMPORTANT]
+> Below is the Changelog that has been created by semantic-release. 
+> With release-please the format had a slight change, so this one has been archived.
+
+
+
 ## [4.8.1](https://github.com/mogenius/renovate-operator/compare/4.8.0...4.8.1) (2026-05-21)
 
 
