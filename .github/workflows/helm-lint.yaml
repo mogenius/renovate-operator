@@ -25,7 +25,7 @@ jobs:
           helm dependency update ./charts/renovate-operator && helm template --set=metrics.dashboard.enabled=true ./charts/renovate-operator
 
       - env:
-          HELM_UNITTEST_VERSION: v1.0.0 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
+          HELM_UNITTEST_VERSION: v1.1.0 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
         name: Install helm-unittest
         run: helm plugin install --verify=false --version "${HELM_UNITTEST_VERSION}" https://github.com/helm-unittest/helm-unittest
 
