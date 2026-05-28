@@ -2,8 +2,8 @@ name: Build, Package, Release (Production)
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
 
 env:
   IMAGE_NAME: ghcr.io/mogenius/renovate-operator
@@ -12,42 +12,9 @@ env:
   HELMNAME: "renovate-operator"
 
 jobs:
-  prepare:
-    runs-on: [arc-runner-set-amd64]
-    permissions:
-      contents: write
-    steps:
-      - name: Generate a token
-        id: generate-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_SECRET }}
-
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: main
-          token: ${{ steps.generate-token.outputs.token }}
-          fetch-depth: 0
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 24
-
-      - name: Semantic Release
-        id: semantic
-        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-    outputs:
-      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
-
   build-and-push-docker:
     name: Build Multi-arch Docker
-    needs: [prepare]
-    if: needs.prepare.outputs.new_release_published == 'true'
-    runs-on: [arc-runner-set-amd64]
+    runs-on: self-hosted
 
     permissions:
       contents: read
@@ -56,7 +23,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: main
           fetch-depth: 0
 
       - name: Set up QEMU
@@ -72,13 +38,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate version from git
-        id: git_version
-        run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Calculated version: $VERSION"
-
       - name: Build and push Docker image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
@@ -86,15 +45,15 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           build-args: |
-            VERSION=${{ steps.git_version.outputs.version }}
+            VERSION=${{ github.ref_name }}
             COMMIT_HASH=${{ github.sha }}
             GIT_BRANCH=${{ github.ref_name }}
             BUILD_TIMESTAMP=${{ github.event.repository.updated_at }}
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.git_version.outputs.version }}
+            ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
             ${{ env.IMAGE_NAME }}:latest
           labels: |
-            org.opencontainers.image.version=${{ steps.git_version.outputs.version }}
+            org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
           # cache-from: type=gha
@@ -102,9 +61,8 @@ jobs:
           provenance: false
 
   helm-chart:
-    needs: [prepare, build-and-push-docker]
-    if: needs.prepare.outputs.new_release_published == 'true'
-    runs-on: [arc-runner-set-amd64]
+    needs: [build-and-push-docker]
+    runs-on: self-hosted
     permissions:
       contents: write
       packages: write
@@ -114,7 +72,7 @@ jobs:
         id: generate-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_SECRET }}
 
       - name: Check out code
@@ -160,7 +118,7 @@ jobs:
 
       - name: package and push
         run: |
-          VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
+          VERSION=${{ github.ref_name }}
 
           sed -i "s/^version:.*/version: $VERSION/" charts/renovate-operator/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: $VERSION/" charts/renovate-operator/Chart.yaml
