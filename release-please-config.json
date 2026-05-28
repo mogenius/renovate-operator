@@ -3,7 +3,8 @@
   "release-type": "go",
   "packages": {
     ".": {
-      "tag-prefix": ""
+      "tag-prefix": "",
+      "include-v-in-tag": false
     }
   }
 }
