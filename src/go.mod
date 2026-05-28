@@ -7,9 +7,9 @@ require (
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/netresearch/go-cron v0.14.0
 	github.com/valkey-io/valkey-go v1.0.75
-	go.opentelemetry.io/contrib/bridges/otellogr v0.18.0
-	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.68.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0
+	go.opentelemetry.io/contrib/bridges/otellogr v0.19.0
+	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.69.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0
