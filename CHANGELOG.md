@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.10.0](https://github.com/mogenius/renovate-operator/compare/4.9.0...4.10.0) (2026-05-29)
+
+
+### Features
+
+* adding native github app support ([19221c1](https://github.com/mogenius/renovate-operator/commit/19221c1da01f78d4bd44cea17a7b877d41b9a38d))
+
+
+### Bug Fixes
+
+* **deployment:** valkey: wrong path of usersExistingSecret ([0545fbd](https://github.com/mogenius/renovate-operator/commit/0545fbd4306c8f926ef47cdf72f5c9157584f538))
+* honor valkey db if complete valkey url has been set ([332acef](https://github.com/mogenius/renovate-operator/commit/332acef28ca05d99db95137495e074a5ba3c2577)), closes [#364](https://github.com/mogenius/renovate-operator/issues/364)
+
 ## [4.9.0](https://github.com/mogenius/renovate-operator/compare/4.8.1...4.9.0) (2026-05-28)
 
 
