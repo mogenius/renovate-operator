@@ -26,8 +26,8 @@ tests:
   set:
     valkey:
       enabled: true
-      usersExistingSecret: my-custom-secret
       auth:
+        usersExistingSecret: my-custom-secret
         aclUsers:
           default:
             passwordKey: my-custom-secret-key
