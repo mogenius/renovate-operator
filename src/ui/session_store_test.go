@@ -568,8 +568,41 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 	}
 }
 
+func TestURLForUsage_HostBased_AbsoluteDB(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{Host: "valkey.example.com", Port: "6379"}
+	if got := cfg.URLForUsage(kvstore.UsageSessionStore); got != "redis://valkey.example.com:6379/0" {
+		t.Errorf("UsageSessionStore: got %q", got)
+	}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateCache); got != "redis://valkey.example.com:6379/1" {
+		t.Errorf("UsageRenovateCache: got %q", got)
+	}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateLogs); got != "redis://valkey.example.com:6379/2" {
+		t.Errorf("UsageRenovateLogs: got %q", got)
+	}
+}
+
+func TestURLForUsage_URLBased_OffsetFromBase(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{URL: "redis://valkey.example.com:6379/5"}
+	if got := cfg.URLForUsage(kvstore.UsageSessionStore); got != "redis://valkey.example.com:6379/5" {
+		t.Errorf("UsageSessionStore: got %q", got)
+	}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateCache); got != "redis://valkey.example.com:6379/6" {
+		t.Errorf("UsageRenovateCache: got %q", got)
+	}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateLogs); got != "redis://valkey.example.com:6379/7" {
+		t.Errorf("UsageRenovateLogs: got %q", got)
+	}
+}
+
+func TestURLForUsage_URLWithNoDB_BaseIsZero(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{URL: "redis://valkey.example.com:6379"}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateCache); got != "redis://valkey.example.com:6379/1" {
+		t.Errorf("UsageRenovateCache: got %q", got)
+	}
+}
+
 func TestNewKVStore_EmptyConfig_ReturnsNil(t *testing.T) {
-	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{}, 0)
+	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{}, kvstore.UsageSessionStore)
 	if err != kvstore.ErrValkeyNotConfigured {
 		t.Fatalf("did not receive expected error: %v", err)
 	}
@@ -583,7 +616,7 @@ func TestNewKVStore_WithValkeyURL(t *testing.T) {
 
 	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		URL: "redis://" + mr.Addr() + "/0",
-	}, 0)
+	}, kvstore.UsageSessionStore)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}
@@ -598,7 +631,7 @@ func TestNewKVStore_WithHost(t *testing.T) {
 	store, err := kvstore.NewKVStore(kvstore.ValkeyConfig{
 		Host: mr.Host(),
 		Port: mr.Port(),
-	}, 0)
+	}, kvstore.UsageSessionStore)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}
@@ -615,7 +648,7 @@ func TestNewKVStore_URLTakesPrecedenceOverHost(t *testing.T) {
 		URL:  "redis://" + mr.Addr() + "/0",
 		Host: "nonexistent.invalid",
 		Port: "9999",
-	}, 0)
+	}, kvstore.UsageSessionStore)
 	if err != nil {
 		t.Fatalf("NewKVStore failed: %v", err)
 	}

@@ -28,7 +28,7 @@ func NewLogStore(logger logr.Logger, mode string, cfg kvstore.ValkeyConfig) (Log
 	case "memory":
 		return &memoryLogStore{data: make(map[string]string)}, nil
 	case "valkey":
-		kv, err := kvstore.NewKVStore(cfg, kvstore.ValkeyDataBaseRenovateLogs)
+		kv, err := kvstore.NewKVStore(cfg, kvstore.UsageRenovateLogs)
 		if err != nil {
 			return nil, err
 		}
