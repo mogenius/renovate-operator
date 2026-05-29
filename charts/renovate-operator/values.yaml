@@ -277,10 +277,8 @@ logging:
 
 # -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
 valkey:
+  # Enable Valkey for session storage. When enabled, the operator will create a Valkey deployment and use it to store sessions.
   enabled: false
-
-  # Use an existing secret for user passwords. Key defaults to username.
-  usersExistingSecret: ""
 
   # -- name of an existing secret containing the Valkey URL for session storage
   # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
@@ -289,7 +287,15 @@ valkey:
   # -- key in the existing secret that contains the Valkey URL
   existingSecretKey: "valkey-url"
   auth:
+    # Enable ACL-based authentication
+    # IMPORTANT: When authentication is enabled, the 'default' user MUST be defined in either
+    # aclUsers or aclConfig. Without a default user, anyone can access the database without
+    # credentials, creating a security risk.
     enabled: true
+
+    # Use an existing secret for user passwords. Key defaults to username.
+    usersExistingSecret: ""
+
     aclUsers:
       default:
         password: ""

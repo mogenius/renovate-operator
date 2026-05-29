@@ -195,7 +195,7 @@ spec:
             - name: VALKEY_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.valkey.usersExistingSecret | default (printf "%s-valkey-auth" .Release.Name) }}
+                  name: {{ .Values.valkey.auth.usersExistingSecret | default (printf "%s-valkey-auth" .Release.Name) }}
                   key: {{ .Values.valkey.auth.aclUsers.default.passwordKey | default "default-password" }}
             {{- end }}
             {{- end }}
