@@ -83,18 +83,18 @@ func TestRenovateCheckbox(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "manual job",
-			current: `\n- [x] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository\n`,
+			name:     "manual job",
+			current:  `\n- [x] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository\n`,
 			expected: true,
 		},
 		{
-			name: "unschedule-branch checked",
-			current: `\n- [x] <!-- unschedule-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance\n`,
+			name:     "unschedule-branch checked",
+			current:  `\n- [x] <!-- unschedule-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance\n`,
 			expected: true,
 		},
 		{
-			name: "create-all-awaiting-schedule-prs checked",
-			current: `\n- [x] <!-- create-all-awaiting-schedule-prs -->🔐 **Create all awaiting schedule PRs at once** 🔐\n`,
+			name:     "create-all-awaiting-schedule-prs checked",
+			current:  `\n- [x] <!-- create-all-awaiting-schedule-prs -->🔐 **Create all awaiting schedule PRs at once** 🔐\n`,
 			expected: true,
 		},
 		{

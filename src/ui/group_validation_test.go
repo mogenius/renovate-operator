@@ -71,7 +71,7 @@ func TestSanitizeGroups(t *testing.T) {
 		{
 			name:   "excessive groups truncated",
 			groups: make([]string, 150), // More than maxGroupsPerUser
-			want:   100,                  // Should be truncated to max
+			want:   100,                 // Should be truncated to max
 		},
 		{
 			name:   "all invalid groups",
@@ -242,7 +242,7 @@ func TestValidateAndNormalizeGroups(t *testing.T) {
 			want:   []string{"team-alpha", "platform-beta", "team-epsilon"},
 		},
 		{
-			name:   "real-world Azure AD groups",
+			name: "real-world Azure AD groups",
 			groups: []string{
 				" CN=Team-Renovate-Admins,OU=Groups,DC=example,DC=com ",
 				"team-renovate-users",

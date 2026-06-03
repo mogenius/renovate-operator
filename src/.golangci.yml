@@ -1,0 +1,17 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-same-issues: 0
