@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.10.1](https://github.com/mogenius/renovate-operator/compare/4.10.0...4.10.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* apply fixxes proposed by go fix command ([d6f5e13](https://github.com/mogenius/renovate-operator/commit/d6f5e137bcee8c28c4900a3d22d99673b06f835c))
+* delete successful discovery jobs when DELETE_SUCCESSFUL_JOBS=true ([#377](https://github.com/mogenius/renovate-operator/issues/377)) ([1237620](https://github.com/mogenius/renovate-operator/commit/12376203883c24c938b026ee4b45f0d660bb6628))
+* **deps:** update golang docker tag to v1.26.4 ([84e7b85](https://github.com/mogenius/renovate-operator/commit/84e7b859024c9bd8721e35ddc8e0677d7f20c447))
+* **deps:** update module github.com/golang-jwt/jwt/v5 to v5.3.1 ([9ec93cd](https://github.com/mogenius/renovate-operator/commit/9ec93cdac2c0530afcbedc4bc18d897f0c1fd0dd))
+* **deps:** update module github.com/netresearch/go-cron to v0.15.0 ([785db64](https://github.com/mogenius/renovate-operator/commit/785db64658afe91adeeeb630dcad82f81215e0bd))
+* replace depracated controller-runtime scheme with apimachinery ([fdef1a3](https://github.com/mogenius/renovate-operator/commit/fdef1a312606663aacc81bba34df9b63ce51f028))
+
 ## [4.10.0](https://github.com/mogenius/renovate-operator/compare/4.9.0...4.10.0) (2026-05-29)
 
 
