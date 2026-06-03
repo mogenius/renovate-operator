@@ -343,6 +343,3 @@ func (in *RenovateJobList) DeepCopyObject() runtime.Object {
 	return out
 }
 
-func init() {
-	SchemeBuilder.Register(&RenovateJob{}, &RenovateJobList{})
-}
