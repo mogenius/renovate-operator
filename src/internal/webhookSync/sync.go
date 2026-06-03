@@ -3,6 +3,7 @@ package webhookSync
 import (
 	"context"
 	"fmt"
+	"maps"
 	"renovate-operator/gitProviderClients"
 	"strings"
 	"sync"
@@ -43,9 +44,7 @@ func (s *WebhookSyncer) ManagedRepos() map[string]int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make(map[string]int64, len(s.managedRepos))
-	for k, v := range s.managedRepos {
-		out[k] = v
-	}
+	maps.Copy(out, s.managedRepos)
 	return out
 }
 
@@ -54,9 +53,7 @@ func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.managedRepos = make(map[string]int64, len(m))
-	for k, v := range m {
-		s.managedRepos[k] = v
-	}
+	maps.Copy(s.managedRepos, m)
 }
 
 // RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
@@ -99,9 +96,7 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 	// Snapshot the current managed repos so we can iterate without holding the lock during API calls.
 	s.mu.Lock()
 	pending := make(map[string]int64, len(s.managedRepos))
-	for k, v := range s.managedRepos {
-		pending[k] = v
-	}
+	maps.Copy(pending, s.managedRepos)
 	s.mu.Unlock()
 
 	for fullName, hookID := range pending {
@@ -140,9 +135,7 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 	// Return a consistent snapshot of the final state
 	s.mu.Lock()
 	snapshot := make(map[string]int64, len(s.managedRepos))
-	for k, v := range s.managedRepos {
-		snapshot[k] = v
-	}
+	maps.Copy(snapshot, s.managedRepos)
 	s.mu.Unlock()
 
 	return snapshot, nil

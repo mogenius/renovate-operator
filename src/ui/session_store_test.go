@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"renovate-operator/internal/kvstore"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -492,13 +493,7 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 
 	// Verify the key has the "session:" prefix
 	keys := mr.Keys()
-	found := false
-	for _, k := range keys {
-		if k == kvstore.JoinKey("session", "rs-enc") {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(keys, kvstore.JoinKey("session", "rs-enc"))
 	if !found {
 		t.Errorf("Expected key %q in Valkey, got keys: %v", kvstore.JoinKey("session", "rs-enc"), keys)
 	}

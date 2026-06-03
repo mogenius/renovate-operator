@@ -656,7 +656,7 @@ func TestParseRenovateLogsPRActivityCap(t *testing.T) {
 	// Generate 150 branches to test capping at MaxPRDetails (100)
 	var lines []string
 	lines = append(lines, `{"level":30,"msg":"Repository started"}`)
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		branch := fmt.Sprintf("renovate/dep-%03d", i)
 		title := fmt.Sprintf("Update dep-%03d", i)
 		lines = append(lines, fmt.Sprintf(`{"level":30,"msg":"Creating PR","branch":%q,"title":%q}`, branch, title))
@@ -973,7 +973,7 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			name: "cap at MaxLogIssues with truncated flag",
 			logs: func() string {
 				var lines []string
-				for i := 0; i < MaxLogIssues+5; i++ {
+				for i := range MaxLogIssues + 5 {
 					lines = append(lines, fmt.Sprintf(`{"level":40,"msg":"Unique warning %d"}`, i))
 				}
 				return strings.Join(lines, "\n")

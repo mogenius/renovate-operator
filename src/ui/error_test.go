@@ -59,7 +59,7 @@ func TestWriteError(t *testing.T) {
 			}
 
 			// Decode into a map to avoid error field deserialization issues
-			var result map[string]interface{}
+			var result map[string]any
 			err := json.NewDecoder(w.Body).Decode(&result)
 			if err != nil {
 				t.Fatalf("Failed to decode response body: %v", err)
@@ -83,7 +83,7 @@ func TestInternalServerError(t *testing.T) {
 		t.Errorf("internalServerError() status = %v, want %v", w.Code, http.StatusInternalServerError)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	decodeErr := json.NewDecoder(w.Body).Decode(&result)
 	if decodeErr != nil {
 		t.Fatalf("Failed to decode response body: %v", decodeErr)
@@ -109,7 +109,7 @@ func TestBadRequestError(t *testing.T) {
 		t.Errorf("badRequestError() status = %v, want %v", w.Code, http.StatusBadRequest)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	decodeErr := json.NewDecoder(w.Body).Decode(&result)
 	if decodeErr != nil {
 		t.Fatalf("Failed to decode response body: %v", decodeErr)

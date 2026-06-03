@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"renovate-operator/internal/telemetry"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,13 +81,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 	}
 
 	if cfg.AllowedGroupPrefix != "" || cfg.AllowedGroupPattern != "" {
-		hasGroupsScope := false
-		for _, s := range scopes {
-			if s == "groups" {
-				hasGroupsScope = true
-				break
-			}
-		}
+		hasGroupsScope := slices.Contains(scopes, "groups")
 		if !hasGroupsScope {
 			logger.Info("WARNING: group filtering is configured but 'groups' is not in additionalScopes. " +
 				"If your OIDC provider requires the 'groups' scope to include group claims, add it to additionalScopes.")
