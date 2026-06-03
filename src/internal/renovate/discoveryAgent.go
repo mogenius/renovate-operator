@@ -5,7 +5,7 @@ import (
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/config"
+	"renovate-operator/config"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
 	"sync"
