@@ -85,7 +85,7 @@ test-unit: generate
 
 # Execute golangci-lint
 golangci-lint: generate
-    cd src && go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run '--fast=false' --sort-results '--max-same-issues=0' '--timeout=1h' ./...
+    cd src && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run --config=.golangci.yml '--timeout=1h' ./...
 
 
 # Install JS dependencies

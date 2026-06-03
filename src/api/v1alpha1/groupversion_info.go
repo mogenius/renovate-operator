@@ -7,6 +7,6 @@ import (
 
 var (
 	GroupVersion  = schema.GroupVersion{Group: "renovate-operator.mogenius.com", Version: "v1alpha1"}
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion} //nolint:staticcheck
 	AddToScheme   = SchemeBuilder.AddToScheme
 )
