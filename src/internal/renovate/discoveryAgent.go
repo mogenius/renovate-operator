@@ -5,6 +5,7 @@ import (
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/config"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
 	"sync"
@@ -132,6 +133,15 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", job.Fullname())
+
+	// DELETE_SUCCESSFUL_JOBS applies to both executor and discovery jobs.
+	// Previously only executor jobs were deleted; discovery jobs accumulated
+	// indefinitely even when the setting was enabled.
+	if config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" {
+		if err := crdManager.DeleteJob(ctx, e.client, existingDiscoveryJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to delete successful discovery job", "job", job.Fullname())
+		}
+	}
 
 	return projects, nil
 }
