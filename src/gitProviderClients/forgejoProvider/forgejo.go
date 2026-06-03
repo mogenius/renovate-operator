@@ -178,7 +178,7 @@ func (c *ForgejoClient) DeleteRepoWebhook(ctx context.Context, owner, repo strin
 	return nil
 }
 
-func decodeResponse(resp *http.Response, target interface{}) error {
+func decodeResponse(resp *http.Response, target any) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

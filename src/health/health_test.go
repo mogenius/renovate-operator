@@ -33,7 +33,7 @@ func TestConcurrentSchedulerHealthUpdates(t *testing.T) {
 
 	h := NewHealthCheck()
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(1)
 		name := "job-" + string(rune('a'+i%26))
 		go func(n string) {
@@ -58,7 +58,7 @@ func TestConcurrentExecutorHealthUpdates(t *testing.T) {
 
 	h := NewHealthCheck()
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(1)
 		name := "job-" + string(rune('a'+i%26))
 		go func(n string) {
@@ -87,7 +87,7 @@ func TestConcurrentReadWriteHealth(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Writers: update scheduler and executor health concurrently
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		name := "job-" + string(rune('a'+i%26))
 		go func(n string) {
@@ -118,14 +118,12 @@ func TestConcurrentReadWriteHealth(t *testing.T) {
 	}
 
 	// Readers: simulate what the HTTP health endpoint does (json.Marshal iterates the maps)
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 50 {
+		wg.Go(func() {
 			snapshot := h.GetHealth()
 			// Iterate the returned maps, as json.Encode would in the health endpoint.
 			_, _ = json.Marshal(snapshot)
-		}()
+		})
 	}
 
 	wg.Wait()

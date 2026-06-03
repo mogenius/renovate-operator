@@ -1,6 +1,7 @@
 package health
 
 import (
+	"maps"
 	"sync"
 	"time"
 )
@@ -62,13 +63,9 @@ func (h *healthcheck) GetHealth() *ApplicationHealth {
 	defer h.mu.RUnlock()
 
 	schedulerMap := make(map[string]SingleSchedulerHealth, len(h.health.Scheduler.Scheduler))
-	for k, v := range h.health.Scheduler.Scheduler {
-		schedulerMap[k] = v
-	}
+	maps.Copy(schedulerMap, h.health.Scheduler.Scheduler)
 	executorMap := make(map[string]SingleExecutorHealth, len(h.health.Executor.Executor))
-	for k, v := range h.health.Executor.Executor {
-		executorMap[k] = v
-	}
+	maps.Copy(executorMap, h.health.Executor.Executor)
 
 	return &ApplicationHealth{
 		Scheduler: SchedulerHealth{

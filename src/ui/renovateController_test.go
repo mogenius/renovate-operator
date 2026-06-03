@@ -1095,7 +1095,7 @@ func TestUpdateExecutionOptions_Authorization(t *testing.T) {
 				server.auth = &OIDCAuth{}
 			}
 
-			body := map[string]interface{}{
+			body := map[string]any{
 				"renovateJob": "job1",
 				"namespace":   "default",
 				"debug":       true,

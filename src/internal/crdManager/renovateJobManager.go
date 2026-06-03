@@ -81,7 +81,7 @@ func (in *RenovateJobIdentifier) Fullname() string {
 type RenovateProjectStatus struct {
 	Name                 string                    `json:"name"`
 	Status               api.RenovateProjectStatus `json:"status"`
-	LastRun              time.Time                 `json:"lastRun,omitempty"`
+	LastRun              time.Time                 `json:"lastRun"`
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
