@@ -3,6 +3,9 @@ package crdmanager
 import (
 	"context"
 	"fmt"
+	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/assert"
+	"renovate-operator/internal/utils"
 	"sort"
 	"strconv"
 	"time"
@@ -11,14 +14,16 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	JOB_LABEL_TYPE       = "renovate-operator.mogenius.com/job-type"
-	JOB_LABEL_NAME       = "renovate-operator.mogenius.com/job-name"
-	JOB_LABEL_GENERATION = "renovate-operator.mogenius.com/generation"
+	JOB_LABEL_TYPE        = "renovate-operator.mogenius.com/type"
+	JOB_LABEL_RENOVATEJOB = "renovate-operator.mogenius.com/renovatejob"
+	JOB_LABEL_PROJECT     = "renovate-operator.mogenius.com/project"
+	JOB_LABEL_GENERATION  = "renovate-operator.mogenius.com/generation"
 )
 
 type JobType string
@@ -29,9 +34,10 @@ const (
 )
 
 type JobSelector struct {
-	JobName   string
-	JobType   JobType
-	Namespace string
+	RenovateJobName string
+	Project         string
+	JobType         JobType
+	Namespace       string
 	// optional generation to filter by - if not provided, the most recent job will be returned
 	Generation *string
 }
@@ -45,7 +51,7 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 		return nil, err
 	}
 	if len(allJobs) == 0 {
-		return nil, errors.NewNotFound(batchv1.Resource("jobs"), selector.JobName)
+		return nil, errors.NewNotFound(batchv1.Resource("jobs"), selector.Project)
 	}
 	// get the newest job in case there are multiple jobs for the same project (e.g. due to multiple executions)
 	var currentJob *batchv1.Job
@@ -73,16 +79,20 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSelector) ([]batchv1.Job, error) {
 
 	matcher := crclient.MatchingLabels{
-		JOB_LABEL_NAME: selector.JobName,
-		JOB_LABEL_TYPE: string(selector.JobType),
+		JOB_LABEL_TYPE:        string(selector.JobType),
+		JOB_LABEL_RENOVATEJOB: selector.RenovateJobName,
 	}
+	if selector.JobType == ExecutorJobType {
+		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+	}
+
 	if selector.Generation != nil && *selector.Generation != "" {
 		matcher[JOB_LABEL_GENERATION] = *selector.Generation
 	}
 	jobList := &batchv1.JobList{}
 	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
 	if err != nil {
-		return nil, fmt.Errorf("listing jobs with label %s: %w", selector.JobName, err)
+		return nil, fmt.Errorf("listing jobs with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
 	}
 	return jobList.Items, nil
 }
@@ -97,10 +107,22 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	return nil
 }
 func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
+	assert.Assert(selector.JobType != "", "JobType is required in selector")
+	assert.Assert(selector.RenovateJobName != "", "RenovateJobName is required in selector")
+
 	generation := fmt.Sprintf("%d", time.Now().Unix())
 
-	job.Labels[JOB_LABEL_GENERATION] = generation
+	if job.Labels == nil {
+		job.Labels = make(map[string]string)
+	}
 
+	job.Labels[JOB_LABEL_GENERATION] = generation
+	job.Labels[JOB_LABEL_TYPE] = string(selector.JobType)
+	job.Labels[JOB_LABEL_RENOVATEJOB] = selector.RenovateJobName
+
+	if selector.JobType == ExecutorJobType {
+		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+	}
 	// Create immediately - no deletion needed first
 	err := client.Create(ctx, job)
 	if err != nil {
@@ -132,6 +154,30 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 			// This is an old generation - safe to delete
 			_ = DeleteJob(ctx, client, &job)
 		}
+	}
+
+	// TODO: Remove this cleanup logic after we have confidence that the new labels have propagated
+	stub := &api.RenovateJob{ObjectMeta: v1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
+	name := ""
+	if selector.JobType == DiscoveryJobType {
+		name = utils.DiscoveryJobName(stub)
+	} else {
+		name = utils.ExecutorJobName(stub, selector.Project)
+	}
+
+	matcher := crclient.MatchingLabels{
+		"renovate-operator.mogenius.com/job-type": string(selector.JobType),
+		"renovate-operator.mogenius.com/job-name": name,
+	}
+
+	jobList := &batchv1.JobList{}
+	err = client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
+	if err != nil {
+		return fmt.Errorf("listing jobs for cleanup with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
+	}
+
+	for _, job := range jobList.Items {
+		_ = DeleteJob(ctx, client, &job)
 	}
 	return nil
 }

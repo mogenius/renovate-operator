@@ -7,7 +7,6 @@ import (
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/telemetry"
-	"renovate-operator/internal/utils"
 	"sync"
 	"time"
 
@@ -121,9 +120,9 @@ func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.Renov
 
 	// 3. Extract discovered projects from stdout
 	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-		JobName:   utils.DiscoveryJobName(job),
-		JobType:   crdManager.DiscoveryJobType,
-		Namespace: job.Namespace,
+		JobType:         crdManager.DiscoveryJobType,
+		Namespace:       job.Namespace,
+		RenovateJobName: job.Name,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get discovery job: %w", err)
@@ -165,10 +164,10 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 
 	// if generation is not provided, get the latest job and return its status
 	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-		JobName:    utils.DiscoveryJobName(job),
-		JobType:    crdManager.DiscoveryJobType,
-		Namespace:  job.Namespace,
-		Generation: &generation,
+		JobType:         crdManager.DiscoveryJobType,
+		Namespace:       job.Namespace,
+		Generation:      &generation,
+		RenovateJobName: job.Name,
 	})
 	// retry getting the job if not found
 	if err != nil && errors.IsNotFound(err) {
@@ -181,10 +180,10 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
 			}
 			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobName:    utils.DiscoveryJobName(job),
-				JobType:    crdManager.DiscoveryJobType,
-				Namespace:  job.Namespace,
-				Generation: &generation,
+				JobType:         crdManager.DiscoveryJobType,
+				Namespace:       job.Namespace,
+				Generation:      &generation,
+				RenovateJobName: job.Name,
 			})
 		}
 	} else if err != nil {
@@ -223,9 +222,9 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 
 	// Create the discovery job
 	generation, err := crdManager.CreateJobWithGeneration(ctx, e.client, discoveryJob, crdManager.JobSelector{
-		JobName:   utils.DiscoveryJobName(&renovateJob),
-		JobType:   crdManager.DiscoveryJobType,
-		Namespace: renovateJob.Namespace,
+		JobType:         crdManager.DiscoveryJobType,
+		Namespace:       renovateJob.Namespace,
+		RenovateJobName: renovateJob.Name,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery job: %w", err)

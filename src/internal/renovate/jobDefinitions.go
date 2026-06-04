@@ -2,12 +2,10 @@ package renovate
 
 import (
 	"encoding/json"
-	"maps"
 	"os"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/github"
-	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 	"strconv"
 	"strings"
@@ -108,10 +106,9 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
 		batchJob.Annotations = job.Spec.Metadata.Annotations
+		batchJob.Labels = job.Spec.Metadata.Labels
+		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 	}
-	labels := getJobLabels(job.Spec.Metadata, crdmanager.DiscoveryJobType, jobName)
-	batchJob.Spec.Template.Labels = labels
-	batchJob.Labels = labels
 	return batchJob
 }
 
@@ -193,10 +190,9 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 	if job.Spec.Metadata != nil {
 		batchJob.Spec.Template.Annotations = job.Spec.Metadata.Annotations
 		batchJob.Annotations = job.Spec.Metadata.Annotations
+		batchJob.Labels = job.Spec.Metadata.Labels
+		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 	}
-	labels := getJobLabels(job.Spec.Metadata, crdmanager.ExecutorJobType, jobName)
-	batchJob.Labels = labels
-	batchJob.Spec.Template.Labels = labels
 	return batchJob
 }
 
@@ -335,17 +331,6 @@ func getJobTTLSecondsAfterFinished() *int32 {
 		return nil
 	}
 	return new(int32(val))
-}
-
-func getJobLabels(metadata *api.RenovateJobMetadata, jobType crdmanager.JobType, jobName string) map[string]string {
-	labels := map[string]string{
-		crdmanager.JOB_LABEL_TYPE: string(jobType),
-		crdmanager.JOB_LABEL_NAME: jobName,
-	}
-	if metadata != nil {
-		maps.Copy(labels, metadata.Labels)
-	}
-	return labels
 }
 
 // imagePullSecrets configured at the operator level via IMAGE_PULL_SECRETS env var

@@ -618,18 +618,6 @@ func expectLabels(t *testing.T, job *batchv1.Job, expectedLabels map[string]stri
 			t.Fatalf("expected job label %s=%s, got %s", k, v, job.Labels[k])
 		}
 	}
-	defaultLabels := map[string]string{
-		"renovate-operator.mogenius.com/job-type": jobType,
-		"renovate-operator.mogenius.com/job-name": jobName,
-	}
-	for k, v := range defaultLabels {
-		if job.Spec.Template.Labels[k] != v {
-			t.Fatalf("expected default template label %s=%s, got %s", k, v, job.Spec.Template.Labels[k])
-		}
-		if job.Labels[k] != v {
-			t.Fatalf("expected default job label %s=%s, got %s", k, v, job.Labels[k])
-		}
-	}
 }
 
 func expectImage(t *testing.T, container *v1.Container, expectedImage string) {
