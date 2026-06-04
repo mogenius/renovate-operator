@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -89,7 +88,7 @@ func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSel
 		JOB_LABEL_TYPE:        string(selector.JobType),
 		JOB_LABEL_RENOVATEJOB: selector.RenovateJobName,
 	}
-	if selector.JobType == ExecutorJobType {
+	if selector.JobType == ExecutorJobType && selector.Project != "" {
 		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
 	}
 
@@ -168,7 +167,7 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 	}
 
 	// TODO: Remove this cleanup logic after we have confidence that the new labels have propagated
-	stub := &api.RenovateJob{ObjectMeta: v1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
+	stub := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
 	name := ""
 	if selector.JobType == DiscoveryJobType {
 		name = utils.DiscoveryJobName(stub)
