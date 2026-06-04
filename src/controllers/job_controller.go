@@ -57,19 +57,21 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
+	jobId := crdManager.RenovateJobIdentifier{
+		Namespace: job.Namespace,
+		Name:      renovateJobName,
+	}
+
 	switch jobType {
 	case string(crdManager.DiscoveryJobType):
-		if err := r.Discovery.ProcessDiscoveryJobResult(ctx, job, renovateJobName, job.Namespace); err != nil {
+		if err := r.Discovery.ProcessDiscoveryJobResult(ctx, job, jobId); err != nil {
 			logger.Error(err, "Error processing discovery job result", "jobName", job.Name)
 			return ctrl.Result{}, err
 		}
-		r.WebhookSync.RunSync(ctx, logger, renovateJobName, job.Namespace)
+		r.WebhookSync.RunSync(ctx, logger, jobId)
 	case string(crdManager.ExecutorJobType):
 		project := job.Annotations[crdManager.JOB_ANNOTATION_PROJECT]
-		jobId := crdManager.RenovateJobIdentifier{
-			Namespace: job.Namespace,
-			Name:      renovateJobName,
-		}
+
 		err := r.Executor.ProcessProjectJobResult(ctx, job, project, jobId)
 		if err != nil {
 			logger.Error(err, "Error processing job result", "jobName", job.Name, "project", project)
