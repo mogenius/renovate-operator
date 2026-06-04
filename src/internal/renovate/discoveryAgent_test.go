@@ -135,7 +135,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 			job := &api.RenovateJob{}
 			job.Name = tc.jobName
 			job.Namespace = "ns"
-			got, err := da.GetDiscoveryJobStatus(context.Background(), job, "")
+			got, err := da.GetDiscoveryJobStatus(context.Background(), job)
 			if err != nil {
 				t.Fatalf("GetDiscoveryJobStatus error: %v", err)
 			}

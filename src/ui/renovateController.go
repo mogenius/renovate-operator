@@ -240,7 +240,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
 
-		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob, "")
+		discoveryStatus, err := s.discovery.GetDiscoveryJobStatus(r.Context(), renovateJob)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				discoveryStatus = api.JobStatusScheduled
@@ -517,7 +517,7 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 	// discovery mus only run once
-	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job, "")
+	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err == nil && status == api.JobStatusRunning {
 		// discovery job is already running
 		writeSuccess(w, SuccessResult{Message: "discovery job is already running"})
@@ -589,7 +589,7 @@ func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Reques
 		internalServerError(w, nil, "failed to get renovate job")
 		return
 	}
-	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job, "")
+	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			status = api.JobStatusScheduled
