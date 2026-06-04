@@ -494,6 +494,12 @@ func main() {
 		}
 	}()
 
+	err = (&controllers.JobReconciler{
+		Executor:  executor,
+		K8sClient: mgr.GetClient(),
+	}).SetupWithJobManager(mgr)
+	assert.NoError(err, "failed to setup job manager")
+
 	err = (&controllers.RenovateJobReconciler{
 		Scheduler: cronManager,
 		Manager:   jobMgr,
