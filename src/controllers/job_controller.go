@@ -3,8 +3,11 @@ package controllers
 import (
 	context "context"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/webhookSync"
 
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -26,6 +29,15 @@ type JobReconciler struct {
 }
 
 func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ctx, span := reconcilerTracer.Start(ctx, "Job.Reconcile",
+		trace.WithAttributes(
+			semconv.K8SNamespaceName(req.Namespace),
+			semconv.CICDPipelineName(req.Name),
+		),
+	)
+	defer span.End()
+	ctx = telemetry.ContextWithTraceLogger(ctx, log.FromContext(ctx).WithName("job-controller"))
+
 	logger := log.FromContext(ctx)
 
 	job := &batchv1.Job{}
