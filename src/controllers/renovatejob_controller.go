@@ -6,6 +6,7 @@ import (
 	"renovate-operator/github"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
+	"renovate-operator/internal/types"
 	"renovate-operator/internal/webhookSync"
 	"renovate-operator/scheduler"
 	"time"
@@ -55,6 +56,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err == nil {
 		// renovatejob object read without problem -> create the schedule
+		r.resetOrphanedRunning(ctx, renovateJob)
 		r.WebhookSync.EnsureSyncer(ctx, logger, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
@@ -124,10 +126,56 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
 }
 
+// resetOrphanedRunning resets Running projects whose k8s Job no longer exists (e.g. deleted
+// while the operator was scaled down). Uses a single list call to avoid per-project API calls.
+func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renovateJob *api.RenovateJob) {
+	hasRunning := false
+	for _, p := range renovateJob.Status.Projects {
+		if p.Status == api.JobStatusRunning {
+			hasRunning = true
+			break
+		}
+	}
+	if !hasRunning {
+		return
+	}
+
+	logger := log.FromContext(ctx)
+	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	existingJobs, err := crdManager.GetJobsByLabel(ctx, r.K8sClient, crdManager.JobSelector{
+		RenovateJobName: renovateJob.Name,
+		JobType:         crdManager.ExecutorJobType,
+		Namespace:       renovateJob.Namespace,
+	})
+	if err != nil {
+		logger.Error(err, "failed to list executor jobs for orphan check")
+		return
+	}
+
+	activeProjects := make(map[string]struct{}, len(existingJobs))
+	for _, j := range existingJobs {
+		if name := j.Annotations[crdManager.JOB_ANNOTATION_PROJECT]; name != "" {
+			activeProjects[name] = struct{}{}
+		}
+	}
+
+	isOrphaned := func(p api.ProjectStatus) bool {
+		if p.Status != api.JobStatusRunning {
+			return false
+		}
+		_, active := activeProjects[p.Name]
+		return !active
+	}
+
+	if err := r.Manager.UpdateProjectStatusBatched(ctx, isOrphaned, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusFailed}); err != nil {
+		logger.Error(err, "failed to reset orphaned running projects")
+	}
+}
+
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.RenovateJob{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
 }
-

@@ -150,9 +150,8 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 	return err
 }
 
-// reconcileRunning iterates over all Running projects across all RenovateJobs, checks their
-// Kubernetes Job status, updates finished ones, and returns the number of still-running projects
-// globally and per job (keyed by job fullname).
+// countRunningProjects returns the number of still-running projects globally and per job
+// (keyed by job fullname).
 func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int, error) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
@@ -168,11 +167,8 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 			if project.Status != api.JobStatusRunning {
 				continue
 			}
-
-			if project.Status == api.JobStatusRunning {
-				globalRunning++
-				perJobRunning[key]++
-			}
+			globalRunning++
+			perJobRunning[key]++
 		}
 	}
 
