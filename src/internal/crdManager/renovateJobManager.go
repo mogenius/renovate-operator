@@ -335,12 +335,11 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 		}
 	}
 
-	executorJobName := utils.ExecutorJobName(renovateJob, project)
-
 	executorJob, jobErr := GetJobByLabel(ctx, r.client, JobSelector{
-		JobName:   executorJobName,
-		JobType:   ExecutorJobType,
-		Namespace: job.Namespace,
+		JobType:         ExecutorJobType,
+		Namespace:       job.Namespace,
+		RenovateJobName: job.Name,
+		Project:         project,
 	})
 
 	if jobErr == nil {
@@ -445,11 +444,11 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 }
 
 func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error {
-	stub := &api.RenovateJob{ObjectMeta: v1.ObjectMeta{Name: job.Name, Namespace: job.Namespace}}
 	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
-		JobName:   utils.ExecutorJobName(stub, project),
-		JobType:   ExecutorJobType,
-		Namespace: job.Namespace,
+		JobType:         ExecutorJobType,
+		Namespace:       job.Namespace,
+		Project:         project,
+		RenovateJobName: job.Name,
 	})
 	if err == nil && executorJob != nil {
 		if delErr := DeleteJob(ctx, r.client, executorJob); delErr != nil {
