@@ -24,6 +24,9 @@ const (
 	JOB_LABEL_RENOVATEJOB = "renovate-operator.mogenius.com/renovatejob"
 	JOB_LABEL_PROJECT     = "renovate-operator.mogenius.com/project"
 	JOB_LABEL_GENERATION  = "renovate-operator.mogenius.com/generation"
+	// JOB_ANNOTATION_PROJECT stores the original project name (may contain slashes etc.)
+	// Use this instead of JOB_LABEL_PROJECT when you need the exact CRD status key.
+	JOB_ANNOTATION_PROJECT = "renovate-operator.mogenius.com/project"
 )
 
 type JobType string
@@ -122,6 +125,10 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 
 	if selector.JobType == ExecutorJobType {
 		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+		if job.Annotations == nil {
+			job.Annotations = make(map[string]string)
+		}
+		job.Annotations[JOB_ANNOTATION_PROJECT] = selector.Project
 	}
 	// Create immediately - no deletion needed first
 	err := client.Create(ctx, job)
