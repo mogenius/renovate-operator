@@ -35,7 +35,7 @@ type DiscoveryAgent interface {
 	// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered projects,
 	// reconciles them into the RenovateJob CRD, schedules all projects, and optionally deletes the job.
 	// A nil k8sJob or a still-running job is a no-op.
-	ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error
+	ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdManager.RenovateJobIdentifier) error
 }
 
 type discoveryAgent struct {
@@ -118,7 +118,7 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 // projects from its logs, reconciles them into the RenovateJob CRD, and optionally schedules
 // all non-running projects (controlled by the JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY annotation).
 // A nil k8sJob or a still-running job is a no-op.
-func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error {
+func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdManager.RenovateJobIdentifier) error {
 	if k8sJob == nil {
 		return nil
 	}
@@ -131,11 +131,11 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return nil
 	}
 	if status == api.JobStatusFailed {
-		log.FromContext(ctx).Info("discovery job failed", "renovateJob", renovateJobName)
+		log.FromContext(ctx).Info("discovery job failed", "renovateJob", jobId.Name)
 		return nil
 	}
 
-	renovateJob, err := e.manager.GetRenovateJob(ctx, renovateJobName, namespace)
+	renovateJob, err := e.manager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to load RenovateJob: %w", err)
 	}
@@ -144,7 +144,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	if err != nil {
 		// Pod may already be gone (operator restart replaying old jobs, or TTL cleanup).
 		// Skip reconciliation — the next scheduled discovery will correct any drift.
-		log.FromContext(ctx).V(1).Info("skipping discovery result: could not read job logs", "renovateJob", renovateJobName, "error", err)
+		log.FromContext(ctx).V(1).Info("skipping discovery result: could not read job logs", "renovateJob", jobId.Name, "error", err)
 		return nil
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
@@ -157,10 +157,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
-		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, crdManager.RenovateJobIdentifier{
-			Name:      renovateJobName,
-			Namespace: namespace,
-		}, &types.RenovateStatusUpdate{
+		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{
 			Status: api.JobStatusScheduled,
 		}); err != nil {
 			return fmt.Errorf("failed to schedule projects: %w", err)

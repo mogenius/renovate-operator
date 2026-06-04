@@ -24,7 +24,7 @@ type WebhookSyncManager interface {
 	// based on the webhook.forgejo.sync configuration.
 	EnsureSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob)
 	// RunSync executes one webhook sync cycle for the given job, if a syncer is configured.
-	RunSync(ctx context.Context, logger logr.Logger, jobName, jobNamespace string)
+	RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier)
 	// RemoveSyncer removes the syncer entry for the given job (called on RenovateJob deletion).
 	RemoveSyncer(name string)
 }
@@ -138,8 +138,8 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 	m.syncers[name] = &syncerEntry{syncer: syncer, fingerprint: fp}
 }
 
-func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jobName, jobNamespace string) {
-	name := jobName + "-" + jobNamespace
+func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier) {
+	name := jobId.Name + "-" + jobId.Namespace
 	entry, ok := m.syncers[name]
 	if !ok {
 		return
@@ -149,7 +149,7 @@ func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jo
 		logger.Error(err, "webhook sync failed")
 	}
 	if state != nil {
-		m.saveWebhookSyncState(ctx, logger, jobName, jobNamespace, entry.syncer, state)
+		m.saveWebhookSyncState(ctx, logger, jobId.Name, jobId.Namespace, entry.syncer, state)
 	}
 }
 
