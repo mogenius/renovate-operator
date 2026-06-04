@@ -6,17 +6,13 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/telemetry"
+	"renovate-operator/internal/types"
 	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
-	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,124 +21,46 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var discoveryTracer = otel.Tracer("renovate-operator/discovery")
-
 /*
 DiscoveryAgent is the interface for discovering projects for a RenovateJob CRD.
 */
 type DiscoveryAgent interface {
-	// Discover runs the discovery process for the given RenovateJob CRD and returns the list of discovered projects.
-	Discover(ctx context.Context, job *api.RenovateJob) ([]string, error)
-	// Only create and start the discovery job, do not wait for completion.
-	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error)
+	// CreateDiscoveryJob creates and starts a discovery job for the given RenovateJob.
+	// scheduleAfterCompletion controls whether ProcessDiscoveryJobResult will schedule all
+	// non-running projects once the job completes (true for cron, false for UI-triggered).
+	// Completion is handled reactively by the job controller via ProcessDiscoveryJobResult.
+	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error)
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
-	// WaitForDiscoveryJob waits for the discovery job to complete and returns the list of discovered projects.
-	WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error)
+	// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered projects,
+	// reconciles them into the RenovateJob CRD, schedules all projects, and optionally deletes the job.
+	// A nil k8sJob or a still-running job is a no-op.
+	ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error
 }
 
 type discoveryAgent struct {
-	client client.Client
-	logger logr.Logger
-	scheme *runtime.Scheme
-	syncer map[string]*sync.RWMutex
+	client  client.Client
+	logger  logr.Logger
+	scheme  *runtime.Scheme
+	manager crdManager.RenovateJobManager
+	syncer  map[string]*sync.RWMutex
 	// allow tests to override how logs are extracted
 	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
 	// allow tests to override how status is checked
 	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
 }
 
-func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger) DiscoveryAgent {
+func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager) DiscoveryAgent {
 	da := &discoveryAgent{
-		client: client,
-		logger: logger,
-		scheme: scheme,
-		syncer: make(map[string]*sync.RWMutex),
+		client:  client,
+		logger:  logger,
+		scheme:  scheme,
+		manager: manager,
+		syncer:  make(map[string]*sync.RWMutex),
 	}
-	// default to the internal implementation
 	da.getDiscoveredProjectsFromJobLogsFn = da.getDiscoveredProjectsFromJobLogs
 	da.getDiscoveryJobStatusFn = da.getDiscoveryJobStatusInternal
 	return da
-}
-
-func (e *discoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	name := job.Fullname()
-
-	ctx, span := discoveryTracer.Start(ctx, "discovery.run",
-		trace.WithAttributes(
-			semconv.K8SNamespaceName(job.Namespace),
-			semconv.CICDPipelineName(job.Name),
-		),
-	)
-	defer span.End()
-	ctx = telemetry.ContextWithTraceLogger(ctx, e.logger)
-
-	log.FromContext(ctx).V(2).Info("Discovering projects for RenovateJob", "job", name)
-	projects, err := e.discoverIntern(ctx, job)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, err
-	}
-	span.AddEvent("discovery.complete", trace.WithAttributes(
-		attribute.Int("project.count", len(projects)),
-	))
-	return projects, nil
-}
-
-func (e *discoveryAgent) discoverIntern(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	// 1. Create the discovery job - replaces existing job
-	generation, err := e.CreateDiscoveryJob(ctx, *job)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or get discovery job: %w", err)
-	}
-
-	return e.WaitForDiscoveryJob(ctx, job, generation)
-}
-
-func (e *discoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
-	// 2. Wait for discovery job completion
-	for {
-		status, err := e.getDiscoveryJobStatusFn(ctx, job, generation)
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to get discovery job status: %w", err)
-		}
-
-		if status == api.JobStatusRunning {
-			time.Sleep(5 * time.Second)
-		} else if status == api.JobStatusCompleted {
-			break
-		} else if status == api.JobStatusFailed {
-			return nil, fmt.Errorf("discovery job failed")
-		}
-	}
-
-	// 3. Extract discovered projects from stdout
-	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-		JobType:         crdManager.DiscoveryJobType,
-		Namespace:       job.Namespace,
-		RenovateJobName: job.Name,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get discovery job: %w", err)
-	}
-	projects, err := e.getDiscoveredProjectsFromJobLogsFn(ctx, e.client, existingDiscoveryJob)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get discovered projects from job logs: %w", err)
-	}
-	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", job.Fullname())
-
-	// DELETE_SUCCESSFUL_JOBS applies to both executor and discovery jobs.
-	// Previously only executor jobs were deleted; discovery jobs accumulated
-	// indefinitely even when the setting was enabled.
-	if config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" {
-		if err := crdManager.DeleteJob(ctx, e.client, existingDiscoveryJob); err != nil {
-			log.FromContext(ctx).Error(err, "failed to delete successful discovery job", "job", job.Fullname())
-		}
-	}
-
-	return projects, nil
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
@@ -152,7 +70,6 @@ func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.Ren
 
 // getDiscoveryJobStatusInternal is the internal implementation of GetDiscoveryJobStatus.
 func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
-	// lock based on the renovatejob
 	name := job.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
@@ -162,14 +79,12 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	lock.RLock()
 	defer lock.RUnlock()
 
-	// if generation is not provided, get the latest job and return its status
 	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       job.Namespace,
 		Generation:      &generation,
 		RenovateJobName: job.Name,
 	})
-	// retry getting the job if not found
 	if err != nil && errors.IsNotFound(err) {
 		time.Sleep(1 * time.Second)
 
@@ -198,8 +113,70 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	}
 	return api.JobStatusRunning, nil
 }
-func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
-	// lock based on the renovatejob
+
+// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered
+// projects from its logs, reconciles them into the RenovateJob CRD, and optionally schedules
+// all non-running projects (controlled by the JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY annotation).
+// A nil k8sJob or a still-running job is a no-op.
+func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error {
+	if k8sJob == nil {
+		return nil
+	}
+
+	status, _, err := getJobStatus(k8sJob)
+	if err != nil {
+		return err
+	}
+	if status == api.JobStatusRunning {
+		return nil
+	}
+	if status == api.JobStatusFailed {
+		log.FromContext(ctx).Info("discovery job failed", "renovateJob", renovateJobName)
+		return nil
+	}
+
+	renovateJob, err := e.manager.GetRenovateJob(ctx, renovateJobName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to load RenovateJob: %w", err)
+	}
+
+	projects, err := e.getDiscoveredProjectsFromJobLogsFn(ctx, e.client, k8sJob)
+	if err != nil {
+		// Pod may already be gone (operator restart replaying old jobs, or TTL cleanup).
+		// Skip reconciliation — the next scheduled discovery will correct any drift.
+		log.FromContext(ctx).V(1).Info("skipping discovery result: could not read job logs", "renovateJob", renovateJobName, "error", err)
+		return nil
+	}
+	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
+
+	if err := e.manager.ReconcileProjects(ctx, renovateJob, projects); err != nil {
+		return fmt.Errorf("failed to reconcile projects: %w", err)
+	}
+
+	if k8sJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] == "true" {
+		isNotRunning := func(p api.ProjectStatus) bool {
+			return p.Status != api.JobStatusRunning
+		}
+		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, crdManager.RenovateJobIdentifier{
+			Name:      renovateJobName,
+			Namespace: namespace,
+		}, &types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled,
+		}); err != nil {
+			return fmt.Errorf("failed to schedule projects: %w", err)
+		}
+	}
+
+	if config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" {
+		if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to delete successful discovery job", "job", renovateJob.Fullname())
+		}
+	}
+
+	return nil
+}
+
+func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error) {
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
@@ -216,11 +193,16 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
+	if scheduleAfterCompletion {
+		if discoveryJob.Annotations == nil {
+			discoveryJob.Annotations = make(map[string]string)
+		}
+		discoveryJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] = "true"
+	}
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
-	// Create the discovery job
 	generation, err := crdManager.CreateJobWithGeneration(ctx, e.client, discoveryJob, crdManager.JobSelector{
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       renovateJob.Namespace,

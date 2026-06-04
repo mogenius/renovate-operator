@@ -2,19 +2,78 @@ package renovate
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+// fakeJobManager is a minimal RenovateJobManager for discoveryAgent tests.
+type fakeJobManager struct {
+	getJobFn                     func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
+	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+}
+
+func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+	if f.getJobFn != nil {
+		return f.getJobFn(ctx, name, namespace)
+	}
+	return &api.RenovateJob{}, nil
+}
+func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error {
+	if f.reconcileProjectsFn != nil {
+		return f.reconcileProjectsFn(ctx, job, projects)
+	}
+	return nil
+}
+func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	if f.updateProjectStatusBatchedFn != nil {
+		return f.updateProjectStatusBatchedFn(ctx, fn, job, status)
+	}
+	return nil
+}
+func (f *fakeJobManager) ListRenovateJobs(ctx context.Context) ([]crdManager.RenovateJobIdentifier, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) GetProjectsForRenovateJob(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	return fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
+	return "", fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) IsWebhookTokenValid(ctx context.Context, job crdManager.RenovateJobIdentifier, token string) (bool, error) {
+	return true, nil
+}
+func (f *fakeJobManager) IsWebhookSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+	return true, nil
+}
+func (f *fakeJobManager) UpdateExecutionOptions(ctx context.Context, job crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+	return nil
+}
+func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
+	return nil
+}
 
 // minimal logger for tests
 var testLogger = logr.Discard()
@@ -58,7 +117,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
 
-	daIface := NewDiscoveryAgent(scheme, c, testLogger)
+	daIface := NewDiscoveryAgent(scheme, c, testLogger, nil)
 	da := daIface.(*discoveryAgent)
 
 	tests := []struct {
@@ -87,7 +146,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	}
 }
 
-func TestCreateDiscoveryJobAndWait(t *testing.T) {
+func TestCreateDiscoveryJob(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add api scheme: %v", err)
@@ -99,38 +158,106 @@ func TestCreateDiscoveryJobAndWait(t *testing.T) {
 		t.Fatalf("failed to add core scheme: %v", err)
 	}
 
-	// initialize minimal config used by newDiscoveryJob
 	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1"},
 	})
 
-	// start with no jobs - enable status subresource for Job
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&batchv1.Job{}).Build()
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
 
-	da := NewDiscoveryAgent(scheme, c, testLogger).(*discoveryAgent)
-
-	// override log extraction to return a deterministic list
-	da.getDiscoveredProjectsFromJobLogsFn = func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error) {
-		return []string{"a", "b"}, nil
-	}
-
-	// override status check to return completed immediately
-	da.getDiscoveryJobStatusFn = func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
-		// Return completed on first call to simulate job completion
-		return api.JobStatusCompleted, nil
-	}
-
-	// create a RenovateJob and run Discover -> should create the job and return discovered projects
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
 	rj.Namespace = "ns"
 
-	projects, err := da.Discover(context.Background(), rj)
+	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, false)
 	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
+		t.Fatalf("CreateDiscoveryJob returned error: %v", err)
 	}
-	if len(projects) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(projects))
+	if generation == "" {
+		t.Fatalf("expected non-empty generation")
+	}
+
+	// verify a k8s Job was actually created
+	jobList := &batchv1.JobList{}
+	if err := c.List(context.Background(), jobList); err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected 1 job created, got %d", len(jobList.Items))
+	}
+}
+
+func TestProcessDiscoveryJobResult(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	var capturedProjects []string
+	mgr := &fakeJobManager{
+		getJobFn: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+			return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
+		},
+		reconcileProjectsFn: func(ctx context.Context, job *api.RenovateJob, projects []string) error {
+			capturedProjects = projects
+			return nil
+		},
+	}
+
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr).(*discoveryAgent)
+	da.getDiscoveredProjectsFromJobLogsFn = func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error) {
+		return []string{"a", "b"}, nil
+	}
+
+	// succeeded k8s Job (getJobStatus checks Conditions, not Succeeded counter)
+	k8sJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},
+		Status: batchv1.JobStatus{
+			Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+
+	if err := da.ProcessDiscoveryJobResult(context.Background(), k8sJob, "job1", "ns"); err != nil {
+		t.Fatalf("ProcessDiscoveryJobResult returned error: %v", err)
+	}
+	if len(capturedProjects) != 2 {
+		t.Fatalf("expected 2 projects passed to ReconcileProjects, got %d", len(capturedProjects))
+	}
+}
+
+func TestProcessDiscoveryJobResult_NilJob(t *testing.T) {
+	scheme := runtime.NewScheme()
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+
+	if err := da.ProcessDiscoveryJobResult(context.Background(), nil, "job1", "ns"); err != nil {
+		t.Fatalf("expected nil error for nil job, got: %v", err)
+	}
+}
+
+func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+
+	runningJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},
+	}
+	if err := da.ProcessDiscoveryJobResult(context.Background(), runningJob, "job1", "ns"); err != nil {
+		t.Fatalf("expected nil error for running job, got: %v", err)
 	}
 }
 

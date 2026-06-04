@@ -349,4 +349,3 @@ func (in *RenovateJobList) DeepCopyObject() runtime.Object {
 	}
 	return out
 }
-

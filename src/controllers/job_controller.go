@@ -3,6 +3,7 @@ package controllers
 import (
 	context "context"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/webhookSync"
 
 	batchv1 "k8s.io/api/batch/v1"
 
@@ -14,12 +15,14 @@ import (
 )
 
 /*
-Reconciler for RenovateJob resources
-Watching for create/update/delete events and managing the schedules accordingly
+Reconciler for batchv1.Job resources owned by the operator.
+Handles completion of discovery and executor jobs reactively.
 */
 type JobReconciler struct {
-	Executor  renovate.RenovateExecutor
-	K8sClient client.Client
+	Executor    renovate.RenovateExecutor
+	Discovery   renovate.DiscoveryAgent
+	WebhookSync webhookSync.WebhookSyncManager
+	K8sClient   client.Client
 }
 
 func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -44,6 +47,11 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	switch jobType {
 	case string(crdManager.DiscoveryJobType):
+		if err := r.Discovery.ProcessDiscoveryJobResult(ctx, job, renovateJobName, job.Namespace); err != nil {
+			logger.Error(err, "Error processing discovery job result", "jobName", job.Name)
+			return ctrl.Result{}, err
+		}
+		r.WebhookSync.RunSync(ctx, logger, renovateJobName, job.Namespace)
 	case string(crdManager.ExecutorJobType):
 		project := job.Annotations[crdManager.JOB_ANNOTATION_PROJECT]
 		jobId := crdManager.RenovateJobIdentifier{
@@ -63,7 +71,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return ctrl.Result{}, nil
 }
 
-func (r *JobReconciler) SetupWithJobManager(mgr ctrl.Manager) error {
+func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&batchv1.Job{}).
 		Complete(r)
