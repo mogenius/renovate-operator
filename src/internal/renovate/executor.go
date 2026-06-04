@@ -166,9 +166,10 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 			}
 
 			k8sJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-				JobType:   crdManager.ExecutorJobType,
-				Namespace: renovateJob.Namespace,
+				JobType:         crdManager.ExecutorJobType,
+				Namespace:       renovateJob.Namespace,
+				RenovateJobName: renovateJob.Name,
+				Project:         project.Name,
 			})
 
 			var newStatus api.RenovateProjectStatus
@@ -325,9 +326,10 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		}
 
 		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
-			JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-			JobType:   crdManager.ExecutorJobType,
-			Namespace: renovateJob.Namespace,
+			JobType:         crdManager.ExecutorJobType,
+			Namespace:       renovateJob.Namespace,
+			RenovateJobName: renovateJob.Name,
+			Project:         project.Name,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)

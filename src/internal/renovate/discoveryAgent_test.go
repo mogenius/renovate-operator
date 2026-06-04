@@ -33,8 +33,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	running.Name = "job1-discovery-b6caabe5"
 	running.Namespace = "ns"
 	running.Labels = map[string]string{
-		crdManager.JOB_LABEL_NAME: "job1-discovery-b6caabe5",
-		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+		crdManager.JOB_LABEL_RENOVATEJOB: "job1",
+		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
 	}
 
 	// failed job
@@ -43,8 +43,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	failed.Namespace = "ns"
 	failed.Status.Failed = 1
 	failed.Labels = map[string]string{
-		crdManager.JOB_LABEL_NAME: "job2-discovery-2e2a0d0f",
-		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+		crdManager.JOB_LABEL_RENOVATEJOB: "job2",
+		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
 	}
 	// succeeded job
 	succeeded := &batchv1.Job{}
@@ -52,8 +52,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	succeeded.Namespace = "ns"
 	succeeded.Status.Succeeded = 1
 	succeeded.Labels = map[string]string{
-		crdManager.JOB_LABEL_NAME: "job3-discovery-b42e63e1",
-		crdManager.JOB_LABEL_TYPE: string(crdManager.DiscoveryJobType),
+		crdManager.JOB_LABEL_RENOVATEJOB: "job3",
+		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
