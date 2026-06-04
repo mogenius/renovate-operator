@@ -31,7 +31,7 @@ type DiscoveryAgent interface {
 	// Completion is handled reactively by the job controller via ProcessDiscoveryJobResult.
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error)
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
-	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
+	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 	// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered projects,
 	// reconciles them into the RenovateJob CRD, schedules all projects, and optionally deletes the job.
 	// A nil k8sJob or a still-running job is a no-op.
@@ -47,7 +47,7 @@ type discoveryAgent struct {
 	// allow tests to override how logs are extracted
 	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
 	// allow tests to override how status is checked
-	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
+	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 }
 
 func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager) DiscoveryAgent {
@@ -64,12 +64,12 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
-func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
-	return e.getDiscoveryJobStatusFn(ctx, job, generation)
+func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
+	return e.getDiscoveryJobStatusFn(ctx, job)
 }
 
 // getDiscoveryJobStatusInternal is the internal implementation of GetDiscoveryJobStatus.
-func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	name := job.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
@@ -82,7 +82,6 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 	existingDiscoveryJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       job.Namespace,
-		Generation:      &generation,
 		RenovateJobName: job.Name,
 	})
 	if err != nil && errors.IsNotFound(err) {
@@ -97,7 +96,6 @@ func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job 
 			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
 				JobType:         crdManager.DiscoveryJobType,
 				Namespace:       job.Namespace,
-				Generation:      &generation,
 				RenovateJobName: job.Name,
 			})
 		}

@@ -121,13 +121,13 @@ func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project s
 
 // Mock DiscoveryAgent
 type mockDiscoveryAgent struct {
-	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
+	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 	createDiscoveryJobFunc    func(ctx context.Context, renovateJob api.RenovateJob) error
 }
 
-func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	if m.getDiscoveryJobStatusFunc != nil {
-		return m.getDiscoveryJobStatusFunc(ctx, job, generation)
+		return m.getDiscoveryJobStatusFunc(ctx, job)
 	}
 	return api.JobStatusScheduled, nil
 }
@@ -327,7 +327,7 @@ func TestDiscoveryStatusForProject_Success(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 			return api.JobStatusRunning, nil
 		},
 	}
@@ -373,7 +373,7 @@ func TestDiscoveryStatusForProject_NotFound(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 			return "", k8serrors.NewNotFound(schema.GroupResource{}, "job1")
 		},
 	}
@@ -420,7 +420,7 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 	}
 
 	mockDiscovery := &mockDiscoveryAgent{
-		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+		getDiscoveryJobStatusFunc: func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 			return api.JobStatusRunning, nil
 		},
 	}
