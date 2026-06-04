@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -122,11 +123,6 @@ func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project s
 type mockDiscoveryAgent struct {
 	getDiscoveryJobStatusFunc func(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error)
 	createDiscoveryJobFunc    func(ctx context.Context, renovateJob api.RenovateJob) error
-	waitForDiscoveryJobFunc   func(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error)
-}
-
-func (m *mockDiscoveryAgent) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	return nil, nil
 }
 
 func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
@@ -136,18 +132,15 @@ func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api
 	return api.JobStatusScheduled, nil
 }
 
-func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
+func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error) {
 	if m.createDiscoveryJobFunc != nil {
 		return "", m.createDiscoveryJobFunc(ctx, renovateJob)
 	}
 	return "", nil
 }
 
-func (m *mockDiscoveryAgent) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
-	if m.waitForDiscoveryJobFunc != nil {
-		return m.waitForDiscoveryJobFunc(ctx, job, generation)
-	}
-	return []string{}, nil
+func (m *mockDiscoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error {
+	return nil
 }
 
 func TestGetRenovateJobs_Success(t *testing.T) {

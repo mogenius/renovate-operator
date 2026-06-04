@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
@@ -525,26 +524,11 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	generation, err := s.discovery.CreateDiscoveryJob(ctx, *job)
-	if err != nil {
+	if _, err := s.discovery.CreateDiscoveryJob(ctx, *job, false); err != nil {
 		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 		internalServerError(w, err, "failed to create discovery job")
 		return
 	}
-	go func() {
-		ctxBackground := context.Background()
-		projects, err := s.discovery.WaitForDiscoveryJob(ctxBackground, job, generation)
-		if err != nil {
-			s.logger.Error(err, "Discovery job failed for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
-			return
-		}
-
-		err = s.manager.ReconcileProjects(ctxBackground, job, projects)
-		if err != nil {
-			s.logger.Error(err, "failed to reconcile projects")
-			return
-		}
-	}()
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
