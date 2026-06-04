@@ -26,6 +26,7 @@ import (
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
+	"renovate-operator/internal/webhookSync"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -456,6 +457,7 @@ func main() {
 		mgr.GetScheme(),
 		mgr.GetClient(),
 		ctrl.Log.WithName("renovate-discovery"),
+		jobMgr,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
@@ -483,6 +485,7 @@ func main() {
 	)
 
 	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+	webhookSyncMgr := webhookSync.NewWebhookSyncManager(mgr.GetClient(), jobMgr)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
@@ -496,17 +499,20 @@ func main() {
 	}()
 
 	err = (&controllers.JobReconciler{
-		Executor:  executor,
-		K8sClient: mgr.GetClient(),
-	}).SetupWithJobManager(mgr)
+		Executor:    executor,
+		Discovery:   discovery,
+		WebhookSync: webhookSyncMgr,
+		K8sClient:   mgr.GetClient(),
+	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup job manager")
 
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler: cronManager,
-		Manager:   jobMgr,
-		Discovery: discovery,
-		K8sClient: mgr.GetClient(),
-		GithubApp: githubAppToken,
+		Scheduler:   cronManager,
+		Manager:     jobMgr,
+		Discovery:   discovery,
+		K8sClient:   mgr.GetClient(),
+		GithubApp:   githubAppToken,
+		WebhookSync: webhookSyncMgr,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

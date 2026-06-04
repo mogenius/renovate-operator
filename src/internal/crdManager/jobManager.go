@@ -27,6 +27,10 @@ const (
 	// JOB_ANNOTATION_PROJECT stores the original project name (may contain slashes etc.)
 	// Use this instead of JOB_LABEL_PROJECT when you need the exact CRD status key.
 	JOB_ANNOTATION_PROJECT = "renovate-operator.mogenius.com/project"
+	// JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY indicates that ProcessDiscoveryJobResult should
+	// schedule all non-running projects after reconciling. Set to "true" for cron-triggered
+	// discovery; omit or "false" for UI-triggered discovery (project list refresh only).
+	JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY = "renovate-operator.mogenius.com/schedule-after-discovery"
 )
 
 type JobType string
