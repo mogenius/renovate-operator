@@ -111,7 +111,7 @@ func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.
 	}
 	return "gen-1", nil
 }
-func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
 }
 func (f *fakeDiscovery) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobId crdManager.RenovateJobIdentifier) error {
