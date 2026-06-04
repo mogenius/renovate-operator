@@ -85,7 +85,7 @@ type fakeWebhookSync struct{}
 
 func (f *fakeWebhookSync) EnsureSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
 }
-func (f *fakeWebhookSync) RunSync(ctx context.Context, logger logr.Logger, jobName, jobNamespace string) {
+func (f *fakeWebhookSync) RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier) {
 }
 func (f *fakeWebhookSync) RemoveSyncer(name string) {}
 
@@ -114,7 +114,7 @@ func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.
 func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
 }
-func (f *fakeDiscovery) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobName string, namespace string) error {
+func (f *fakeDiscovery) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobId crdManager.RenovateJobIdentifier) error {
 	return nil
 }
 
@@ -291,11 +291,11 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
 		WebhookSync: &fakeWebhookSync{},
-		GithubApp:      &fakeGithubAppToken{},
+		GithubApp:   &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -325,11 +325,11 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
 		WebhookSync: &fakeWebhookSync{},
-		GithubApp:      &fakeGithubAppToken{},
+		GithubApp:   &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -359,9 +359,9 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
 		WebhookSync: &fakeWebhookSync{},
 	}
 

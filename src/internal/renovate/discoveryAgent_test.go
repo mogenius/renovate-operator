@@ -227,7 +227,10 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 		},
 	}
 
-	if err := da.ProcessDiscoveryJobResult(context.Background(), k8sJob, "job1", "ns"); err != nil {
+	if err := da.ProcessDiscoveryJobResult(context.Background(), k8sJob, crdManager.RenovateJobIdentifier{
+		Namespace: "ns",
+		Name:      "job1",
+	}); err != nil {
 		t.Fatalf("ProcessDiscoveryJobResult returned error: %v", err)
 	}
 	if len(capturedProjects) != 2 {
@@ -240,7 +243,10 @@ func TestProcessDiscoveryJobResult_NilJob(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
 
-	if err := da.ProcessDiscoveryJobResult(context.Background(), nil, "job1", "ns"); err != nil {
+	if err := da.ProcessDiscoveryJobResult(context.Background(), nil, crdManager.RenovateJobIdentifier{
+		Namespace: "ns",
+		Name:      "job1",
+	}); err != nil {
 		t.Fatalf("expected nil error for nil job, got: %v", err)
 	}
 }
@@ -256,7 +262,10 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 	runningJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},
 	}
-	if err := da.ProcessDiscoveryJobResult(context.Background(), runningJob, "job1", "ns"); err != nil {
+	if err := da.ProcessDiscoveryJobResult(context.Background(), runningJob, crdManager.RenovateJobIdentifier{
+		Namespace: "ns",
+		Name:      "job1",
+	}); err != nil {
 		t.Fatalf("expected nil error for running job, got: %v", err)
 	}
 }
