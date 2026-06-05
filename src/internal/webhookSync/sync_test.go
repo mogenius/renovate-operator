@@ -13,11 +13,13 @@ type mockClient struct {
 	repos      []gitProviderClients.Repository
 	hooks      map[string][]gitProviderClients.Webhook // "owner/repo" -> hooks
 	created    map[string][]gitProviderClients.CreateWebhookOptions
+	edited     map[string][]gitProviderClients.CreateWebhookOptions
 	deleted    map[string][]int64
 	nextHookID int64
 	searchErr  error
 	listErr    map[string]error
 	createErr  map[string]error
+	editErr    map[string]error
 	deleteErr  map[string]error
 }
 
@@ -25,9 +27,11 @@ func newMockClient() *mockClient {
 	return &mockClient{
 		hooks:      make(map[string][]gitProviderClients.Webhook),
 		created:    make(map[string][]gitProviderClients.CreateWebhookOptions),
+		edited:     make(map[string][]gitProviderClients.CreateWebhookOptions),
 		deleted:    make(map[string][]int64),
 		listErr:    make(map[string]error),
 		createErr:  make(map[string]error),
+		editErr:    make(map[string]error),
 		deleteErr:  make(map[string]error),
 		nextHookID: 100,
 	}
@@ -61,6 +65,23 @@ func (m *mockClient) CreateRepoWebhook(_ context.Context, owner, repo string, op
 	m.nextHookID++
 	hook := &gitProviderClients.Webhook{ID: m.nextHookID, Config: opts.Config, Events: opts.Events}
 	m.hooks[key] = append(m.hooks[key], *hook)
+	return hook, nil
+}
+
+func (m *mockClient) EditRepoWebhook(_ context.Context, owner, repo string, hookID int64, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	key := owner + "/" + repo
+	if err, ok := m.editErr[key]; ok {
+		return nil, err
+	}
+	m.edited[key] = append(m.edited[key], opts)
+	hook := &gitProviderClients.Webhook{ID: hookID, Config: opts.Config, Events: opts.Events}
+	// Update the hook in the hooks list
+	for i, h := range m.hooks[key] {
+		if h.ID == hookID {
+			m.hooks[key][i] = *hook
+			break
+		}
+	}
 	return hook, nil
 }
 
@@ -98,9 +119,13 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 		t.Errorf("expected 1 webhook created for org/repo2, got %d", len(mc.created["org/repo2"]))
 	}
 
-	// Verify auth header
-	if mc.created["org/repo1"][0].Config.AuthorizationHeader != "Bearer secret-token" {
-		t.Errorf("expected Bearer auth header in config, got %q", mc.created["org/repo1"][0].Config.AuthorizationHeader)
+	// Verify auth header (top-level, not in config)
+	if mc.created["org/repo1"][0].AuthorizationHeader != "Bearer secret-token" {
+		t.Errorf("expected Bearer auth header, got %q", mc.created["org/repo1"][0].AuthorizationHeader)
+	}
+	// Verify secret in config
+	if mc.created["org/repo1"][0].Config.Secret != "secret-token" {
+		t.Errorf("expected secret in config, got %q", mc.created["org/repo1"][0].Config.Secret)
 	}
 
 	// Verify returned state matches internal state
@@ -112,7 +137,7 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 	}
 }
 
-func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
+func TestSyncUpdatesExistingWebhook(t *testing.T) {
 	mc := newMockClient()
 	mc.repos = []gitProviderClients.Repository{
 		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
@@ -123,15 +148,28 @@ func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 		{ID: 99, Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
 	}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "my-secret", "renovate", nil, logr.Discard())
 
 	_, err := syncer.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Should not create a new webhook
 	if len(mc.created["org/repo1"]) != 0 {
 		t.Errorf("expected no webhooks created, got %d", len(mc.created["org/repo1"]))
+	}
+
+	// Should edit the existing webhook to ensure config is current
+	if len(mc.edited["org/repo1"]) != 1 {
+		t.Fatalf("expected 1 webhook edit, got %d", len(mc.edited["org/repo1"]))
+	}
+	editedOpts := mc.edited["org/repo1"][0]
+	if editedOpts.Config.Secret != "my-secret" {
+		t.Errorf("expected secret 'my-secret' in edited webhook config, got %q", editedOpts.Config.Secret)
+	}
+	if editedOpts.AuthorizationHeader != "Bearer my-secret" {
+		t.Errorf("expected Bearer auth header at top level, got %q", editedOpts.AuthorizationHeader)
 	}
 
 	// Verify the existing hook was tracked
@@ -308,9 +346,12 @@ func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should detect existing webhook and track it without creating a new one
+	// Should detect existing webhook, edit it, and track it without creating a new one
 	if len(mc.created["org/repo1"]) != 0 {
 		t.Errorf("expected no new webhooks, got %d", len(mc.created["org/repo1"]))
+	}
+	if len(mc.edited["org/repo1"]) != 1 {
+		t.Errorf("expected 1 edit call, got %d", len(mc.edited["org/repo1"]))
 	}
 	if syncer.managedRepos["org/repo1"] != 55 {
 		t.Errorf("expected tracked hook ID 55, got %d", syncer.managedRepos["org/repo1"])

@@ -10,6 +10,7 @@ type GitProviderClient interface {
 	SearchReposByTopic(ctx context.Context, topic string) ([]Repository, error)
 	ListRepoWebhooks(ctx context.Context, owner, repo string) ([]Webhook, error)
 	CreateRepoWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error)
+	EditRepoWebhook(ctx context.Context, owner, repo string, hookID int64, opts CreateWebhookOptions) (*Webhook, error)
 	DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error
 }
 
@@ -38,14 +39,15 @@ type Webhook struct {
 }
 
 type WebhookConfig struct {
-	URL                 string `json:"url"`
-	ContentType         string `json:"content_type"`
-	AuthorizationHeader string `json:"authorization_header,omitempty"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Secret      string `json:"secret,omitempty"`
 }
 
 type CreateWebhookOptions struct {
-	Type   string        `json:"type"`
-	Config WebhookConfig `json:"config"`
-	Events []string      `json:"events"`
-	Active bool          `json:"active"`
+	Type                string        `json:"type"`
+	Config              WebhookConfig `json:"config"`
+	Events              []string      `json:"events"`
+	Active              bool          `json:"active"`
+	AuthorizationHeader string        `json:"authorization_header,omitempty"`
 }

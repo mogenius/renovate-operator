@@ -58,6 +58,10 @@ func (c *GitLabClient) CreateRepoWebhook(ctx context.Context, owner, repo string
 	return nil, fmt.Errorf("creating webhooks is not supported by GitLab API")
 }
 
+func (c *GitLabClient) EditRepoWebhook(ctx context.Context, owner, repo string, hookID int64, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("editing webhooks is not supported by GitLab API")
+}
+
 func (c *GitLabClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
 	return fmt.Errorf("deleting webhooks is not supported by GitLab API")
 }

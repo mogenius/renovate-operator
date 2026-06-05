@@ -161,7 +161,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 
 		// Run Forgejo webhook sync after discovery completes
 		if entry, ok := reconciler.webhookSyncers[name]; ok {
-			state, err := entry.syncer.RunOnce(ctx)
+			state, err := entry.syncer.RunOnce(ctx, projects...)
 			if err != nil {
 				logger.Error(err, "webhook sync failed")
 			}

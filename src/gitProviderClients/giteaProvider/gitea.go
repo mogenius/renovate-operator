@@ -63,6 +63,10 @@ func (c *GiteaClient) CreateRepoWebhook(ctx context.Context, owner, repo string,
 	return nil, fmt.Errorf("creating webhooks is not supported by Gitea API")
 }
 
+func (c *GiteaClient) EditRepoWebhook(ctx context.Context, owner, repo string, hookID int64, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	return nil, fmt.Errorf("editing webhooks is not supported by Gitea API")
+}
+
 func (c *GiteaClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
 	return fmt.Errorf("deleting webhooks is not supported by Gitea API")
 }

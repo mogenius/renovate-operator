@@ -42,6 +42,7 @@ func (c *ForgejoClient) IsFork(ctx context.Context, project string) (bool, error
 		return false, err
 	}
 	req.Header.Set("Authorization", "token "+c.Token)
+	req.Header.Set("User-Agent", "renovate-operator")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
@@ -71,6 +72,7 @@ func (c *ForgejoClient) doRequest(ctx context.Context, method, path string, body
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Authorization", "token "+c.Token)
+	req.Header.Set("User-Agent", "renovate-operator")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -159,6 +161,25 @@ func (c *ForgejoClient) CreateRepoWebhook(ctx context.Context, owner, repo strin
 	var hook gitProviderClients.Webhook
 	if err := decodeResponse(resp, &hook); err != nil {
 		return nil, fmt.Errorf("creating webhook: %w", err)
+	}
+	return &hook, nil
+}
+
+func (c *ForgejoClient) EditRepoWebhook(ctx context.Context, owner, repo string, hookID int64, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	body, err := json.Marshal(opts)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling webhook options: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/hooks/%d", owner, repo, hookID)
+	resp, err := c.doRequest(ctx, http.MethodPatch, path, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("editing webhook: %w", err)
+	}
+
+	var hook gitProviderClients.Webhook
+	if err := decodeResponse(resp, &hook); err != nil {
+		return nil, fmt.Errorf("editing webhook: %w", err)
 	}
 	return &hook, nil
 }

@@ -56,16 +56,33 @@ func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
 	maps.Copy(s.managedRepos, m)
 }
 
-// RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
+// RunOnce executes one full sync cycle: ensures webhooks exist on eligible repos and removes them from opted-out repos.
+// When projects is non-empty, those repos are used directly instead of searching by topic.
 // It returns a consistent snapshot of the managed repos state as it was at the end of the sync cycle.
-func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
-	// Step 1: Search repos by topic (no lock needed — pure API call)
-	repos, err := s.client.SearchReposByTopic(ctx, s.topic)
-	if err != nil {
-		return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+func (s *WebhookSyncer) RunOnce(ctx context.Context, projects ...string) (map[string]int64, error) {
+	var repos []gitProviderClients.Repository
+
+	if len(projects) > 0 {
+		// Use the provided project list — mark all as admin (the caller already discovered them)
+		for _, fullName := range projects {
+			repos = append(repos, gitProviderClients.Repository{
+				FullName:    fullName,
+				Permissions: &gitProviderClients.RepositoryPermissions{Admin: true},
+			})
+		}
+	} else if s.topic != "" {
+		// Fall back to topic-based search
+		var err error
+		repos, err = s.client.SearchReposByTopic(ctx, s.topic)
+		if err != nil {
+			return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+		}
+	} else {
+		s.logger.Info("no projects provided and no topic configured, skipping webhook sync")
+		return s.snapshotManagedRepos(), nil
 	}
 
-	// Step 2: Partition by admin permission
+	// Partition by admin permission
 	topicRepos := make(map[string]bool, len(repos))
 	adminRepos := make(map[string]gitProviderClients.Repository)
 	for _, repo := range repos {
@@ -87,7 +104,11 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 		owner, repoName := parts[0], parts[1]
 
 		if err := s.ensureWebhook(ctx, owner, repoName, fullName); err != nil {
-			s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+			if strings.Contains(err.Error(), "403") {
+				s.logger.Info("skipping repo: no admin permission to manage webhooks", "repo", fullName)
+			} else {
+				s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+			}
 			continue
 		}
 	}
@@ -132,13 +153,33 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 		s.mu.Unlock()
 	}
 
-	// Return a consistent snapshot of the final state
+	return s.snapshotManagedRepos(), nil
+}
+
+func (s *WebhookSyncer) snapshotManagedRepos() map[string]int64 {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	snapshot := make(map[string]int64, len(s.managedRepos))
 	maps.Copy(snapshot, s.managedRepos)
-	s.mu.Unlock()
+	return snapshot
+}
 
-	return snapshot, nil
+func (s *WebhookSyncer) buildWebhookOptions() gitProviderClients.CreateWebhookOptions {
+	cfg := gitProviderClients.WebhookConfig{
+		URL:         s.webhookURL,
+		ContentType: "json",
+	}
+	opts := gitProviderClients.CreateWebhookOptions{
+		Type:   "forgejo",
+		Config: cfg,
+		Events: s.events,
+		Active: true,
+	}
+	if s.authToken != "" {
+		opts.Config.Secret = s.authToken
+		opts.AuthorizationHeader = "Bearer " + s.authToken
+	}
+	return opts
 }
 
 func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {
@@ -148,31 +189,24 @@ func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName
 		return fmt.Errorf("listing webhooks: %w", err)
 	}
 
+	opts := s.buildWebhookOptions()
+
 	// Check if our webhook already exists
 	for _, hook := range hooks {
 		if hook.Config.URL == s.webhookURL {
+			// Update the existing webhook to ensure config (secret, auth header, events) stays current
+			updated, err := s.client.EditRepoWebhook(ctx, owner, repo, hook.ID, opts)
+			if err != nil {
+				return fmt.Errorf("updating webhook: %w", err)
+			}
 			s.mu.Lock()
-			s.managedRepos[fullName] = hook.ID
+			s.managedRepos[fullName] = updated.ID
 			s.mu.Unlock()
 			return nil
 		}
 	}
 
 	// Create the webhook
-	cfg := gitProviderClients.WebhookConfig{
-		URL:         s.webhookURL,
-		ContentType: "json",
-	}
-	if s.authToken != "" {
-		cfg.AuthorizationHeader = "Bearer " + s.authToken
-	}
-	opts := gitProviderClients.CreateWebhookOptions{
-		Type:   "forgejo",
-		Config: cfg,
-		Events: s.events,
-		Active: true,
-	}
-
 	hook, err := s.client.CreateRepoWebhook(ctx, owner, repo, opts)
 	if err != nil {
 		return fmt.Errorf("creating webhook: %w", err)

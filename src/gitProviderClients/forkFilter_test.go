@@ -96,6 +96,10 @@ func (c *mockGitProviderClient) CreateRepoWebhook(ctx context.Context, owner, re
 	return nil, fmt.Errorf("creating webhooks is not supported by GitHub API")
 }
 
+func (c *mockGitProviderClient) EditRepoWebhook(ctx context.Context, owner, repo string, hookID int64, opts CreateWebhookOptions) (*Webhook, error) {
+	return nil, fmt.Errorf("editing webhooks is not supported by GitHub API")
+}
+
 func (c *mockGitProviderClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
 	return fmt.Errorf("deleting webhooks is not supported by GitHub API")
 }
