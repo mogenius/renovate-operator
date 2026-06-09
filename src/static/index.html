@@ -2175,15 +2175,17 @@
                           </span>
                         </div>
                         {/* PR Activity section */}
-                        <div className="flex items-center gap-2" data-no-tooltip="true">
-                          <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
-                          <PRActivityBadges
-                            prActivity={project.prActivity}
-                            expanded={expandedProjects.has(project.name)}
-                            onToggle={() => toggleProjectExpanded(project.name)}
-                            projectName={project.name}
-                          />
-                        </div>
+                        {project.prActivity?.prs?.length > 0 && (
+                          <div className="flex items-center gap-2" data-no-tooltip="true">
+                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
+                            <PRActivityBadges
+                              prActivity={project.prActivity}
+                              expanded={expandedProjects.has(project.name)}
+                              onToggle={() => toggleProjectExpanded(project.name)}
+                              projectName={project.name}
+                            />
+                          </div>
+                        )}
                         {expandedProjects.has(project.name) && project.prActivity && project.prActivity.prs && project.prActivity.prs.length > 0 && (
                           <div id={`pr-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-gray-200 dark:border-slate-600 max-h-48 overflow-y-auto">
                             <div className="space-y-1.5">
@@ -2212,15 +2214,17 @@
                           </div>
                         )}
                         {/* Issues section */}
-                        <div className="flex items-center gap-2" data-no-tooltip="true">
-                          <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
-                          <IssuesBadges
-                            logIssues={project.logIssues}
-                            expanded={expandedIssues.has(project.name)}
-                            onToggle={() => toggleIssueExpanded(project.name)}
-                            projectName={project.name}
-                          />
-                        </div>
+                        {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0) && (
+                          <div className="flex items-center gap-2" data-no-tooltip="true">
+                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
+                            <IssuesBadges
+                              logIssues={project.logIssues}
+                              expanded={expandedIssues.has(project.name)}
+                              onToggle={() => toggleIssueExpanded(project.name)}
+                              projectName={project.name}
+                            />
+                          </div>
+                        )}
                         {expandedIssues.has(project.name) && project.logIssues && project.logIssues.issues && project.logIssues.issues.length > 0 && (
                           <div id={`issue-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-amber-300 dark:border-amber-600 max-h-48 overflow-y-auto">
                             <div className="space-y-1.5">
