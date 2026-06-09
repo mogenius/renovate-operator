@@ -70,6 +70,9 @@ type RenovateJobSpec struct {
 	// Reference to a Github App for authentication, this will automatically mount a secret with
 	// RENOVATE_TOKEN
 	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
+	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -269,6 +272,10 @@ func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 	if in.Spec.ScratchVolume != nil {
 		out.Spec.ScratchVolume = new(RenovateJobScratchVolume)
 		in.Spec.ScratchVolume.DeepCopyInto(out.Spec.ScratchVolume)
+	}
+	if in.Spec.RuntimeClassName != nil {
+		out.Spec.RuntimeClassName = new(string)
+		*out.Spec.RuntimeClassName = *in.Spec.RuntimeClassName
 	}
 	// Deep copy Status.Projects (contains pointer and slice fields)
 	if in.Status.Projects != nil {
