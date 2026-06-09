@@ -3275,6 +3275,10 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              runtimeClassName:
+                description: RuntimeClassName for the resulting pod, used to select
+                  a non-default container runtime
+                type: string
               schedule:
                 description: Cron schedule in standard cron format
                 type: string
