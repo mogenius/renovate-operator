@@ -30,6 +30,10 @@ const (
 	// schedule all non-running projects after reconciling. Set to "true" for cron-triggered
 	// discovery; omit or "false" for UI-triggered discovery (project list refresh only).
 	JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY = "renovate-operator.mogenius.com/schedule-after-discovery"
+	// JOB_ANNOTATION_PROCESSED is stamped on a Job after its result has been fully processed.
+	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
+	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
+	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
 )
 
 type JobType string
@@ -111,6 +115,17 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 		return fmt.Errorf("failed to delete job %s: %w", job.Name, err)
 	}
 	return nil
+}
+
+// MarkJobProcessed stamps JOB_ANNOTATION_PROCESSED on the Job so the JobReconciler
+// can skip it on subsequent informer resyncs without re-processing its result.
+func MarkJobProcessed(ctx context.Context, c crclient.Client, job *batchv1.Job) error {
+	patch := crclient.MergeFrom(job.DeepCopy())
+	if job.Annotations == nil {
+		job.Annotations = make(map[string]string)
+	}
+	job.Annotations[JOB_ANNOTATION_PROCESSED] = "true"
+	return c.Patch(ctx, job, patch)
 }
 func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
 	assert.Assert(selector.JobType != "", "JobType is required in selector")

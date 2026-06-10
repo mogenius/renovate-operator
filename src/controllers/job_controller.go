@@ -57,6 +57,10 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
+	if job.Annotations[crdManager.JOB_ANNOTATION_PROCESSED] == "true" {
+		return ctrl.Result{}, nil
+	}
+
 	jobId := crdManager.RenovateJobIdentifier{
 		Namespace: job.Namespace,
 		Name:      renovateJobName,
