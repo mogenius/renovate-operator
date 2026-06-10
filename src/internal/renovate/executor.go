@@ -258,6 +258,12 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		return err
 	}
 
+	if k8sJob != nil {
+		if err := crdManager.MarkJobProcessed(ctx, e.client, k8sJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to mark executor job as processed", "job", k8sJob.Name)
+		}
+	}
+
 	if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && k8sJob != nil {
 		if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
 			return err

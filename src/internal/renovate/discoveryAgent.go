@@ -128,8 +128,10 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	if status == api.JobStatusRunning {
 		return nil
 	}
+
 	if status == api.JobStatusFailed {
 		log.FromContext(ctx).Info("discovery job failed", "renovateJob", jobId.Name)
+		_ = crdManager.MarkJobProcessed(ctx, e.client, k8sJob)
 		return nil
 	}
 
@@ -160,6 +162,11 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		}); err != nil {
 			return fmt.Errorf("failed to schedule projects: %w", err)
 		}
+	}
+
+	// Stamp before the optional delete: if deletion fails the annotation prevents re-processing.
+	if err := crdManager.MarkJobProcessed(ctx, e.client, k8sJob); err != nil {
+		log.FromContext(ctx).Error(err, "failed to mark discovery job as processed", "job", k8sJob.Name)
 	}
 
 	if config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" {
