@@ -33,8 +33,8 @@ func newMockClient() *mockClient {
 	}
 }
 
-func (m *mockClient) IsFork(_ context.Context, _ string) (bool, error) {
-	return false, nil
+func (m *mockClient) GetRepositoryInfo(_ context.Context, _ string) (gitProviderClients.RepositoryInfo, error) {
+	return gitProviderClients.RepositoryInfo{}, nil
 }
 
 func (m *mockClient) SearchReposByTopic(_ context.Context, _ string) ([]gitProviderClients.Repository, error) {

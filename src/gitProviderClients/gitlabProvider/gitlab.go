@@ -17,33 +17,41 @@ type GitLabClient struct {
 	HTTPClient *http.Client
 }
 
-func (c *GitLabClient) IsFork(ctx context.Context, project string) (bool, error) {
+func (c *GitLabClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	// GitLab endpoint already includes /api/v4, project path must be URL-encoded
 	apiURL := fmt.Sprintf("%s/projects/%s", c.Endpoint, url.PathEscape(project))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("gitlab API returned status %d for %s: %s", resp.StatusCode, project, string(body))
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("gitlab API returned status %d for %s: %s", resp.StatusCode, project, string(body))
 	}
 
 	var proj struct {
-		ForkedFromProject *json.RawMessage `json:"forked_from_project"`
+		ForkedFromProject   *json.RawMessage `json:"forked_from_project"`
+		MarkedForDeletionAt *string          `json:"marked_for_deletion_at"`
+		MarkedForDeletionOn *string          `json:"marked_for_deletion_on"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&proj); err != nil {
-		return false, fmt.Errorf("failed to decode GitLab API response for %s: %w", project, err)
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode GitLab API response for %s: %w", project, err)
 	}
-	return proj.ForkedFromProject != nil, nil
+
+	pendingDeletion := (proj.MarkedForDeletionAt != nil && *proj.MarkedForDeletionAt != "") ||
+		(proj.MarkedForDeletionOn != nil && *proj.MarkedForDeletionOn != "")
+	return gitProviderClients.RepositoryInfo{
+		Fork:            proj.ForkedFromProject != nil,
+		PendingDeletion: pendingDeletion,
+	}, nil
 }
 
 func (c *GitLabClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
