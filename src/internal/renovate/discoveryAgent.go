@@ -188,6 +188,29 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	lock.Lock()
 	defer lock.Unlock()
 
+	existingJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
+		JobType:         crdManager.DiscoveryJobType,
+		Namespace:       renovateJob.Namespace,
+		RenovateJobName: renovateJob.Name,
+	})
+	if err != nil && !errors.IsNotFound(err) {
+		return "", fmt.Errorf("failed to check for existing discovery job: %w", err)
+	}
+	if existingJob != nil && existingJob.Status.Succeeded == 0 && existingJob.Status.Failed == 0 {
+		log.FromContext(ctx).V(1).Info("discovery job already running, skipping", "renovateJob", renovateJob.Fullname())
+		if scheduleAfterCompletion && existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
+			patch := client.MergeFrom(existingJob.DeepCopy())
+			if existingJob.Annotations == nil {
+				existingJob.Annotations = make(map[string]string)
+			}
+			existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] = "true"
+			if err := e.client.Patch(ctx, existingJob, patch); err != nil {
+				return "", fmt.Errorf("failed to set schedule-after-discovery annotation on running job: %w", err)
+			}
+		}
+		return "", nil
+	}
+
 	if err := ensureRedisURLSecret(ctx, e.client, renovateJob.Namespace); err != nil {
 		return "", fmt.Errorf("failed to ensure redis url secret: %w", err)
 	}

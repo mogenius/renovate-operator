@@ -187,6 +187,104 @@ func TestCreateDiscoveryJob(t *testing.T) {
 	}
 }
 
+func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1"},
+	})
+
+	runningJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1-discovery-existing",
+			Namespace: "ns",
+			Labels: map[string]string{
+				crdManager.JOB_LABEL_RENOVATEJOB: "job1",
+				crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+
+	rj := &api.RenovateJob{}
+	rj.Name = "job1"
+	rj.Namespace = "ns"
+
+	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, false)
+	if err != nil {
+		t.Fatalf("CreateDiscoveryJob returned unexpected error: %v", err)
+	}
+	if generation != "" {
+		t.Fatalf("expected empty generation when job already running, got %q", generation)
+	}
+
+	jobList := &batchv1.JobList{}
+	if err := c.List(context.Background(), jobList); err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected no new job created, got %d total jobs", len(jobList.Items))
+	}
+}
+
+func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1"},
+	})
+
+	runningJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1-discovery-existing",
+			Namespace: "ns",
+			Labels: map[string]string{
+				crdManager.JOB_LABEL_RENOVATEJOB: "job1",
+				crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+
+	rj := &api.RenovateJob{}
+	rj.Name = "job1"
+	rj.Namespace = "ns"
+
+	if _, err := da.CreateDiscoveryJob(context.Background(), *rj, true); err != nil {
+		t.Fatalf("CreateDiscoveryJob returned unexpected error: %v", err)
+	}
+
+	updated := &batchv1.Job{}
+	if err := c.Get(context.Background(), client.ObjectKey{Name: runningJob.Name, Namespace: runningJob.Namespace}, updated); err != nil {
+		t.Fatalf("failed to get job: %v", err)
+	}
+	if updated.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
+		t.Fatalf("expected schedule-after-discovery annotation to be set on running job")
+	}
+}
+
 func TestProcessDiscoveryJobResult(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {
