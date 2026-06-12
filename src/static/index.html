@@ -494,6 +494,7 @@
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
         const nextToastIdRef = useRef(0);
+        const hasLoadedOnce = useRef(false);
         const [authInfo, setAuthInfo] = useState(null);
         const STAT_FILTER_LABELS = {
           failed: "Failed",
@@ -614,7 +615,9 @@
 
         const loadJobs = useCallback(async () => {
           try {
-            setLoading(true);
+            if (!hasLoadedOnce.current) {
+              setLoading(true);
+            }
             setError(null);
 
             const response = await authFetch("/api/v1/renovatejobs");
@@ -639,6 +642,7 @@
               }
             }
 
+            hasLoadedOnce.current = true;
             setJobs(jobsList);
             setStats(calculateStats(jobsList));
           } catch (err) {
