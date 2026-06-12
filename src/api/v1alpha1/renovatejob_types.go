@@ -26,6 +26,8 @@ type RenovateJobSpec struct {
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
 	SkipForks bool `json:"skipForks,omitempty"`
+	// If true, repositories marked for delayed deletion (pending deletion) will be excluded by querying the platform API. Only GitLab exposes this state.
+	SkipPendingDeletion bool `json:"skipPendingDeletion,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container

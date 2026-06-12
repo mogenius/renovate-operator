@@ -256,16 +256,16 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) error {
 
-	if renovateJob.Spec.SkipForks && r.gitProviderClientFactory != nil {
+	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
 		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
 		if err != nil {
-			r.logger.Error(err, "Failed to create git provider client for fork filtering")
+			r.logger.Error(err, "Failed to create git provider client for project filtering")
 		} else {
-			newProjects, err := gitProviderClients.FilterForks(ctx, providerClient, r.logger, projects)
+			newProjects, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
 			if err != nil {
-				r.logger.Error(err, "Failed to filter forked repositories")
+				r.logger.Error(err, "Failed to filter discovered repositories")
 			} else {
-				r.logger.V(2).Info("Filtered forked repositories", "remaining", len(newProjects))
+				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
 				projects = newProjects
 			}
 		}

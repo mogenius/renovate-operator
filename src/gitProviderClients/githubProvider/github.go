@@ -16,33 +16,34 @@ type GitHubClient struct {
 	HTTPClient *http.Client
 }
 
-func (c *GitHubClient) IsFork(ctx context.Context, project string) (bool, error) {
+func (c *GitHubClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	url := fmt.Sprintf("%s/repos/%s", c.Endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("github API returned status %d for %s: %s", resp.StatusCode, project, string(body))
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("github API returned status %d for %s: %s", resp.StatusCode, project, string(body))
 	}
 
 	var repo struct {
 		Fork bool `json:"fork"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		return false, fmt.Errorf("failed to decode GitHub API response for %s: %w", project, err)
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode GitHub API response for %s: %w", project, err)
 	}
-	return repo.Fork, nil
+	// GitHub deletes repositories immediately and has no pending-deletion state.
+	return gitProviderClients.RepositoryInfo{Fork: repo.Fork}, nil
 }
 
 func (c *GitHubClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
