@@ -47,7 +47,7 @@ This is the most important rule. **Any component that touches a Git provider, sc
 - Define the interface first, then implement it per platform/provider.
 - Add new Git providers by implementing `GitProviderClient` — never add provider-specific branches to shared code.
 - Existing interfaces to extend (not replace):
-  - `gitProviderClients.GitProviderClient` — fork detection, webhooks, repo search
+  - `gitProviderClients.GitProviderClient` — repository info (fork & pending-deletion detection, fetched in one call), webhooks, repo search
   - `ui.AuthProvider` — authentication backends
   - `internal/renovate.DiscoveryAgent`, `RenovateExecutor`
   - `scheduler.Scheduler`

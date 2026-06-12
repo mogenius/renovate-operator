@@ -4,13 +4,26 @@ import "context"
 
 // GitProviderClient provides platform-specific repository operations.
 type GitProviderClient interface {
-	// IsFork returns true if the given project is a fork.
-	IsFork(ctx context.Context, project string) (bool, error)
+	// GetRepositoryInfo returns skip-relevant metadata about a project. The
+	// metadata is fetched in a single platform API call so that fork and
+	// pending-deletion filtering do not each incur their own request.
+	GetRepositoryInfo(ctx context.Context, project string) (RepositoryInfo, error)
 
 	SearchReposByTopic(ctx context.Context, topic string) ([]Repository, error)
 	ListRepoWebhooks(ctx context.Context, owner, repo string) ([]Webhook, error)
 	CreateRepoWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error)
 	DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error
+}
+
+// RepositoryInfo captures repo attributes used to decide whether to skip a
+// project during discovery. Not every provider exposes every attribute;
+// unsupported attributes are reported as false.
+type RepositoryInfo struct {
+	// Fork is true if the repository is a fork.
+	Fork bool
+	// PendingDeletion is true if the repository is marked for delayed deletion.
+	// Only GitLab exposes this state.
+	PendingDeletion bool
 }
 
 type Repository struct {

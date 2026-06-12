@@ -4001,6 +4001,11 @@ spec:
                 description: If true, forked repositories discovered during autodiscovery
                   will be excluded by querying the platform API
                 type: boolean
+              skipPendingDeletion:
+                description: If true, repositories marked for delayed deletion (pending
+                  deletion) will be excluded by querying the platform API. Only GitLab
+                  exposes this state.
+                type: boolean
               tolerations:
                 description: Tolerations for scheduling the resulting pod
                 items:
