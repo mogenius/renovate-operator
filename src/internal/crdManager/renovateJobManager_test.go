@@ -125,7 +125,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}
 
 	err = mgr.UpdateProjectStatus(ctx, "notExistingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
-	if err != ProjectNotFound {
+	if err != ErrProjectNotFound {
 		t.Fatalf("expected project not found error updating not existing project")
 	}
 }

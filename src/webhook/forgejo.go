@@ -2,7 +2,6 @@ package webhook
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -103,14 +102,7 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 			Priority: 1,
 		},
 	)
-	if err != nil {
-		if err == crdmanager.ProjectNotFound {
-			s.logger.Error(err, "Failed to run Renovate for project", "project", payload.Repository.FullName, "renovateJob", job, "namespace", namespace)
-			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("project '%s' not found", payload.Repository.FullName)})
-			return
-		}
-		s.logger.Error(err, "Failed to process Forgejo webhook for repo", "repo", payload.Repository.FullName)
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "failed to process webhook"})
+	if s.handleUpdateProjectStatusError(w, err, payload.Repository.FullName, job, namespace) {
 		return
 	}
 

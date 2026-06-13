@@ -62,7 +62,7 @@ type RenovateJobManager interface {
 	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
 }
 
-var ProjectNotFound = errors.New("project not found")
+var ErrProjectNotFound = errors.New("project not found")
 
 type renovateJobManager struct {
 	client                   client.Client
@@ -220,7 +220,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 			}
 		}
 		if index == -1 {
-			return ProjectNotFound
+			return ErrProjectNotFound
 		}
 
 		projectStatus := renovateJob.Status.Projects[index]
