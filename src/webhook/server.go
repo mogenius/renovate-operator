@@ -93,6 +93,11 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
+		if err == crdmanager.ProjectNotFound {
+			s.logger.Error(err, "Failed to run Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
+			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("project '%s' not found", project)})
+			return
+		}
 		s.logger.Error(err, "Failed to run Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to run renovate for project"})
 		return

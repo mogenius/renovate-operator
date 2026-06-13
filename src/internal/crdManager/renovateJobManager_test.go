@@ -12,7 +12,6 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -95,9 +94,11 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	j := makeJob("job1", "default", nil)
-	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
-	cl := inner
+	j := makeJob("job1", "default", []api.ProjectStatus{{
+		Name:   "existingProject",
+		Status: api.JobStatusScheduled,
+	}})
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
 	if err != nil {
@@ -106,63 +107,26 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
-	// shorten retries for tests
-	// override status update implementation to avoid fake client Status() issues
-	oldFn := updateRenovateJobStatusFn
-	updateRenovateJobStatusFn = func(ctx context.Context, renovateJob *api.RenovateJob, client client.Client) (*api.RenovateJob, error) {
-		if err := client.Update(ctx, renovateJob); err != nil {
-			return nil, err
-		}
-		return loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, client)
-	}
-	defer func() { updateRenovateJobStatusFn = oldFn }()
-	// sanity check: inner client can Get the object
-	if err := inner.Get(ctx, client.ObjectKey{Name: "job1", Namespace: "default"}, &api.RenovateJob{}); err != nil {
-		t.Fatalf("inner client cannot find object: %v", err)
-	}
-
-	// debug: try loadRenovateJob directly using the same client
-	if lj, derr := loadRenovateJob(ctx, "job1", "default", cl); derr != nil {
-		t.Fatalf("debug: loadRenovateJob direct error: %v", derr)
-	} else {
-		t.Logf("debug: loadRenovateJob direct succeeded, name=%s ns=%s", lj.Name, lj.Namespace)
-	}
-
-	// try direct status update to reproduce behaviour
-	if lj, _ := loadRenovateJob(ctx, "job1", "default", cl); true {
-		lj.Status.Projects = append(lj.Status.Projects, api.ProjectStatus{Name: "direct", Status: api.JobStatusScheduled})
-		if derr := cl.Status().Update(ctx, lj); derr != nil {
-			t.Logf("direct status update error: %v", derr)
-		} else {
-			t.Logf("direct status update succeeded")
-		}
-	}
-
-	// add new project via manager
-	err = mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+	err = mgr.UpdateProjectStatus(ctx, "existingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != nil {
-		t.Fatalf("unexpected error adding project: %v", err)
+		t.Fatalf("unexpected error updating project: %v", err)
 	}
-
 	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
 	if err != nil {
 		t.Fatalf("unexpected error getting job: %v", err)
 	}
-	if len(job.Status.Projects) != 1 || job.Status.Projects[0].Name != "p1" {
-		t.Fatalf("expected project p1 to be added, got: %v", job.Status.Projects)
+
+	if len(job.Status.Projects) != 1 || job.Status.Projects[0].Name != "existingProject" {
+		t.Fatalf("got unexcpedted projects after update: %v", job.Status.Projects)
 	}
 
-	// update existing project
-	err = mgr.UpdateProjectStatus(ctx, "p1", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
-	if err != nil {
-		t.Fatalf("unexpected error updating project: %v", err)
-	}
-	job, err = mgr.GetRenovateJob(ctx, "job1", "default")
-	if err != nil {
-		t.Fatalf("unexpected error getting job after update: %v", err)
-	}
 	if job.Status.Projects[0].Status != api.JobStatusRunning {
-		t.Fatalf("expected status running, got %v", job.Status.Projects[0].Status)
+		t.Fatalf("expected project status running after update, got: %s", job.Status.Projects[0].Status)
+	}
+
+	err = mgr.UpdateProjectStatus(ctx, "notExistingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+	if err != ProjectNotFound {
+		t.Fatalf("expected project not found error updating not existing project")
 	}
 }
 
@@ -174,8 +138,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 
 	projects := []api.ProjectStatus{{Name: "p1", Status: api.JobStatusRunning}, {Name: "p2", Status: api.JobStatusScheduled}}
 	j := makeJob("job1", "default", projects)
-	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
-	cl := inner
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
 	if err != nil {
@@ -183,25 +146,6 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	}
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
-
-	// override status update implementation to avoid fake client Status() issues
-	oldFn := updateRenovateJobStatusFn
-	updateRenovateJobStatusFn = func(ctx context.Context, renovateJob *api.RenovateJob, client client.Client) (*api.RenovateJob, error) {
-		if err := client.Update(ctx, renovateJob); err != nil {
-			return nil, err
-		}
-		return loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, client)
-	}
-	defer func() { updateRenovateJobStatusFn = oldFn }()
-	// sanity check: inner client can Get the object
-	if err := inner.Get(ctx, client.ObjectKey{Name: "job1", Namespace: "default"}, &api.RenovateJob{}); err != nil {
-		t.Fatalf("inner client cannot find object: %v", err)
-	}
-
-	// debug: try loadRenovateJob directly using the same client
-	if _, derr := loadRenovateJob(ctx, "job1", "default", cl); derr != nil {
-		t.Fatalf("debug: loadRenovateJob direct error: %v", derr)
-	}
 
 	// predicate: mark non-running projects as scheduled
 	predicate := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
@@ -240,8 +184,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	// existing project 'a' present
 	projects := []api.ProjectStatus{{Name: "a", Status: api.JobStatusCompleted}}
 	j := makeJob("job1", "default", projects)
-	inner := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
-	cl := inner
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
 	if err != nil {
@@ -250,23 +193,9 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
 	ctx := context.Background()
 
-	// override status update implementation to avoid fake client Status() issues
-	oldFn := updateRenovateJobStatusFn
-	updateRenovateJobStatusFn = func(ctx context.Context, renovateJob *api.RenovateJob, client client.Client) (*api.RenovateJob, error) {
-		if err := client.Update(ctx, renovateJob); err != nil {
-			return nil, err
-		}
-		return loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, client)
-	}
-	defer func() { updateRenovateJobStatusFn = oldFn }()
-	// sanity check: inner client can Get the object
-	if err := inner.Get(ctx, client.ObjectKey{Name: "job1", Namespace: "default"}, &api.RenovateJob{}); err != nil {
-		t.Fatalf("inner client cannot find object: %v", err)
-	}
-	// debug: try loadRenovateJob directly using the same client
-	rJob, derr := loadRenovateJob(ctx, "job1", "default", cl)
-	if derr != nil {
-		t.Fatalf("debug: loadRenovateJob direct error: %v", derr)
+	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job for reconcile: %v", err)
 	}
 
 	err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
