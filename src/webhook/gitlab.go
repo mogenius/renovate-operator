@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -75,6 +76,11 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
+		if err == crdmanager.ProjectNotFound {
+			s.logger.Error(err, "Failed to run Renovate for project", "project", payload.Project.PathWithNamespace, "renovateJob", job, "namespace", namespace)
+			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("project '%s' not found", payload.Project.PathWithNamespace)})
+			return
+		}
 		s.logger.Error(err, "Failed to process GitLab webhook for project", "project", payload.Project.PathWithNamespace)
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "failed to process webhook"})
 		return

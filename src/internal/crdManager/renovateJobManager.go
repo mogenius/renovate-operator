@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -60,6 +61,8 @@ type RenovateJobManager interface {
 	// transitions its CRD status to cancelled, freeing the slot for the next dispatch.
 	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
 }
+
+var ProjectNotFound = errors.New("project not found")
 
 type renovateJobManager struct {
 	client                   client.Client
@@ -217,16 +220,12 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 			}
 		}
 		if index == -1 {
-			projectStatus := &api.ProjectStatus{
-				Name:     project,
-				Status:   status.Status,
-				Priority: status.Priority,
-			}
-			renovateJob.Status.Projects = append(renovateJob.Status.Projects, *projectStatus)
-		} else {
-			projectStatus := renovateJob.Status.Projects[index]
-			renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
+			return ProjectNotFound
 		}
+
+		projectStatus := renovateJob.Status.Projects[index]
+		renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
+
 		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
 		return err
 	})
