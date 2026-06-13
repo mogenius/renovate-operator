@@ -92,14 +92,7 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 			Priority: 1,
 		},
 	)
-	if err != nil {
-		if err == crdmanager.ProjectNotFound {
-			s.logger.Error(err, "Failed to run Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
-			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("project '%s' not found", project)})
-			return
-		}
-		s.logger.Error(err, "Failed to run Renovate for project", "project", project, "renovateJob", job, "namespace", namespace)
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to run renovate for project"})
+	if s.handleUpdateProjectStatusError(w, err, project, job, namespace) {
 		return
 	}
 
@@ -162,6 +155,21 @@ func (server *Server) authMiddleware(next http.Handler) http.Handler {
 
 		server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no valid authentication method provided"})
 	})
+}
+
+func (s *Server) handleUpdateProjectStatusError(w http.ResponseWriter, err error, project, job, namespace string) bool {
+	if err == nil {
+		return false
+	}
+
+	s.logger.Error(err, "Failed to process webhook for project", "project", project, "renovateJob", job, "namespace", namespace)
+	if err == crdmanager.ErrProjectNotFound {
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("project '%s' not found", project)})
+		return true
+	}
+
+	s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to process webhook"})
+	return true
 }
 
 func (server *Server) writeJSON(w http.ResponseWriter, status int, data any) {
