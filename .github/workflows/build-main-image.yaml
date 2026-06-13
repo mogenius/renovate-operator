@@ -1,0 +1,16 @@
+
+name: Build main Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-operator:
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@f00ad2379dd065292d37bf4a7e9b84ebd31c584f # v1.1.1
+    secrets: inherit
+    with:
+      version: "main"
+      image: ghcr.io/mogenius/renovate-operator
+      push_latest: false
