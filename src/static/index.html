@@ -504,15 +504,32 @@
           pending: "Pending",
           withIssues: "With Issues",
         };
+        const STAT_FILTER_PARAM = "filter";
 
         const [selectedStatFilter, setSelectedStatFilter] = useState(() => {
           try {
+            const fromUrl = new URLSearchParams(window.location.search).get(STAT_FILTER_PARAM);
+            if (fromUrl && STAT_FILTER_LABELS[fromUrl]) {
+              return fromUrl;
+            }
             const stored = localStorage.getItem('selectedStatFilter');
             return stored && STAT_FILTER_LABELS[stored] ? stored : null;
           } catch {
             return null;
           }
         });
+
+        useEffect(() => {
+          try {
+            const url = new URL(window.location.href);
+            if (selectedStatFilter) {
+              url.searchParams.set(STAT_FILTER_PARAM, selectedStatFilter);
+            } else {
+              url.searchParams.delete(STAT_FILTER_PARAM);
+            }
+            window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+          } catch {}
+        }, [selectedStatFilter]);
 
         const persistStatFilter = (value) => {
           try {
