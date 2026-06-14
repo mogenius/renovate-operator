@@ -169,7 +169,7 @@ func TestCreateDiscoveryJob(t *testing.T) {
 	rj.Name = "job1"
 	rj.Namespace = "ns"
 
-	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, false)
+	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, DiscoveryJobOptions{TriggerAllProjects: false})
 	if err != nil {
 		t.Fatalf("CreateDiscoveryJob returned error: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
 	rj.Name = "job1"
 	rj.Namespace = "ns"
 
-	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, false)
+	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, DiscoveryJobOptions{TriggerAllProjects: false})
 	if err != nil {
 		t.Fatalf("CreateDiscoveryJob returned unexpected error: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 	rj.Name = "job1"
 	rj.Namespace = "ns"
 
-	if _, err := da.CreateDiscoveryJob(context.Background(), *rj, true); err != nil {
+	if _, err := da.CreateDiscoveryJob(context.Background(), *rj, DiscoveryJobOptions{TriggerAllProjects: true}); err != nil {
 		t.Fatalf("CreateDiscoveryJob returned unexpected error: %v", err)
 	}
 

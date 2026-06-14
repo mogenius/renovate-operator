@@ -29,13 +29,18 @@ type DiscoveryAgent interface {
 	// scheduleAfterCompletion controls whether ProcessDiscoveryJobResult will schedule all
 	// non-running projects once the job completes (true for cron, false for UI-triggered).
 	// Completion is handled reactively by the job controller via ProcessDiscoveryJobResult.
-	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error)
+	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error)
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 	// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered projects,
 	// reconciles them into the RenovateJob CRD, schedules all projects, and optionally deletes the job.
 	// A nil k8sJob or a still-running job is a no-op.
 	ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdManager.RenovateJobIdentifier) error
+}
+
+type DiscoveryJobOptions struct {
+	// Wether to trigger all projects once the discovery is fnished
+	TriggerAllProjects bool
 }
 
 type discoveryAgent struct {
@@ -170,7 +175,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	return nil
 }
 
-func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error) {
+func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error) {
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
@@ -190,7 +195,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	}
 	if existingJob != nil && existingJob.Status.Succeeded == 0 && existingJob.Status.Failed == 0 {
 		log.FromContext(ctx).V(1).Info("discovery job already running, skipping", "renovateJob", renovateJob.Fullname())
-		if scheduleAfterCompletion && existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
+		if options.TriggerAllProjects && existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
 			patch := client.MergeFrom(existingJob.DeepCopy())
 			if existingJob.Annotations == nil {
 				existingJob.Annotations = make(map[string]string)
@@ -210,7 +215,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
-	if scheduleAfterCompletion {
+	if options.TriggerAllProjects {
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)
 		}

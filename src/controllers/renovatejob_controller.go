@@ -106,7 +106,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 			return
 		}
 
-		_, err = reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, true)
+		_, err = reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, renovate.DiscoveryJobOptions{TriggerAllProjects: true})
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
