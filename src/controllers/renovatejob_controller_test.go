@@ -8,6 +8,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/renovate"
 
 	"renovate-operator/internal/types"
 
@@ -105,7 +106,7 @@ type fakeDiscovery struct {
 	createDiscoveryJobFn func(ctx context.Context, job api.RenovateJob) (string, error)
 }
 
-func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error) {
+func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
 	if f.createDiscoveryJobFn != nil {
 		return f.createDiscoveryJobFn(ctx, renovateJob)
 	}
