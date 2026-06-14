@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
 	"testing"
 	"time"
@@ -132,7 +133,7 @@ func (m *mockDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api
 	return api.JobStatusScheduled, nil
 }
 
-func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, scheduleAfterCompletion bool) (string, error) {
+func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
 	if m.createDiscoveryJobFunc != nil {
 		return "", m.createDiscoveryJobFunc(ctx, renovateJob)
 	}
