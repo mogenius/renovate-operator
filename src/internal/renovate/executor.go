@@ -321,6 +321,18 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		return candidates[i].jobOldestWait.Before(candidates[j].jobOldestWait)
 	})
 
+	// Ensure the Redis URL secret exists in each namespace that has candidates,
+	// once per namespace instead of once per candidate.
+	seenNamespaces := make(map[string]struct{}, len(renovateJobs))
+	for _, c := range candidates {
+		seenNamespaces[c.renovateJob.Namespace] = struct{}{}
+	}
+	for ns := range seenNamespaces {
+		if err := ensureRedisURLSecret(ctx, e.client, ns); err != nil {
+			return fmt.Errorf("failed to ensure redis url secret: %w", err)
+		}
+	}
+
 	for _, candidate := range candidates {
 		renovateJob := candidate.renovateJob
 		project := candidate.project
@@ -336,10 +348,6 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		// Skip this candidate if its job has reached its per-job limit.
 		if perJobRunning[key] >= int(renovateJob.Spec.Parallelism) {
 			continue
-		}
-
-		if err := ensureRedisURLSecret(ctx, e.client, renovateJob.Namespace); err != nil {
-			return fmt.Errorf("failed to ensure redis url secret: %w", err)
 		}
 
 		carrier := propagation.MapCarrier{}
