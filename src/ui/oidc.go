@@ -19,6 +19,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const pkceCookieName = "pkce_verifier"
+
 type OIDCConfig struct {
 	IssuerURL           string
 	ClientID            string
@@ -31,6 +33,7 @@ type OIDCConfig struct {
 	AllowedGroupPattern string
 	AdditionalScopes    []string
 	FetchUserInfoGroups bool
+	PKCEEnabled         bool
 }
 
 type OIDCAuth struct {
@@ -43,6 +46,7 @@ type OIDCAuth struct {
 	postLogoutRedirect  string
 	groupFilterConfig   GroupFilterConfig
 	fetchUserInfoGroups bool
+	pkceEnabled         bool
 }
 
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
@@ -146,6 +150,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		postLogoutRedirect:  postLogoutRedirect,
 		groupFilterConfig:   groupFilterConfig,
 		fetchUserInfoGroups: cfg.FetchUserInfoGroups,
+		pkceEnabled:         cfg.PKCEEnabled,
 	}, nil
 }
 
@@ -159,7 +164,21 @@ func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, o.oauth2Config.AuthCodeURL(state), http.StatusFound)
+	var authOpts []oauth2.AuthCodeOption
+	if o.pkceEnabled {
+		verifier := oauth2.GenerateVerifier()
+		http.SetCookie(w, &http.Cookie{
+			Name:     pkceCookieName,
+			Value:    verifier,
+			Path:     "/",
+			MaxAge:   300,
+			HttpOnly: true,
+			Secure:   isHTTPS(r),
+			SameSite: http.SameSiteLaxMode,
+		})
+		authOpts = append(authOpts, oauth2.S256ChallengeOption(verifier))
+	}
+	http.Redirect(w, r, o.oauth2Config.AuthCodeURL(state, authOpts...), http.StatusFound)
 }
 
 func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +193,24 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	o.clearStateCookie(w)
 
 	exchangeCtx := oidc.ClientContext(r.Context(), o.httpClient)
-	oauth2Token, err := o.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"))
+	var exchangeOpts []oauth2.AuthCodeOption
+	if o.pkceEnabled {
+		verifierCookie, err := r.Cookie(pkceCookieName)
+		if err != nil {
+			o.logger.Error(err, "missing PKCE verifier cookie")
+			http.Error(w, "invalid PKCE state", http.StatusBadRequest)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     pkceCookieName,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+		})
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(verifierCookie.Value))
+	}
+	oauth2Token, err := o.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"), exchangeOpts...)
 	if err != nil {
 		o.logger.Error(err, "failed to exchange code for token")
 		http.Error(w, "failed to exchange token", http.StatusInternalServerError)
