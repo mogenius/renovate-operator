@@ -290,25 +290,25 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
-
-		// Find the oldest LastRun among this job's Scheduled projects to use as
-		// the fairness sort key for all candidates from this RenovateJob.
 		oldestWait := time.Now()
-		for _, p := range renovateJob.Status.Projects {
-			if p.Status == api.JobStatusScheduled && p.LastRun.Time.Before(oldestWait) {
-				oldestWait = p.LastRun.Time
-			}
-		}
+		startIdx := len(candidates)
 
 		for _, p := range renovateJob.Status.Projects {
 			if p.Status != api.JobStatusScheduled {
 				continue
 			}
+			if p.LastRun.Time.Before(oldestWait) {
+				oldestWait = p.LastRun.Time
+			}
 			candidates = append(candidates, scheduledCandidate{
-				project:       p,
-				renovateJob:   renovateJob,
-				jobOldestWait: oldestWait,
+				project:     p,
+				renovateJob: renovateJob,
 			})
+		}
+
+		// Back-fill jobOldestWait now that we know the oldest wait for this job.
+		for k := startIdx; k < len(candidates); k++ {
+			candidates[k].jobOldestWait = oldestWait
 		}
 	}
 
