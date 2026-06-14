@@ -133,12 +133,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
-	globalRunning, perJobRunning, err := e.countRunningProjects(renovateJobs)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
+	globalRunning, perJobRunning := e.countRunningProjects(renovateJobs)
 
 	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
 	// and dispatch new jobs up to the global and per-job limits.
@@ -152,7 +147,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 // countRunningProjects returns the number of still-running projects globally and per job
 // (keyed by job fullname).
-func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int, error) {
+func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
 
@@ -172,7 +167,7 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 		}
 	}
 
-	return globalRunning, perJobRunning, nil
+	return globalRunning, perJobRunning
 }
 
 // ProcessProjectJobResult handles the status transition of a single Running project given its
@@ -286,6 +281,11 @@ type scheduledCandidate struct {
 // dispatchScheduled collects all Scheduled projects across all RenovateJobs, sorts them for
 // fairness, and launches Kubernetes Jobs until the global or per-job parallelism limits are reached.
 func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs []api.RenovateJob, globalRunning int, perJobRunning map[string]int, options executionOptions) error {
+	if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
+		log.FromContext(ctx).V(2).Info("global parallelism limit reached, skipping dispatch", "limit", options.globalParallelism)
+		return nil
+	}
+
 	var candidates []scheduledCandidate
 
 	for i := range renovateJobs {
