@@ -46,8 +46,6 @@ type discoveryAgent struct {
 	syncer  map[string]*sync.RWMutex
 	// allow tests to override how logs are extracted
 	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
-	// allow tests to override how status is checked
-	getDiscoveryJobStatusFn func(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 }
 
 func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager) DiscoveryAgent {
@@ -59,17 +57,11 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		syncer:  make(map[string]*sync.RWMutex),
 	}
 	da.getDiscoveredProjectsFromJobLogsFn = da.getDiscoveredProjectsFromJobLogs
-	da.getDiscoveryJobStatusFn = da.getDiscoveryJobStatusInternal
 	return da
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
 func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
-	return e.getDiscoveryJobStatusFn(ctx, job)
-}
-
-// getDiscoveryJobStatusInternal is the internal implementation of GetDiscoveryJobStatus.
-func (e *discoveryAgent) getDiscoveryJobStatusInternal(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	name := job.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
