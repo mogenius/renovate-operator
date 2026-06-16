@@ -40,3 +40,30 @@ tests:
           secretKeyRef:
             name: my-custom-secret
             key: my-custom-secret-key
+
+- it: OIDC_PKCE_ENABLED defaults to true
+  set:
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_PKCE_ENABLED
+        value: "true"
+
+- it: OIDC_PKCE_ENABLED can be disabled
+  set:
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        pkceEnabled: false
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_PKCE_ENABLED
+        value: "false"
