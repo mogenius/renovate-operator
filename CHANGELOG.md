@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.1](https://github.com/mogenius/renovate-operator/compare/4.12.0...4.12.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* **helm:** allow disabeling pkce using helm values ([b2d07ec](https://github.com/mogenius/renovate-operator/commit/b2d07ec3975b9b6504229112c8a3d8df7135fef9))
+
 ## [4.12.0](https://github.com/mogenius/renovate-operator/compare/4.11.0...4.12.0) (2026-06-16)
 
 
