@@ -190,6 +190,8 @@ auth:
     additionalScopes: []
     # -- optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo)
     fetchUserInfoGroups: false
+    # -- optional: enable PKCE (Proof Key for Code Exchange) for the OIDC auth flow (enabled by default)
+    pkceEnabled: true
     caCert:
       # -- name of an existing secret containing a PEM-encoded CA certificate to trust for OIDC TLS connections
       existingSecret: ""
