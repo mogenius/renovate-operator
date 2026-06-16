@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.12.0](https://github.com/mogenius/renovate-operator/compare/4.11.0...4.12.0) (2026-06-16)
+
+
+### Features
+
+* enable pkce auth flow ([efdbe60](https://github.com/mogenius/renovate-operator/commit/efdbe60090c281c5fa7a3e416945d9650013431c)), closes [#186](https://github.com/mogenius/renovate-operator/issues/186)
+* **ui:** reflect selected dashboard filter in URL ([fc279a4](https://github.com/mogenius/renovate-operator/commit/fc279a4dfb7c3125d2af547ed80f2306f73a3276))
+
+
+### Bug Fixes
+
+* **deps:** update go module directive to v1.26.4 ([f3b3e35](https://github.com/mogenius/renovate-operator/commit/f3b3e358a786434b197747fdd380e5c5f04bd5f3))
+* **deps:** update kubernetes monorepo to v0.36.2 ([56873a1](https://github.com/mogenius/renovate-operator/commit/56873a1b9c86cd153adadbe0b967400a8404adaf))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.2 ([b6a47e0](https://github.com/mogenius/renovate-operator/commit/b6a47e0f35a5e86745b7f2ca484dbf1657c6c231))
+* **discovery:** check for discovery job status within the lock to mitigate duplicated discovery-jobs ([3384743](https://github.com/mogenius/renovate-operator/commit/3384743b76be1de35115273d8afdb8d125f81a33))
+* **executor:** adding early exit if parallelization limit is already reached ([3d8f191](https://github.com/mogenius/renovate-operator/commit/3d8f1916011630c9501c2cd5eb0ea53700d285e4))
+* **executor:** improve loop performance in identifying next project to run ([f80d66f](https://github.com/mogenius/renovate-operator/commit/f80d66fde117ca0ef5b756213cd8c97f49a46c7b))
+* **executor:** reduce duplicated api calls by only running ensure redis once per namespace ([dfd8f33](https://github.com/mogenius/renovate-operator/commit/dfd8f332fad3ad2cf807738c3bea3f9667ea65e1))
+* return sensible error message if a non existing project is being updated ([253d258](https://github.com/mogenius/renovate-operator/commit/253d258eded97ab589f938f153080baebebe43ce)), closes [#383](https://github.com/mogenius/renovate-operator/issues/383)
+* **ui:** place log level badges next to each other ([b32430a](https://github.com/mogenius/renovate-operator/commit/b32430a1d8b1f4cd24457366df34e798acce178d))
+
 ## [4.11.0](https://github.com/mogenius/renovate-operator/compare/4.10.1...4.11.0) (2026-06-12)
 
 
