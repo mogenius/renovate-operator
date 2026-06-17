@@ -1,4 +1,4 @@
-export function StatBadge({
+function StatBadge({
   label,
   value,
   valueClass = "text-gray-900 dark:text-slate-100",
@@ -40,3 +40,4 @@ export function StatBadge({
     </div>
   );
 }
+window.StatBadge = StatBadge;

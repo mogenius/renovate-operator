@@ -1,4 +1,4 @@
-export function SiteHeader({ version, authInfo, children }) {
+function SiteHeader({ version, authInfo, children }) {
   const showAuth = authInfo && authInfo.enabled && authInfo.authenticated;
 
   const authBlock = showAuth && (
@@ -73,3 +73,4 @@ export function SiteHeader({ version, authInfo, children }) {
     </header>
   );
 }
+window.SiteHeader = SiteHeader;
