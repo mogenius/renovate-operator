@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.2](https://github.com/mogenius/renovate-operator/compare/4.12.1...4.12.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* **helm:** add missing patch permission for jobs resources ([f26c522](https://github.com/mogenius/renovate-operator/commit/f26c52243ac083081ec5145a37859b719229532e))
+
 ## [4.12.1](https://github.com/mogenius/renovate-operator/compare/4.12.0...4.12.1) (2026-06-16)
 
 
