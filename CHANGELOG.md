@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.3](https://github.com/mogenius/renovate-operator/compare/4.12.2...4.12.3) (2026-06-17)
+
+
+### Bug Fixes
+
+* **ui:** downgrade to babel version 7 ([3bd78b7](https://github.com/mogenius/renovate-operator/commit/3bd78b7207ea5c6f2e2a4daba4d70c035f6258ec)), closes [#408](https://github.com/mogenius/renovate-operator/issues/408)
+
 ## [4.12.2](https://github.com/mogenius/renovate-operator/compare/4.12.1...4.12.2) (2026-06-17)
 
 
