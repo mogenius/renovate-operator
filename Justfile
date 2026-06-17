@@ -77,11 +77,15 @@ generate: _install_controller_gen
     controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
 # Run tests and linters for quick iteration locally.
-check: generate golangci-lint test-unit
+check: generate golangci-lint test-unit test-helm
 
 # Execute unit tests
 test-unit: generate
     cd src && go run gotest.tools/gotestsum@latest --format="testname" --hide-summary="skipped" --format-hide-empty-pkg --rerun-fails="0" -- -count=1 ./...
+
+# Execute helm unit tests
+test-helm:
+    helm unittest ./charts/renovate-operator/ --file "unittests/**/*.yaml"
 
 # Execute golangci-lint
 golangci-lint: generate
