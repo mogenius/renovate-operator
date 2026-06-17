@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.4](https://github.com/mogenius/renovate-operator/compare/4.12.3...4.12.4) (2026-06-17)
+
+
+### Bug Fixes
+
+* **ui:** pin all js dependencies to a fixxed version and add renovate manager ([ddf4188](https://github.com/mogenius/renovate-operator/commit/ddf41880d61ac854859033ebc0fe85d25013cda1))
+
 ## [4.12.3](https://github.com/mogenius/renovate-operator/compare/4.12.2...4.12.3) (2026-06-17)
 
 
