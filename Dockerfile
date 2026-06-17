@@ -26,7 +26,7 @@ RUN mkdir -p src/static/js && \
     echo "Downloading React-DOM..." && \
     curl -s -L -o src/static/js/react-dom.production.min.js "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" && \
     echo "Downloading Babel Standalone..." && \
-    curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone/babel.min.js" && \
+    curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@7/babel.min.js" && \
     echo "All JavaScript dependencies downloaded successfully!"
 
 
