@@ -3,6 +3,15 @@
   "extends": [
     "github>mogenius/renovate-config//presets/golang.json#main"
   ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^justfile$", "^Dockerfile$"],
+      "matchStrings": [
+        "unpkg\\.com/(?<depName>[^@\"]+)@(?<currentValue>[^/\"]+)"
+      ],
+      "datasourceTemplate": "npm"
+    }
+  ],
   "packageRules": [
     {
       "matchPackageNames": ["registry.k8s.io/kubectl"],

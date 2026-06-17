@@ -1,4 +1,4 @@
-export function ThemeToggle() {
+function ThemeToggle() {
   const [theme, setTheme] = React.useState(() => window.ThemeUtils.getTheme());
 
   const cycleTheme = () => {
@@ -51,3 +51,4 @@ export function ThemeToggle() {
     </button>
   );
 }
+window.ThemeToggle = ThemeToggle;
