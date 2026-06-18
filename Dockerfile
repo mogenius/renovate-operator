@@ -15,19 +15,23 @@ COPY src .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
     go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
 
-FROM --platform=$BUILDPLATFORM alpine:latest AS js-downloader
+FROM --platform=$BUILDPLATFORM node:22.22.3-alpine AS js-downloader
 WORKDIR /workspace
 RUN apk add --no-cache curl
 RUN mkdir -p src/static/js && \
     echo "Downloading Tailwind CSS..." && \
     curl -s -L -o src/static/js/tailwind.min.js "https://cdn.tailwindcss.com" && \
-    echo "Downloading React..." && \
-    curl -s -L -o src/static/js/react.production.min.js "https://unpkg.com/react@19.2.7/umd/react.production.min.js" && \
-    echo "Downloading React-DOM..." && \
-    curl -s -L -o src/static/js/react-dom.production.min.js "https://unpkg.com/react-dom@19.2.7/umd/react-dom.production.min.js" && \
     echo "Downloading Babel Standalone..." && \
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js" && \
     echo "All JavaScript dependencies downloaded successfully!"
+RUN mkdir -p /bundle && \
+    npm install --prefix /bundle "react@19.2.7" "react-dom@19.2.7" esbuild --save=false && \
+    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" \
+        > /bundle/entry.mjs && \
+    /bundle/node_modules/.bin/esbuild /bundle/entry.mjs \
+        --bundle --format=esm --log-level=silent \
+        --outfile=src/static/js/react-bundle.esm.js && \
+    echo "Bundled React 19 successfully!"
 
 
 FROM scratch

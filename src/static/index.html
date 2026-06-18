@@ -35,10 +35,13 @@
       };
     </script>
     <script src="/js/theme-utils.js"></script>
-    <script src="/js/react.production.min.js"></script>
-    <script src="/js/react-dom.production.min.js"></script>
     <script src="/js/babel.min.js"></script>
     <script src="/js/babel-config.js"></script>
+    <script type="module">
+      import { React, createRoot } from '/js/react-bundle.esm.js';
+      window.React = React;
+      window.createRoot = createRoot;
+    </script>
     <script type="text/babel" src="/components/ThemeToggle.js"></script>
     <script type="text/babel" src="/components/SiteHeader.js"></script>
     <script type="text/babel" src="/components/StatBadge.js"></script>
@@ -2437,7 +2440,7 @@
         );
       }
 
-      ReactDOM.render(<App />, document.getElementById("root"));
+      window.createRoot(document.getElementById("root")).render(<App />);
     </script>
   </body>
 </html>
