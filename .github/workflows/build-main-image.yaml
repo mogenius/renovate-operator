@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@66273019da9a1f7c445b7c994e8064805db212b5 # v1.4.0
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@dc4fb8d8d4fc422a389de3fa5c1e44cc2900f5a4 # v1.4.1
     secrets: inherit
     with:
       version: "main"
