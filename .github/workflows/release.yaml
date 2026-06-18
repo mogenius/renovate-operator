@@ -6,62 +6,22 @@ on:
       - '[0-9]*.[0-9]*.[0-9]*'
 
 env:
-  IMAGE_NAME: ghcr.io/mogenius/renovate-operator
   REGISTRY: ghcr.io
   DOCKERFILE: Dockerfile
   HELMNAME: "renovate-operator"
 
 jobs:
-  build-and-push-docker:
-    name: Build Multi-arch Docker
-    runs-on: self-hosted
-
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          fetch-depth: 0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
-          push: true
-          build-args: |
-            VERSION=${{ github.ref_name }}
-            COMMIT_HASH=${{ github.sha }}
-            GIT_BRANCH=${{ github.ref_name }}
-            BUILD_TIMESTAMP=${{ github.event.repository.updated_at }}
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ${{ env.IMAGE_NAME }}:latest
-          labels: |
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          # cache-from: type=gha
-          # cache-to: type=gha,mode=max
-          provenance: false
+  build-operator:
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@66273019da9a1f7c445b7c994e8064805db212b5 # v1.4.0
+    secrets: inherit
+    with:
+      version: ${{ github.ref_name }}
+      image: ghcr.io/mogenius/renovate-operator
+      push_latest: true
+      sign_image: true
 
   helm-chart:
-    needs: [build-and-push-docker]
+    needs: [build-operator]
     runs-on: self-hosted
     permissions:
       contents: write
