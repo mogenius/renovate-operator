@@ -16,6 +16,10 @@
     {
       "matchPackageNames": ["registry.k8s.io/kubectl"],
       "semanticCommitType": "fix"
+    },
+    {
+      "matchDatasources": ["npm"],
+      "semanticCommitType": "fix"
     }
   ]
 }
