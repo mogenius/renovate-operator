@@ -5,9 +5,16 @@
   ],
   "regexManagers": [
     {
-      "fileMatch": ["^justfile$", "^Dockerfile$"],
+      "fileMatch": ["^Justfile$", "^Dockerfile$"],
       "matchStrings": [
         "unpkg\\.com/(?<depName>[^@\"]+)@(?<currentValue>[^/\"]+)"
+      ],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "fileMatch": ["^Justfile$", "^Dockerfile$"],
+      "matchStrings": [
+        "\"(?<depName>react|react-dom)@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
       ],
       "datasourceTemplate": "npm"
     }

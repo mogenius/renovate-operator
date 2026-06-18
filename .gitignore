@@ -35,6 +35,7 @@ go.work.sum
 dist/
 
 *.min.js
+*.esm.js
 
 # Helm chart dependency archives (fetched via `helm dependency build`)
 charts/renovate-operator/charts/*.tgz
