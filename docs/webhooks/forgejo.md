@@ -18,13 +18,19 @@ If you prefer to add webhooks to individual repos yourself (or only have a few r
 
 1. Go to your Forgejo repository settings
 2. Navigate to **Webhooks** -> **Add webhook** -> **Forgejo**
-3. Set the **Target URL** to: `https://your-webhook-host/webhook/v1/forgejo?namespace=renovate-operator&job=my-renovate-job`
+3. Set the **Target URL** to: `https://your-webhook-host/webhook/v1/forgejo`
 4. Set **Content type** to `application/json`
 5. If using authentication, set **Authorization Header** to `Bearer YOUR_TOKEN_HERE`
 6. Select individual events:
    - **Pull requests** (for PR checkbox interactions, close, and reopen events)
    - **Issues** (for Dependency Dashboard interactions)
 7. Ensure **Active** is checked
+
+The operator automatically finds the RenovateJob that owns the repository by matching the incoming repository name against discovered projects. If you have multiple RenovateJobs and want to target a specific one, append `namespace` and/or `job` as query parameters:
+
+```
+https://your-webhook-host/webhook/v1/forgejo?namespace=renovate-operator&job=my-renovate-job
+```
 
 ## Supported events
 
@@ -112,8 +118,10 @@ Repos where the user only has read or write access are silently skipped — no e
 
 ### Query parameters
 
-- `namespace`: The Kubernetes namespace of your RenovateJob (appended automatically by sync)
-- `job`: The name of your RenovateJob resource (appended automatically by sync)
+| Parameter   | Required | Description                                                                              |
+| :---------- | :------: | :--------------------------------------------------------------------------------------- |
+| `namespace` |    no    | Kubernetes namespace to restrict the job search to. Appended automatically by sync.     |
+| `job`       |    no    | Name of the RenovateJob to restrict the job search to. Appended automatically by sync.  |
 
 ## Differences from GitHub webhook
 

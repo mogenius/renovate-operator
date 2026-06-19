@@ -47,10 +47,16 @@ Trigger a run for a specific project using curl (URL-encode the project path):
 
 ```sh
 curl -X POST \
-  "http://webhook.example.com/webhook/v1/schedule?job=renovate-unsecure&namespace=renovate-operator&project=yourOrg%2FyourProject"
+  "http://webhook.example.com/webhook/v1/schedule?project=yourOrg%2FyourProject"
 ```
 
-The `job` query parameter must match the `metadata.name` of the `RenovateJob` resource.
+The operator will find the RenovateJob that has this project in its status and schedule it.
+You can also scope the lookup with optional `namespace` and `job` parameters:
+
+```sh
+curl -X POST \
+  "http://webhook.example.com/webhook/v1/schedule?job=renovate-unsecure&namespace=renovate-operator&project=yourOrg%2FyourProject"
+```
 
 ### Example: enable webhook with authentication
 
@@ -92,12 +98,27 @@ Call the webhook passing the token in the Authorization header:
 
 ```sh
 curl -X POST \
-  "https://webhook.example.com/webhook/v1/schedule?job=renovate-secure&namespace=renovate-operator&project=yourOrg%2FyourProject" \
+  "https://webhook.example.com/webhook/v1/schedule?project=yourOrg%2FyourProject" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
+
+## Job resolution
+
+All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`) use the same resolution logic to find the target RenovateJob:
+
+1. List all RenovateJobs with `webhook.enabled: true`.
+2. Filter by `namespace` and `job` query parameters if provided.
+3. Filter to jobs that have the incoming project in their discovered project list.
+4. If authentication is enabled on a job, validate the request credential against it.
+5. The first job that passes authentication (or has authentication disabled) is used.
+
+If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If no job contains the project at all, the request is rejected with `404 Not Found`.
+
+Providing `namespace` and `job` narrows the search and is useful when multiple RenovateJobs could own the same project.
 
 ## Notes and best practices
 
 - Prefer HTTPS for the webhook ingress and restrict access to trusted networks when possible.
 - Use single-purpose tokens and rotate them periodically.
 - The `project` parameter should be URL-encoded (for example `group/repo` becomes `group%2Frepo`).
+- Projects must have been discovered at least once before webhooks can trigger them — the operator matches the incoming project name against the job's discovered project list.

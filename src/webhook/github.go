@@ -2,9 +2,10 @@ package webhook
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+
 	api "renovate-operator/api/v1alpha1"
-	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
 )
 
@@ -34,9 +35,14 @@ type GitHubRepository struct {
 }
 
 func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
-	var payload GitHubEvent
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	var payload GitHubEvent
+	if err := json.Unmarshal(body, &payload); err != nil {
 		s.logger.Error(err, "failed to decode github webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -50,51 +56,48 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	namespace := r.URL.Query().Get("namespace")
-	job := r.URL.Query().Get("job")
-	if namespace == "" || job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace or job query parameter"})
+	jobName := r.URL.Query().Get("job")
+	project := payload.Repository.FullName
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	if err != nil {
+		s.logger.Info("webhook resolve failed", "project", project, "error", err)
+		s.handleResolverError(w, err)
 		return
 	}
 
-	// Process the webhook payload
-	s.logger.Info("received github event", "repository", payload.Repository.FullName, "action", payload.Action, "priority", 1)
+	s.logger.Info("received github event", "repository", project, "action", payload.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
 		r.Context(),
-		payload.Repository.FullName,
-		crdmanager.RenovateJobIdentifier{
-			Name:      job,
-			Namespace: namespace,
-		},
+		project,
+		jobId,
 		&types.RenovateStatusUpdate{
 			Status:   api.JobStatusScheduled,
 			Priority: 1,
 		},
 	)
-	if s.handleUpdateProjectStatusError(w, err, payload.Repository.FullName, job, namespace) {
+	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": payload.Repository.FullName})
+	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
 }
 
 func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
-	// Only process pull request or issue edited events
 	if payload.Action != "edited" {
 		return false, "event action is not edited"
 	}
 
-	// Check if it's a pull request or issue event
 	if payload.PullRequest == nil && payload.Issue == nil {
 		return false, "event is neither pull request nor issue"
 	}
 
-	// Check if body was changed
 	if (payload.PullRequest == nil || payload.PullRequest.Body == "") &&
 		(payload.Issue == nil || payload.Issue.Body == "") {
 		return false, "no body change detected"
 	}
 
-	// Get the current body (either from PR or Issue)
 	var currentBody string
 	if payload.PullRequest != nil {
 		currentBody = payload.PullRequest.Body
@@ -102,7 +105,6 @@ func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
 		currentBody = payload.Issue.Body
 	}
 
-	// Verify that this is a Renovate event and a checkbox was checked
 	if !verifyRenovateDescriptionChange(currentBody) {
 		return false, "not a valid renovate checkbox change"
 	}

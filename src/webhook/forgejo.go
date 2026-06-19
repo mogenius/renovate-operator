@@ -2,9 +2,10 @@ package webhook
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+
 	api "renovate-operator/api/v1alpha1"
-	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
 )
 
@@ -67,9 +68,14 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload ForgejoEvent
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	var payload ForgejoEvent
+	if err := json.Unmarshal(body, &payload); err != nil {
 		s.logger.Error(err, "failed to decode Forgejo webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -83,30 +89,32 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	namespace := r.URL.Query().Get("namespace")
-	job := r.URL.Query().Get("job")
-	if namespace == "" || job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace or job query parameter"})
+	jobName := r.URL.Query().Get("job")
+	project := payload.Repository.FullName
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	if err != nil {
+		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)
+		s.handleResolverError(w, err)
 		return
 	}
 
-	s.logger.Info("received Forgejo event", "event", event, "repository", payload.Repository.FullName, "action", payload.Action)
+	s.logger.Info("received Forgejo event", "event", event, "repository", project, "action", payload.Action)
 	err = s.manager.UpdateProjectStatus(
 		r.Context(),
-		payload.Repository.FullName,
-		crdmanager.RenovateJobIdentifier{
-			Name:      job,
-			Namespace: namespace,
-		},
+		project,
+		jobId,
 		&types.RenovateStatusUpdate{
 			Status:   api.JobStatusScheduled,
 			Priority: 1,
 		},
 	)
-	if s.handleUpdateProjectStatusError(w, err, payload.Repository.FullName, job, namespace) {
+	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": payload.Repository.FullName})
+	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
 }
 
 func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {

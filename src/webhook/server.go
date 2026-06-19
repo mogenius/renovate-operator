@@ -1,13 +1,11 @@
 package webhook
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/assert"
@@ -46,10 +44,9 @@ func (s *Server) Run() {
 
 	port := config.GetValue("WEBHOOK_SERVER_PORT")
 
-	handler := s.authMiddleware(router)
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%s", port),
-		Handler: handler,
+		Handler: router,
 	}
 
 	s.server = server
@@ -64,97 +61,56 @@ func (s *Server) Run() {
 }
 
 func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
-	namespace := r.URL.Query().Get("namespace")
-	if namespace == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace query parameter"})
-		return
-	}
-	job := r.URL.Query().Get("job")
-	if job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing job query parameter"})
-		return
-	}
 	project := r.URL.Query().Get("project")
 	if project == "" {
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project query parameter"})
 		return
 	}
 
-	err := s.manager.UpdateProjectStatus(
+	namespace := r.URL.Query().Get("namespace")
+	jobName := r.URL.Query().Get("job")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	if err != nil {
+		s.handleResolverError(w, err)
+		return
+	}
+
+	err = s.manager.UpdateProjectStatus(
 		r.Context(),
 		project,
-		crdmanager.RenovateJobIdentifier{
-			Name:      job,
-			Namespace: namespace,
-		},
+		jobId,
 		&types.RenovateStatusUpdate{
 			Status:   api.JobStatusScheduled,
 			Priority: 1,
 		},
 	)
-	if s.handleUpdateProjectStatusError(w, err, project, job, namespace) {
+	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", job, "namespace", namespace, "priority", 1)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
 }
 
-func (server *Server) authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		namespace := r.URL.Query().Get("namespace")
-		job := r.URL.Query().Get("job")
-
-		renovateJob, err := server.manager.GetRenovateJob(r.Context(), job, namespace)
-		if err != nil || renovateJob == nil {
-			server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "renovate job not found"})
-			return
-		}
-
-		if renovateJob.Spec.Webhook == nil || !renovateJob.Spec.Webhook.Enabled {
-			server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "webhook not enabled for this renovate job"})
-			return
-		}
-
-		if renovateJob.Spec.Webhook.Authentication == nil || !renovateJob.Spec.Webhook.Authentication.Enabled {
-			server.logger.Info("Webhook authentication not enabled, skipping auth")
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Bearer Token authentication
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			authHeader = r.Header.Get("X-Gitlab-Token")
-		}
-		if authHeader != "" {
-			valid, reason := server.validateBearerToken(r.Context(), namespace, job, authHeader)
-			if !valid {
-				server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": reason})
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Check for HMAC signature (GitHub, Forgejo)
-		signature := r.Header.Get("X-Hub-Signature-256")
-		if signature == "" {
-			signature = r.Header.Get("X-Forgejo-Signature")
-		}
-
-		if signature != "" {
-			valid, reason := server.validateSignature(r.Context(), r, namespace, job, signature)
-			if !valid {
-				server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": reason})
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		server.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no valid authentication method provided"})
-	})
+func (s *Server) handleResolverError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrNoMatchingJob) {
+		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if errors.Is(err, ErrAuthenticationFailed) {
+		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	s.logger.Error(err, "unexpected error resolving webhook job")
+	s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 }
 
 func (s *Server) handleUpdateProjectStatusError(w http.ResponseWriter, err error, project, job, namespace string) bool {
@@ -178,56 +134,4 @@ func (server *Server) writeJSON(w http.ResponseWriter, status int, data any) {
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		server.logger.Error(err, "failed to write JSON response")
 	}
-}
-
-func (server *Server) validateBearerToken(ctx context.Context, namespace, job, authHeader string) (bool, string) {
-	if authHeader == "" {
-		return false, "missing authorization header"
-	}
-
-	// Check if the header has the Bearer prefix
-
-	token := authHeader
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			return false, "invalid authorization header format"
-		}
-		token = parts[1]
-	}
-	token = strings.TrimSpace(token)
-
-	valid, err := server.manager.IsWebhookTokenValid(ctx, crdmanager.RenovateJobIdentifier{
-		Name:      job,
-		Namespace: namespace,
-	}, token)
-	if err != nil {
-		return false, err.Error()
-	}
-	if !valid {
-		return false, "invalid token"
-	}
-	return true, ""
-}
-
-func (server *Server) validateSignature(ctx context.Context, r *http.Request, namespace, job, signature string) (bool, string) {
-
-	if signature == "" {
-		return false, "missing signature header"
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return false, "failed to read request body"
-	}
-	r.Body = io.NopCloser(bytes.NewBuffer(body))
-
-	valid, err := server.manager.IsWebhookSignatureValid(ctx, crdmanager.RenovateJobIdentifier{
-		Name:      job,
-		Namespace: namespace,
-	}, signature, body)
-	if err != nil || !valid {
-		return false, "invalid signature"
-	}
-	return true, ""
 }
