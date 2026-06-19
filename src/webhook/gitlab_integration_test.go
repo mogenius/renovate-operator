@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"testing"
+
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
-	"testing"
 
 	"github.com/go-logr/logr"
 )
@@ -188,6 +189,9 @@ func TestGitLabWebhook_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			updateCalled := false
 			mockManager := &mockWebhookManager{
+				listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+					return []api.RenovateJob{makeTestRenovateJob(tt.namespace, tt.job, tt.payload.Project.PathWithNamespace)}, nil
+				},
 				updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 					updateCalled = true
 					if project != tt.payload.Project.PathWithNamespace {
@@ -211,13 +215,11 @@ func TestGitLabWebhook_Integration(t *testing.T) {
 				logger:  logr.Discard(),
 			}
 
-			// Create request body
 			body, err := json.Marshal(tt.payload)
 			if err != nil {
 				t.Fatalf("failed to marshal payload: %v", err)
 			}
 
-			// Create request
 			url := "/webhook/v1/gitlab"
 			if tt.namespace != "" || tt.job != "" {
 				url += "?"
@@ -234,18 +236,13 @@ func TestGitLabWebhook_Integration(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 
-			// Record response
 			w := httptest.NewRecorder()
-
-			// Call handler
 			server.gitLabWebhook(w, req)
 
-			// Check response
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
 			}
 
-			// Check response body
 			var response map[string]string
 			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 				t.Fatalf("failed to unmarshal response: %v", err)
@@ -257,7 +254,6 @@ func TestGitLabWebhook_Integration(t *testing.T) {
 				}
 			}
 
-			// Verify update was called if expected
 			if updateCalled != tt.shouldCallUpdate {
 				t.Errorf("expected updateCalled=%v, got %v", tt.shouldCallUpdate, updateCalled)
 			}
@@ -265,7 +261,7 @@ func TestGitLabWebhook_Integration(t *testing.T) {
 	}
 }
 
-func TestGitLabWebhook_MissingQueryParams(t *testing.T) {
+func TestGitLabWebhook_NoMatchingJob(t *testing.T) {
 	tests := []struct {
 		name           string
 		namespace      string
@@ -274,25 +270,25 @@ func TestGitLabWebhook_MissingQueryParams(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name:           "missing namespace",
-			namespace:      "",
-			job:            "test-job",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
-		},
-		{
-			name:           "missing job",
-			namespace:      "default",
-			job:            "",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
-		},
-		{
-			name:           "missing both parameters",
+			name:           "no namespace or job provided",
 			namespace:      "",
 			job:            "",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
+		},
+		{
+			name:           "namespace filter matches no job",
+			namespace:      "nonexistent",
+			job:            "",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
+		},
+		{
+			name:           "job name filter matches no job",
+			namespace:      "",
+			job:            "nonexistent",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
 		},
 	}
 
@@ -343,7 +339,6 @@ func TestGitLabWebhook_MissingQueryParams(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			server.gitLabWebhook(w, req)
-			t.Logf("url %s", url)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
@@ -389,7 +384,6 @@ func TestGitLabWebhook_InvalidJSON(t *testing.T) {
 }
 
 func TestGitLabWebhook_RealWorldPayload(t *testing.T) {
-	// Using a realistic payload similar to test/webhook/gitlab.http
 	payload := GitLabEvent{
 		ObjectKind: "merge_request",
 		EventType:  "merge_request",
@@ -413,6 +407,9 @@ func TestGitLabWebhook_RealWorldPayload(t *testing.T) {
 
 	updateCalled := false
 	mockManager := &mockWebhookManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return []api.RenovateJob{makeTestRenovateJob("renovate-operator", "1-gitops", payload.Project.PathWithNamespace)}, nil
+		},
 		updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 			updateCalled = true
 			return nil
