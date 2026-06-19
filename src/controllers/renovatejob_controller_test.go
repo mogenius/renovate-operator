@@ -16,9 +16,12 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // fakeManager implements the full RenovateJobManager interface but only the
@@ -347,6 +350,144 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 	}
 	if res.RequeueAfter != 1*time.Minute {
 		t.Fatalf("expected RequeueAfter 1m, got %v", res.RequeueAfter)
+	}
+}
+
+func buildFakeK8sClient(t *testing.T, objs ...crclient.Object) crclient.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+}
+
+func makeRenovateJob(name, namespace string, annotations map[string]string) *api.RenovateJob {
+	return &api.RenovateJob{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: annotations},
+		Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
+	}
+}
+
+// TestHandleAnnotationTriggers_Discovery verifies that the discovery annotation triggers
+// CreateDiscoveryJob and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
+	discoveryTriggered := false
+	disc := &fakeDiscovery{
+		createDiscoveryJobFn: func(ctx context.Context, job api.RenovateJob) (string, error) {
+			discoveryTriggered = true
+			return "gen-1", nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY: "true",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: disc,
+		Manager:   &fakeManager{},
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	if !discoveryTriggered {
+		t.Fatal("expected CreateDiscoveryJob to be called")
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY]; ok {
+		t.Fatal("expected discovery annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_ScheduleAll verifies that the schedule-all annotation sets all
+// non-running projects to Scheduled and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
+	projects := []api.ProjectStatus{
+		{Name: "org/a", Status: api.JobStatusCompleted},
+		{Name: "org/b", Status: api.JobStatusRunning},
+		{Name: "org/c", Status: api.JobStatusFailed},
+	}
+	var scheduled []string
+	mgr := &fakeManager{
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			for _, p := range projects {
+				if fn(p) {
+					scheduled = append(scheduled, p.Name)
+				}
+			}
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL: "true",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	// org/b is Running and must be excluded; org/a and org/c must be scheduled
+	if len(scheduled) != 2 {
+		t.Fatalf("expected 2 projects scheduled, got %v", scheduled)
+	}
+	for _, want := range []string{"org/a", "org/c"} {
+		found := false
+		for _, got := range scheduled {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected %q to be scheduled, got %v", want, scheduled)
+		}
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL]; ok {
+		t.Fatal("expected schedule-all annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_Schedule verifies that the schedule annotation schedules only
+// the listed non-running projects and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
+	projects := []api.ProjectStatus{
+		{Name: "org/p1", Status: api.JobStatusCompleted},
+		{Name: "org/p2", Status: api.JobStatusRunning}, // in list but running — must be excluded
+		{Name: "org/p3", Status: api.JobStatusFailed},  // not in list — must be excluded
+	}
+	var scheduled []string
+	mgr := &fakeManager{
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			for _, p := range projects {
+				if fn(p) {
+					scheduled = append(scheduled, p.Name)
+				}
+			}
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE: "org/p1, org/p2",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	if len(scheduled) != 1 || scheduled[0] != "org/p1" {
+		t.Fatalf("expected only org/p1 to be scheduled, got %v", scheduled)
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; ok {
+		t.Fatal("expected schedule annotation to be removed after processing")
 	}
 }
 
