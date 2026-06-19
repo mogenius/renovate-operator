@@ -34,6 +34,16 @@ const (
 	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
 	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
 	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
+
+	// RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY triggers a discovery run when set to "true".
+	// Removed from the RenovateJob once the discovery job is created.
+	RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY = "renovate-operator.mogenius.com/discovery"
+	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL schedules all non-running projects when set to "true".
+	// Removed from the RenovateJob after the status update succeeds.
+	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL = "renovate-operator.mogenius.com/schedule-all"
+	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE schedules specific projects when set to a comma-separated list of project names.
+	// Removed from the RenovateJob after the status update succeeds.
+	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE = "renovate-operator.mogenius.com/schedule"
 )
 
 type JobType string

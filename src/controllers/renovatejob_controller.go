@@ -9,6 +9,7 @@ import (
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/webhookSync"
 	"renovate-operator/scheduler"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -62,6 +63,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")
 		}
+		r.handleAnnotationTriggers(ctx, logger, renovateJob)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
 		// renovatejob cannot be found -> delete the schedule
@@ -171,6 +173,79 @@ func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renova
 	if err := r.Manager.UpdateProjectStatusBatched(ctx, isOrphaned, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusFailed}); err != nil {
 		logger.Error(err, "failed to reset orphaned running projects")
 	}
+}
+
+// handleAnnotationTriggers checks for one-shot trigger annotations on the RenovateJob and acts on them:
+//   - renovate-operator.mogenius.com/discovery: "true"           → start a discovery run
+//   - renovate-operator.mogenius.com/schedule-all: "true"        → set all non-running projects to Scheduled
+//   - renovate-operator.mogenius.com/schedule: "org/a,org/b"     → set specific non-running projects to Scheduled
+//
+// Each annotation is removed once its action succeeds, making triggers idempotent one-shots.
+// Note: these are annotations (not labels) because project names may contain slashes.
+func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+	annotations := renovateJob.Annotations
+	if len(annotations) == 0 {
+		return
+	}
+
+	toRemove := make([]string, 0, 3)
+	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY] == "true" {
+		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *renovateJob, renovate.DiscoveryJobOptions{}); err != nil {
+			logger.Error(err, "failed to trigger discovery")
+		} else {
+			logger.V(1).Info("discovery triggered via annotation")
+			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY)
+		}
+	}
+
+	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL] == "true" {
+		isNotRunning := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
+		if err := r.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled}); err != nil {
+			logger.Error(err, "failed to schedule all projects")
+		} else {
+			logger.V(1).Info("all projects scheduled via annotation")
+			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL)
+		}
+	}
+
+	if projectsStr := annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; projectsStr != "" {
+		projectSet := parseAnnotationProjectList(projectsStr)
+		isTargeted := func(p api.ProjectStatus) bool {
+			_, ok := projectSet[p.Name]
+			return ok && p.Status != api.JobStatusRunning
+		}
+		if err := r.Manager.UpdateProjectStatusBatched(ctx, isTargeted, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled}); err != nil {
+			logger.Error(err, "failed to schedule projects from annotation")
+		} else {
+			logger.V(1).Info("projects scheduled via annotation", "projects", projectsStr)
+			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE)
+		}
+	}
+
+	if len(toRemove) == 0 {
+		return
+	}
+
+	patch := client.MergeFrom(renovateJob.DeepCopyObject().(client.Object))
+	for _, key := range toRemove {
+		delete(renovateJob.Annotations, key)
+	}
+	if err := r.K8sClient.Patch(ctx, renovateJob, patch); err != nil {
+		logger.Error(err, "failed to remove trigger annotations from RenovateJob")
+	}
+}
+
+func parseAnnotationProjectList(s string) map[string]struct{} {
+	parts := strings.Split(s, ",")
+	result := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result[p] = struct{}{}
+		}
+	}
+	return result
 }
 
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
