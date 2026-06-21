@@ -150,6 +150,26 @@ func TestSyncSkipsWhenNoProjectsAndNoTopic(t *testing.T) {
 	}
 }
 
+func TestSyncSkipsProvidedProjectWhenWebhookAPIForbids(t *testing.T) {
+	mc := newMockClient()
+	// A provided project is assumed admin, but the webhook API rejects it with 403;
+	// that repo must be skipped without failing the whole sync.
+	mc.listErr["org/repo1"] = fmt.Errorf("listing webhooks: unexpected status 403: forbidden")
+
+	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "", nil, logr.Discard())
+
+	state, err := syncer.RunOnce(context.Background(), "org/repo1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mc.created["org/repo1"]) != 0 {
+		t.Errorf("expected no webhook created for forbidden repo, got %v", mc.created)
+	}
+	if len(state) != 0 {
+		t.Errorf("expected empty state, got %v", state)
+	}
+}
+
 func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 	mc := newMockClient()
 	mc.repos = []gitProviderClients.Repository{
