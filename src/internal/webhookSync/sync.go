@@ -64,8 +64,10 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context, projects ...string) (map[st
 	var repos []gitProviderClients.Repository
 
 	if len(projects) > 0 {
-		// Use the provided project list — mark all as admin (the caller already discovered them);
-		// repos where we lack admin are detected and skipped when the webhook API call returns 403.
+		// Use the provided project list. Admin permission isn't known here, so it's
+		// assumed; repos where we actually lack admin surface as a 403 from the webhook
+		// API in the ensure step below and are skipped there.
+		repos = make([]gitProviderClients.Repository, 0, len(projects))
 		for _, fullName := range projects {
 			repos = append(repos, gitProviderClients.Repository{
 				FullName:    fullName,
@@ -106,7 +108,13 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context, projects ...string) (map[st
 		owner, repoName := parts[0], parts[1]
 
 		if err := s.ensureWebhook(ctx, owner, repoName, fullName); err != nil {
-			s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+			// Without an admin token the webhook API returns 403; that's expected when
+			// syncing an autodiscovered project list, so log it as info rather than error.
+			if strings.Contains(err.Error(), "403") {
+				s.logger.Info("skipping repo: no admin permission to manage webhooks", "repo", fullName)
+			} else {
+				s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+			}
 			continue
 		}
 	}

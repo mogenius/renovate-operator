@@ -149,7 +149,7 @@ func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jo
 	// search when no projects are supplied.
 	var projects []string
 	if rj, err := m.jobManager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace); err != nil {
-		logger.Error(err, "failed to load RenovateJob for webhook sync; falling back to topic search")
+		logger.Error(err, "failed to load RenovateJob for webhook sync; RunOnce will use topic search if configured, otherwise skip")
 	} else if rj != nil {
 		projects = make([]string, 0, len(rj.Status.Projects))
 		for _, p := range rj.Status.Projects {
