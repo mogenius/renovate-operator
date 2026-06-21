@@ -232,8 +232,7 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 		projectStatus := renovateJob.Status.Projects[index]
 		renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
 
-		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-		return err
+		return r.client.Status().Update(ctx, renovateJob)
 	})
 }
 
@@ -254,8 +253,7 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 			}
 		}
 
-		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-		return err
+		return r.client.Status().Update(ctx, renovateJob)
 	})
 }
 
@@ -319,8 +317,7 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 		}
 		renovateJob.Status.Projects = newProjects
 
-		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-		return err
+		return r.client.Status().Update(ctx, renovateJob)
 	})
 }
 
@@ -475,8 +472,8 @@ func (r *renovateJobManager) UpdateExecutionOptions(ctx context.Context, job Ren
 			return err
 		}
 		renovateJob.Status.ExecutionOptions = options
-		_, err = updateRenovateJobStatus(ctx, renovateJob, r.client)
-		return err
+
+		return r.client.Status().Update(ctx, renovateJob)
 	})
 }
 
