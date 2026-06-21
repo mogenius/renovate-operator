@@ -172,6 +172,10 @@ func (c *ForgejoClient) DeleteRepoWebhook(ctx context.Context, owner, repo strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// A missing webhook is the desired end state, so treat 404 as success.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
