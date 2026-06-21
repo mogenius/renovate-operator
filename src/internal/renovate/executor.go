@@ -8,7 +8,6 @@ import (
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
@@ -16,6 +15,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
@@ -27,7 +27,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
-	"k8s.io/apimachinery/pkg/api/errors"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -43,29 +43,35 @@ It checks the status of each project and starts new jobs as needed based on the 
 type RenovateExecutor interface {
 	// Start begins the periodic execution of RenovateJob CRDs.
 	Start(ctx context.Context) error
+	// ProcessProjectJobResult handles the status transition of a single Running project given its
+	// k8s Job. A nil k8sJob means the job was not found and is treated as failed.
+	// Updates metrics, logs, and CRD status. Returns true if the project is still running.
+	ProcessProjectJobResult(ctx context.Context, k8sJob *batchv1.Job, project string, jobId crdManager.RenovateJobIdentifier) error
 }
 
 type renovateExecutor struct {
-	scheme   *runtime.Scheme
-	client   client.Client
-	logger   logr.Logger
-	health   health.HealthCheck
-	manager  crdManager.RenovateJobManager
-	logStore logStore.LogStore
+	scheme    *runtime.Scheme
+	client    client.Client
+	logger    logr.Logger
+	health    health.HealthCheck
+	manager   crdManager.RenovateJobManager
+	logStore  logStore.LogStore
+	logReader podLogs.PodLogReader
 }
 
 type executionOptions struct {
 	globalParallelism int
 }
 
-func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore) RenovateExecutor {
+func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore, lr podLogs.PodLogReader) RenovateExecutor {
 	return &renovateExecutor{
-		client:   client,
-		scheme:   scheme,
-		manager:  manager,
-		logger:   logger,
-		health:   health,
-		logStore: ls,
+		client:    client,
+		scheme:    scheme,
+		manager:   manager,
+		logger:    logger,
+		health:    health,
+		logStore:  ls,
+		logReader: lr,
 	}
 }
 
@@ -129,12 +135,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
-	globalRunning, perJobRunning, err := e.reconcileRunning(ctx, renovateJobs)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
+	globalRunning, perJobRunning := e.countRunningProjects(renovateJobs)
 
 	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
 	// and dispatch new jobs up to the global and per-job limits.
@@ -146,10 +147,9 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 	return err
 }
 
-// reconcileRunning iterates over all Running projects across all RenovateJobs, checks their
-// Kubernetes Job status, updates finished ones, and returns the number of still-running projects
-// globally and per job (keyed by job fullname).
-func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []api.RenovateJob) (int, map[string]int, error) {
+// countRunningProjects returns the number of still-running projects globally and per job
+// (keyed by job fullname).
+func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
 
@@ -164,88 +164,105 @@ func (e *renovateExecutor) reconcileRunning(ctx context.Context, renovateJobs []
 			if project.Status != api.JobStatusRunning {
 				continue
 			}
-
-			k8sJob, err := crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-				JobType:   crdManager.ExecutorJobType,
-				Namespace: renovateJob.Namespace,
-			})
-
-			var newStatus api.RenovateProjectStatus
-			var durationStr string
-			if err != nil {
-				if errors.IsNotFound(err) {
-					newStatus = api.JobStatusFailed
-				} else {
-					return 0, nil, err
-				}
-			} else {
-				newStatus, durationStr, err = getJobStatus(k8sJob)
-				if err != nil {
-					return 0, nil, err
-				}
-			}
-
-			if newStatus == api.JobStatusRunning {
-				globalRunning++
-				perJobRunning[key]++
-				continue
-			}
-
-			// Job finished — collect metrics and update CRD status.
-			newProjectStatus := &types.RenovateStatusUpdate{
-				Status:   newStatus,
-				Duration: &durationStr,
-			}
-			hasIssues := false
-			if k8sJob != nil {
-				cp := clientProvider.StaticClientProvider()
-				if clientset, err := cp.K8sClientSet(); err == nil {
-					if logs, err := crdManager.GetLastJobLog(ctx, clientset, k8sJob); err == nil {
-						e.logStore.Save(renovateJob.Namespace, renovateJob.Name, project.Name, logs)
-						parseResult := parser.ParseRenovateLogs(logs)
-						hasIssues = parseResult.HasIssues
-						newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
-						newProjectStatus.PRActivity = parseResult.PRActivity
-						newProjectStatus.LogIssues = parseResult.LogIssues
-					} else {
-						log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project.Name)
-					}
-				} else {
-					log.FromContext(ctx).Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project.Name)
-				}
-			}
-
-			metricStore.SetRunFailed(renovateJob.Namespace, renovateJob.Name, project.Name, newStatus == api.JobStatusFailed)
-			metricStore.SetDependencyIssues(renovateJob.Namespace, renovateJob.Name, project.Name, hasIssues)
-			approvalsNeeded := 0
-			if newProjectStatus.PRActivity != nil {
-				approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
-			}
-			metricStore.SetApprovalsNeeded(renovateJob.Namespace, renovateJob.Name, project.Name, approvalsNeeded)
-			metricStore.CaptureRenovateProjectExecution(ctx, renovateJob.Namespace, renovateJob.Name, project.Name, newStatus)
-
-			if span := trace.SpanFromContext(ctx); span.IsRecording() {
-				span.AddEvent("project.completed", trace.WithAttributes(
-					semconv.K8SNamespaceName(renovateJob.Namespace),
-					semconv.K8SJobName(utils.ExecutorJobName(renovateJob, project.Name)),
-					metricStore.MapPipelineResult(newStatus),
-				))
-			}
-
-			if err := e.manager.UpdateProjectStatus(ctx, project.Name, jobId, newProjectStatus); err != nil {
-				return 0, nil, err
-			}
-
-			if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && k8sJob != nil {
-				if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
-					return 0, nil, err
-				}
-			}
+			globalRunning++
+			perJobRunning[key]++
 		}
 	}
 
-	return globalRunning, perJobRunning, nil
+	return globalRunning, perJobRunning
+}
+
+// ProcessProjectJobResult handles the status transition of a single Running project given its
+// k8s Job. A nil k8sJob means the job was not found and is treated as failed.
+// Updates metrics, logs, and CRD status. Returns true if the project is still running.
+func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *batchv1.Job, project string, jobId crdManager.RenovateJobIdentifier) error {
+	var newStatus api.RenovateProjectStatus
+	var durationStr string
+	if k8sJob == nil {
+		newStatus = api.JobStatusFailed
+	} else {
+		var err error
+		newStatus, durationStr, err = getJobStatus(k8sJob)
+		if err != nil {
+			return err
+		}
+	}
+
+	if newStatus == api.JobStatusRunning {
+		return nil
+	}
+
+	// Guard: only proceed if the project is still Running in the CRD.
+	// Without this, the job controller replays all existing Jobs on startup and
+	// tries to fetch logs for pods that are long gone.
+	renovateJob, err := e.manager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace)
+	if err != nil {
+		return fmt.Errorf("failed to load RenovateJob for status check: %w", err)
+	}
+	projectIsRunning := false
+	for _, p := range renovateJob.Status.Projects {
+		if p.Name == project && p.Status == api.JobStatusRunning {
+			projectIsRunning = true
+			break
+		}
+	}
+	if !projectIsRunning {
+		return nil
+	}
+
+	// Job finished — collect metrics and update CRD status.
+	newProjectStatus := &types.RenovateStatusUpdate{
+		Status:   newStatus,
+		Duration: &durationStr,
+	}
+	hasIssues := false
+	if k8sJob != nil {
+		if logs, err := e.logReader.GetLastJobLog(ctx, k8sJob); err == nil {
+			e.logStore.Save(jobId.Namespace, jobId.Name, project, logs)
+			parseResult := parser.ParseRenovateLogs(logs)
+			hasIssues = parseResult.HasIssues
+			newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
+			newProjectStatus.PRActivity = parseResult.PRActivity
+			newProjectStatus.LogIssues = parseResult.LogIssues
+		} else {
+			log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project)
+		}
+	}
+
+	metricStore.SetRunFailed(jobId.Namespace, jobId.Name, project, newStatus == api.JobStatusFailed)
+	metricStore.SetDependencyIssues(jobId.Namespace, jobId.Name, project, hasIssues)
+	approvalsNeeded := 0
+	if newProjectStatus.PRActivity != nil {
+		approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
+	}
+	metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, approvalsNeeded)
+	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
+
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.AddEvent("project.completed", trace.WithAttributes(
+			semconv.K8SNamespaceName(jobId.Namespace),
+			semconv.K8SJobName(k8sJob.GetName()),
+			metricStore.MapPipelineResult(newStatus),
+		))
+	}
+
+	if err := e.manager.UpdateProjectStatus(ctx, project, jobId, newProjectStatus); err != nil {
+		return err
+	}
+
+	if k8sJob != nil {
+		if err := crdManager.MarkJobProcessed(ctx, e.client, k8sJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to mark executor job as processed", "job", k8sJob.Name)
+		}
+	}
+
+	if newStatus == api.JobStatusCompleted && config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" && k8sJob != nil {
+		if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // scheduledCandidate is a project ready to be dispatched together with its parent RenovateJob.
@@ -261,29 +278,34 @@ type scheduledCandidate struct {
 // dispatchScheduled collects all Scheduled projects across all RenovateJobs, sorts them for
 // fairness, and launches Kubernetes Jobs until the global or per-job parallelism limits are reached.
 func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs []api.RenovateJob, globalRunning int, perJobRunning map[string]int, options executionOptions) error {
+	if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
+		log.FromContext(ctx).V(2).Info("global parallelism limit reached, skipping dispatch", "limit", options.globalParallelism)
+		return nil
+	}
+
 	var candidates []scheduledCandidate
 
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
-
-		// Find the oldest LastRun among this job's Scheduled projects to use as
-		// the fairness sort key for all candidates from this RenovateJob.
 		oldestWait := time.Now()
-		for _, p := range renovateJob.Status.Projects {
-			if p.Status == api.JobStatusScheduled && p.LastRun.Time.Before(oldestWait) {
-				oldestWait = p.LastRun.Time
-			}
-		}
+		startIdx := len(candidates)
 
 		for _, p := range renovateJob.Status.Projects {
 			if p.Status != api.JobStatusScheduled {
 				continue
 			}
+			if p.LastRun.Time.Before(oldestWait) {
+				oldestWait = p.LastRun.Time
+			}
 			candidates = append(candidates, scheduledCandidate{
-				project:       p,
-				renovateJob:   renovateJob,
-				jobOldestWait: oldestWait,
+				project:     p,
+				renovateJob: renovateJob,
 			})
+		}
+
+		// Back-fill jobOldestWait now that we know the oldest wait for this job.
+		for k := startIdx; k < len(candidates); k++ {
+			candidates[k].jobOldestWait = oldestWait
 		}
 	}
 
@@ -295,6 +317,18 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		}
 		return candidates[i].jobOldestWait.Before(candidates[j].jobOldestWait)
 	})
+
+	// Ensure the Redis URL secret exists in each namespace that has candidates,
+	// once per namespace instead of once per candidate.
+	seenNamespaces := make(map[string]struct{}, len(renovateJobs))
+	for _, c := range candidates {
+		seenNamespaces[c.renovateJob.Namespace] = struct{}{}
+	}
+	for ns := range seenNamespaces {
+		if err := ensureRedisURLSecret(ctx, e.client, ns); err != nil {
+			return fmt.Errorf("failed to ensure redis url secret: %w", err)
+		}
+	}
 
 	for _, candidate := range candidates {
 		renovateJob := candidate.renovateJob
@@ -313,10 +347,6 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			continue
 		}
 
-		if err := ensureRedisURLSecret(ctx, e.client, renovateJob.Namespace); err != nil {
-			return fmt.Errorf("failed to ensure redis url secret: %w", err)
-		}
-
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
 		k8sJob := newRenovateJob(renovateJob, project.Name, carrier.Get("traceparent"))
@@ -325,9 +355,10 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		}
 
 		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
-			JobName:   utils.ExecutorJobName(renovateJob, project.Name),
-			JobType:   crdManager.ExecutorJobType,
-			Namespace: renovateJob.Namespace,
+			JobType:         crdManager.ExecutorJobType,
+			Namespace:       renovateJob.Namespace,
+			RenovateJobName: renovateJob.Name,
+			Project:         project.Name,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)

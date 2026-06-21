@@ -58,6 +58,10 @@ func ensureRedisURLSecret(ctx context.Context, c client.Client, namespace string
 		return fmt.Errorf("reading redis url secret: %w", err)
 	}
 
+	if string(existing.Data["redis-url"]) == valkeyURL {
+		return nil
+	}
+
 	secret.ResourceVersion = existing.ResourceVersion
 	if err := c.Update(ctx, secret); err != nil {
 		return fmt.Errorf("updating redis url secret: %w", err)

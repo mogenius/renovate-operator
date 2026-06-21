@@ -24,8 +24,10 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
+	"renovate-operator/internal/webhookSync"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -129,6 +131,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			AllowedGroupPattern: config.GetValue("OIDC_ALLOWED_GROUP_PATTERN"),
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
+			PKCEEnabled:         config.GetValue("OIDC_PKCE_ENABLED") != "false",
 		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
@@ -350,6 +353,11 @@ func main() {
 			Default:  "false",
 		},
 		{
+			Key:      "OIDC_PKCE_ENABLED",
+			Optional: true,
+			Default:  "true",
+		},
+		{
 			Key:      "VALKEY_URL",
 			Optional: true,
 			Default:  "",
@@ -450,12 +458,19 @@ func main() {
 	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf)
 	assert.NoError(err, "failed to initialize logStore")
 
-	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls)
+	cp := clientProvider.StaticClientProvider()
+	clientset, err := cp.K8sClientSet()
+	assert.NoError(err, "failed to get Kubernetes clientset for pod log reader")
+	podLogReader := podLogs.New(clientset)
+
+	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader)
 
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
 		mgr.GetClient(),
 		ctrl.Log.WithName("renovate-discovery"),
+		jobMgr,
+		podLogReader,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
@@ -480,9 +495,11 @@ func main() {
 		ctrl.Log.WithName("renovate-executor"),
 		health,
 		ls,
+		podLogReader,
 	)
 
 	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+	webhookSyncMgr := webhookSync.NewWebhookSyncManager(mgr.GetClient(), jobMgr)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
@@ -495,12 +512,21 @@ func main() {
 		}
 	}()
 
+	err = (&controllers.JobReconciler{
+		Executor:    executor,
+		Discovery:   discovery,
+		WebhookSync: webhookSyncMgr,
+		K8sClient:   mgr.GetClient(),
+	}).SetupWithManager(mgr)
+	assert.NoError(err, "failed to setup job manager")
+
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler: cronManager,
-		Manager:   jobMgr,
-		Discovery: discovery,
-		K8sClient: mgr.GetClient(),
-		GithubApp: githubAppToken,
+		Scheduler:   cronManager,
+		Manager:     jobMgr,
+		Discovery:   discovery,
+		K8sClient:   mgr.GetClient(),
+		GithubApp:   githubAppToken,
+		WebhookSync: webhookSyncMgr,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

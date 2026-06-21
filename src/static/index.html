@@ -35,9 +35,13 @@
       };
     </script>
     <script src="/js/theme-utils.js"></script>
-    <script src="/js/react.production.min.js"></script>
-    <script src="/js/react-dom.production.min.js"></script>
     <script src="/js/babel.min.js"></script>
+    <script src="/js/babel-config.js"></script>
+    <script type="module">
+      import { React, createRoot } from '/js/react-bundle.esm.js';
+      window.React = React;
+      window.createRoot = createRoot;
+    </script>
     <script type="text/babel" src="/components/ThemeToggle.js"></script>
     <script type="text/babel" src="/components/SiteHeader.js"></script>
     <script type="text/babel" src="/components/StatBadge.js"></script>
@@ -494,6 +498,7 @@
         const [version, setVersion] = useState(null);
         const [toasts, setToasts] = useState([]);
         const nextToastIdRef = useRef(0);
+        const hasLoadedOnce = useRef(false);
         const [authInfo, setAuthInfo] = useState(null);
         const STAT_FILTER_LABELS = {
           failed: "Failed",
@@ -504,15 +509,32 @@
           pending: "Pending",
           withIssues: "With Issues",
         };
+        const STAT_FILTER_PARAM = "filter";
 
         const [selectedStatFilter, setSelectedStatFilter] = useState(() => {
           try {
+            const fromUrl = new URLSearchParams(window.location.search).get(STAT_FILTER_PARAM);
+            if (fromUrl && STAT_FILTER_LABELS[fromUrl]) {
+              return fromUrl;
+            }
             const stored = localStorage.getItem('selectedStatFilter');
             return stored && STAT_FILTER_LABELS[stored] ? stored : null;
           } catch {
             return null;
           }
         });
+
+        useEffect(() => {
+          try {
+            const url = new URL(window.location.href);
+            if (selectedStatFilter) {
+              url.searchParams.set(STAT_FILTER_PARAM, selectedStatFilter);
+            } else {
+              url.searchParams.delete(STAT_FILTER_PARAM);
+            }
+            window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+          } catch {}
+        }, [selectedStatFilter]);
 
         const persistStatFilter = (value) => {
           try {
@@ -614,7 +636,9 @@
 
         const loadJobs = useCallback(async () => {
           try {
-            setLoading(true);
+            if (!hasLoadedOnce.current) {
+              setLoading(true);
+            }
             setError(null);
 
             const response = await authFetch("/api/v1/renovatejobs");
@@ -639,6 +663,7 @@
               }
             }
 
+            hasLoadedOnce.current = true;
             setJobs(jobsList);
             setStats(calculateStats(jobsList));
           } catch (err) {
@@ -2175,15 +2200,17 @@
                           </span>
                         </div>
                         {/* PR Activity section */}
-                        <div className="flex items-center gap-2" data-no-tooltip="true">
-                          <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
-                          <PRActivityBadges
-                            prActivity={project.prActivity}
-                            expanded={expandedProjects.has(project.name)}
-                            onToggle={() => toggleProjectExpanded(project.name)}
-                            projectName={project.name}
-                          />
-                        </div>
+                        {project.prActivity?.prs?.length > 0 && (
+                          <div className="flex items-center gap-2" data-no-tooltip="true">
+                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
+                            <PRActivityBadges
+                              prActivity={project.prActivity}
+                              expanded={expandedProjects.has(project.name)}
+                              onToggle={() => toggleProjectExpanded(project.name)}
+                              projectName={project.name}
+                            />
+                          </div>
+                        )}
                         {expandedProjects.has(project.name) && project.prActivity && project.prActivity.prs && project.prActivity.prs.length > 0 && (
                           <div id={`pr-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-gray-200 dark:border-slate-600 max-h-48 overflow-y-auto">
                             <div className="space-y-1.5">
@@ -2212,15 +2239,17 @@
                           </div>
                         )}
                         {/* Issues section */}
-                        <div className="flex items-center gap-2" data-no-tooltip="true">
-                          <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
-                          <IssuesBadges
-                            logIssues={project.logIssues}
-                            expanded={expandedIssues.has(project.name)}
-                            onToggle={() => toggleIssueExpanded(project.name)}
-                            projectName={project.name}
-                          />
-                        </div>
+                        {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0) && (
+                          <div className="flex items-center gap-2" data-no-tooltip="true">
+                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
+                            <IssuesBadges
+                              logIssues={project.logIssues}
+                              expanded={expandedIssues.has(project.name)}
+                              onToggle={() => toggleIssueExpanded(project.name)}
+                              projectName={project.name}
+                            />
+                          </div>
+                        )}
                         {expandedIssues.has(project.name) && project.logIssues && project.logIssues.issues && project.logIssues.issues.length > 0 && (
                           <div id={`issue-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-amber-300 dark:border-amber-600 max-h-48 overflow-y-auto">
                             <div className="space-y-1.5">
@@ -2411,7 +2440,7 @@
         );
       }
 
-      ReactDOM.render(<App />, document.getElementById("root"));
+      window.createRoot(document.getElementById("root")).render(<App />);
     </script>
   </body>
 </html>

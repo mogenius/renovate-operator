@@ -1,5 +1,74 @@
 # Changelog
 
+## [4.12.4](https://github.com/mogenius/renovate-operator/compare/4.12.3...4.12.4) (2026-06-17)
+
+
+### Bug Fixes
+
+* **ui:** pin all js dependencies to a fixxed version and add renovate manager ([ddf4188](https://github.com/mogenius/renovate-operator/commit/ddf41880d61ac854859033ebc0fe85d25013cda1))
+
+## [4.12.3](https://github.com/mogenius/renovate-operator/compare/4.12.2...4.12.3) (2026-06-17)
+
+
+### Bug Fixes
+
+* **ui:** downgrade to babel version 7 ([3bd78b7](https://github.com/mogenius/renovate-operator/commit/3bd78b7207ea5c6f2e2a4daba4d70c035f6258ec)), closes [#408](https://github.com/mogenius/renovate-operator/issues/408)
+
+## [4.12.2](https://github.com/mogenius/renovate-operator/compare/4.12.1...4.12.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* **helm:** add missing patch permission for jobs resources ([f26c522](https://github.com/mogenius/renovate-operator/commit/f26c52243ac083081ec5145a37859b719229532e))
+
+## [4.12.1](https://github.com/mogenius/renovate-operator/compare/4.12.0...4.12.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* **helm:** allow disabeling pkce using helm values ([b2d07ec](https://github.com/mogenius/renovate-operator/commit/b2d07ec3975b9b6504229112c8a3d8df7135fef9))
+
+## [4.12.0](https://github.com/mogenius/renovate-operator/compare/4.11.0...4.12.0) (2026-06-16)
+
+
+### Features
+
+* enable pkce auth flow ([efdbe60](https://github.com/mogenius/renovate-operator/commit/efdbe60090c281c5fa7a3e416945d9650013431c)), closes [#186](https://github.com/mogenius/renovate-operator/issues/186)
+* **ui:** reflect selected dashboard filter in URL ([fc279a4](https://github.com/mogenius/renovate-operator/commit/fc279a4dfb7c3125d2af547ed80f2306f73a3276))
+
+
+### Bug Fixes
+
+* **deps:** update go module directive to v1.26.4 ([f3b3e35](https://github.com/mogenius/renovate-operator/commit/f3b3e358a786434b197747fdd380e5c5f04bd5f3))
+* **deps:** update kubernetes monorepo to v0.36.2 ([56873a1](https://github.com/mogenius/renovate-operator/commit/56873a1b9c86cd153adadbe0b967400a8404adaf))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.2 ([b6a47e0](https://github.com/mogenius/renovate-operator/commit/b6a47e0f35a5e86745b7f2ca484dbf1657c6c231))
+* **discovery:** check for discovery job status within the lock to mitigate duplicated discovery-jobs ([3384743](https://github.com/mogenius/renovate-operator/commit/3384743b76be1de35115273d8afdb8d125f81a33))
+* **executor:** adding early exit if parallelization limit is already reached ([3d8f191](https://github.com/mogenius/renovate-operator/commit/3d8f1916011630c9501c2cd5eb0ea53700d285e4))
+* **executor:** improve loop performance in identifying next project to run ([f80d66f](https://github.com/mogenius/renovate-operator/commit/f80d66fde117ca0ef5b756213cd8c97f49a46c7b))
+* **executor:** reduce duplicated api calls by only running ensure redis once per namespace ([dfd8f33](https://github.com/mogenius/renovate-operator/commit/dfd8f332fad3ad2cf807738c3bea3f9667ea65e1))
+* return sensible error message if a non existing project is being updated ([253d258](https://github.com/mogenius/renovate-operator/commit/253d258eded97ab589f938f153080baebebe43ce)), closes [#383](https://github.com/mogenius/renovate-operator/issues/383)
+* **ui:** place log level badges next to each other ([b32430a](https://github.com/mogenius/renovate-operator/commit/b32430a1d8b1f4cd24457366df34e798acce178d))
+
+## [4.11.0](https://github.com/mogenius/renovate-operator/compare/4.10.1...4.11.0) (2026-06-12)
+
+
+### Features
+
+* **api:** add runtimeClassName to RenovateJobSpec ([8778caa](https://github.com/mogenius/renovate-operator/commit/8778caa979c3bd97b222a54dcb7baded6dc84f41))
+* improve label selector on jobs ([6421374](https://github.com/mogenius/renovate-operator/commit/642137449ead20a31815f2fee4e73dd45ab2431a))
+* moving discovery jobs to reconciler based processing ([41649a9](https://github.com/mogenius/renovate-operator/commit/41649a9e50ef9d9c24d8f17a47a7b456e3626a74))
+* reconcile project jobs via manager instead of loop ([aa118be](https://github.com/mogenius/renovate-operator/commit/aa118be079841e1da22e3c07a80e8d6b55039bb4))
+* skip pending-deletion repos during discovery ([a956471](https://github.com/mogenius/renovate-operator/commit/a9564715092825714900e39452705be79c5a18f2))
+
+
+### Bug Fixes
+
+* add tracing to job reconciler ([514352a](https://github.com/mogenius/renovate-operator/commit/514352ab68892dde6c2b38759f6bcee13bbc6122))
+* adding renovatejob reconciler to check for orphaned jobs ([88ec818](https://github.com/mogenius/renovate-operator/commit/88ec818db6b3aa15aa35a1805d3e227a4b925a8f))
+* annotate processed jobs to prevent double processing ([a4e10df](https://github.com/mogenius/renovate-operator/commit/a4e10dfea895c539dc57a5bbc63c561781cfd09c))
+* clean up mobile view and only display issues or activity if they exist ([930cd42](https://github.com/mogenius/renovate-operator/commit/930cd42f3f677474994bb85404a812300e10817c))
+* do not display loading animation on background reload ([47e1fdf](https://github.com/mogenius/renovate-operator/commit/47e1fdff8e4b4ae94b09d9ec9aaca96f47c00c05))
+
 ## [4.10.1](https://github.com/mogenius/renovate-operator/compare/4.10.0...4.10.1) (2026-06-03)
 
 

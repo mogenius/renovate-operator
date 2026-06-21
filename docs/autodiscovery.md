@@ -102,3 +102,34 @@ Supported platforms:
 
 If the API call fails for a specific repository, the repository is kept (fail-open) to avoid
 accidentally excluding valid projects.
+
+### Excluding Pending-Deletion Repositories
+
+GitLab supports *delayed* (deferred) project deletion: a project can be marked for deletion and
+only removed later. While in that state it is still discoverable, but running Renovate against it
+is wasteful and noisy. The `skipPendingDeletion` field tells the operator to query the platform
+API after discovery and exclude any repository marked for deletion before creating execution jobs.
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-group1
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  skipPendingDeletion: true
+  secretRef: renovate-secret
+  provider:
+    name: gitlab
+  ...
+```
+
+The same `secretRef` / `provider` requirements as `skipForks` apply. As with fork filtering, an
+API failure for a repository keeps it (fail-open). When `skipForks` and `skipPendingDeletion` are
+both enabled, the repository metadata is fetched in a single API call per repository rather than
+two.
+
+**Only GitLab** exposes a pending-deletion state (via `marked_for_deletion_at`, or the legacy
+`marked_for_deletion_on`, on `GET /projects/{path}`). On all other platforms repositories are
+deleted immediately, so this flag is a safe no-op and removes nothing.

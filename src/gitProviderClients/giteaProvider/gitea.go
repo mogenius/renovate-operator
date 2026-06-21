@@ -17,7 +17,7 @@ type GiteaClient struct {
 	HTTPClient *http.Client
 }
 
-func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) {
+func (c *GiteaClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	//trim /api/v1 if it is included in the endpoint, to avoid double /api/v1 in the URL
 	endpoint := strings.TrimSuffix(c.Endpoint, "/")
 	endpoint = strings.TrimSuffix(endpoint, "/api/v1")
@@ -26,29 +26,30 @@ func (c *GiteaClient) IsFork(ctx context.Context, project string) (bool, error) 
 	url := fmt.Sprintf("%s/api/v1/repos/%s", endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	req.Header.Set("Authorization", "token "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("gitea API returned status %d for %s: %s", resp.StatusCode, project, string(body))
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("gitea API returned status %d for %s: %s", resp.StatusCode, project, string(body))
 	}
 
 	var repo struct {
 		Fork bool `json:"fork"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		return false, fmt.Errorf("failed to decode gitea API response for %s: %w", project, err)
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode gitea API response for %s: %w", project, err)
 	}
-	return repo.Fork, nil
+	// Gitea/Forgejo have no pending-deletion state.
+	return gitProviderClients.RepositoryInfo{Fork: repo.Fork}, nil
 }
 
 func (c *GiteaClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {

@@ -26,6 +26,8 @@ type RenovateJobSpec struct {
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
 	SkipForks bool `json:"skipForks,omitempty"`
+	// If true, repositories marked for delayed deletion (pending deletion) will be excluded by querying the platform API. Only GitLab exposes this state.
+	SkipPendingDeletion bool `json:"skipPendingDeletion,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
 	// Additional environment variables to set in the renovate container
@@ -70,6 +72,9 @@ type RenovateJobSpec struct {
 	// Reference to a Github App for authentication, this will automatically mount a secret with
 	// RENOVATE_TOKEN
 	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
+	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -270,6 +275,10 @@ func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 		out.Spec.ScratchVolume = new(RenovateJobScratchVolume)
 		in.Spec.ScratchVolume.DeepCopyInto(out.Spec.ScratchVolume)
 	}
+	if in.Spec.RuntimeClassName != nil {
+		out.Spec.RuntimeClassName = new(string)
+		*out.Spec.RuntimeClassName = *in.Spec.RuntimeClassName
+	}
 	// Deep copy Status.Projects (contains pointer and slice fields)
 	if in.Status.Projects != nil {
 		out.Status.Projects = make([]ProjectStatus, len(in.Status.Projects))
@@ -342,4 +351,3 @@ func (in *RenovateJobList) DeepCopyObject() runtime.Object {
 	}
 	return out
 }
-

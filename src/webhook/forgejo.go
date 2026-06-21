@@ -102,9 +102,7 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 			Priority: 1,
 		},
 	)
-	if err != nil {
-		s.logger.Error(err, "Failed to process Forgejo webhook for repo", "repo", payload.Repository.FullName)
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "failed to process webhook"})
+	if s.handleUpdateProjectStatusError(w, err, payload.Repository.FullName, job, namespace) {
 		return
 	}
 

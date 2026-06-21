@@ -26,9 +26,13 @@
     };
   </script>
   <script src="/js/theme-utils.js"></script>
-  <script src="/js/react.production.min.js"></script>
-  <script src="/js/react-dom.production.min.js"></script>
   <script src="/js/babel.min.js"></script>
+  <script src="/js/babel-config.js"></script>
+  <script type="module">
+    import { React, createRoot } from '/js/react-bundle.esm.js';
+    window.React = React;
+    window.createRoot = createRoot;
+  </script>
   <script type="text/babel" src="/components/ThemeToggle.js"></script>
   <script type="text/babel" src="/components/SiteHeader.js"></script>
   <script type="text/babel" src="/components/StatBadge.js"></script>
@@ -132,6 +136,7 @@
 
       const [logs, setLogs] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [streamFinished, setStreamFinished] = useState(false);
       const [error, setError] = useState(null);
       const [version, setVersion] = useState(null);
       const [authInfo, setAuthInfo] = useState(null);
@@ -165,30 +170,36 @@
           setLoading(false);
           return;
         }
-        authFetch(
-          `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`
-        )
-          .then(async r => {
-            if (!r.ok) {
-              let msg = `Server returned ${r.status}`;
-              try {
-                const body = await r.json();
-                if (body && body.Message) msg = body.Message;
-              } catch { }
-              throw new Error(msg);
-            }
-            return r.json();
-          })
-          .then(data => {
-            setLogs(Array.isArray(data) ? data : []);
+
+        const entries = [];
+        const url = `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
+        const es = new EventSource(url);
+
+        es.onmessage = (event) => {
+          try {
+            entries.push(JSON.parse(event.data));
+            setLogs([...entries]);
             setLoading(false);
-          })
-          .catch(err => {
-            if (err.message !== "Unauthorized") {
-              setError(err.message);
-              setLoading(false);
-            }
-          });
+          } catch { }
+        };
+
+        es.addEventListener("done", () => {
+          es.close();
+          if (entries.length === 0) setLogs([]);
+          setLoading(false);
+          setStreamFinished(true);
+        });
+
+        es.onerror = () => {
+          es.close();
+          if (entries.length === 0) {
+            setError("Failed to load logs. The job may have been cleaned up already.");
+          }
+          setLoading(false);
+          setStreamFinished(true);
+        };
+
+        return () => es.close();
       }, [namespace, renovate, project]);
 
       const errorCount = useMemo(() => logs ? logs.filter(e => e.level >= 50).length : null, [logs]);
@@ -259,14 +270,32 @@
         <div className="min-h-screen flex flex-col">
           <SiteHeader version={version} authInfo={authInfo}>
             <StatBadge label="Errors" value={errorCount === null ? '-' : errorCount} valueClass="text-error" />
-            <div className="hidden lg:block basis-full h-0" />
             <StatBadge label="Warnings" value={warnCount === null ? '-' : warnCount} valueClass="text-warning" />
           </SiteHeader>
 
           <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-8">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
               <div className="shrink-0">
-                <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Logs</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Logs</h1>
+                  {!loading && !streamFinished && (
+                    <span className="flex items-center gap-1.5 text-xs text-success font-medium">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                      </span>
+                      Streaming
+                    </span>
+                  )}
+                  {streamFinished && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500 font-medium">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Completed
+                    </span>
+                  )}
+                </div>
                 {project && (
                   <p className="text-sm text-gray-500 dark:text-slate-400 font-mono break-all">{project}</p>
                 )}
@@ -395,7 +424,7 @@
       );
     }
 
-    ReactDOM.render(<App />, document.getElementById("root"));
+    window.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 

@@ -3,20 +3,27 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/renovate"
 
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
+	batchv1 "k8s.io/api/batch/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // fakeManager implements the full RenovateJobManager interface but only the
@@ -66,8 +73,8 @@ func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJo
 	}
 	return nil
 }
-func (f *fakeManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+func (f *fakeManager) StreamLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 func (f *fakeManager) UpdateProjectConfigStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *string) error {
 	return nil
@@ -79,6 +86,14 @@ func (f *fakeManager) IsWebhookTokenValid(ctx context.Context, job crdManager.Re
 func (f *fakeManager) IsWebhookSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	return true, nil
 }
+
+type fakeWebhookSync struct{}
+
+func (f *fakeWebhookSync) EnsureSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+}
+func (f *fakeWebhookSync) RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier) {
+}
+func (f *fakeWebhookSync) RemoveSyncer(name string) {}
 
 type fakeGithubAppToken struct{}
 
@@ -93,23 +108,20 @@ func (worker *fakeGithubAppToken) CreateGithubAppToken(appID, installationID, pe
 }
 
 type fakeDiscovery struct {
-	discoverFn func(ctx context.Context, job *api.RenovateJob) ([]string, error)
+	createDiscoveryJobFn func(ctx context.Context, job api.RenovateJob) (string, error)
 }
 
-func (f *fakeDiscovery) Discover(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-	if f.discoverFn != nil {
-		return f.discoverFn(ctx, job)
+func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
+	if f.createDiscoveryJobFn != nil {
+		return f.createDiscoveryJobFn(ctx, renovateJob)
 	}
-	return []string{}, nil
+	return "gen-1", nil
 }
-func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob) (string, error) {
-	return "", fmt.Errorf("not implemented")
-}
-func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob, generation string) (api.RenovateProjectStatus, error) {
+func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
 }
-func (f *fakeDiscovery) WaitForDiscoveryJob(ctx context.Context, job *api.RenovateJob, generation string) ([]string, error) {
-	return []string{}, nil
+func (f *fakeDiscovery) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, renovateJobId crdManager.RenovateJobIdentifier) error {
+	return nil
 }
 
 type fakeScheduler struct {
@@ -143,24 +155,11 @@ func (f *fakeScheduler) AddSchedule(expr string, name string, fn func()) error {
 }
 func (f *fakeScheduler) GetNextRunOnSchedule(schedule string) time.Time { return time.Time{} }
 
-// Test createScheduler: ensure the scheduled function performs discovery and manager calls
+// Test createScheduler: ensure the scheduled function creates a discovery job
 func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
-	calledReconcile := false
-	var gotProjects []string
-	calledUpdate := false
+	calledCreate := false
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		calledReconcile = true
-		gotProjects = projects
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		calledUpdate = true
-		// run the predicate on a sample project to ensure no panic
-		_ = fn(api.ProjectStatus{Name: "p1", Status: api.JobStatusRunning})
-		return nil
-	}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -171,22 +170,16 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 	}
 
 	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"p1", "p2"}, nil
+	disc.createDiscoveryJobFn = func(ctx context.Context, job api.RenovateJob) (string, error) {
+		calledCreate = true
+		return "gen-1", nil
 	}
 
 	sched := &fakeScheduler{}
-
-	reconciler := &RenovateJobReconciler{
-		Manager:   mgr,
-		Scheduler: sched,
-		Discovery: disc,
-	}
-
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc, WebhookSync: &fakeWebhookSync{}}
 	logger := logr.Discard()
 	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
-	// create the schedule (stores the function)
 	createScheduler(logger, renovateJob, reconciler)
 
 	if !sched.addCalled {
@@ -196,45 +189,27 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 		t.Fatalf("expected stored schedule function to be set")
 	}
 
-	// invoke the scheduled function and assert interactions
 	sched.storedFn()
 
-	if !calledReconcile {
-		t.Fatalf("expected ReconcileProjects to be called")
-	}
-	if !calledUpdate {
-		t.Fatalf("expected UpdateProjectStatusBatched to be called")
-	}
-	if len(gotProjects) != 2 || gotProjects[0] != "p1" || gotProjects[1] != "p2" {
-		t.Fatalf("unexpected projects discovered: %v", gotProjects)
+	if !calledCreate {
+		t.Fatalf("expected CreateDiscoveryJob to be called")
 	}
 }
 
-// Test: when Discovery returns an error, the scheduled function should abort and not call manager methods
+// Test: when CreateDiscoveryJob returns an error, the scheduled function should abort
 func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
-	calledReconcile := false
-	calledUpdate := false
-
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		calledReconcile = true
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		calledUpdate = true
-		return nil
-	}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
 	}
 
 	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return nil, fmt.Errorf("discover boom")
+	disc.createDiscoveryJobFn = func(ctx context.Context, job api.RenovateJob) (string, error) {
+		return "", fmt.Errorf("create boom")
 	}
 
 	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc, WebhookSync: &fakeWebhookSync{}}
 	logger := logr.Discard()
 	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
@@ -242,116 +217,15 @@ func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 	if sched.storedFn == nil {
 		t.Fatalf("expected stored function to be set")
 	}
-	// invoke
+	// should not panic
 	sched.storedFn()
-
-	if calledReconcile {
-		t.Fatalf("expected ReconcileProjects NOT to be called when discovery fails")
-	}
-	if calledUpdate {
-		t.Fatalf("expected UpdateProjectStatusBatched NOT to be called when discovery fails")
-	}
 }
 
-// Test: when ReconcileProjects returns an error, the scheduled function should abort and not call UpdateProjectStatusBatched
-func TestCreateScheduler_ReconcileErrorAborts(t *testing.T) {
-	calledReconcile := false
-	calledUpdate := false
-
-	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		calledReconcile = true
-		return fmt.Errorf("reconcile boom")
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		calledUpdate = true
-		return nil
-	}
-	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
-	}
-
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"p1"}, nil
-	}
-
-	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
-	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
-
-	createScheduler(logger, renovateJob, reconciler)
-	if sched.storedFn == nil {
-		t.Fatalf("expected stored function to be set")
-	}
-	// invoke
-	sched.storedFn()
-
-	if !calledReconcile {
-		t.Fatalf("expected ReconcileProjects to be called")
-	}
-	if calledUpdate {
-		t.Fatalf("expected UpdateProjectStatusBatched NOT to be called when reconcile fails")
-	}
-}
-
-// Test: when UpdateProjectStatusBatched returns an error, it should be invoked and handled
-func TestCreateScheduler_UpdateProjectStatusBatchedError(t *testing.T) {
-	calledReconcile := false
-	calledUpdate := false
-
-	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		calledReconcile = true
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		calledUpdate = true
-		return fmt.Errorf("update batched boom")
-	}
-	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
-	}
-
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		return []string{"p1"}, nil
-	}
-
-	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
-	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
-
-	createScheduler(logger, renovateJob, reconciler)
-	if sched.storedFn == nil {
-		t.Fatalf("expected stored function to be set")
-	}
-
-	// invoke
-	sched.storedFn()
-
-	if !calledReconcile {
-		t.Fatalf("expected ReconcileProjects to be called")
-	}
-	if !calledUpdate {
-		t.Fatalf("expected UpdateProjectStatusBatched to be called")
-	}
-}
-
-// Test: when the RenovateJob is updated after createScheduler, the scheduled function should use the fresh RenovateJob
+// Test: the scheduled function uses the freshly fetched RenovateJob, not the one captured at schedule-creation time
 func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	var discoveredJob *api.RenovateJob
 
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		return nil
-	}
-	// Return a RenovateJob with an updated image when re-fetched
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -360,62 +234,47 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	}
 
 	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) {
-		discoveredJob = job
-		return []string{"p1"}, nil
+	disc.createDiscoveryJobFn = func(ctx context.Context, job api.RenovateJob) (string, error) {
+		discoveredJob = &job
+		return "gen-1", nil
 	}
 
 	sched := &fakeScheduler{}
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc, WebhookSync: &fakeWebhookSync{}}
 	logger := logr.Discard()
 
-	// Create scheduler with old image
 	originalJob := &api.RenovateJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:38"},
 	}
 	createScheduler(logger, originalJob, reconciler)
-
-	// Execute the scheduled function — it should re-fetch and use the updated image
 	sched.storedFn()
 
 	if discoveredJob == nil {
-		t.Fatalf("expected Discover to be called")
+		t.Fatalf("expected CreateDiscoveryJob to be called")
 	}
 	if discoveredJob.Spec.Image != "renovate/renovate:39" {
-		t.Fatalf("expected discovery to use updated image 'renovate/renovate:39', got '%s'", discoveredJob.Spec.Image)
+		t.Fatalf("expected fresh image 'renovate/renovate:39', got '%s'", discoveredJob.Spec.Image)
 	}
 }
 
-// Test: when Scheduler.AddScheduleReplaceExisting returns an error, createScheduler should not panic and should log the error
+// Test: when Scheduler.AddScheduleReplaceExisting returns an error, createScheduler should not panic
 func TestCreateScheduler_SchedulerAddError(t *testing.T) {
 	mgr := &fakeManager{}
-	mgr.reconcileProjectsFn = func(ctx context.Context, job *api.RenovateJob, projects []string) error {
-		return nil
-	}
-	mgr.updateProjectStatusBatchedFn = func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-		return nil
-	}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
 	}
 
-	disc := &fakeDiscovery{}
-	disc.discoverFn = func(ctx context.Context, job *api.RenovateJob) ([]string, error) { return []string{}, nil }
-
 	sched := &fakeScheduler{addErr: fmt.Errorf("add boom")}
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: &fakeDiscovery{}, WebhookSync: &fakeWebhookSync{}}
 	logger := logr.Discard()
 	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
-	// should not panic
 	createScheduler(logger, renovateJob, reconciler)
 
-	// AddScheduleReplaceExisting was called but returned an error, so storedFn should be set but Add returned error
 	if !sched.addCalled {
 		t.Fatalf("expected AddScheduleReplaceExisting to be called")
 	}
-	// Because AddScheduleReplaceExisting returned an error, we expect storedFn to be set (it is stored before error)
 	if sched.storedFn == nil {
 		t.Fatalf("expected storedFn to be present even if add failed")
 	}
@@ -438,11 +297,11 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
-		webhookSyncers: make(map[string]*webhookSyncerEntry),
-		GithubApp:      &fakeGithubAppToken{},
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
+		WebhookSync: &fakeWebhookSync{},
+		GithubApp:   &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -472,11 +331,11 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
-		webhookSyncers: make(map[string]*webhookSyncerEntry),
-		GithubApp:      &fakeGithubAppToken{},
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
+		WebhookSync: &fakeWebhookSync{},
+		GithubApp:   &fakeGithubAppToken{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -496,6 +355,144 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 	}
 }
 
+func buildFakeK8sClient(t *testing.T, objs ...crclient.Object) crclient.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+}
+
+func makeRenovateJob(name, namespace string, annotations map[string]string) *api.RenovateJob {
+	return &api.RenovateJob{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: annotations},
+		Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
+	}
+}
+
+// TestHandleAnnotationTriggers_Discovery verifies that the discovery annotation triggers
+// CreateDiscoveryJob and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
+	discoveryTriggered := false
+	disc := &fakeDiscovery{
+		createDiscoveryJobFn: func(ctx context.Context, job api.RenovateJob) (string, error) {
+			discoveryTriggered = true
+			return "gen-1", nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY: "true",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: disc,
+		Manager:   &fakeManager{},
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	if !discoveryTriggered {
+		t.Fatal("expected CreateDiscoveryJob to be called")
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY]; ok {
+		t.Fatal("expected discovery annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_ScheduleAll verifies that the schedule-all annotation sets all
+// non-running projects to Scheduled and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
+	projects := []api.ProjectStatus{
+		{Name: "org/a", Status: api.JobStatusCompleted},
+		{Name: "org/b", Status: api.JobStatusRunning},
+		{Name: "org/c", Status: api.JobStatusFailed},
+	}
+	var scheduled []string
+	mgr := &fakeManager{
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			for _, p := range projects {
+				if fn(p) {
+					scheduled = append(scheduled, p.Name)
+				}
+			}
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL: "true",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	// org/b is Running and must be excluded; org/a and org/c must be scheduled
+	if len(scheduled) != 2 {
+		t.Fatalf("expected 2 projects scheduled, got %v", scheduled)
+	}
+	for _, want := range []string{"org/a", "org/c"} {
+		found := false
+		for _, got := range scheduled {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected %q to be scheduled, got %v", want, scheduled)
+		}
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL]; ok {
+		t.Fatal("expected schedule-all annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_Schedule verifies that the schedule annotation schedules only
+// the listed non-running projects and is removed from the RenovateJob on success.
+func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
+	projects := []api.ProjectStatus{
+		{Name: "org/p1", Status: api.JobStatusCompleted},
+		{Name: "org/p2", Status: api.JobStatusRunning}, // in list but running — must be excluded
+		{Name: "org/p3", Status: api.JobStatusFailed},  // not in list — must be excluded
+	}
+	var scheduled []string
+	mgr := &fakeManager{
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			for _, p := range projects {
+				if fn(p) {
+					scheduled = append(scheduled, p.Name)
+				}
+			}
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE: "org/p1, org/p2",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+
+	if len(scheduled) != 1 || scheduled[0] != "org/p1" {
+		t.Fatalf("expected only org/p1 to be scheduled, got %v", scheduled)
+	}
+	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; ok {
+		t.Fatal("expected schedule annotation to be removed after processing")
+	}
+}
+
 // Test: when the manager returns an error (not NotFound), Reconcile should return the error
 func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 	mgr := &fakeManager{}
@@ -506,10 +503,10 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 	sched := &fakeScheduler{}
 
 	reconciler := &RenovateJobReconciler{
-		Manager:        mgr,
-		Scheduler:      sched,
-		Discovery:      &fakeDiscovery{},
-		webhookSyncers: make(map[string]*webhookSyncerEntry),
+		Manager:     mgr,
+		Scheduler:   sched,
+		Discovery:   &fakeDiscovery{},
+		WebhookSync: &fakeWebhookSync{},
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}

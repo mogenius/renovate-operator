@@ -77,11 +77,15 @@ generate: _install_controller_gen
     controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
 # Run tests and linters for quick iteration locally.
-check: generate golangci-lint test-unit
+check: generate golangci-lint test-unit test-helm
 
 # Execute unit tests
 test-unit: generate
     cd src && go run gotest.tools/gotestsum@latest --format="testname" --hide-summary="skipped" --format-hide-empty-pkg --rerun-fails="0" -- -count=1 ./...
+
+# Execute helm unit tests
+test-helm:
+    helm unittest ./charts/renovate-operator/ --file "unittests/**/*.yaml"
 
 # Execute golangci-lint
 golangci-lint: generate
@@ -90,16 +94,22 @@ golangci-lint: generate
 
 # Install JS dependencies
 jsInstall:
+    #!/usr/bin/env sh
+    set -e
     mkdir -p src/static/js
     echo "Downloading Tailwind CSS..."
     curl -s -L -o src/static/js/tailwind.min.js "https://cdn.tailwindcss.com"
-    echo "Downloading React..."
-    curl -s -L -o src/static/js/react.production.min.js "https://unpkg.com/react@18/umd/react.production.min.js"
-    echo "Downloading React-DOM..."
-    curl -s -L -o src/static/js/react-dom.production.min.js "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
     echo "Downloading Babel Standalone..."
-    curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone/babel.min.js"
-    echo "All JavaScript dependencies downloaded successfully!"
+    curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js"
+    echo "Bundling React 19..."
+    BUNDLE_DIR=$(mktemp -d)
+    npm install --prefix "$BUNDLE_DIR" "react@19.2.7" "react-dom@19.2.7" esbuild --save=false --silent
+    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" > "$BUNDLE_DIR/entry.mjs"
+    "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/entry.mjs" \
+        --bundle --format=esm --log-level=silent \
+        --outfile=src/static/js/react-bundle.esm.js
+    rm -rf "$BUNDLE_DIR"
+    echo "All JavaScript dependencies ready!"
 
 docker image:
     podman build --platform linux/arm64 \

@@ -1,12 +1,12 @@
 module renovate-operator
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
-	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/netresearch/go-cron v0.15.0
-	github.com/valkey-io/valkey-go v1.0.75
+	github.com/valkey-io/valkey-go v1.0.76
 	go.opentelemetry.io/contrib/bridges/otellogr v0.19.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.69.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
@@ -20,8 +20,8 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.20.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	k8s.io/api v0.36.1
-	k8s.io/apimachinery v0.36.1
+	k8s.io/api v0.36.2
+	k8s.io/apimachinery v0.36.2
 	sigs.k8s.io/controller-runtime v0.24.1
 )
 
@@ -90,8 +90,8 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.36.1
-	k8s.io/client-go v0.36.1
+	k8s.io/apiextensions-apiserver v0.36.2
+	k8s.io/client-go v0.36.2
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

@@ -3,22 +3,44 @@ package crdmanager
 import (
 	"context"
 	"fmt"
-	"sort"
+	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/assert"
+	"renovate-operator/internal/utils"
 	"strconv"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	JOB_LABEL_TYPE       = "renovate-operator.mogenius.com/job-type"
-	JOB_LABEL_NAME       = "renovate-operator.mogenius.com/job-name"
-	JOB_LABEL_GENERATION = "renovate-operator.mogenius.com/generation"
+	JOB_LABEL_TYPE        = "renovate-operator.mogenius.com/type"
+	JOB_LABEL_RENOVATEJOB = "renovate-operator.mogenius.com/renovatejob"
+	JOB_LABEL_PROJECT     = "renovate-operator.mogenius.com/project"
+	JOB_LABEL_GENERATION  = "renovate-operator.mogenius.com/generation"
+	// JOB_ANNOTATION_PROJECT stores the original project name (may contain slashes etc.)
+	// Use this instead of JOB_LABEL_PROJECT when you need the exact CRD status key.
+	JOB_ANNOTATION_PROJECT = "renovate-operator.mogenius.com/project"
+	// JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY indicates that ProcessDiscoveryJobResult should
+	// schedule all non-running projects after reconciling. Set to "true" for cron-triggered
+	// discovery; omit or "false" for UI-triggered discovery (project list refresh only).
+	JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY = "renovate-operator.mogenius.com/schedule-after-discovery"
+	// JOB_ANNOTATION_PROCESSED is stamped on a Job after its result has been fully processed.
+	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
+	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
+	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
+
+	// RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY triggers a discovery run when set to "true".
+	// Removed from the RenovateJob once the discovery job is created.
+	RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY = "renovate-operator.mogenius.com/discovery"
+	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL schedules all non-running projects when set to "true".
+	// Removed from the RenovateJob after the status update succeeds.
+	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL = "renovate-operator.mogenius.com/schedule-all"
+	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE schedules specific projects when set to a comma-separated list of project names.
+	// Removed from the RenovateJob after the status update succeeds.
+	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE = "renovate-operator.mogenius.com/schedule"
 )
 
 type JobType string
@@ -29,9 +51,10 @@ const (
 )
 
 type JobSelector struct {
-	JobName   string
-	JobType   JobType
-	Namespace string
+	RenovateJobName string
+	Project         string
+	JobType         JobType
+	Namespace       string
 	// optional generation to filter by - if not provided, the most recent job will be returned
 	Generation *string
 }
@@ -45,7 +68,7 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 		return nil, err
 	}
 	if len(allJobs) == 0 {
-		return nil, errors.NewNotFound(batchv1.Resource("jobs"), selector.JobName)
+		return nil, errors.NewNotFound(batchv1.Resource("jobs"), selector.Project)
 	}
 	// get the newest job in case there are multiple jobs for the same project (e.g. due to multiple executions)
 	var currentJob *batchv1.Job
@@ -73,16 +96,20 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSelector) ([]batchv1.Job, error) {
 
 	matcher := crclient.MatchingLabels{
-		JOB_LABEL_NAME: selector.JobName,
-		JOB_LABEL_TYPE: string(selector.JobType),
+		JOB_LABEL_TYPE:        string(selector.JobType),
+		JOB_LABEL_RENOVATEJOB: selector.RenovateJobName,
 	}
+	if selector.JobType == ExecutorJobType && selector.Project != "" {
+		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+	}
+
 	if selector.Generation != nil && *selector.Generation != "" {
 		matcher[JOB_LABEL_GENERATION] = *selector.Generation
 	}
 	jobList := &batchv1.JobList{}
 	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
 	if err != nil {
-		return nil, fmt.Errorf("listing jobs with label %s: %w", selector.JobName, err)
+		return nil, fmt.Errorf("listing jobs with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
 	}
 	return jobList.Items, nil
 }
@@ -96,11 +123,38 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	}
 	return nil
 }
+
+// MarkJobProcessed stamps JOB_ANNOTATION_PROCESSED on the Job so the JobReconciler
+// can skip it on subsequent informer resyncs without re-processing its result.
+func MarkJobProcessed(ctx context.Context, c crclient.Client, job *batchv1.Job) error {
+	patch := crclient.MergeFrom(job.DeepCopy())
+	if job.Annotations == nil {
+		job.Annotations = make(map[string]string)
+	}
+	job.Annotations[JOB_ANNOTATION_PROCESSED] = "true"
+	return c.Patch(ctx, job, patch)
+}
 func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
+	assert.Assert(selector.JobType != "", "JobType is required in selector")
+	assert.Assert(selector.RenovateJobName != "", "RenovateJobName is required in selector")
+
 	generation := fmt.Sprintf("%d", time.Now().Unix())
 
-	job.Labels[JOB_LABEL_GENERATION] = generation
+	if job.Labels == nil {
+		job.Labels = make(map[string]string)
+	}
 
+	job.Labels[JOB_LABEL_GENERATION] = generation
+	job.Labels[JOB_LABEL_TYPE] = string(selector.JobType)
+	job.Labels[JOB_LABEL_RENOVATEJOB] = selector.RenovateJobName
+
+	if selector.JobType == ExecutorJobType {
+		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+		if job.Annotations == nil {
+			job.Annotations = make(map[string]string)
+		}
+		job.Annotations[JOB_ANNOTATION_PROJECT] = selector.Project
+	}
 	// Create immediately - no deletion needed first
 	err := client.Create(ctx, job)
 	if err != nil {
@@ -133,44 +187,29 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 			_ = DeleteJob(ctx, client, &job)
 		}
 	}
+
+	// TODO: Remove this cleanup logic after we have confidence that the new labels have propagated
+	stub := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
+	name := ""
+	if selector.JobType == DiscoveryJobType {
+		name = utils.DiscoveryJobName(stub)
+	} else {
+		name = utils.ExecutorJobName(stub, selector.Project)
+	}
+
+	matcher := crclient.MatchingLabels{
+		"renovate-operator.mogenius.com/job-type": string(selector.JobType),
+		"renovate-operator.mogenius.com/job-name": name,
+	}
+
+	jobList := &batchv1.JobList{}
+	err = client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
+	if err != nil {
+		return fmt.Errorf("listing jobs for cleanup with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
+	}
+
+	for _, job := range jobList.Items {
+		_ = DeleteJob(ctx, client, &job)
+	}
 	return nil
-}
-
-// GetLastJobLog retrieves the logs from the most recent pod of a job
-func GetLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job) (string, error) {
-	ns := job.Namespace
-
-	// Use Job's label selector
-	selector := metav1.FormatLabelSelector(job.Spec.Selector)
-
-	pods, err := clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: selector,
-	})
-	if err != nil {
-		return "", fmt.Errorf("listing pods for job %s: %w", job.Name, err)
-	}
-
-	if len(pods.Items) == 0 {
-		return "", fmt.Errorf("no pods found for job %s", job.Name)
-	}
-
-	// Sort pods by creation timestamp (newest last)
-	sort.Slice(pods.Items, func(i, j int) bool {
-		return pods.Items[i].CreationTimestamp.Time.Before(pods.Items[j].CreationTimestamp.Time)
-	})
-
-	// Last pod (most recent)
-	lastPod := pods.Items[len(pods.Items)-1]
-
-	// Get logs from first container (adjust if multiple containers)
-	req := clientset.CoreV1().Pods(ns).GetLogs(lastPod.Name, &corev1.PodLogOptions{
-		Container: lastPod.Spec.Containers[0].Name,
-	})
-
-	logs, err := req.Do(ctx).Raw()
-	if err != nil {
-		return "", fmt.Errorf("getting logs from pod %s: %w", lastPod.Name, err)
-	}
-
-	return string(logs), nil
 }

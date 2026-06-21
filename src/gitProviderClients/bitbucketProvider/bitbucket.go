@@ -16,34 +16,35 @@ type BitbucketClient struct {
 	HTTPClient *http.Client
 }
 
-func (c *BitbucketClient) IsFork(ctx context.Context, project string) (bool, error) {
+func (c *BitbucketClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	// Bitbucket Cloud API: GET /2.0/repositories/{workspace}/{repo_slug}
 	url := fmt.Sprintf("%s/2.0/repositories/%s", c.Endpoint, project)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, err
+		return gitProviderClients.RepositoryInfo{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("bitbucket API returned status %d for %s: %s", resp.StatusCode, project, string(body))
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("bitbucket API returned status %d for %s: %s", resp.StatusCode, project, string(body))
 	}
 
 	var repo struct {
 		Parent *json.RawMessage `json:"parent"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		return false, fmt.Errorf("failed to decode bitbucket API response for %s: %w", project, err)
+		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode bitbucket API response for %s: %w", project, err)
 	}
-	return repo.Parent != nil, nil
+	// Bitbucket Cloud has no pending-deletion state.
+	return gitProviderClients.RepositoryInfo{Fork: repo.Parent != nil}, nil
 }
 
 func (c *BitbucketClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {

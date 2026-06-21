@@ -74,9 +74,7 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 			Priority: 1,
 		},
 	)
-	if err != nil {
-		s.logger.Error(err, "Failed to process GitLab webhook for project", "project", payload.Project.PathWithNamespace)
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "failed to process webhook"})
+	if s.handleUpdateProjectStatusError(w, err, payload.Project.PathWithNamespace, job, namespace) {
 		return
 	}
 

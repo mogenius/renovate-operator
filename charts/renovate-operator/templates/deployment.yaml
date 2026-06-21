@@ -159,6 +159,8 @@ spec:
             - name: OIDC_FETCH_USERINFO_GROUPS
               value: "true"
             {{- end }}
+            - name: OIDC_PKCE_ENABLED
+              value: {{ .Values.auth.oidc.pkceEnabled | toString | quote }}
             {{- else if .Values.auth.github.enabled }}
             - name: GITHUB_CLIENT_ID
               value: {{ .Values.auth.github.clientId | quote }}
