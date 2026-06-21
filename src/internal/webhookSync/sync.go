@@ -56,13 +56,32 @@ func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
 	maps.Copy(s.managedRepos, m)
 }
 
-// RunOnce executes one full sync cycle: ensures webhooks exist on topic repos and removes them from opted-out repos.
+// RunOnce executes one full sync cycle: ensures webhooks exist on eligible repos and removes them from opted-out repos.
+// When projects is non-empty those repos are used directly; otherwise repos are discovered by topic. This lets jobs
+// that autodiscover repositories without a topic still sync webhooks by passing their discovered project list.
 // It returns a consistent snapshot of the managed repos state as it was at the end of the sync cycle.
-func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
-	// Step 1: Search repos by topic (no lock needed — pure API call)
-	repos, err := s.client.SearchReposByTopic(ctx, s.topic)
-	if err != nil {
-		return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+func (s *WebhookSyncer) RunOnce(ctx context.Context, projects ...string) (map[string]int64, error) {
+	var repos []gitProviderClients.Repository
+
+	if len(projects) > 0 {
+		// Use the provided project list — mark all as admin (the caller already discovered them);
+		// repos where we lack admin are detected and skipped when the webhook API call returns 403.
+		for _, fullName := range projects {
+			repos = append(repos, gitProviderClients.Repository{
+				FullName:    fullName,
+				Permissions: &gitProviderClients.RepositoryPermissions{Admin: true},
+			})
+		}
+	} else if s.topic != "" {
+		// Fall back to topic-based discovery (no lock needed — pure API call).
+		var err error
+		repos, err = s.client.SearchReposByTopic(ctx, s.topic)
+		if err != nil {
+			return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
+		}
+	} else {
+		s.logger.Info("no projects provided and no topic configured, skipping webhook sync")
+		return s.snapshotManagedRepos(), nil
 	}
 
 	// Step 2: Partition by admin permission
@@ -132,13 +151,16 @@ func (s *WebhookSyncer) RunOnce(ctx context.Context) (map[string]int64, error) {
 		s.mu.Unlock()
 	}
 
-	// Return a consistent snapshot of the final state
+	return s.snapshotManagedRepos(), nil
+}
+
+// snapshotManagedRepos returns a consistent copy of the managed repos state.
+func (s *WebhookSyncer) snapshotManagedRepos() map[string]int64 {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	snapshot := make(map[string]int64, len(s.managedRepos))
 	maps.Copy(snapshot, s.managedRepos)
-	s.mu.Unlock()
-
-	return snapshot, nil
+	return snapshot
 }
 
 func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {
