@@ -112,6 +112,44 @@ func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
 	}
 }
 
+func TestSyncUsesProvidedProjectsWithoutTopic(t *testing.T) {
+	mc := newMockClient()
+	// No topic configured; fail the search so the test proves it is not used.
+	mc.searchErr = fmt.Errorf("SearchReposByTopic must not be called when projects are provided")
+
+	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "", nil, logr.Discard())
+
+	state, err := syncer.RunOnce(context.Background(), "org/repo1", "org/repo2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.created["org/repo1"]) != 1 || len(mc.created["org/repo2"]) != 1 {
+		t.Errorf("expected a webhook created for each provided project, got %v", mc.created)
+	}
+	if len(state) != 2 {
+		t.Errorf("expected 2 repos in returned state, got %d", len(state))
+	}
+}
+
+func TestSyncSkipsWhenNoProjectsAndNoTopic(t *testing.T) {
+	mc := newMockClient()
+	mc.searchErr = fmt.Errorf("SearchReposByTopic must not be called without a topic")
+
+	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "", nil, logr.Discard())
+
+	state, err := syncer.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mc.created) != 0 {
+		t.Errorf("expected no webhooks created, got %v", mc.created)
+	}
+	if len(state) != 0 {
+		t.Errorf("expected empty state, got %v", state)
+	}
+}
+
 func TestSyncSkipsReposWithExistingWebhook(t *testing.T) {
 	mc := newMockClient()
 	mc.repos = []gitProviderClients.Repository{

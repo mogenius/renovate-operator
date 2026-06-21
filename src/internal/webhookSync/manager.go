@@ -144,7 +144,20 @@ func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jo
 	if !ok {
 		return
 	}
-	state, err := entry.syncer.RunOnce(ctx)
+	// Pass the discovered project list so webhook sync works for jobs that
+	// autodiscover repositories without a topic. RunOnce falls back to topic
+	// search when no projects are supplied.
+	var projects []string
+	if rj, err := m.jobManager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace); err != nil {
+		logger.Error(err, "failed to load RenovateJob for webhook sync; falling back to topic search")
+	} else if rj != nil {
+		projects = make([]string, 0, len(rj.Status.Projects))
+		for _, p := range rj.Status.Projects {
+			projects = append(projects, p.Name)
+		}
+	}
+
+	state, err := entry.syncer.RunOnce(ctx, projects...)
 	if err != nil {
 		logger.Error(err, "webhook sync failed")
 	}
