@@ -3,6 +3,8 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,8 +73,8 @@ func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJo
 	}
 	return nil
 }
-func (f *fakeManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+func (f *fakeManager) StreamLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 func (f *fakeManager) UpdateProjectConfigStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *string) error {
 	return nil

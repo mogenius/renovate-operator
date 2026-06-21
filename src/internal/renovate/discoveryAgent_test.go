@@ -3,6 +3,7 @@ package renovate
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -59,8 +60,8 @@ func (f *fakeJobManager) UpdateProjectStatus(ctx context.Context, project string
 func (f *fakeJobManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (f *fakeJobManager) GetLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+func (f *fakeJobManager) StreamLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) IsWebhookTokenValid(ctx context.Context, job crdManager.RenovateJobIdentifier, token string) (bool, error) {
 	return true, nil
