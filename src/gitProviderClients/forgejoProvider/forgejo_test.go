@@ -170,6 +170,9 @@ func TestDeleteRepoWebhook(t *testing.T) {
 func TestDeleteRepoWebhook_NotFoundIsSuccess(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/api/v1/repos/org/repo1/hooks/42", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"message":"The target couldn't be found."}`))
 	})
