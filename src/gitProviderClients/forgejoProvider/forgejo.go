@@ -173,7 +173,9 @@ func (c *ForgejoClient) DeleteRepoWebhook(ctx context.Context, owner, repo strin
 	defer func() { _ = resp.Body.Close() }()
 
 	// A missing webhook is the desired end state, so treat 404 as success.
+	// Drain the body first so the connection can be reused (Forgejo returns JSON on 404).
 	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
