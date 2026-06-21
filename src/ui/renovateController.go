@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -328,13 +330,12 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 	renovate := r.URL.Query().Get("renovate")
 	project := r.URL.Query().Get("project")
 
-	// Authorization check
 	if !s.authorizeJobAccess(r, namespace, renovate) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	logs, err := s.manager.GetLogsForProject(
+	stream, err := s.manager.StreamLogsForProject(
 		r.Context(),
 		crdmanager.RenovateJobIdentifier{
 			Name:      renovate,
@@ -346,29 +347,35 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 		internalServerError(w, err, "failed to get logs for project, probably the completed job has been cleaned up already")
 		return
 	}
+	defer stream.Close()
 
-	// Renovate outputs NDJSON (one JSON object per line). Convert to a JSON
-	// array so browsers with built-in JSON viewers can parse and display it.
-	lines := strings.Split(strings.TrimSpace(logs), "\n")
-	entries := make([]json.RawMessage, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, _ := w.(http.Flusher)
+
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MB per line — Renovate logs can be verbose
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !json.Valid([]byte(line)) {
 			continue
 		}
-		if json.Valid([]byte(line)) {
-			entries = append(entries, json.RawMessage(line))
+		fmt.Fprintf(w, "data: %s\n\n", line)
+		if flusher != nil {
+			flusher.Flush()
 		}
 	}
+	// scanner.Err() is nil on clean EOF (pod exited, log store exhausted) or context cancellation.
+	// Either way we send the done event so the client closes its EventSource.
+	_ = scanner.Err()
 
-	w.Header().Set("Content-Type", "application/json")
-	out, err := json.MarshalIndent(entries, "", "  ")
-	if err != nil {
-		internalServerError(w, err, "failed to encode logs")
-		return
+	fmt.Fprint(w, "event: done\ndata: {}\n\n")
+	if flusher != nil {
+		flusher.Flush()
 	}
-	_, _ = w.Write(out)
-	_, _ = w.Write([]byte("\n"))
 }
 
 func getRenovateJsonBody(r *http.Request) (*struct {

@@ -2,6 +2,9 @@ package webhook
 
 import (
 	"context"
+	"io"
+	"strings"
+
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
@@ -51,8 +54,8 @@ func (m *mockWebhookManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 func (m *mockWebhookManager) GetProjectsForRenovateJob(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error) {
 	return nil, nil
 }
-func (m *mockWebhookManager) GetLogsForProject(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-	return "", nil
+func (m *mockWebhookManager) StreamLogsForProject(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil
