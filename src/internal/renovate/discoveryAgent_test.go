@@ -9,6 +9,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -76,6 +77,26 @@ func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, j
 	return nil
 }
 
+type fakePodLogReader struct {
+	getSucceededJobLogFn func(ctx context.Context, job *batchv1.Job) (string, error)
+}
+
+func (f *fakePodLogReader) GetLastJobLog(ctx context.Context, job *batchv1.Job) (string, error) {
+	return "", nil
+}
+func (f *fakePodLogReader) StreamJobLogs(ctx context.Context, job *batchv1.Job, follow bool) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (f *fakePodLogReader) GetSucceededJobLog(ctx context.Context, job *batchv1.Job) (string, error) {
+	if f.getSucceededJobLogFn != nil {
+		return f.getSucceededJobLogFn(ctx, job)
+	}
+	return "", fmt.Errorf("not implemented")
+}
+
+// Ensure fakePodLogReader satisfies the interface at compile time.
+var _ podLogs.PodLogReader = (*fakePodLogReader)(nil)
+
 // minimal logger for tests
 var testLogger = logr.Discard()
 
@@ -118,7 +139,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
 
-	daIface := NewDiscoveryAgent(scheme, c, testLogger, nil)
+	daIface := NewDiscoveryAgent(scheme, c, testLogger, nil, nil)
 	da := daIface.(*discoveryAgent)
 
 	tests := []struct {
@@ -164,7 +185,7 @@ func TestCreateDiscoveryJob(t *testing.T) {
 	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&batchv1.Job{}).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -216,7 +237,7 @@ func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -267,7 +288,7 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -311,10 +332,12 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 		},
 	}
 
-	da := NewDiscoveryAgent(scheme, c, testLogger, mgr).(*discoveryAgent)
-	da.getDiscoveredProjectsFromJobLogsFn = func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error) {
-		return []string{"a", "b"}, nil
+	lr := &fakePodLogReader{
+		getSucceededJobLogFn: func(_ context.Context, _ *batchv1.Job) (string, error) {
+			return `["a","b"]`, nil
+		},
 	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, lr).(*discoveryAgent)
 
 	// succeeded k8s Job (getJobStatus checks Conditions, not Succeeded counter)
 	k8sJob := &batchv1.Job{
@@ -340,7 +363,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 func TestProcessDiscoveryJobResult_NilJob(t *testing.T) {
 	scheme := runtime.NewScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
 
 	if err := da.ProcessDiscoveryJobResult(context.Background(), nil, crdManager.RenovateJobIdentifier{
 		Namespace: "ns",
@@ -356,7 +379,7 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 		t.Fatalf("failed to add batch scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
 
 	runningJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},

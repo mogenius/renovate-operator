@@ -13,10 +13,10 @@ import (
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/clientProvider"
 	"renovate-operator/gitProviderClients"
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
@@ -74,6 +74,7 @@ type renovateJobManager struct {
 	logger                   logr.Logger
 	lock                     *sync.RWMutex
 	logStore                 logStore.LogStore
+	logReader                podLogs.PodLogReader
 }
 
 type RenovateJobIdentifier struct {
@@ -96,13 +97,14 @@ type RenovateProjectStatus struct {
 	LogIssues            *api.LogIssues            `json:"logIssues,omitempty"`
 }
 
-func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore) RenovateJobManager {
+func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore, lr podLogs.PodLogReader) RenovateJobManager {
 	return &renovateJobManager{
 		client:                   client,
 		gitProviderClientFactory: gitProviderClientFactory,
 		logger:                   logger,
 		lock:                     &sync.RWMutex{},
 		logStore:                 ls,
+		logReader:                lr,
 	}
 }
 
@@ -351,12 +353,7 @@ func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job Renov
 
 	// Phase 2: open the stream (no lock held).
 	if jobErr == nil {
-		cp := clientProvider.StaticClientProvider()
-		clientset, err := cp.K8sClientSet()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create client: %w", err)
-		}
-		stream, err := StreamJobLogs(ctx, clientset, executorJob, projectRunning)
+		stream, err := r.logReader.StreamJobLogs(ctx, executorJob, projectRunning)
 		if err == nil {
 			return stream, nil
 		}
