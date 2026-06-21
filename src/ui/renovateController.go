@@ -310,7 +310,7 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 		internalServerError(w, err, "failed to get logs for project, probably the completed job has been cleaned up already")
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -326,7 +326,9 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 		if line == "" || !json.Valid([]byte(line)) {
 			continue
 		}
-		fmt.Fprintf(w, "data: %s\n\n", line)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+			return
+		}
 		if flusher != nil {
 			flusher.Flush()
 		}
@@ -335,7 +337,9 @@ func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 	// Either way we send the done event so the client closes its EventSource.
 	_ = scanner.Err()
 
-	fmt.Fprint(w, "event: done\ndata: {}\n\n")
+	if _, err := fmt.Fprint(w, "event: done\ndata: {}\n\n"); err != nil {
+		return
+	}
 	if flusher != nil {
 		flusher.Flush()
 	}

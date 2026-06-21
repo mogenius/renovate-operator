@@ -8,10 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	api "renovate-operator/api/v1alpha1"
-	crdmanager "renovate-operator/internal/crdManager"
-	"renovate-operator/internal/renovate"
-	"renovate-operator/internal/types"
 	"testing"
 	"time"
 
@@ -20,6 +16,11 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	api "renovate-operator/api/v1alpha1"
+	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/types"
 )
 
 // Mock RenovateJobManager

@@ -104,7 +104,7 @@ func (r *podLogReader) GetSucceededJobLog(ctx context.Context, job *batchv1.Job)
 	if err != nil {
 		return "", err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(stream); err != nil {
