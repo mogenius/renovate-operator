@@ -167,6 +167,22 @@ func TestDeleteRepoWebhook(t *testing.T) {
 	}
 }
 
+func TestDeleteRepoWebhook_NotFoundIsSuccess(t *testing.T) {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/api/v1/repos/org/repo1/hooks/42", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"The target couldn't be found."}`))
+	})
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "test-token")
+	if err := c.DeleteRepoWebhook(context.Background(), "org", "repo1", 42); err != nil {
+		t.Fatalf("expected nil error for already-deleted webhook, got: %v", err)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/api/v1/repos/search", func(w http.ResponseWriter, r *http.Request) {
