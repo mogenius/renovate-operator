@@ -8,7 +8,6 @@ import (
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/clientProvider"
 	"renovate-operator/config"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
@@ -16,6 +15,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
@@ -50,26 +50,28 @@ type RenovateExecutor interface {
 }
 
 type renovateExecutor struct {
-	scheme   *runtime.Scheme
-	client   client.Client
-	logger   logr.Logger
-	health   health.HealthCheck
-	manager  crdManager.RenovateJobManager
-	logStore logStore.LogStore
+	scheme    *runtime.Scheme
+	client    client.Client
+	logger    logr.Logger
+	health    health.HealthCheck
+	manager   crdManager.RenovateJobManager
+	logStore  logStore.LogStore
+	logReader podLogs.PodLogReader
 }
 
 type executionOptions struct {
 	globalParallelism int
 }
 
-func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore) RenovateExecutor {
+func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore, lr podLogs.PodLogReader) RenovateExecutor {
 	return &renovateExecutor{
-		client:   client,
-		scheme:   scheme,
-		manager:  manager,
-		logger:   logger,
-		health:   health,
-		logStore: ls,
+		client:    client,
+		scheme:    scheme,
+		manager:   manager,
+		logger:    logger,
+		health:    health,
+		logStore:  ls,
+		logReader: lr,
 	}
 }
 
@@ -215,20 +217,15 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 	}
 	hasIssues := false
 	if k8sJob != nil {
-		cp := clientProvider.StaticClientProvider()
-		if clientset, err := cp.K8sClientSet(); err == nil {
-			if logs, err := crdManager.GetLastJobLog(ctx, clientset, k8sJob); err == nil {
-				e.logStore.Save(jobId.Namespace, jobId.Name, project, logs)
-				parseResult := parser.ParseRenovateLogs(logs)
-				hasIssues = parseResult.HasIssues
-				newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
-				newProjectStatus.PRActivity = parseResult.PRActivity
-				newProjectStatus.LogIssues = parseResult.LogIssues
-			} else {
-				log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project)
-			}
+		if logs, err := e.logReader.GetLastJobLog(ctx, k8sJob); err == nil {
+			e.logStore.Save(jobId.Namespace, jobId.Name, project, logs)
+			parseResult := parser.ParseRenovateLogs(logs)
+			hasIssues = parseResult.HasIssues
+			newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
+			newProjectStatus.PRActivity = parseResult.PRActivity
+			newProjectStatus.LogIssues = parseResult.LogIssues
 		} else {
-			log.FromContext(ctx).Error(err, "failed to create Kubernetes clientset for metrics parsing", "project", project)
+			log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project)
 		}
 	}
 

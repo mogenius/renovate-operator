@@ -42,7 +42,7 @@ func TestListRenovateJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobs(ctx)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobsFull(ctx)
 	if err != nil {
@@ -104,7 +104,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 
 	err = mgr.UpdateProjectStatus(ctx, "existingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
@@ -144,7 +144,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 
 	// predicate: mark non-running projects as scheduled
@@ -190,7 +190,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 
 	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
@@ -242,7 +242,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
 	ctx := context.Background()
 
 	list, err := mgr.GetProjectsByStatus(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusCompleted)
