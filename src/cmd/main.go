@@ -24,6 +24,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/webhookSync"
@@ -457,13 +458,19 @@ func main() {
 	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf)
 	assert.NoError(err, "failed to initialize logStore")
 
-	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls)
+	cp := clientProvider.StaticClientProvider()
+	clientset, err := cp.K8sClientSet()
+	assert.NoError(err, "failed to get Kubernetes clientset for pod log reader")
+	podLogReader := podLogs.New(clientset)
+
+	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader)
 
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
 		mgr.GetClient(),
 		ctrl.Log.WithName("renovate-discovery"),
 		jobMgr,
+		podLogReader,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
@@ -488,6 +495,7 @@ func main() {
 		ctrl.Log.WithName("renovate-executor"),
 		health,
 		ls,
+		podLogReader,
 	)
 
 	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))

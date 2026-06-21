@@ -6,6 +6,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 	"sync"
 	"time"
@@ -44,25 +45,23 @@ type DiscoveryJobOptions struct {
 }
 
 type discoveryAgent struct {
-	client  client.Client
-	logger  logr.Logger
-	scheme  *runtime.Scheme
-	manager crdManager.RenovateJobManager
-	syncer  map[string]*sync.RWMutex
-	// allow tests to override how logs are extracted
-	getDiscoveredProjectsFromJobLogsFn func(ctx context.Context, c client.Client, job *batchv1.Job) ([]string, error)
+	client    client.Client
+	logger    logr.Logger
+	scheme    *runtime.Scheme
+	manager   crdManager.RenovateJobManager
+	syncer    map[string]*sync.RWMutex
+	logReader podLogs.PodLogReader
 }
 
-func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager) DiscoveryAgent {
-	da := &discoveryAgent{
-		client:  client,
-		logger:  logger,
-		scheme:  scheme,
-		manager: manager,
-		syncer:  make(map[string]*sync.RWMutex),
+func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader) DiscoveryAgent {
+	return &discoveryAgent{
+		client:    client,
+		logger:    logger,
+		scheme:    scheme,
+		manager:   manager,
+		syncer:    make(map[string]*sync.RWMutex),
+		logReader: lr,
 	}
-	da.getDiscoveredProjectsFromJobLogsFn = da.getDiscoveredProjectsFromJobLogs
-	return da
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
@@ -137,11 +136,16 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return fmt.Errorf("failed to load RenovateJob: %w", err)
 	}
 
-	projects, err := e.getDiscoveredProjectsFromJobLogsFn(ctx, e.client, k8sJob)
+	rawLogs, err := e.logReader.GetSucceededJobLog(ctx, k8sJob)
 	if err != nil {
 		// Pod may already be gone (operator restart replaying old jobs, or TTL cleanup).
 		// Skip reconciliation — the next scheduled discovery will correct any drift.
 		log.FromContext(ctx).V(1).Info("skipping discovery result: could not read job logs", "renovateJob", jobId.Name, "error", err)
+		return nil
+	}
+	projects, err := parseAndSortDiscoveredProjects(rawLogs)
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("skipping discovery result: could not parse job logs", "renovateJob", jobId.Name, "error", err)
 		return nil
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
