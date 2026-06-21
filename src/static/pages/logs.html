@@ -169,30 +169,34 @@
           setLoading(false);
           return;
         }
-        authFetch(
-          `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`
-        )
-          .then(async r => {
-            if (!r.ok) {
-              let msg = `Server returned ${r.status}`;
-              try {
-                const body = await r.json();
-                if (body && body.Message) msg = body.Message;
-              } catch { }
-              throw new Error(msg);
-            }
-            return r.json();
-          })
-          .then(data => {
-            setLogs(Array.isArray(data) ? data : []);
+
+        const entries = [];
+        const url = `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
+        const es = new EventSource(url);
+
+        es.onmessage = (event) => {
+          try {
+            entries.push(JSON.parse(event.data));
+            setLogs([...entries]);
             setLoading(false);
-          })
-          .catch(err => {
-            if (err.message !== "Unauthorized") {
-              setError(err.message);
-              setLoading(false);
-            }
-          });
+          } catch { }
+        };
+
+        es.addEventListener("done", () => {
+          es.close();
+          if (entries.length === 0) setLogs([]);
+          setLoading(false);
+        });
+
+        es.onerror = () => {
+          es.close();
+          if (entries.length === 0) {
+            setError("Failed to load logs. The job may have been cleaned up already.");
+          }
+          setLoading(false);
+        };
+
+        return () => es.close();
       }, [namespace, renovate, project]);
 
       const errorCount = useMemo(() => logs ? logs.filter(e => e.level >= 50).length : null, [logs]);

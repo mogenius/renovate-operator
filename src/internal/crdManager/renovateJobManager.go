@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -49,8 +50,11 @@ type RenovateJobManager interface {
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
 	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error
-	// GetLogsForProject retrieves the logs for a specific project within a RenovateJob CRD.
-	GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error)
+	// StreamLogsForProject returns an io.ReadCloser that streams NDJSON log lines for the given
+	// project. For running pods Follow is true so the stream stays open until the container exits.
+	// For completed pods or log-store fallback the stream closes after all content is delivered.
+	// The lock is released before returning — callers read outside the lock.
+	StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
 	// IsWebhookSignatureValid checks if the provided signature is valid for the webhook of the specified RenovateJob CRD.
@@ -318,14 +322,16 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 	})
 }
 
-func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (string, error) {
-	defer r.globalManagerLock(true)()
+func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	// Phase 1: hold the read lock only for CRD + k8s Job metadata lookup.
+	unlock := r.globalManagerLock(true)
+
 	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
 	if err != nil {
-		return "", fmt.Errorf("failed to load renovate job: %w", err)
+		unlock()
+		return nil, fmt.Errorf("failed to load renovate job: %w", err)
 	}
 
-	// Determine whether the project is currently running.
 	projectRunning := false
 	for _, p := range renovateJob.Status.Projects {
 		if p.Name == project && p.Status == api.JobStatusRunning {
@@ -341,30 +347,33 @@ func (r *renovateJobManager) GetLogsForProject(ctx context.Context, job Renovate
 		Project:         project,
 	})
 
+	unlock() // released before any streaming I/O so the lock is never held across a long-lived connection
+
+	// Phase 2: open the stream (no lock held).
 	if jobErr == nil {
 		cp := clientProvider.StaticClientProvider()
 		clientset, err := cp.K8sClientSet()
 		if err != nil {
-			return "", fmt.Errorf("failed to create client: %w", err)
+			return nil, fmt.Errorf("failed to create client: %w", err)
 		}
-		logs, err := GetLastJobLog(ctx, clientset, executorJob)
+		stream, err := StreamJobLogs(ctx, clientset, executorJob, projectRunning)
 		if err == nil {
-			return logs, nil
+			return stream, nil
 		}
-		// Pod is gone — fall through to store only if job is not running.
+		// Pod is gone — fall through to log store only if the job is not running.
 		if projectRunning {
-			return "", fmt.Errorf("failed to get pod logs for running project: %w", err)
+			return nil, fmt.Errorf("failed to get pod logs for running project: %w", err)
 		}
 	} else if projectRunning {
-		return "", fmt.Errorf("failed to get job for running project: %w", jobErr)
+		return nil, fmt.Errorf("failed to get job for running project: %w", jobErr)
 	}
 
 	// Job or pod not available and project is not running — try the log store.
 	if logs, ok := r.logStore.Get(job.Namespace, job.Name, project); ok {
-		return logs, nil
+		return io.NopCloser(strings.NewReader(logs)), nil
 	}
 
-	return "", fmt.Errorf("logs not available: pod has been cleaned up and no cached logs found")
+	return nil, fmt.Errorf("logs not available: pod has been cleaned up and no cached logs found")
 }
 
 func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.RenovateJob) ([]string, error) {

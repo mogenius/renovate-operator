@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
@@ -25,7 +27,7 @@ type mockRenovateJobManager struct {
 	listRenovateJobsFunc          func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
 	listRenovateJobsFullFunc      func(ctx context.Context) ([]api.RenovateJob, error)
 	getProjectsForRenovateJobFunc func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
-	getLogsForProjectFunc         func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error)
+	streamLogsForProjectFunc      func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error)
 	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFunc         func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
@@ -53,11 +55,11 @@ func (m *mockRenovateJobManager) GetProjectsForRenovateJob(ctx context.Context, 
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) GetLogsForProject(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-	if m.getLogsForProjectFunc != nil {
-		return m.getLogsForProjectFunc(ctx, jobId, project)
+func (m *mockRenovateJobManager) StreamLogsForProject(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
+	if m.streamLogsForProjectFunc != nil {
+		return m.streamLogsForProjectFunc(ctx, jobId, project)
 	}
-	return "", nil
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (m *mockRenovateJobManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -153,11 +155,12 @@ func TestGetRenovateJobs_ListError(t *testing.T) {
 }
 
 func TestGetRenovateJobLogs_Success(t *testing.T) {
+	payload := `{"level":30,"msg":"starting"}` + "\n" + `{"level":30,"msg":"done"}`
 	mockManager := &mockRenovateJobManager{
-		getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-			return `{"level":30,"msg":"starting"}` + "\n" + `{"level":30,"msg":"done"}`, nil
+		streamLogsForProjectFunc: func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader(payload)), nil
 		},
-		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+		getRenovateJobFunc: func(_ context.Context, _, _ string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{}, nil
 		},
 	}
@@ -176,21 +179,22 @@ func TestGetRenovateJobLogs_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var entries []json.RawMessage
-	if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
-		t.Fatalf("Expected valid JSON array, got error: %v", err)
+	body := w.Body.String()
+	if got := strings.Count(body, "\ndata: "); got != 2 {
+		t.Errorf("Expected 2 SSE data events, got %d\nbody:\n%s", got, body)
 	}
-	if len(entries) != 2 {
-		t.Errorf("Expected 2 log entries, got %d", len(entries))
+	if !strings.Contains(body, "event: done") {
+		t.Error("Expected terminal 'event: done' in SSE response")
 	}
 }
 
 func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
+	payload := "not json\n" + `{"level":30,"msg":"valid"}` + "\n\n"
 	mockManager := &mockRenovateJobManager{
-		getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-			return "not json\n" + `{"level":30,"msg":"valid"}` + "\n\n", nil
+		streamLogsForProjectFunc: func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader(payload)), nil
 		},
-		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+		getRenovateJobFunc: func(_ context.Context, _, _ string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{}, nil
 		},
 	}
@@ -209,12 +213,16 @@ func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var entries []json.RawMessage
-	if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
-		t.Fatalf("Expected valid JSON array, got error: %v", err)
+	body := w.Body.String()
+	// Count data events that are not the terminal "done" event
+	dataCount := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "data: ") && line != "data: {}" {
+			dataCount++
+		}
 	}
-	if len(entries) != 1 {
-		t.Errorf("Expected 1 valid log entry (non-JSON line skipped), got %d", len(entries))
+	if dataCount != 1 {
+		t.Errorf("Expected 1 data event (non-JSON line skipped), got %d\nbody:\n%s", dataCount, body)
 	}
 }
 
@@ -843,8 +851,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 				getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 					return tt.job, nil
 				},
-				getLogsForProjectFunc: func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (string, error) {
-					return "test logs", nil
+				streamLogsForProjectFunc: func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ string) (io.ReadCloser, error) {
+					return io.NopCloser(strings.NewReader(`{"level":30,"msg":"test"}`)), nil
 				},
 			}
 

@@ -3,6 +3,7 @@ package crdmanager
 import (
 	"context"
 	"fmt"
+	"io"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/assert"
 	"renovate-operator/internal/utils"
@@ -254,4 +255,34 @@ func GetLastJobLog(ctx context.Context, clientset kubernetes.Interface, job *bat
 	}
 
 	return string(logs), nil
+}
+
+// StreamJobLogs opens a streaming log connection to the most recent pod of a Job.
+// When follow is true the stream stays open until the container exits (running pod).
+// When follow is false the stream closes after existing log content is exhausted (completed pod).
+// The caller is responsible for closing the returned ReadCloser.
+func StreamJobLogs(ctx context.Context, clientset kubernetes.Interface, job *batchv1.Job, follow bool) (io.ReadCloser, error) {
+	ns := job.Namespace
+	selector := metav1.FormatLabelSelector(job.Spec.Selector)
+
+	pods, err := clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+		LabelSelector: selector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing pods for job %s: %w", job.Name, err)
+	}
+	if len(pods.Items) == 0 {
+		return nil, fmt.Errorf("no pods found for job %s", job.Name)
+	}
+
+	sort.Slice(pods.Items, func(i, j int) bool {
+		return pods.Items[i].CreationTimestamp.Time.Before(pods.Items[j].CreationTimestamp.Time)
+	})
+	last := pods.Items[len(pods.Items)-1]
+
+	req := clientset.CoreV1().Pods(ns).GetLogs(last.Name, &corev1.PodLogOptions{
+		Container: last.Spec.Containers[0].Name,
+		Follow:    follow,
+	})
+	return req.Stream(ctx)
 }
