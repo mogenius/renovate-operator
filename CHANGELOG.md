@@ -1,5 +1,31 @@
 # Changelog
 
+## [4.13.0](https://github.com/mogenius/renovate-operator/compare/4.12.4...4.13.0) (2026-06-22)
+
+
+### Features
+
+* adding annotation based trigger for job and discovery triggers ([d3b01a3](https://github.com/mogenius/renovate-operator/commit/d3b01a38a54ebea75c139e2f152aae475419bb84)), closes [#413](https://github.com/mogenius/renovate-operator/issues/413)
+* **build:** enable image signing ([4901ca0](https://github.com/mogenius/renovate-operator/commit/4901ca065aa778352fef33365510666aa76f239c))
+* stream logs of running jobs ([fae694b](https://github.com/mogenius/renovate-operator/commit/fae694be8bbc0fce3a079b5a656f5dbd42d2f19a)), closes [#427](https://github.com/mogenius/renovate-operator/issues/427)
+* try best effort matching for webhooks without job or namespace ([29c31f1](https://github.com/mogenius/renovate-operator/commit/29c31f1c0d0bb5f5128ad94276a0008df8f73bad))
+
+
+### Bug Fixes
+
+* **deps:** update helm release valkey to v0.10.0 ([dfac012](https://github.com/mogenius/renovate-operator/commit/dfac01289e026b642c0d6af2e78b0f43554dc63c))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.19.0 ([fd031e7](https://github.com/mogenius/renovate-operator/commit/fd031e7c1a9ad8de94dd294b20377b531faf5365))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.76 ([d47aeac](https://github.com/mogenius/renovate-operator/commit/d47aeaca879f9ea6383a1c7359872126be15e2cb))
+* **deps:** update node.js to v24 ([a20b5ca](https://github.com/mogenius/renovate-operator/commit/a20b5cac9aaa7e026fe944bc30a12ee11dccecad))
+* **deps:** update node.js to v24.17.0 ([9374b3b](https://github.com/mogenius/renovate-operator/commit/9374b3be885cbab6758b91c583cffacf8a20b912))
+* **deps:** update react monorepo to v19 ([d0596d9](https://github.com/mogenius/renovate-operator/commit/d0596d97d3ab946570335fa38606e41c8f36a558))
+* **jobs:** trim project label selector if it is too long ([d824e76](https://github.com/mogenius/renovate-operator/commit/d824e76a122861e72918df9c7426cd32a8f1e790)), closes [#436](https://github.com/mogenius/renovate-operator/issues/436)
+* **rbac:** allow operator in namespace only mode to patch jobs ([9ef0c22](https://github.com/mogenius/renovate-operator/commit/9ef0c22ea690c91a9fe0b18a179871955ae0f647)), closes [#429](https://github.com/mogenius/renovate-operator/issues/429)
+* remove redundant api call on renovate status updates ([432f84f](https://github.com/mogenius/renovate-operator/commit/432f84ffe9515cc1a6bce67ade86afefa775ccc3))
+* **ui:** add badge to show if logs are streaming or complete ([47dad6b](https://github.com/mogenius/renovate-operator/commit/47dad6b8d4826898254c5a833f0c9d0bb534e7c9))
+* **ui:** react 19 migration ([e4a2f53](https://github.com/mogenius/renovate-operator/commit/e4a2f535e886a70efee074e9c0545163f9d177ca))
+* **ui:** set Cache-Control headers on static assets ([#433](https://github.com/mogenius/renovate-operator/issues/433)) ([47772d3](https://github.com/mogenius/renovate-operator/commit/47772d3b906f957d40d6f1b2234bce30622a3ea2))
+
 ## [4.12.4](https://github.com/mogenius/renovate-operator/compare/4.12.3...4.12.4) (2026-06-17)
 
 
