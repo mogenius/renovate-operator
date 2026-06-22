@@ -100,7 +100,7 @@ func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSel
 		JOB_LABEL_RENOVATEJOB: selector.RenovateJobName,
 	}
 	if selector.JobType == ExecutorJobType && selector.Project != "" {
-		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleProjectName(selector.Project)
 	}
 
 	if selector.Generation != nil && *selector.Generation != "" {
@@ -149,7 +149,7 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 	job.Labels[JOB_LABEL_RENOVATEJOB] = selector.RenovateJobName
 
 	if selector.JobType == ExecutorJobType {
-		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleName(selector.Project)
+		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleProjectName(selector.Project)
 		if job.Annotations == nil {
 			job.Annotations = make(map[string]string)
 		}
