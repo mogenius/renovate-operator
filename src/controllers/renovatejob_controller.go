@@ -58,7 +58,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err == nil {
 		// renovatejob object read without problem -> create the schedule
 		r.resetOrphanedRunning(ctx, renovateJob)
-		r.WebhookSync.EnsureSyncer(ctx, logger, renovateJob)
+		r.WebhookSync.EnsureSyncer(ctx, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")

@@ -22,9 +22,9 @@ const SyncStateAnnotation = "renovate-operator.mogenius.com/webhook-sync-managed
 type WebhookSyncManager interface {
 	// EnsureSyncer creates, updates, or removes the WebhookSyncer for a RenovateJob
 	// based on the webhook.forgejo.sync configuration.
-	EnsureSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob)
+	EnsureSyncer(ctx context.Context, renovateJob *api.RenovateJob)
 	// RunSync executes one webhook sync cycle for the given job, if a syncer is configured.
-	RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier)
+	RunSync(ctx context.Context, jobId crdManager.RenovateJobIdentifier)
 	// RemoveSyncer removes the syncer entry for the given job (called on RenovateJob deletion).
 	RemoveSyncer(name string)
 }
@@ -38,13 +38,15 @@ type webhookSyncManager struct {
 	syncers    map[string]*syncerEntry
 	k8sClient  client.Client
 	jobManager crdManager.RenovateJobManager
+	logger     logr.Logger
 }
 
-func NewWebhookSyncManager(k8sClient client.Client, jobManager crdManager.RenovateJobManager) WebhookSyncManager {
+func NewWebhookSyncManager(k8sClient client.Client, logger logr.Logger, jobManager crdManager.RenovateJobManager) WebhookSyncManager {
 	return &webhookSyncManager{
 		syncers:    make(map[string]*syncerEntry),
 		k8sClient:  k8sClient,
 		jobManager: jobManager,
+		logger:     logger,
 	}
 }
 
@@ -52,7 +54,7 @@ func (m *webhookSyncManager) RemoveSyncer(name string) {
 	delete(m.syncers, name)
 }
 
-func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, renovateJob *api.RenovateJob) {
 	name := renovateJob.Fullname()
 
 	if renovateJob.Spec.Webhook == nil || renovateJob.Spec.Webhook.Forgejo == nil ||
@@ -72,13 +74,13 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 	jobNamespace := renovateJob.Namespace
 
 	if syncCfg.TokenSecretRef == nil {
-		logger.Error(fmt.Errorf("tokenSecretRef is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo API token")
+		m.logger.Error(fmt.Errorf("tokenSecretRef is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo API token")
 		return
 	}
 
 	forgejoToken, err := m.readSecretKey(ctx, syncCfg.TokenSecretRef, jobNamespace)
 	if err != nil {
-		logger.Error(err, "failed to read Forgejo API token for webhook sync")
+		m.logger.Error(err, "failed to read Forgejo API token for webhook sync")
 		return
 	}
 
@@ -86,7 +88,7 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 	if syncCfg.AuthTokenSecretRef != nil {
 		authToken, err = m.readSecretKey(ctx, syncCfg.AuthTokenSecretRef, jobNamespace)
 		if err != nil {
-			logger.Error(err, "failed to read auth token for webhook sync")
+			m.logger.Error(err, "failed to read auth token for webhook sync")
 			return
 		}
 	}
@@ -99,7 +101,7 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 	webhookURL := syncCfg.WebhookURL
 	parsed, err := url.Parse(webhookURL)
 	if err != nil {
-		logger.Error(err, "failed to parse webhookURL")
+		m.logger.Error(err, "failed to parse webhookURL")
 		return
 	}
 	q := parsed.Query()
@@ -109,7 +111,7 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 	webhookURL = parsed.String()
 
 	if providerEndpoint == "" {
-		logger.Error(fmt.Errorf("provider endpoint is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo endpoint")
+		m.logger.Error(fmt.Errorf("provider endpoint is required when webhook sync is enabled"), "cannot initialize webhook syncer without a Forgejo endpoint")
 		return
 	}
 
@@ -120,7 +122,7 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 		authToken,
 		topic,
 		syncCfg.Events,
-		logger.WithName("webhook-sync"),
+		m.logger.WithName("webhook-sync"),
 	)
 
 	// Transfer managed repos state: prefer in-memory from old syncer,
@@ -131,14 +133,14 @@ func (m *webhookSyncManager) EnsureSyncer(ctx context.Context, logger logr.Logge
 		state := loadWebhookSyncState(renovateJob)
 		if len(state) > 0 {
 			syncer.SetManagedRepos(state)
-			logger.V(2).Info("restored webhook sync state from annotation", "repos", len(state))
+			m.logger.V(2).Info("restored webhook sync state from annotation", "repos", len(state))
 		}
 	}
 
 	m.syncers[name] = &syncerEntry{syncer: syncer, fingerprint: fp}
 }
 
-func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jobId crdManager.RenovateJobIdentifier) {
+func (m *webhookSyncManager) RunSync(ctx context.Context, jobId crdManager.RenovateJobIdentifier) {
 	name := jobId.Name + "-" + jobId.Namespace
 	entry, ok := m.syncers[name]
 	if !ok {
@@ -146,10 +148,10 @@ func (m *webhookSyncManager) RunSync(ctx context.Context, logger logr.Logger, jo
 	}
 	state, err := entry.syncer.RunOnce(ctx)
 	if err != nil {
-		logger.Error(err, "webhook sync failed")
+		m.logger.Error(err, "webhook sync failed")
 	}
 	if state != nil {
-		m.saveWebhookSyncState(ctx, logger, jobId.Name, jobId.Namespace, entry.syncer, state)
+		m.saveWebhookSyncState(ctx, m.logger, jobId.Name, jobId.Namespace, entry.syncer, state)
 	}
 }
 

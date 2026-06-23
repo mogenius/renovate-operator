@@ -154,6 +154,10 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return fmt.Errorf("failed to reconcile projects: %w", err)
 	}
 
+	if err := e.manager.SyncWebhooks(ctx, jobId); err != nil {
+		return fmt.Errorf("failed to sync webhooks: %w", err)
+	}
+
 	if k8sJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] == "true" {
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning

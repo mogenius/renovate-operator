@@ -50,6 +50,8 @@ type RenovateJobManager interface {
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
 	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error
+	// SyncsWebhooks updates webhooks for the provided RenovateJob CRD.
+	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier) error
 	// StreamLogsForProject returns an io.ReadCloser that streams NDJSON log lines for the given
 	// project. For running pods Follow is true so the stream stays open until the container exits.
 	// For completed pods or log-store fallback the stream closes after all content is delivered.
@@ -319,6 +321,44 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 		return r.client.Status().Update(ctx, renovateJob)
 	})
+}
+
+func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	// no-op when webhooks are disabled
+	if !renovateJob.Spec.Webhook.Enabled {
+		return nil
+	}
+
+	gitProvider, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
+	if err != nil {
+		return fmt.Errorf("failed to create git provider client: %w", err)
+	}
+
+	for _, project := range renovateJob.Status.Projects {
+		gitProvider.ListRepoWebhooks(ctx, "", project.Name)
+	}
+
+	// hooks, err := gitProvider.ListRepoWebhooks(ctx, owner, repo)
+	// if err != nil {
+	// 	return fmt.Errorf("listing webhooks: %w", err)
+	// }
+
+	// // Check if our webhook already exists
+	// for _, hook := range hooks {
+	// 	if hook.Config.URL == s.webhookURL {
+	// 		gitProvider.mu.Lock()
+	// 		gitProvider.managedRepos[fullName] = hook.ID
+	// 		gitProvider.mu.Unlock()
+	// 		return nil
+	// 	}
+	// }
+
+	return nil
 }
 
 func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error) {

@@ -40,6 +40,12 @@ func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.Renovat
 	}
 	return nil
 }
+func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job *api.RenovateJob, projects []string) error {
+	if f.reconcileProjectsFn != nil {
+		return f.reconcileProjectsFn(ctx, job, projects)
+	}
+	return nil
+}
 func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if f.updateProjectStatusBatchedFn != nil {
 		return f.updateProjectStatusBatchedFn(ctx, fn, job, status)
