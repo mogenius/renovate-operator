@@ -48,15 +48,46 @@ Scopes are optional but encouraged. Use one of the following to indicate which p
 | `deps`     | Dependency updates (`go.mod`, …)                          |
 | `actions`  | Changes to the GitHub Actions                             |
 
+### DCO — Developer Certificate of Origin
+
+Every commit must include a `Signed-off-by` trailer certifying that you have the right to contribute the code under its license. Add it with:
+
+```
+git commit --signoff
+```
+
+This appends the following line to your commit message:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+By signing off you agree to the [DCO](https://developercertificate.org/).
+
+### AI-Assisted Contributions
+
+If any part of a commit was written or materially shaped by an AI tool (e.g. GitHub Copilot, Claude, ChatGPT), add a `Co-Authored-By` footer that names the model:
+
+```
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: GitHub Copilot <noreply@github.com>
+```
+
+Use the model name and version that was active during the session. This keeps authorship transparent in the git history.
+
 ### Examples
 
 ```
 feat(operator): add parallel job execution
+
+Signed-off-by: Your Name <you@example.com>
+```
+
+```
 fix(helm): correct resource limits in deployment template
-docs: update installation guide for v2
-chore(deps): update golang to 1.26
-refactor(operator): extract scheduler into separate package
-ci: add conventional commit validation on PRs
+
+Signed-off-by: Your Name <you@example.com>
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
 
 Breaking change:
@@ -65,6 +96,8 @@ feat(operator)!: remove v1alpha1 CRD support
 
 BREAKING CHANGE: v1alpha1 CRDs are no longer served. Migrate all
 RenovateJob resources to v1beta1 before upgrading.
+
+Signed-off-by: Your Name <you@example.com>
 ```
 
 ---
