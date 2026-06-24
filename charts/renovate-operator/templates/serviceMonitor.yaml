@@ -4,6 +4,10 @@ kind: ServiceMonitor
 metadata:
   name: {{ include "renovate-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  {{- with .Values.metrics.serviceMonitor.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   endpoints:
   - path: /metrics

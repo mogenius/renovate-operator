@@ -317,6 +317,7 @@ metrics:
     enabled: false
     # -- scrape interval for the ServiceMonitor, defaults to Prometheus global scrape interval
     interval: ~
+    labels: {}
   dashboard:
     # -- whether to create a Grafana dashboard for the operator metrics
     enabled: false
