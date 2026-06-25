@@ -10,13 +10,13 @@
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository (ternary .Values.image.tag .Chart.AppVersion (empty .Values.image.tag)) }}
 {{- end }}
 
-{{ define "renovate-operator.serviceAccountName" }}
-{{- if .Values.serviceAccount.name }}
-{{ .Values.serviceAccount.name }}
-{{- else }}
-{{- include "renovate-operator.fullname" . }}
-{{- end }}
-{{- end }}
+{{- define "renovate-operator.serviceAccountName" -}}
+{{- if .Values.serviceAccount.name -}}
+{{- .Values.serviceAccount.name -}}
+{{- else -}}
+{{- include "renovate-operator.fullname" . -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 Returns the effective auth redirect URL.
