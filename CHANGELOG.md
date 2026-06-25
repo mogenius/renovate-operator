@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.14.0](https://github.com/mogenius/renovate-operator/compare/4.13.0...4.14.0) (2026-06-25)
+
+
+### Features
+
+* **helm:** allows adding labels to service monitor ([b3596f1](https://github.com/mogenius/renovate-operator/commit/b3596f140e4a181d9fee087ed1ea81749eeea308))
+
+
+### Bug Fixes
+
+* **deps:** update node.js to v24.18.0 ([f5ec451](https://github.com/mogenius/renovate-operator/commit/f5ec451402f2d1a7ac5d9d3d82ee0d946dad45f9))
+* **forgejo:** address review — drain 404 body, assert DELETE in test ([5684c03](https://github.com/mogenius/renovate-operator/commit/5684c038a52010c9f6a0f4c5e23ccd0d8428c8f6))
+* **forgejo:** treat 404 as success when deleting a webhook ([730b30f](https://github.com/mogenius/renovate-operator/commit/730b30f755231af0afc6dbab5bdbf1d21d46ca72))
+* **webhook-sync:** address review — real 403 skip, preallocation, log wording ([95705e3](https://github.com/mogenius/renovate-operator/commit/95705e3c96c6b5d73000910ef2e7397279c74da8))
+* **webhook-sync:** sync webhooks for autodiscovered repos without a topic ([0a52abf](https://github.com/mogenius/renovate-operator/commit/0a52abfed694a64de88fca6b978d4921585ab98b))
+
 ## [4.13.0](https://github.com/mogenius/renovate-operator/compare/4.12.4...4.13.0) (2026-06-22)
 
 
