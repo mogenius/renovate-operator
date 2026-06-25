@@ -8,6 +8,15 @@ release:
 templates:
 - templates/deployment.yaml
 tests:
+- it: Uses explicit service account name
+  set:
+    serviceAccount:
+      name: custom-service-account
+  asserts:
+  - equal:
+      path: spec.template.spec.serviceAccountName
+      value: custom-service-account
+
 - it: Test default valkey credential secret
   set:
     valkey:
