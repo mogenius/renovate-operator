@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"renovate-operator/gitProviderClients"
+	"time"
 )
 
 // GitHubClient implements GitProviderClient for the GitHub API.
@@ -15,6 +16,9 @@ type GitHubClient struct {
 	Token      string
 	HTTPClient *http.Client
 }
+
+// ProviderName returns the metric provider label for GitHub.
+func (c *GitHubClient) ProviderName() string { return "github" }
 
 func (c *GitHubClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	url := fmt.Sprintf("%s/repos/%s", c.Endpoint, project)
@@ -25,7 +29,9 @@ func (c *GitHubClient) GetRepositoryInfo(ctx context.Context, project string) (g
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
+	gitProviderClients.RecordProviderRequest(ctx, "github", gitProviderClients.OperationGetRepositoryInfo, start, resp, err)
 	if err != nil {
 		return gitProviderClients.RepositoryInfo{}, err
 	}

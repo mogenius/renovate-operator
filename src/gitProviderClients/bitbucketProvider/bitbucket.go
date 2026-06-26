@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"renovate-operator/gitProviderClients"
+	"time"
 )
 
 // BitbucketClient implements GitProviderClient for the Bitbucket Cloud API.
@@ -15,6 +16,9 @@ type BitbucketClient struct {
 	Token      string
 	HTTPClient *http.Client
 }
+
+// ProviderName returns the metric provider label for Bitbucket.
+func (c *BitbucketClient) ProviderName() string { return "bitbucket" }
 
 func (c *BitbucketClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	// Bitbucket Cloud API: GET /2.0/repositories/{workspace}/{repo_slug}
@@ -26,7 +30,9 @@ func (c *BitbucketClient) GetRepositoryInfo(ctx context.Context, project string)
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
+	gitProviderClients.RecordProviderRequest(ctx, "bitbucket", gitProviderClients.OperationGetRepositoryInfo, start, resp, err)
 	if err != nil {
 		return gitProviderClients.RepositoryInfo{}, err
 	}

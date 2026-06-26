@@ -103,6 +103,18 @@ func hasProject(projects []api.ProjectStatus, project string) bool {
 	return false
 }
 
+// signatureWasUsed reports whether an HMAC signature header was the credential that
+// buildAuthCheckerFromRequest would actually use for this request. It mirrors that
+// function's precedence: a bearer/X-Gitlab-Token token takes priority over a
+// signature header, so a signature is only "used" when no token header is present.
+// This lets callers attribute an authentication failure to a signature mismatch.
+func signatureWasUsed(r *http.Request) bool {
+	if r.Header.Get("Authorization") != "" || r.Header.Get("X-Gitlab-Token") != "" {
+		return false
+	}
+	return r.Header.Get("X-Hub-Signature-256") != "" || r.Header.Get("X-Forgejo-Signature") != ""
+}
+
 // buildAuthCheckerFromRequest extracts auth credentials from request headers and returns
 // an AuthChecker that validates them against a RenovateJob. Returns nil if no credential is present.
 func buildAuthCheckerFromRequest(r *http.Request, body []byte, manager credentialValidator) AuthChecker {

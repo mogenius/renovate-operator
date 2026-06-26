@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"renovate-operator/internal/telemetry"
+	"renovate-operator/metricStore"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -68,8 +69,12 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	g.logger.Info("callback received", "hasCode", r.URL.Query().Get("code") != "", "hasState", r.URL.Query().Get("state") != "")
 
+	ctx := r.Context()
+
 	if err := g.validateStateCookie(r); err != nil {
 		g.logger.Error(err, "state cookie validation failed")
+		metricStore.IncAuthStateValidationFailure(ctx, "github")
+		metricStore.IncUIAuthAttempt(ctx, "github", "failure")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -78,6 +83,8 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	oauth2Token, err := g.oauth2Config.Exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
 		g.logger.Error(err, "failed to exchange code for token")
+		metricStore.IncOAuthTokenExchangeFailure(ctx, "github", classifyOAuthExchangeError(err))
+		metricStore.IncUIAuthAttempt(ctx, "github", "failure")
 		http.Error(w, "failed to exchange token", http.StatusInternalServerError)
 		return
 	}
@@ -87,6 +94,7 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	email, name, err := g.fetchGitHubUser(oauth2Token.AccessToken)
 	if err != nil {
 		g.logger.Error(err, "failed to fetch GitHub user info")
+		metricStore.IncUIAuthAttempt(ctx, "github", "failure")
 		http.Error(w, "failed to fetch user info", http.StatusInternalServerError)
 		return
 	}
@@ -100,10 +108,12 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		g.logger.Error(err, "failed to build complete URL")
+		metricStore.IncUIAuthAttempt(ctx, "github", "failure")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
+	metricStore.IncUIAuthAttempt(ctx, "github", "success")
 	http.Redirect(w, r, completeURL, http.StatusFound)
 }
 

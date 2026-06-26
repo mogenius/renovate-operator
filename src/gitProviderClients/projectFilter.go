@@ -4,8 +4,18 @@ import (
 	"context"
 	"sync"
 
+	"renovate-operator/metricStore"
+
 	"github.com/go-logr/logr"
 )
+
+// FilterStats reports how many repositories were dropped by each criterion so
+// callers (which know the namespace/job labels) can record the
+// repositories_filtered metric.
+type FilterStats struct {
+	ForksRemoved   int
+	PendingRemoved int
+}
 
 // FilterProjects filters out repositories that should be skipped during
 // discovery according to the enabled criteria:
@@ -17,10 +27,12 @@ import (
 // so enabling both criteria does not double the number of requests. On API
 // errors for individual repos, the repo is kept (fail-open) to avoid
 // accidentally excluding valid projects.
-func FilterProjects(ctx context.Context, providerClient GitProviderClient, logger logr.Logger, projects []string, skipForks, skipPendingDeletion bool) ([]string, error) {
+func FilterProjects(ctx context.Context, providerClient GitProviderClient, logger logr.Logger, projects []string, skipForks, skipPendingDeletion bool) ([]string, FilterStats, error) {
 	if len(projects) == 0 || (!skipForks && !skipPendingDeletion) {
-		return projects, nil
+		return projects, FilterStats{}, nil
 	}
+
+	provider := providerLabel(providerClient)
 
 	const maxConcurrency = 10
 
@@ -51,6 +63,9 @@ func FilterProjects(ctx context.Context, providerClient GitProviderClient, logge
 	var forksRemoved, pendingRemoved int
 	for _, r := range results {
 		if r.err != nil {
+			// Fail-open: keep the repo when its metadata could not be fetched,
+			// rather than risk excluding a valid project. Record the occurrence.
+			metricStore.IncProjectFilterFailopen(ctx, provider)
 			logger.V(1).Info("Failed to fetch repository info, keeping it", "project", r.project, "error", r.err)
 			filtered = append(filtered, r.project)
 			continue
@@ -71,5 +86,5 @@ func FilterProjects(ctx context.Context, providerClient GitProviderClient, logge
 	if forksRemoved > 0 || pendingRemoved > 0 {
 		logger.Info("Filtered discovered repositories", "forks", forksRemoved, "pendingDeletion", pendingRemoved, "remaining", len(filtered))
 	}
-	return filtered, nil
+	return filtered, FilterStats{ForksRemoved: forksRemoved, PendingRemoved: pendingRemoved}, nil
 }

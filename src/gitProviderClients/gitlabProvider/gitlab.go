@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"renovate-operator/gitProviderClients"
+	"time"
 )
 
 // GitLabClient implements GitProviderClient for the GitLab API.
@@ -16,6 +17,9 @@ type GitLabClient struct {
 	Token      string
 	HTTPClient *http.Client
 }
+
+// ProviderName returns the metric provider label for GitLab.
+func (c *GitLabClient) ProviderName() string { return "gitlab" }
 
 func (c *GitLabClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	// GitLab endpoint already includes /api/v4, project path must be URL-encoded
@@ -26,7 +30,9 @@ func (c *GitLabClient) GetRepositoryInfo(ctx context.Context, project string) (g
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
+	gitProviderClients.RecordProviderRequest(ctx, "gitlab", gitProviderClients.OperationGetRepositoryInfo, start, resp, err)
 	if err != nil {
 		return gitProviderClients.RepositoryInfo{}, err
 	}
