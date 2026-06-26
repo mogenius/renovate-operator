@@ -8,6 +8,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -103,7 +104,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return nil
 	}
 
-	status, _, err := getJobStatus(k8sJob)
+	status, _, _, err := getJobStatus(k8sJob)
 	if err != nil {
 		return err
 	}
@@ -113,6 +114,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 
 	if status == api.JobStatusFailed {
 		log.FromContext(ctx).Info("discovery job failed", "renovateJob", jobId.Name)
+		metricStore.IncDiscoveryJob(ctx, jobId.Namespace, jobId.Name, "failed")
 		_ = crdManager.MarkJobProcessed(ctx, e.client, k8sJob)
 		return nil
 	}
@@ -135,6 +137,9 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return nil
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
+
+	metricStore.IncDiscoveryJob(ctx, jobId.Namespace, jobId.Name, "completed")
+	metricStore.SetDiscoveredRepositories(jobId.Namespace, jobId.Name, len(projects))
 
 	removedProjects, err := e.manager.ReconcileProjects(ctx, renovateJob, projects)
 	if err != nil {
@@ -230,5 +235,8 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery job: %w", err)
 	}
+
+	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")
+
 	return generation, nil
 }
