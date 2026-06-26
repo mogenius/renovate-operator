@@ -7,6 +7,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 )
 
 type GitLabEvent struct {
@@ -39,14 +40,20 @@ type ChangeDescription struct {
 }
 
 func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "gitlab"
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
 		return
 	}
 
 	var payload GitLabEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to decode gitlab webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -54,6 +61,7 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 
 	valid, reason := isValidGitLabEvent(&payload)
 	if !valid {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.logger.Info("ignoring GitLab webhook event", "reason", reason)
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
 		return
@@ -64,8 +72,10 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 	project := payload.Project.PathWithNamespace
 
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Info("webhook resolve failed", "project", project, "error", err)
 		s.handleResolverError(w, err)
 		return
@@ -73,7 +83,7 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Info("received GitLab event", "repository", project, "action", payload.ObjectAttributes.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
+		ctx,
 		project,
 		jobId,
 		&types.RenovateStatusUpdate{
@@ -82,9 +92,11 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "project": project})
 }
 

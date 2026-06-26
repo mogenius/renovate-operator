@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -264,12 +265,14 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 		if err != nil {
 			r.logger.Error(err, "Failed to create git provider client for project filtering")
 		} else {
-			newProjects, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
+			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
 			if err != nil {
 				r.logger.Error(err, "Failed to filter discovered repositories")
 			} else {
 				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
 				projects = newProjects
+				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
+				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
 			}
 		}
 	}
@@ -308,10 +311,12 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 				newProjects = append(newProjects, crdProject)
 			} else {
 				// add new project to the list
+				now := v1.Now()
 				newProjects = append(newProjects, api.ProjectStatus{
-					Name:    project,
-					Status:  api.JobStatusScheduled,
-					LastRun: v1.Now(),
+					Name:        project,
+					Status:      api.JobStatusScheduled,
+					LastRun:     now,
+					ScheduledAt: &now,
 				})
 			}
 		}
@@ -377,11 +382,17 @@ func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.
 		Namespace: job.Namespace,
 	}, secret)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			metricStore.IncSecretResolutionError(ctx, "not_found")
+		} else {
+			metricStore.IncSecretResolutionError(ctx, "api_error")
+		}
 		return nil, err
 	}
 
 	authData, exists := secret.Data[job.Spec.Webhook.Authentication.SecretRef.Key]
 	if !exists {
+		metricStore.IncSecretResolutionError(ctx, "key_missing")
 		return nil, fmt.Errorf("secret key %s not found in secret %s", job.Spec.Webhook.Authentication.SecretRef.Key, job.Spec.Webhook.Authentication.SecretRef.Name)
 	}
 

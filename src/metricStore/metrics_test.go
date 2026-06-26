@@ -142,3 +142,125 @@ func TestDeleteProjectMetrics(t *testing.T) {
 		t.Errorf("projectRuns metric count should decrease after deletion: before=%d, after=%d", projectRunsCountBefore, projectRunsCountAfter)
 	}
 }
+
+func TestIncJobDispatched(t *testing.T) {
+	ctx := context.Background()
+	IncJobDispatched(ctx, "ns", "job", "executor")
+	IncJobDispatched(ctx, "ns", "job", "executor")
+	IncJobDispatched(ctx, "ns", "job", "discovery")
+
+	if v := testutil.ToFloat64(jobsDispatched.WithLabelValues("ns", "job", "executor")); v != 2.0 {
+		t.Errorf("jobsDispatched{executor} = %v, want 2", v)
+	}
+	if v := testutil.ToFloat64(jobsDispatched.WithLabelValues("ns", "job", "discovery")); v != 1.0 {
+		t.Errorf("jobsDispatched{discovery} = %v, want 1", v)
+	}
+
+	jobsDispatched.DeleteLabelValues("ns", "job", "executor")
+	jobsDispatched.DeleteLabelValues("ns", "job", "discovery")
+}
+
+func TestObserveJobDuration(t *testing.T) {
+	ctx := context.Background()
+	ObserveJobDuration(ctx, "ns", "job", "executor", api.JobStatusCompleted, 42.0)
+
+	// A HistogramVec exposes a _count series; one observation means count == 1.
+	if c := testutil.CollectAndCount(jobDuration); c == 0 {
+		t.Errorf("jobDuration should have at least one series after observation, got %d", c)
+	}
+	jobDuration.DeleteLabelValues("ns", "job", "executor", string(api.JobStatusCompleted))
+}
+
+func TestSetSaturationGauges(t *testing.T) {
+	SetProjectsScheduled("ns", "job", 5)
+	SetProjectsRunning("ns", "job", 3)
+	SetGlobalRunningProjects(8)
+	SetGlobalParallelismLimit(10)
+
+	if v := testutil.ToFloat64(projectsScheduled.WithLabelValues("ns", "job")); v != 5.0 {
+		t.Errorf("projectsScheduled = %v, want 5", v)
+	}
+	if v := testutil.ToFloat64(projectsRunning.WithLabelValues("ns", "job")); v != 3.0 {
+		t.Errorf("projectsRunning = %v, want 3", v)
+	}
+	if v := testutil.ToFloat64(globalRunningProjects); v != 8.0 {
+		t.Errorf("globalRunningProjects = %v, want 8", v)
+	}
+	if v := testutil.ToFloat64(globalParallelismLimit); v != 10.0 {
+		t.Errorf("globalParallelismLimit = %v, want 10", v)
+	}
+
+	projectsScheduled.DeleteLabelValues("ns", "job")
+	projectsRunning.DeleteLabelValues("ns", "job")
+}
+
+func TestPullRequestCounters(t *testing.T) {
+	ctx := context.Background()
+	AddPullRequestsCreated(ctx, "ns", "job", 3)
+	AddPullRequestsMerged(ctx, "ns", "job", 2)
+	AddPullRequestsUpdated(ctx, "ns", "job", 1)
+	// count<=0 must be a no-op
+	AddPullRequestsCreated(ctx, "ns", "job", 0)
+
+	if v := testutil.ToFloat64(pullRequestsCreated.WithLabelValues("ns", "job")); v != 3.0 {
+		t.Errorf("pullRequestsCreated = %v, want 3", v)
+	}
+	if v := testutil.ToFloat64(pullRequestsMerged.WithLabelValues("ns", "job")); v != 2.0 {
+		t.Errorf("pullRequestsMerged = %v, want 2", v)
+	}
+	if v := testutil.ToFloat64(pullRequestsUpdated.WithLabelValues("ns", "job")); v != 1.0 {
+		t.Errorf("pullRequestsUpdated = %v, want 1", v)
+	}
+
+	pullRequestsCreated.DeleteLabelValues("ns", "job")
+	pullRequestsMerged.DeleteLabelValues("ns", "job")
+	pullRequestsUpdated.DeleteLabelValues("ns", "job")
+}
+
+func TestSecOpsCountersAndPosture(t *testing.T) {
+	ctx := context.Background()
+	IncWebhookSignatureFailure(ctx, "github")
+	IncWebhookSignatureFailure(ctx, "github")
+	IncUIAuthAttempt(ctx, "oidc", "failure")
+	SetOIDCTLSVerificationDisabled(true)
+
+	if v := testutil.ToFloat64(webhookSignatureFailures.WithLabelValues("github")); v != 2.0 {
+		t.Errorf("webhookSignatureFailures{github} = %v, want 2", v)
+	}
+	if v := testutil.ToFloat64(uiAuthAttempts.WithLabelValues("oidc", "failure")); v != 1.0 {
+		t.Errorf("uiAuthAttempts{oidc,failure} = %v, want 1", v)
+	}
+	if v := testutil.ToFloat64(oidcTLSVerificationDisabled); v != 1.0 {
+		t.Errorf("oidcTLSVerificationDisabled = %v, want 1", v)
+	}
+
+	webhookSignatureFailures.DeleteLabelValues("github")
+	uiAuthAttempts.DeleteLabelValues("oidc", "failure")
+	SetOIDCTLSVerificationDisabled(false)
+}
+
+func TestDeleteProjectMetricsRemovesNewSeries(t *testing.T) {
+	ns, job, proj := "del2-ns", "del2-job", "del2-proj"
+
+	SetOpenPullRequests(ns, job, proj, 4)
+	SetPullRequestsAwaitingApproval(ns, job, proj, 2)
+	SetLastExecutionDuration(ns, job, proj, 12.5)
+	SetLogIssues(ns, job, proj, "warn", 1)
+	SetLogIssues(ns, job, proj, "error", 1)
+
+	if testutil.CollectAndCount(openPullRequests) == 0 {
+		t.Fatal("openPullRequests should exist before deletion")
+	}
+
+	DeleteProjectMetrics(ns, job, proj)
+
+	if v := testutil.CollectAndCount(openPullRequests); v != 0 {
+		t.Errorf("openPullRequests should be empty after deletion, got %d series", v)
+	}
+	if v := testutil.CollectAndCount(lastExecutionDuration); v != 0 {
+		t.Errorf("lastExecutionDuration should be empty after deletion, got %d series", v)
+	}
+	if v := testutil.CollectAndCount(logIssues); v != 0 {
+		t.Errorf("logIssues should be empty after deletion, got %d series", v)
+	}
+}

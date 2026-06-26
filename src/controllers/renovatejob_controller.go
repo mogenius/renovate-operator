@@ -69,7 +69,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob cannot be found -> delete the schedule
 		// the github app token secret is owned by the RenovateJob and cleaned up by Kubernetes GC
 		name := req.Name + "-" + req.Namespace
-		r.Scheduler.RemoveSchedule(name)
+		r.Scheduler.RemoveSchedule(req.Namespace, req.Name)
 		r.WebhookSync.RemoveSyncer(name)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
@@ -120,7 +120,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 
 	// adding the schedule if it does not exist
 	// if the expression is different it will be updated
-	err := reconciler.Scheduler.AddScheduleReplaceExisting(expr, name, f)
+	err := reconciler.Scheduler.AddScheduleReplaceExisting(expr, renovateJob.Namespace, renovateJob.Name, f)
 	if err != nil {
 		logger.Error(err, "Failed to add schedule for RenovateJob")
 		return

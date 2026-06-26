@@ -12,6 +12,7 @@ import (
 	"renovate-operator/internal/telemetry"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ForgejoClient implements GitProviderClient for the Forgejo API.
@@ -20,6 +21,9 @@ type ForgejoClient struct {
 	Token      string
 	HTTPClient *http.Client
 }
+
+// ProviderName returns the metric provider label for Forgejo.
+func (c *ForgejoClient) ProviderName() string { return "forgejo" }
 
 func NewClient(endpoint, token string) *ForgejoClient {
 	return &ForgejoClient{
@@ -44,7 +48,9 @@ func (c *ForgejoClient) GetRepositoryInfo(ctx context.Context, project string) (
 	req.Header.Set("Authorization", "token "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
+	gitProviderClients.RecordProviderRequest(ctx, "forgejo", gitProviderClients.OperationGetRepositoryInfo, start, resp, err)
 	if err != nil {
 		return gitProviderClients.RepositoryInfo{}, err
 	}
@@ -90,7 +96,9 @@ func (c *ForgejoClient) SearchReposByTopic(ctx context.Context, topic string) ([
 		params.Set("limit", strconv.Itoa(limit))
 		params.Set("page", strconv.Itoa(page))
 
+		start := time.Now()
 		resp, err := c.doRequest(ctx, http.MethodGet, "/api/v1/repos/search?"+params.Encode(), nil)
+		gitProviderClients.RecordProviderRequest(ctx, "forgejo", gitProviderClients.OperationSearch, start, resp, err)
 		if err != nil {
 			return nil, fmt.Errorf("searching repos by topic: %w", err)
 		}

@@ -134,24 +134,24 @@ type fakeScheduler struct {
 	addErr       error
 }
 
-func (f *fakeScheduler) AddScheduleReplaceExisting(expr string, name string, fct func()) error {
+func (f *fakeScheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fct func()) error {
 	f.addedExpr = expr
-	f.addedName = name
+	f.addedName = job + "-" + namespace
 	f.addCalled = true
 	f.storedFn = fct
 	return f.addErr
 }
-func (f *fakeScheduler) RemoveSchedule(name string) {
-	f.removedNames = append(f.removedNames, name)
+func (f *fakeScheduler) RemoveSchedule(namespace, job string) {
+	f.removedNames = append(f.removedNames, job+"-"+namespace)
 	f.removeCalled = true
 }
 
 // implement remaining methods of scheduler.Scheduler as no-ops for tests
 func (f *fakeScheduler) Start() {}
 func (f *fakeScheduler) Stop()  {}
-func (f *fakeScheduler) AddSchedule(expr string, name string, fn func()) error {
+func (f *fakeScheduler) AddSchedule(expr string, namespace, job string, fn func()) error {
 	// behave like AddScheduleReplaceExisting for tests
-	return f.AddScheduleReplaceExisting(expr, name, fn)
+	return f.AddScheduleReplaceExisting(expr, namespace, job, fn)
 }
 func (f *fakeScheduler) GetNextRunOnSchedule(schedule string) time.Time { return time.Time{} }
 

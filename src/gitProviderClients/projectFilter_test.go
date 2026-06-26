@@ -80,7 +80,7 @@ func TestFilterProjects(t *testing.T) {
 			}
 
 			logger := logr.Logger{}
-			result, err := FilterProjects(context.Background(), client, logger, tt.projects, tt.skipForks, tt.skipPendingDeletion)
+			result, _, err := FilterProjects(context.Background(), client, logger, tt.projects, tt.skipForks, tt.skipPendingDeletion)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
