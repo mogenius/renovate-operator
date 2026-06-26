@@ -29,6 +29,8 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	// cannot schedule a project that is currently running
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
+		now := v1.Now()
+		projectStatus.ScheduledAt = &now
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
 		}
