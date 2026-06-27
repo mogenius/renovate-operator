@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"renovate-operator/metricStore"
 	"strings"
 	"time"
 
@@ -154,52 +153,6 @@ func isPublicPath(path string) bool {
 	return false
 }
 
-// routeClassForPath maps a request path to a bounded route-class enum
-// ("api"/"static"/"ui") using PREFIX matching only. The raw path is never used
-// as a metric label to keep cardinality bounded and avoid leaking
-// request-specific information.
-func routeClassForPath(path string) string {
-	if strings.HasPrefix(path, "/api/") {
-		return "api"
-	}
-	if strings.HasPrefix(path, "/js/") || strings.HasPrefix(path, "/css/") ||
-		strings.HasPrefix(path, "/assets/") || path == "/favicon.ico" {
-		return "static"
-	}
-	return "ui"
-}
-
-// classifySessionError maps a session read/decrypt error to a bounded SecOps
-// reason enum ("store_unavailable"/"decode"/"tampered") and reports whether the
-// error should be counted as a decryption failure at all. Expired sessions are
-// a normal lifecycle event, not an integrity failure, so they are not counted.
-// Only error shapes are inspected -- never session contents or user identifiers.
-func classifySessionError(err error, serverSide bool) (string, bool) {
-	if err == nil {
-		return "", false
-	}
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "session expired"):
-		// Normal expiry, not a decryption/integrity failure.
-		return "", false
-	case strings.Contains(msg, "session store load failed"):
-		return "store_unavailable", true
-	case strings.Contains(msg, "base64") || strings.Contains(msg, "ciphertext too short"):
-		return "decode", true
-	case strings.Contains(msg, "authentication failed") || strings.Contains(msg, "unmarshal"):
-		// AES-GCM tag mismatch or post-decrypt JSON failure: tampered/corrupt.
-		return "tampered", true
-	default:
-		// Unclassified: in server-side mode this most likely means the store is
-		// unreachable; in cookie-only mode default to a decode failure.
-		if serverSide {
-			return "store_unavailable", true
-		}
-		return "decode", true
-	}
-}
-
 func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -215,19 +168,6 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 		if err != nil || session == nil {
 			if err != nil {
 				b.logger.Info("session check failed", "path", path, "error", err.Error())
-
-				// If a session cookie was actually presented but could not be
-				// read, classify and record the integrity/availability failure.
-				// A simple "no cookie present" (unauthenticated) is not counted.
-				if _, cookieErr := r.Cookie(sessionCookieName); cookieErr == nil {
-					if reason, ok := classifySessionError(err, b.sessionStore != nil); ok {
-						mode := "cookie"
-						if b.sessionStore != nil {
-							mode = "valkey"
-						}
-						metricStore.IncSessionDecryptionFailure(r.Context(), mode, reason)
-					}
-				}
 			}
 
 			// Detect auth redirect loop: if the auth_completed marker cookie is
@@ -235,7 +175,6 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 			// cannot be read. This typically means the encryption key differs
 			// between replicas (SESSION_SECRET not set).
 			if _, markerErr := r.Cookie(authCompletedCookie); markerErr == nil {
-				metricStore.IncAuthLoopDetected(r.Context())
 				http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -254,11 +193,6 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				"method", r.Method,
 				"remote_addr", r.RemoteAddr,
 				"user_agent", r.UserAgent())
-
-			// Record the rejection against a bounded route class derived from
-			// the path PREFIX only -- never the raw path (avoids unbounded,
-			// privacy-sensitive label cardinality).
-			metricStore.IncUnauthenticatedRequest(r.Context(), routeClassForPath(path))
 
 			// API requests get 401
 			if strings.HasPrefix(path, "/api/") {

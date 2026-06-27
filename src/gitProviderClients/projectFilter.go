@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"renovate-operator/metricStore"
-
 	"github.com/go-logr/logr"
 )
 
@@ -31,8 +29,6 @@ func FilterProjects(ctx context.Context, providerClient GitProviderClient, logge
 	if len(projects) == 0 || (!skipForks && !skipPendingDeletion) {
 		return projects, FilterStats{}, nil
 	}
-
-	provider := providerLabel(providerClient)
 
 	const maxConcurrency = 10
 
@@ -64,8 +60,7 @@ func FilterProjects(ctx context.Context, providerClient GitProviderClient, logge
 	for _, r := range results {
 		if r.err != nil {
 			// Fail-open: keep the repo when its metadata could not be fetched,
-			// rather than risk excluding a valid project. Record the occurrence.
-			metricStore.IncProjectFilterFailopen(ctx, provider)
+			// rather than risk excluding a valid project.
 			logger.V(1).Info("Failed to fetch repository info, keeping it", "project", r.project, "error", r.err)
 			filtered = append(filtered, r.project)
 			continue

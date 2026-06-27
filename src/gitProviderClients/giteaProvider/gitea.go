@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"renovate-operator/gitProviderClients"
 	"strings"
-	"time"
 )
 
 // GiteaClient implements GitProviderClient for the Gitea and Forgejo APIs.
@@ -17,9 +16,6 @@ type GiteaClient struct {
 	Token      string
 	HTTPClient *http.Client
 }
-
-// ProviderName returns the metric provider label for Gitea.
-func (c *GiteaClient) ProviderName() string { return "gitea" }
 
 func (c *GiteaClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	//trim /api/v1 if it is included in the endpoint, to avoid double /api/v1 in the URL
@@ -35,9 +31,7 @@ func (c *GiteaClient) GetRepositoryInfo(ctx context.Context, project string) (gi
 	req.Header.Set("Authorization", "token "+c.Token)
 	req.Header.Set("Accept", "application/json")
 
-	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
-	gitProviderClients.RecordProviderRequest(ctx, "gitea", gitProviderClients.OperationGetRepositoryInfo, start, resp, err)
 	if err != nil {
 		return gitProviderClients.RepositoryInfo{}, err
 	}

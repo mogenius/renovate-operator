@@ -4,14 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"renovate-operator/internal/telemetry"
-	"renovate-operator/metricStore"
 	"slices"
 	"strings"
 	"time"
@@ -73,8 +71,6 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		transport.TLSClientConfig = &tls.Config{RootCAs: pool}
 		logger.Info("Using custom CA certificate for OIDC TLS", "path", cfg.CACertPath)
 	}
-	// Reflect the actual TLS posture in the SecOps gauge (CISO target = 0).
-	metricStore.SetOIDCTLSVerificationDisabled(cfg.InsecureSkipVerify)
 	httpClient := &http.Client{Transport: telemetry.WrapTransport(transport)}
 
 	oidcCtx := oidc.ClientContext(ctx, httpClient)
@@ -190,11 +186,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 
-	ctx := r.Context()
-
 	if err := o.validateStateCookie(r); err != nil {
-		metricStore.IncAuthStateValidationFailure(ctx, "oidc")
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -206,7 +198,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		verifierCookie, err := r.Cookie(pkceCookieName)
 		if err != nil {
 			o.logger.Error(err, "missing PKCE verifier cookie")
-			metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 			http.Error(w, "invalid PKCE state", http.StatusBadRequest)
 			return
 		}
@@ -222,16 +213,12 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	oauth2Token, err := o.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"), exchangeOpts...)
 	if err != nil {
 		o.logger.Error(err, "failed to exchange code for token")
-		metricStore.IncOAuthTokenExchangeFailure(ctx, "oidc", classifyOAuthExchangeError(err))
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, "failed to exchange token", http.StatusInternalServerError)
 		return
 	}
 
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
-		metricStore.IncOIDCTokenVerificationFailure(ctx, "claims")
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, "no id_token in response", http.StatusInternalServerError)
 		return
 	}
@@ -239,8 +226,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	idToken, err := o.verifier.Verify(exchangeCtx, rawIDToken)
 	if err != nil {
 		o.logger.Error(err, "failed to verify ID token")
-		metricStore.IncOIDCTokenVerificationFailure(ctx, classifyOIDCVerificationError(err))
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, "failed to verify token", http.StatusInternalServerError)
 		return
 	}
@@ -252,8 +237,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		o.logger.Error(err, "failed to parse claims")
-		metricStore.IncOIDCTokenVerificationFailure(ctx, "claims")
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, "failed to parse claims", http.StatusInternalServerError)
 		return
 	}
@@ -273,7 +256,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		userInfo, err := o.provider.UserInfo(userInfoCtx, oauth2.StaticTokenSource(oauth2Token))
 		if err != nil {
 			o.logger.Error(err, "failed to fetch userinfo")
-			metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 			http.Error(w, "failed to fetch userinfo", http.StatusInternalServerError)
 			return
 		}
@@ -282,8 +264,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := userInfo.Claims(&userInfoClaims); err != nil {
 			o.logger.Error(err, "failed to parse userinfo claims")
-			metricStore.IncOIDCTokenVerificationFailure(ctx, "claims")
-			metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 			http.Error(w, "failed to parse userinfo claims", http.StatusInternalServerError)
 			return
 		}
@@ -297,25 +277,11 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Apply 3-layer group validation
 	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
 
-	// Record the authorization outcome and group-filtering posture. A group
-	// filter is only consequential when one is configured; without a filter
-	// every authenticated user is allowed.
-	groupFilterConfigured := o.groupFilterConfig.AllowedPrefix != "" || o.groupFilterConfig.AllowedPattern != nil
-	if groupFilterConfigured && len(validatedGroups) == 0 {
-		if len(claims.Groups) > 0 {
-			// User presented groups but none survived the allowlist filter.
-			metricStore.IncAuthzGroupsFiltered(ctx, "empty_after_filter")
-			o.logger.Info("WARNING: User authenticated but all groups filtered out",
-				"user", claims.Email,
-				"id_token_groups", idTokenGroups,
-				"groups_before_validation", claims.Groups)
-		} else {
-			// User presented no groups at all to match against the allowlist.
-			metricStore.IncAuthzGroupsFiltered(ctx, "not_in_allowlist")
-		}
-		metricStore.IncAuthzDecision(ctx, "denied")
-	} else {
-		metricStore.IncAuthzDecision(ctx, "allowed")
+	if len(claims.Groups) > 0 && len(validatedGroups) == 0 {
+		o.logger.Info("WARNING: User authenticated but all groups filtered out",
+			"user", claims.Email,
+			"id_token_groups", idTokenGroups,
+			"groups_before_validation", claims.Groups)
 	}
 
 	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {
@@ -323,12 +289,10 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		o.logger.Error(err, "failed to build complete URL")
-		metricStore.IncUIAuthAttempt(ctx, "oidc", "failure")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	metricStore.IncUIAuthAttempt(ctx, "oidc", "success")
 	http.Redirect(w, r, completeURL, http.StatusFound)
 }
 
@@ -377,54 +341,6 @@ func mergeGroups(idTokenGroups, userInfoGroups []string) []string {
 		}
 	}
 	return merged
-}
-
-// classifyOAuthExchangeError maps an OAuth2 code->token exchange error to one
-// of the bounded SecOps reason enum values: "invalid_code", "timeout" or
-// "network" (default). It never inspects user-controlled values, only error
-// types/shapes, so it is safe to use as a metric label.
-func classifyOAuthExchangeError(err error) string {
-	if err == nil {
-		return "network"
-	}
-	// The provider returned an OAuth2 error response (e.g. invalid_grant),
-	// which means the authorization code itself was rejected.
-	var retrieveErr *oauth2.RetrieveError
-	if errors.As(err, &retrieveErr) {
-		return "invalid_code"
-	}
-	// Timeouts: context deadline or any net.Error reporting a timeout.
-	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
-		return "timeout"
-	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return "timeout"
-	}
-	return "network"
-}
-
-// classifyOIDCVerificationError maps an ID-token verification error to one of
-// the bounded SecOps reason enum values: "expired", "claims" or "signature"
-// (default). Classification is based on the error text shape only; no token
-// contents or user identifiers are used as label values.
-func classifyOIDCVerificationError(err error) string {
-	if err == nil {
-		return "signature"
-	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "expired") || strings.Contains(msg, "expiry"):
-		return "expired"
-	case strings.Contains(msg, "signature"):
-		return "signature"
-	case strings.Contains(msg, "claim") || strings.Contains(msg, "audience") ||
-		strings.Contains(msg, "issuer") || strings.Contains(msg, "nonce") ||
-		strings.Contains(msg, "subject"):
-		return "claims"
-	default:
-		return "signature"
-	}
 }
 
 // buildOIDCScopes returns the base OIDC scopes plus any additional scopes, deduplicated.

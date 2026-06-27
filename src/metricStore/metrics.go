@@ -19,20 +19,16 @@ var otelMeter = otel.Meter("renovate-operator/metrics")
 // Label-key constants shared between Prometheus label names and OTel attribute keys so
 // the two emission paths expose identical dimensions.
 const (
-	labelNamespace   = "renovate_namespace"
-	labelJob         = "renovate_job"
-	labelProject     = "project"
-	labelStatus      = "status"
-	labelKind        = "kind"
-	labelReason      = "reason"
-	labelResult      = "result"
-	labelLevel       = "level"
-	labelProvider    = "provider"
-	labelMode        = "mode"
-	labelRouteClass  = "route_class"
-	labelErrorType   = "error_type"
-	labelOperation   = "operation"
-	labelStatusClass = "status_class"
+	labelNamespace = "renovate_namespace"
+	labelJob       = "renovate_job"
+	labelProject   = "project"
+	labelStatus    = "status"
+	labelKind      = "kind"
+	labelReason    = "reason"
+	labelResult    = "result"
+	labelLevel     = "level"
+	labelProvider  = "provider"
+	labelErrorType = "error_type"
 )
 
 // Prometheus metrics — existing.
@@ -239,74 +235,6 @@ var (
 		[]string{labelNamespace, labelJob, labelProject})
 )
 
-// Prometheus metrics — SecOps: authentication (Group F).
-var (
-	uiAuthAttempts = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_ui_auth_attempts_total",
-			Help: "Total UI authentication attempts by provider and result",
-		},
-		[]string{labelProvider, labelResult})
-
-	oauthTokenExchangeFailures = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_oauth_token_exchange_failures_total",
-			Help: "Total OAuth code-for-token exchange failures by provider and reason",
-		},
-		[]string{labelProvider, labelReason})
-
-	oidcTokenVerificationFailures = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_oidc_token_verification_failures_total",
-			Help: "Total OIDC ID-token verification failures by reason",
-		},
-		[]string{labelReason})
-
-	authStateValidationFailures = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_auth_state_validation_failures_total",
-			Help: "Total OAuth/OIDC state (CSRF) validation failures by provider",
-		},
-		[]string{labelProvider})
-
-	sessionDecryptionFailures = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_session_decryption_failures_total",
-			Help: "Total session decryption failures by storage mode and reason",
-		},
-		[]string{labelMode, labelReason})
-
-	authLoopDetected = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_auth_loop_detected_total",
-			Help: "Total detected auth redirect loops (multi-replica SESSION_SECRET mismatch)",
-		})
-
-	unauthenticatedRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_unauthenticated_requests_total",
-			Help: "Total rejected unauthenticated requests by route class",
-		},
-		[]string{labelRouteClass})
-)
-
-// Prometheus metrics — SecOps: authorization (Group G).
-var (
-	authzDecisions = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_authz_decisions_total",
-			Help: "Total group-based authorization decisions by result",
-		},
-		[]string{labelResult})
-
-	authzGroupsFiltered = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_authz_groups_filtered_total",
-			Help: "Total authenticated users denied by group policy, by reason",
-		},
-		[]string{labelReason})
-)
-
 // Prometheus metrics — SecOps: webhook integrity (Group H).
 var (
 	webhookRequests = prometheus.NewCounterVec(
@@ -348,54 +276,6 @@ var (
 		[]string{labelErrorType})
 )
 
-// Prometheus metrics — SecOps: cryptographic / transport posture (Group J).
-var (
-	oidcTLSVerificationDisabled = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "renovate_operator_oidc_tls_verification_disabled",
-			Help: "Whether OIDC TLS verification is disabled (1=insecure, 0=verified). CISO target = 0",
-		})
-
-	gitProviderTLSErrors = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_git_provider_tls_errors_total",
-			Help: "Total TLS handshake/certificate errors talking to Git providers by provider",
-		},
-		[]string{labelProvider})
-)
-
-// Prometheus metrics — External Git-provider API reliability (Group K).
-var (
-	gitProviderRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_git_provider_requests_total",
-			Help: "Total Git-provider API requests by provider, operation and status class",
-		},
-		[]string{labelProvider, labelOperation, labelStatusClass})
-
-	gitProviderRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "renovate_operator_git_provider_request_duration_seconds",
-			Help:    "Git-provider API request latency in seconds",
-			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-		},
-		[]string{labelProvider, labelOperation})
-
-	gitProviderRateLimited = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_git_provider_rate_limited_total",
-			Help: "Total Git-provider API responses indicating rate limiting by provider",
-		},
-		[]string{labelProvider})
-
-	projectFilterFailopen = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renovate_operator_project_filter_failopen_total",
-			Help: "Total repositories kept because a Git-provider API call failed (filter silently skipped)",
-		},
-		[]string{labelProvider})
-)
-
 // OTel metrics — no-ops when OTel is not configured. Mirrors the Prometheus
 // counters/histograms above. Gauges are intentionally Prometheus-only, matching the
 // existing run_failed/dependency_issues/approvals_needed convention.
@@ -411,35 +291,21 @@ var (
 		metric.WithDescription("Total executed Renovate project runs"),
 	)
 
-	otelJobsDispatched, _        = otelMeter.Int64Counter("renovate_operator.jobs.dispatched", metric.WithDescription("Kubernetes Jobs launched"))
-	otelJobDuration, _           = otelMeter.Float64Histogram("renovate_operator.job.duration", metric.WithUnit("s"), metric.WithDescription("Renovate Job wall-clock duration"))
-	otelQueueWait, _             = otelMeter.Float64Histogram("renovate_operator.project.queue_wait", metric.WithUnit("s"), metric.WithDescription("Time a project waited in Scheduled"))
-	otelJobFailures, _           = otelMeter.Int64Counter("renovate_operator.job.failures", metric.WithDescription("Renovate Job failures by mode"))
-	otelDiscoveryJobs, _         = otelMeter.Int64Counter("renovate_operator.discovery.jobs", metric.WithDescription("Discovery Jobs by status"))
-	otelReposFiltered, _         = otelMeter.Int64Counter("renovate_operator.repositories.filtered", metric.WithDescription("Repositories dropped by filters"))
-	otelScheduleRuns, _          = otelMeter.Int64Counter("renovate_operator.schedule.runs", metric.WithDescription("Cron schedule firings by result"))
-	otelPRsCreated, _            = otelMeter.Int64Counter("renovate_operator.pull_requests.created", metric.WithDescription("Pull requests created"))
-	otelPRsMerged, _             = otelMeter.Int64Counter("renovate_operator.pull_requests.merged", metric.WithDescription("Pull requests automerged"))
-	otelPRsUpdated, _            = otelMeter.Int64Counter("renovate_operator.pull_requests.updated", metric.WithDescription("Pull requests updated"))
-	otelUIAuthAttempts, _        = otelMeter.Int64Counter("renovate_operator.ui.auth.attempts", metric.WithDescription("UI auth attempts"))
-	otelOAuthExchangeFail, _     = otelMeter.Int64Counter("renovate_operator.oauth.token_exchange.failures", metric.WithDescription("OAuth token exchange failures"))
-	otelOIDCVerifyFail, _        = otelMeter.Int64Counter("renovate_operator.oidc.token_verification.failures", metric.WithDescription("OIDC token verification failures"))
-	otelAuthStateFail, _         = otelMeter.Int64Counter("renovate_operator.auth.state_validation.failures", metric.WithDescription("Auth state (CSRF) validation failures"))
-	otelSessionDecryptFail, _    = otelMeter.Int64Counter("renovate_operator.session.decryption.failures", metric.WithDescription("Session decryption failures"))
-	otelAuthLoopDetected, _      = otelMeter.Int64Counter("renovate_operator.auth.loop_detected", metric.WithDescription("Auth redirect loops detected"))
-	otelUnauthRequests, _        = otelMeter.Int64Counter("renovate_operator.unauthenticated.requests", metric.WithDescription("Rejected unauthenticated requests"))
-	otelAuthzDecisions, _        = otelMeter.Int64Counter("renovate_operator.authz.decisions", metric.WithDescription("Authorization decisions"))
-	otelAuthzGroupsFilt, _       = otelMeter.Int64Counter("renovate_operator.authz.groups_filtered", metric.WithDescription("Users denied by group policy"))
-	otelWebhookRequests, _       = otelMeter.Int64Counter("renovate_operator.webhook.requests", metric.WithDescription("Webhook requests by outcome"))
-	otelWebhookSigFail, _        = otelMeter.Int64Counter("renovate_operator.webhook.signature_verification.failures", metric.WithDescription("Webhook signature failures"))
-	otelWebhookAuthFail, _       = otelMeter.Int64Counter("renovate_operator.webhook.auth.failures", metric.WithDescription("Webhook auth failures"))
-	otelWebhookDecodeFail, _     = otelMeter.Int64Counter("renovate_operator.webhook.payload_decode.failures", metric.WithDescription("Webhook payload decode failures"))
-	otelSecretResolErrors, _     = otelMeter.Int64Counter("renovate_operator.secret.resolution.errors", metric.WithDescription("Secret resolution errors"))
-	otelGitProviderTLSErr, _     = otelMeter.Int64Counter("renovate_operator.git_provider.tls.errors", metric.WithDescription("Git-provider TLS errors"))
-	otelGitProviderReqs, _       = otelMeter.Int64Counter("renovate_operator.git_provider.requests", metric.WithDescription("Git-provider API requests"))
-	otelGitProviderReqDur, _     = otelMeter.Float64Histogram("renovate_operator.git_provider.request.duration", metric.WithUnit("s"), metric.WithDescription("Git-provider API latency"))
-	otelGitProviderRateLim, _    = otelMeter.Int64Counter("renovate_operator.git_provider.rate_limited", metric.WithDescription("Git-provider rate-limit responses"))
-	otelProjectFilterFailopen, _ = otelMeter.Int64Counter("renovate_operator.project_filter.failopen", metric.WithDescription("Repositories kept due to filter API failure"))
+	otelJobsDispatched, _    = otelMeter.Int64Counter("renovate_operator.jobs.dispatched", metric.WithDescription("Kubernetes Jobs launched"))
+	otelJobDuration, _       = otelMeter.Float64Histogram("renovate_operator.job.duration", metric.WithUnit("s"), metric.WithDescription("Renovate Job wall-clock duration"))
+	otelQueueWait, _         = otelMeter.Float64Histogram("renovate_operator.project.queue_wait", metric.WithUnit("s"), metric.WithDescription("Time a project waited in Scheduled"))
+	otelJobFailures, _       = otelMeter.Int64Counter("renovate_operator.job.failures", metric.WithDescription("Renovate Job failures by mode"))
+	otelDiscoveryJobs, _     = otelMeter.Int64Counter("renovate_operator.discovery.jobs", metric.WithDescription("Discovery Jobs by status"))
+	otelReposFiltered, _     = otelMeter.Int64Counter("renovate_operator.repositories.filtered", metric.WithDescription("Repositories dropped by filters"))
+	otelScheduleRuns, _      = otelMeter.Int64Counter("renovate_operator.schedule.runs", metric.WithDescription("Cron schedule firings by result"))
+	otelPRsCreated, _        = otelMeter.Int64Counter("renovate_operator.pull_requests.created", metric.WithDescription("Pull requests created"))
+	otelPRsMerged, _         = otelMeter.Int64Counter("renovate_operator.pull_requests.merged", metric.WithDescription("Pull requests automerged"))
+	otelPRsUpdated, _        = otelMeter.Int64Counter("renovate_operator.pull_requests.updated", metric.WithDescription("Pull requests updated"))
+	otelWebhookRequests, _   = otelMeter.Int64Counter("renovate_operator.webhook.requests", metric.WithDescription("Webhook requests by outcome"))
+	otelWebhookSigFail, _    = otelMeter.Int64Counter("renovate_operator.webhook.signature_verification.failures", metric.WithDescription("Webhook signature failures"))
+	otelWebhookAuthFail, _   = otelMeter.Int64Counter("renovate_operator.webhook.auth.failures", metric.WithDescription("Webhook auth failures"))
+	otelWebhookDecodeFail, _ = otelMeter.Int64Counter("renovate_operator.webhook.payload_decode.failures", metric.WithDescription("Webhook payload decode failures"))
+	otelSecretResolErrors, _ = otelMeter.Int64Counter("renovate_operator.secret.resolution.errors", metric.WithDescription("Secret resolution errors"))
 )
 
 func Register(registry ctrlmetrics.RegistererGatherer) {
@@ -477,17 +343,6 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		pullRequestsMerged,
 		pullRequestsUpdated,
 		lastExecutionDuration,
-		// Group F
-		uiAuthAttempts,
-		oauthTokenExchangeFailures,
-		oidcTokenVerificationFailures,
-		authStateValidationFailures,
-		sessionDecryptionFailures,
-		authLoopDetected,
-		unauthenticatedRequests,
-		// Group G
-		authzDecisions,
-		authzGroupsFiltered,
 		// Group H
 		webhookRequests,
 		webhookSignatureFailures,
@@ -495,14 +350,6 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		webhookPayloadDecodeFailures,
 		// Group I
 		secretResolutionErrors,
-		// Group J
-		oidcTLSVerificationDisabled,
-		gitProviderTLSErrors,
-		// Group K
-		gitProviderRequests,
-		gitProviderRequestDuration,
-		gitProviderRateLimited,
-		projectFilterFailopen,
 	)
 }
 
@@ -732,63 +579,6 @@ func SetLastExecutionDuration(namespace, job, project string, seconds float64) {
 }
 
 // ---------------------------------------------------------------------------
-// Group F — authentication
-// ---------------------------------------------------------------------------
-
-// IncUIAuthAttempt counts a UI auth attempt. provider is "oidc"/"github"; result is "success"/"failure".
-func IncUIAuthAttempt(ctx context.Context, provider, result string) {
-	uiAuthAttempts.WithLabelValues(provider, result).Inc()
-	addOtel(ctx, otelUIAuthAttempts, 1, attribute.String(labelProvider, provider), attribute.String(labelResult, result))
-}
-
-func IncOAuthTokenExchangeFailure(ctx context.Context, provider, reason string) {
-	oauthTokenExchangeFailures.WithLabelValues(provider, reason).Inc()
-	addOtel(ctx, otelOAuthExchangeFail, 1, attribute.String(labelProvider, provider), attribute.String(labelReason, reason))
-}
-
-func IncOIDCTokenVerificationFailure(ctx context.Context, reason string) {
-	oidcTokenVerificationFailures.WithLabelValues(reason).Inc()
-	addOtel(ctx, otelOIDCVerifyFail, 1, attribute.String(labelReason, reason))
-}
-
-func IncAuthStateValidationFailure(ctx context.Context, provider string) {
-	authStateValidationFailures.WithLabelValues(provider).Inc()
-	addOtel(ctx, otelAuthStateFail, 1, attribute.String(labelProvider, provider))
-}
-
-// IncSessionDecryptionFailure counts a session decryption failure. mode is "cookie"/"valkey".
-func IncSessionDecryptionFailure(ctx context.Context, mode, reason string) {
-	sessionDecryptionFailures.WithLabelValues(mode, reason).Inc()
-	addOtel(ctx, otelSessionDecryptFail, 1, attribute.String(labelMode, mode), attribute.String(labelReason, reason))
-}
-
-func IncAuthLoopDetected(ctx context.Context) {
-	authLoopDetected.Inc()
-	addOtel(ctx, otelAuthLoopDetected, 1)
-}
-
-// IncUnauthenticatedRequest counts a rejected unauthenticated request. routeClass is "api"/"ui"/"static".
-func IncUnauthenticatedRequest(ctx context.Context, routeClass string) {
-	unauthenticatedRequests.WithLabelValues(routeClass).Inc()
-	addOtel(ctx, otelUnauthRequests, 1, attribute.String(labelRouteClass, routeClass))
-}
-
-// ---------------------------------------------------------------------------
-// Group G — authorization
-// ---------------------------------------------------------------------------
-
-// IncAuthzDecision counts an authorization decision. result is "allowed"/"denied".
-func IncAuthzDecision(ctx context.Context, result string) {
-	authzDecisions.WithLabelValues(result).Inc()
-	addOtel(ctx, otelAuthzDecisions, 1, attribute.String(labelResult, result))
-}
-
-func IncAuthzGroupsFiltered(ctx context.Context, reason string) {
-	authzGroupsFiltered.WithLabelValues(reason).Inc()
-	addOtel(ctx, otelAuthzGroupsFilt, 1, attribute.String(labelReason, reason))
-}
-
-// ---------------------------------------------------------------------------
 // Group H — webhook integrity
 // ---------------------------------------------------------------------------
 
@@ -823,47 +613,6 @@ func IncWebhookPayloadDecodeFailure(ctx context.Context, provider string) {
 func IncSecretResolutionError(ctx context.Context, errorType string) {
 	secretResolutionErrors.WithLabelValues(errorType).Inc()
 	addOtel(ctx, otelSecretResolErrors, 1, attribute.String(labelErrorType, errorType))
-}
-
-// ---------------------------------------------------------------------------
-// Group J — cryptographic / transport posture
-// ---------------------------------------------------------------------------
-
-// SetOIDCTLSVerificationDisabled sets the posture gauge (Prometheus-only). CISO target = 0.
-func SetOIDCTLSVerificationDisabled(disabled bool) {
-	oidcTLSVerificationDisabled.Set(boolToFloat(disabled))
-}
-
-func IncGitProviderTLSError(ctx context.Context, provider string) {
-	gitProviderTLSErrors.WithLabelValues(provider).Inc()
-	addOtel(ctx, otelGitProviderTLSErr, 1, attribute.String(labelProvider, provider))
-}
-
-// ---------------------------------------------------------------------------
-// Group K — external Git-provider API reliability
-// ---------------------------------------------------------------------------
-
-// IncGitProviderRequest counts a Git-provider API request. statusClass is 2xx/4xx/5xx.
-func IncGitProviderRequest(ctx context.Context, provider, operation, statusClass string) {
-	gitProviderRequests.WithLabelValues(provider, operation, statusClass).Inc()
-	addOtel(ctx, otelGitProviderReqs, 1,
-		attribute.String(labelProvider, provider), attribute.String(labelOperation, operation), attribute.String(labelStatusClass, statusClass))
-}
-
-func ObserveGitProviderRequestDuration(ctx context.Context, provider, operation string, seconds float64) {
-	gitProviderRequestDuration.WithLabelValues(provider, operation).Observe(seconds)
-	recordOtel(ctx, otelGitProviderReqDur, seconds,
-		attribute.String(labelProvider, provider), attribute.String(labelOperation, operation))
-}
-
-func IncGitProviderRateLimited(ctx context.Context, provider string) {
-	gitProviderRateLimited.WithLabelValues(provider).Inc()
-	addOtel(ctx, otelGitProviderRateLim, 1, attribute.String(labelProvider, provider))
-}
-
-func IncProjectFilterFailopen(ctx context.Context, provider string) {
-	projectFilterFailopen.WithLabelValues(provider).Inc()
-	addOtel(ctx, otelProjectFilterFailopen, 1, attribute.String(labelProvider, provider))
 }
 
 // ---------------------------------------------------------------------------

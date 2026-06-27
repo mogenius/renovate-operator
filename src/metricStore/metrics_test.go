@@ -217,26 +217,21 @@ func TestPullRequestCounters(t *testing.T) {
 	pullRequestsUpdated.DeleteLabelValues("ns", "job")
 }
 
-func TestSecOpsCountersAndPosture(t *testing.T) {
+func TestSecOpsCounters(t *testing.T) {
 	ctx := context.Background()
 	IncWebhookSignatureFailure(ctx, "github")
 	IncWebhookSignatureFailure(ctx, "github")
-	IncUIAuthAttempt(ctx, "oidc", "failure")
-	SetOIDCTLSVerificationDisabled(true)
+	IncSecretResolutionError(ctx, "not_found")
 
 	if v := testutil.ToFloat64(webhookSignatureFailures.WithLabelValues("github")); v != 2.0 {
 		t.Errorf("webhookSignatureFailures{github} = %v, want 2", v)
 	}
-	if v := testutil.ToFloat64(uiAuthAttempts.WithLabelValues("oidc", "failure")); v != 1.0 {
-		t.Errorf("uiAuthAttempts{oidc,failure} = %v, want 1", v)
-	}
-	if v := testutil.ToFloat64(oidcTLSVerificationDisabled); v != 1.0 {
-		t.Errorf("oidcTLSVerificationDisabled = %v, want 1", v)
+	if v := testutil.ToFloat64(secretResolutionErrors.WithLabelValues("not_found")); v != 1.0 {
+		t.Errorf("secretResolutionErrors{not_found} = %v, want 1", v)
 	}
 
 	webhookSignatureFailures.DeleteLabelValues("github")
-	uiAuthAttempts.DeleteLabelValues("oidc", "failure")
-	SetOIDCTLSVerificationDisabled(false)
+	secretResolutionErrors.DeleteLabelValues("not_found")
 }
 
 func TestDeleteProjectMetricsRemovesNewSeries(t *testing.T) {

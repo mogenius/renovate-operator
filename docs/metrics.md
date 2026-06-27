@@ -76,23 +76,6 @@ metrics for free (`controller_runtime_reconcile_*`, workqueue depth/latency,
 | renovate_operator_log_issues          | Gauge | WARN/ERROR log entry counts in the last run, by `level` (`warn`/`error`)     | `renovate_namespace`, `renovate_job`, `project`, `level`|
 | renovate_operator_dependency_issues   | Gauge | Whether the last run had WARN/ERROR log entries (1=issues, 0=clean)          | `renovate_namespace`, `renovate_job`, `project`         |
 
-## Authentication and authorization (UI)
-
-| Name                                                     | Type    | Description                                                  | Labels                |
-|----------------------------------------------------------|---------|--------------------------------------------------------------|-----------------------|
-| renovate_operator_ui_auth_attempts_total                 | Counter | UI auth attempts by `provider` (`oidc`/`github`) and `result` (`success`/`failure`) | `provider`, `result` |
-| renovate_operator_oauth_token_exchange_failures_total    | Counter | OAuth code-for-token exchange failures (`network`/`invalid_code`/`timeout`) | `provider`, `reason` |
-| renovate_operator_oidc_token_verification_failures_total | Counter | OIDC ID-token verification failures (`signature`/`claims`/`expired`)        | `reason`              |
-| renovate_operator_auth_state_validation_failures_total   | Counter | OAuth/OIDC state (CSRF) validation failures                  | `provider`            |
-| renovate_operator_session_decryption_failures_total      | Counter | Session decryption failures by `mode` (`cookie`/`valkey`) and `reason` (`decode`/`tampered`/`store_unavailable`) | `mode`, `reason` |
-| renovate_operator_auth_loop_detected_total               | Counter | Auth redirect loops detected (multi-replica SESSION_SECRET mismatch) | (none)        |
-| renovate_operator_unauthenticated_requests_total         | Counter | Rejected unauthenticated requests by `route_class` (`api`/`ui`/`static`) | `route_class`     |
-| renovate_operator_authz_decisions_total                  | Counter | Group-based authorization decisions (`allowed`/`denied`)     | `result`              |
-| renovate_operator_authz_groups_filtered_total            | Counter | Users denied by group policy (`not_in_allowlist`/`empty_after_filter`) | `reason`    |
-
-Security metric labels are deliberately bounded enums; user identifiers, IP addresses,
-and raw request paths are never used as label values.
-
 ## Webhook integrity
 
 | Name                                                            | Type    | Description                                                  | Labels                       |
@@ -104,17 +87,14 @@ and raw request paths are never used as label values.
 
 `provider` is one of `github`, `gitlab`, `forgejo`, `schedule`.
 
-## Credentials, transport posture, and Git-provider reliability
+## Credentials
 
-| Name                                                  | Type      | Description                                                       | Labels                                  |
-|-------------------------------------------------------|-----------|------------------------------------------------------------------|-----------------------------------------|
-| renovate_operator_secret_resolution_errors_total      | Counter   | Kubernetes Secret resolution errors (`not_found`/`key_missing`/`api_error`) | `error_type`                  |
-| renovate_operator_oidc_tls_verification_disabled      | Gauge     | Whether OIDC TLS verification is disabled (1=insecure). Target = 0 | (none)                                |
-| renovate_operator_git_provider_tls_errors_total       | Counter   | TLS handshake/certificate errors talking to a Git provider       | `provider`                              |
-| renovate_operator_git_provider_requests_total         | Counter   | Git-provider API requests by `operation` and `status_class` (`2xx`/`4xx`/`5xx`) | `provider`, `operation`, `status_class` |
-| renovate_operator_git_provider_request_duration_seconds | Histogram | Git-provider API request latency                               | `provider`, `operation`                 |
-| renovate_operator_git_provider_rate_limited_total     | Counter   | Git-provider API responses indicating rate limiting              | `provider`                              |
-| renovate_operator_project_filter_failopen_total       | Counter   | Repositories kept because a Git-provider API call failed (fork/pending-deletion filter silently skipped) | `provider` |
+| Name                                             | Type    | Description                                                                 | Labels       |
+|--------------------------------------------------|---------|-----------------------------------------------------------------------------|--------------|
+| renovate_operator_secret_resolution_errors_total | Counter | Kubernetes Secret resolution errors (`not_found`/`key_missing`/`api_error`) | `error_type` |
+
+Security metric labels are deliberately bounded enums; user identifiers, IP addresses,
+and raw request paths are never used as label values.
 
 ## Dependency Issues Detection
 
@@ -185,15 +165,6 @@ groups:
           summary: "Renovate schedule overdue for {{ $labels.renovate_job }}"
           description: "The next planned run is more than an hour in the past."
 
-      # SecOps: should page - users locked into a redirect loop (SESSION_SECRET mismatch across replicas).
-      - alert: RenovateAuthLoopDetected
-        expr: increase(renovate_operator_auth_loop_detected_total[15m]) > 0
-        labels:
-          severity: critical
-        annotations:
-          summary: "Renovate UI auth redirect loop detected"
-          description: "Likely a SESSION_SECRET mismatch between replicas. Ensure SESSION_SECRET is set and identical across all replicas."
-
       # SecOps: sustained webhook HMAC signature failures - forged or misconfigured webhooks.
       - alert: RenovateWebhookSignatureFailures
         expr: sum(rate(renovate_operator_webhook_signature_verification_failures_total[10m])) by (provider) > 0
@@ -203,23 +174,4 @@ groups:
         annotations:
           summary: "Renovate webhook signature failures from {{ $labels.provider }}"
           description: "HMAC signature verification is failing; investigate forged or misconfigured webhooks."
-
-      # CISO: OIDC TLS verification must never be disabled in production.
-      - alert: RenovateOIDCTLSVerificationDisabled
-        expr: renovate_operator_oidc_tls_verification_disabled == 1
-        labels:
-          severity: critical
-        annotations:
-          summary: "OIDC TLS verification is disabled"
-          description: "InsecureSkipVerify is enabled for the OIDC provider. This must be 0 in production."
-
-      # SecOps: fork/pending-deletion filtering is silently skipped because the provider API is failing.
-      - alert: RenovateProjectFilterFailOpen
-        expr: sum(rate(renovate_operator_project_filter_failopen_total[15m])) by (provider) > 0
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Renovate project filter is failing open for {{ $labels.provider }}"
-          description: "Repositories are being kept because provider API calls fail; fork/pending-deletion filtering is effectively disabled."
 ```
