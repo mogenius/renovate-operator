@@ -4385,6 +4385,12 @@ spec:
                       type: integer
                     renovateResultStatus:
                       type: string
+                    scheduledAt:
+                      description: |-
+                        ScheduledAt records when the project most recently entered the Scheduled
+                        state, used to measure queue wait time when it is dispatched.
+                      format: date-time
+                      type: string
                     status:
                       type: string
                   required:

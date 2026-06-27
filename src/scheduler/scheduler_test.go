@@ -40,7 +40,7 @@ func TestAddSchedule(t *testing.T) {
 	s.Start()
 	defer s.Stop()
 
-	err := s.AddSchedule("* * * * *", "test-schedule", func() {})
+	err := s.AddSchedule("* * * * *", "schedule", "test", func() {})
 
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
@@ -59,7 +59,7 @@ func TestAddScheduleInvalidCron(t *testing.T) {
 	s.Start()
 	defer s.Stop()
 
-	err := s.AddSchedule("invalid-cron", "test-invalid", func() {})
+	err := s.AddSchedule("invalid-cron", "invalid", "test", func() {})
 	if err == nil {
 		t.Error("AddSchedule should return error for invalid cron expression")
 	}
@@ -72,19 +72,19 @@ func TestAddScheduleReplaceExisting(t *testing.T) {
 	defer s.Stop()
 
 	// Add initial schedule
-	err := s.AddSchedule("* * * * *", "test-replace", func() {})
+	err := s.AddSchedule("* * * * *", "replace", "test", func() {})
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
 
 	// Replace with same schedule - should not error
-	err = s.AddScheduleReplaceExisting("* * * * *", "test-replace", func() {})
+	err = s.AddScheduleReplaceExisting("* * * * *", "replace", "test", func() {})
 	if err != nil {
 		t.Fatalf("AddScheduleReplaceExisting returned error for same schedule: %v", err)
 	}
 
 	// Replace with different schedule
-	err = s.AddScheduleReplaceExisting("*/2 * * * *", "test-replace", func() {})
+	err = s.AddScheduleReplaceExisting("*/2 * * * *", "replace", "test", func() {})
 	if err != nil {
 		t.Fatalf("AddScheduleReplaceExisting returned error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRemoveSchedule(t *testing.T) {
 	defer s.Stop()
 
 	// Add a schedule
-	err := s.AddSchedule("* * * * *", "test-remove", func() {})
+	err := s.AddSchedule("* * * * *", "remove", "test", func() {})
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRemoveSchedule(t *testing.T) {
 	}
 
 	// Remove the schedule
-	s.RemoveSchedule("test-remove")
+	s.RemoveSchedule("remove", "test")
 
 	// Verify schedule was removed
 	hc = h.GetHealth()
@@ -130,7 +130,7 @@ func TestRemoveSchedule(t *testing.T) {
 	}
 
 	// Removing non-existent schedule should not panic
-	s.RemoveSchedule("non-existent")
+	s.RemoveSchedule("existent", "non")
 }
 
 func TestGetNextRun(t *testing.T) {
@@ -140,7 +140,7 @@ func TestGetNextRun(t *testing.T) {
 	defer s.Stop()
 
 	// Add a schedule
-	err := s.AddSchedule("* * * * *", "test-next", func() {})
+	err := s.AddSchedule("* * * * *", "next", "test", func() {})
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestScheduleExecution(t *testing.T) {
 	defer s.Stop()
 
 	// Schedule every minute (cron uses 5 fields by default)
-	err := s.AddSchedule("* * * * *", "test-exec", func() {})
+	err := s.AddSchedule("* * * * *", "exec", "test", func() {})
 
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)

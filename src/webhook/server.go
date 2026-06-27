@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
@@ -61,8 +63,12 @@ func (s *Server) Run() {
 }
 
 func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "schedule"
+
 	project := r.URL.Query().Get("project")
 	if project == "" {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project query parameter"})
 		return
 	}
@@ -72,19 +78,22 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
 		return
 	}
 
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.handleResolverError(w, err)
 		return
 	}
 
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
+		ctx,
 		project,
 		jobId,
 		&types.RenovateStatusUpdate{
@@ -93,11 +102,38 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	w.WriteHeader(http.StatusOK)
 	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
+}
+
+// recordResolverAuthFailure emits the appropriate webhook auth-failure metric for an
+// error returned by FindAndAuthenticateJob:
+//   - ErrNoMatchingJob       -> "no_matching_job"
+//   - ErrAuthenticationFailed -> "auth_failed"
+//   - any other surfaced error (e.g. secret/credential resolution) -> "secret_error"
+//
+// When authentication failed and an HMAC signature header (rather than a bearer
+// token) was the credential actually used, it additionally records a signature
+// verification failure. This is a heuristic: the resolver collapses signature and
+// token mismatches into ErrAuthenticationFailed, so the signature failure is only
+// counted on the path where a signature header was supplied and used.
+func (s *Server) recordResolverAuthFailure(ctx context.Context, provider string, err error, signatureUsed bool) {
+	switch {
+	case errors.Is(err, ErrNoMatchingJob):
+		metricStore.IncWebhookAuthFailure(ctx, provider, "no_matching_job")
+	case errors.Is(err, ErrAuthenticationFailed):
+		metricStore.IncWebhookAuthFailure(ctx, provider, "auth_failed")
+		if signatureUsed {
+			metricStore.IncWebhookSignatureFailure(ctx, provider)
+		}
+	default:
+		metricStore.IncWebhookAuthFailure(ctx, provider, "secret_error")
+	}
 }
 
 func (s *Server) handleResolverError(w http.ResponseWriter, err error) {

@@ -212,14 +212,17 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name                 string                `json:"name"`
-	LastRun              metav1.Time           `json:"lastRun"`
-	Duration             *string               `json:"duration,omitempty"`
-	Status               RenovateProjectStatus `json:"status"`
-	Priority             int32                 `json:"priority,omitempty"`
-	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
-	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
-	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
+	Name     string                `json:"name"`
+	LastRun  metav1.Time           `json:"lastRun"`
+	Duration *string               `json:"duration,omitempty"`
+	Status   RenovateProjectStatus `json:"status"`
+	Priority int32                 `json:"priority,omitempty"`
+	// ScheduledAt records when the project most recently entered the Scheduled
+	// state, used to measure queue wait time when it is dispatched.
+	ScheduledAt          *metav1.Time `json:"scheduledAt,omitempty"`
+	RenovateResultStatus *string      `json:"renovateResultStatus,omitempty"`
+	PRActivity           *PRActivity  `json:"prActivity,omitempty"`
+	LogIssues            *LogIssues   `json:"logIssues,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -300,6 +303,9 @@ func (in *RenovateJob) DeepCopyObject() runtime.Object {
 // DeepCopyInto deep copies a ProjectStatus into out.
 func (in *ProjectStatus) DeepCopyInto(out *ProjectStatus) {
 	*out = *in
+	if in.ScheduledAt != nil {
+		out.ScheduledAt = in.ScheduledAt.DeepCopy()
+	}
 	if in.Duration != nil {
 		out.Duration = new(string)
 		*out.Duration = *in.Duration
