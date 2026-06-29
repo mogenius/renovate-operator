@@ -70,6 +70,9 @@ func (f *fakeJobManager) IsWebhookTokenValid(ctx context.Context, job crdManager
 func (f *fakeJobManager) IsWebhookSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	return true, nil
 }
+func (f *fakeJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	return true, nil
+}
 func (f *fakeJobManager) UpdateExecutionOptions(ctx context.Context, job crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil
 }

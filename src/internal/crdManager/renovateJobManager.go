@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +61,10 @@ type RenovateJobManager interface {
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
 	// IsWebhookSignatureValid checks if the provided signature is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	// IsWebhookStandardSignatureValid checks a Standard Webhooks signature (https://www.standardwebhooks.com/)
+	// against the webhook signing keys configured for the specified RenovateJob CRD. Standard Webhooks is a
+	// vendor-neutral signing scheme; GitLab "signing tokens" are one implementation of it, not the only one.
+	IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
 	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
 	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
 	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
@@ -445,6 +451,56 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 	return false, nil
 }
 
+// IsWebhookStandardSignatureValid validates a Standard Webhooks signature against the keys configured for
+// the RenovateJob. Standard Webhooks (https://www.standardwebhooks.com/) is a vendor-neutral webhook
+// signing scheme implemented by multiple providers — GitLab "signing tokens" among them — so this path is
+// not GitLab-specific and works for any compliant sender. The signed content is "{msgID}.{timestamp}.{body}",
+// keyed by the HMAC-SHA256 key decoded from each configured secret. The signature header is a space-separated
+// list of "v1,<base64>" entries; a match against any entry for any configured key authenticates the request.
+// The timestamp must be within standardWebhookTimestampTolerance of now to reject replayed requests.
+func (r *renovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	defer r.globalManagerLock(true)()
+
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return false, err
+	}
+
+	if renovateJob.Spec.Webhook == nil ||
+		renovateJob.Spec.Webhook.Authentication == nil ||
+		!renovateJob.Spec.Webhook.Authentication.Enabled {
+		// Webhook authentication is not enabled
+		return false, nil
+	}
+
+	if msgID == "" || signature == "" {
+		return false, nil
+	}
+	if !isStandardWebhookTimestampFresh(timestamp, time.Now()) {
+		r.logger.V(1).Info("rejecting webhook: signature timestamp outside tolerance", "namespace", job.Namespace, "name", job.Name, "timestamp", timestamp)
+		return false, nil
+	}
+
+	tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
+	if err != nil {
+		return false, err
+	}
+
+	signedContent := msgID + "." + timestamp + "." + string(body)
+	for _, token := range tokens {
+		key, ok := decodeStandardWebhookSigningKey(token)
+		if !ok {
+			continue
+		}
+		expected := computeStandardWebhookSignature(key, signedContent)
+		if matchesAnyStandardWebhookSignature(signature, expected) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error {
 	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
 		JobType:         ExecutorJobType,
@@ -482,4 +538,65 @@ func computeHMAC256(message []byte, secret string) string {
 	mac.Write(message)
 	expectedMAC := mac.Sum(nil)
 	return "sha256=" + fmt.Sprintf("%x", expectedMAC)
+}
+
+// standardWebhookTimestampTolerance bounds how far a webhook-timestamp may drift from the current
+// time before the request is rejected as a potential replay. Matches the Standard Webhooks default.
+const standardWebhookTimestampTolerance = 5 * time.Minute
+
+// decodeStandardWebhookSigningKey returns the raw HMAC key for a Standard Webhooks signing secret. The
+// canonical form is "whsec_" + base64(key), as issued by Standard Webhooks senders (GitLab among them).
+// A bare value is base64-decoded when possible, otherwise used verbatim as the key.
+func decodeStandardWebhookSigningKey(secret string) ([]byte, bool) {
+	if secret == "" {
+		return nil, false
+	}
+	if rest, found := strings.CutPrefix(secret, "whsec_"); found {
+		decoded, err := base64.StdEncoding.DecodeString(rest)
+		if err != nil {
+			return nil, false
+		}
+		return decoded, true
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil {
+		return decoded, true
+	}
+	return []byte(secret), true
+}
+
+// computeStandardWebhookSignature returns the base64 HMAC-SHA256 of signedContent, without the
+// "v1," version prefix.
+func computeStandardWebhookSignature(key []byte, signedContent string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(signedContent))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// matchesAnyStandardWebhookSignature reports whether expected (raw base64) matches any "v1" entry
+// in a space-separated webhook-signature header value. Comparison is constant-time.
+func matchesAnyStandardWebhookSignature(header, expected string) bool {
+	for _, part := range strings.Fields(header) {
+		version, sig, found := strings.Cut(part, ",")
+		if !found || version != "v1" {
+			continue
+		}
+		if hmac.Equal([]byte(sig), []byte(expected)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isStandardWebhookTimestampFresh reports whether a unix-seconds timestamp is within the replay
+// tolerance of now.
+func isStandardWebhookTimestampFresh(timestamp string, now time.Time) bool {
+	secs, err := strconv.ParseInt(strings.TrimSpace(timestamp), 10, 64)
+	if err != nil {
+		return false
+	}
+	delta := now.Sub(time.Unix(secs, 0))
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= standardWebhookTimestampTolerance
 }

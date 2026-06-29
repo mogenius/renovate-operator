@@ -86,6 +86,9 @@ func (f *fakeManager) IsWebhookTokenValid(ctx context.Context, job crdManager.Re
 func (f *fakeManager) IsWebhookSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	return true, nil
 }
+func (f *fakeManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	return true, nil
+}
 
 type fakeWebhookSync struct{}
 
