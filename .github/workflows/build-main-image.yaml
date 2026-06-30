@@ -8,10 +8,11 @@ on:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@e8dc9bd5230495c419538da42e413a04f3c4cbee # v1.4.4
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@f31eb716f02ec20d34578e8c72a5983c4a84e3b8 # v1.5.0
     secrets: inherit
     with:
       version: "main"
       image: ghcr.io/mogenius/renovate-operator
       push_latest: false
-      sign_image: true
+      sbom: true
+      provenance: "mode=max"
