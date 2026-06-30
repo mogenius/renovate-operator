@@ -218,6 +218,8 @@ type ProjectStatus struct {
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
+	// ApprovalsNeededSince is when this project's current streak of pending approvals began, cleared once none are pending.
+	ApprovalsNeededSince *metav1.Time `json:"approvalsNeededSince,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -321,6 +323,9 @@ func (in *ProjectStatus) DeepCopyInto(out *ProjectStatus) {
 			out.LogIssues.Issues = make([]LogIssue, len(in.LogIssues.Issues))
 			copy(out.LogIssues.Issues, in.LogIssues.Issues)
 		}
+	}
+	if in.ApprovalsNeededSince != nil {
+		out.ApprovalsNeededSince = in.ApprovalsNeededSince.DeepCopy()
 	}
 }
 
