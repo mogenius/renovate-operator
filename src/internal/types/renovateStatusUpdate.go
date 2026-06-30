@@ -14,4 +14,5 @@ type RenovateStatusUpdate struct {
 	LogIssues            *api.LogIssues
 	LastRun              *v1.Time
 	Duration             *string
+	ApprovalsNeededSince *v1.Time
 }

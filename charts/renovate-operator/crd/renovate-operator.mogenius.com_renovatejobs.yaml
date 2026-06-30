@@ -4302,6 +4302,11 @@ spec:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
+                    approvalsNeededSince:
+                      description: ApprovalsNeededSince is when this project's current
+                        streak of pending approvals began, cleared once none are pending.
+                      format: date-time
+                      type: string
                     duration:
                       type: string
                     lastRun:

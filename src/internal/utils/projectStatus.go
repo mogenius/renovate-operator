@@ -34,7 +34,7 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 		}
 	}
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
-	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updatePRActivity(projectStatus, desiredStatus)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
 }
@@ -47,7 +47,7 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 	}
 	projectStatus.Duration = nil
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
-	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updatePRActivity(projectStatus, desiredStatus)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
 }
@@ -61,7 +61,7 @@ func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredSta
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
-	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updatePRActivity(projectStatus, desiredStatus)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
 }
@@ -75,7 +75,7 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
-	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updatePRActivity(projectStatus, desiredStatus)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
 }
@@ -89,7 +89,7 @@ func validateProjectStatusCancelled(projectStatus *api.ProjectStatus, desiredSta
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
-	updatePRActivity(projectStatus, desiredStatus.PRActivity)
+	updatePRActivity(projectStatus, desiredStatus)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
 }
@@ -100,10 +100,24 @@ func updateRenovateResultStatus(projectStatus *api.ProjectStatus, status *string
 	}
 }
 
-func updatePRActivity(projectStatus *api.ProjectStatus, activity *api.PRActivity) {
-	if activity != nil {
-		projectStatus.PRActivity = activity
+func updatePRActivity(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) {
+	if desiredStatus.PRActivity == nil {
+		return
 	}
+	projectStatus.PRActivity = desiredStatus.PRActivity
+	projectStatus.ApprovalsNeededSince = desiredStatus.ApprovalsNeededSince
+}
+
+// NextApprovalsNeededSince returns the start of the current pending-approval streak:
+// the previous timestamp while approvals remain, a fresh now when a streak begins, or nil when none are pending.
+func NextApprovalsNeededSince(prev *v1.Time, needsApproval int, now v1.Time) *v1.Time {
+	if needsApproval <= 0 {
+		return nil
+	}
+	if prev != nil {
+		return prev
+	}
+	return &now
 }
 
 func updateLogIssues(projectStatus *api.ProjectStatus, issues *api.LogIssues) {
