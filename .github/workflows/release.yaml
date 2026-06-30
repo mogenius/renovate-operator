@@ -12,13 +12,12 @@ env:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@e8dc9bd5230495c419538da42e413a04f3c4cbee # v1.4.4
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@7af6889cb36e5da3ced9baef9d887709fd034e48 # v1.6.0
     secrets: inherit
     with:
       version: ${{ github.ref_name }}
       image: ghcr.io/mogenius/renovate-operator
       push_latest: true
-      sign_image: true
 
   helm-chart:
     needs: [build-operator]
