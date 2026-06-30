@@ -8,6 +8,7 @@ import (
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/webhookSync"
+	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"strings"
 	"time"
@@ -57,6 +58,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err == nil {
 		// renovatejob object read without problem -> create the schedule
+		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
 		r.resetOrphanedRunning(ctx, renovateJob)
 		r.WebhookSync.EnsureSyncer(ctx, logger, renovateJob)
 		createScheduler(logger, renovateJob, r)
