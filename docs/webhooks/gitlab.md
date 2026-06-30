@@ -40,7 +40,7 @@ spec:
 GitLab can authenticate webhook deliveries to the operator in two ways. Both validate against the token(s) in `authentication.secretRef` (comma-separate the secret value to allow several at once):
 
 - **Secret token** (used in step 4 above) — GitLab sends the value verbatim in the `X-Gitlab-Token` header. Store the plain token in the secret.
-- **Signing token** (recommended by GitLab) — GitLab signs each delivery with HMAC-SHA256 (the [Standard Webhooks](https://www.standardwebhooks.com/) scheme) and sends `Webhook-Id`, `Webhook-Timestamp` and `Webhook-Signature` headers. Store the `whsec_…` signing key that GitLab generates in the secret. The operator recomputes the signature over `id.timestamp.body` and rejects any delivery whose timestamp is more than 5 minutes from the current time, mitigating replay.
+- **Signing token** (recommended by [GitLab since v19](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens)) — GitLab signs each delivery with HMAC-SHA256 (the [Standard Webhooks](https://www.standardwebhooks.com/) scheme) and sends `Webhook-Id`, `Webhook-Timestamp` and `Webhook-Signature` headers. Store the `whsec_…` signing key that GitLab generates in the secret. The operator recomputes the signature over `id.timestamp.body` and rejects any delivery whose timestamp is more than 5 minutes from the current time, mitigating replay.
 
 If a request carries both, the signature takes precedence over the secret token.
 
