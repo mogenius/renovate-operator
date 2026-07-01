@@ -201,6 +201,9 @@ auth:
     # -- optional: only accept groups matching this regex pattern (e.g., "^(team-|platform-).*")
     # -- Leave empty to accept all groups. Can be combined with allowedGroupPrefix.
     allowedGroupPattern: ""
+    # -- optional: name of the OIDC claim that carries group memberships (defaults to "groups")
+    # -- Set this if your provider emits groups under a namespaced claim, e.g. "https://example.com/groups".
+    groupsClaim: ""
     # -- optional: additional OIDC scopes to request (e.g., "groups" for Keycloak)
     additionalScopes: []
     # -- optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo)

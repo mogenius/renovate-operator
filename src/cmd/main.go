@@ -132,6 +132,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
 			PKCEEnabled:         config.GetValue("OIDC_PKCE_ENABLED") != "false",
+			GroupsClaim:         config.GetValue("OIDC_GROUPS_CLAIM"),
 		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
@@ -376,6 +377,11 @@ func main() {
 			Key:      "OIDC_PKCE_ENABLED",
 			Optional: true,
 			Default:  "true",
+		},
+		{
+			Key:      "OIDC_GROUPS_CLAIM",
+			Optional: true,
+			Default:  "groups",
 		},
 		{
 			Key:      "VALKEY_URL",
