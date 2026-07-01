@@ -155,6 +155,16 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 		}
 		job.Annotations[JOB_ANNOTATION_PROJECT] = selector.Project
 	}
+
+	// Propagate all Job labels to the Pod template so that Pods carry the same
+	// operator labels (needed for NetworkPolicies, monitoring selectors, etc.).
+	if job.Spec.Template.Labels == nil {
+		job.Spec.Template.Labels = make(map[string]string)
+	}
+	for k, v := range job.Labels {
+		job.Spec.Template.Labels[k] = v
+	}
+
 	// Create immediately - no deletion needed first
 	err := client.Create(ctx, job)
 	if err != nil {
