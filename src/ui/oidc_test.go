@@ -135,3 +135,27 @@ func TestMergeGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestParseGroupsClaim(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"array of strings", `["team-a","team-b"]`, []string{"team-a", "team-b"}},
+		{"single string coerced to slice", `"team-a"`, []string{"team-a"}},
+		{"empty array", `[]`, []string{}},
+		{"absent claim", ``, nil},
+		{"null", `null`, nil},
+		{"empty string", `""`, nil},
+		{"non-string type ignored", `42`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseGroupsClaim([]byte(tt.raw))
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("parseGroupsClaim(%q) = %v, want %v", tt.raw, got, tt.want)
+			}
+		})
+	}
+}

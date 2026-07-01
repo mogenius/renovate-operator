@@ -171,6 +171,10 @@ spec:
             - name: OIDC_FETCH_USERINFO_GROUPS
               value: "true"
             {{- end }}
+            {{- if .Values.auth.oidc.groupsClaim }}
+            - name: OIDC_GROUPS_CLAIM
+              value: {{ .Values.auth.oidc.groupsClaim | quote }}
+            {{- end }}
             - name: OIDC_PKCE_ENABLED
               value: {{ .Values.auth.oidc.pkceEnabled | toString | quote }}
             {{- else if .Values.auth.github.enabled }}
