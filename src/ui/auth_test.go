@@ -208,3 +208,33 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 		t.Errorf("Groups not in context correctly: %v", capturedSession.Groups)
 	}
 }
+
+func TestIsPublicPath(t *testing.T) {
+	public := []string{
+		"/health",
+		"/api/v1/auth/status",
+		"/auth/login",
+		"/auth/callback",
+		"/js/babel.min.js",
+		"/css/styles.css",
+		"/assets/favicon.png",
+		"/components/StatBadge.js",
+		"/favicon.ico",
+	}
+	for _, path := range public {
+		if !isPublicPath(path) {
+			t.Errorf("expected %s to be public", path)
+		}
+	}
+
+	protected := []string{
+		"/",
+		"/api/v1/renovatejobs",
+		"/pages/logs.html",
+	}
+	for _, path := range protected {
+		if isPublicPath(path) {
+			t.Errorf("expected %s to be protected", path)
+		}
+	}
+}
