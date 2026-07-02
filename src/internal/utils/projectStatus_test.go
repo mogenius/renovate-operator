@@ -2,9 +2,12 @@ package utils
 
 import (
 	"testing"
+	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
+
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGetUpdateStatusForProject(t *testing.T) {
@@ -61,6 +64,29 @@ func TestGetUpdateStatusForProject(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNextApprovalsNeededSince(t *testing.T) {
+	now := v1.Now()
+	earlier := v1.NewTime(time.Now().Add(-72 * time.Hour))
+
+	t.Run("stamps now when a streak begins", func(t *testing.T) {
+		if got := NextApprovalsNeededSince(nil, 2, now); got == nil || !got.Equal(&now) {
+			t.Fatalf("expected %v, got %v", now, got)
+		}
+	})
+
+	t.Run("preserves the original timestamp while approvals remain", func(t *testing.T) {
+		if got := NextApprovalsNeededSince(&earlier, 1, now); got == nil || !got.Equal(&earlier) {
+			t.Fatalf("expected %v, got %v", earlier, got)
+		}
+	})
+
+	t.Run("clears when no approvals are pending", func(t *testing.T) {
+		if got := NextApprovalsNeededSince(&earlier, 0, now); got != nil {
+			t.Fatalf("expected nil, got %v", got)
+		}
+	})
 }
 
 func TestGetUpdateStatusForProject_Priority(t *testing.T) {

@@ -53,6 +53,13 @@ var (
 			Help: "Number of dependency updates awaiting approval after the last Renovate run",
 		},
 		[]string{"renovate_namespace", "renovate_job", "project"})
+
+	approvalsNeededSince = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_approvals_needed_since_seconds",
+			Help: "Unix timestamp at which the current streak of pending approvals began for a project; absent when none are pending",
+		},
+		[]string{"renovate_namespace", "renovate_job", "project"})
 )
 
 // OTel metrics — no-ops when OTel is not configured.
@@ -75,6 +82,7 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 	registry.MustRegister(runFailed)
 	registry.MustRegister(dependencyIssues)
 	registry.MustRegister(approvalsNeeded)
+	registry.MustRegister(approvalsNeededSince)
 }
 
 func ObserveExecutorLoopDuration(ctx context.Context, duration time.Duration) {
@@ -138,11 +146,39 @@ func SetApprovalsNeeded(namespace, job, project string, count int) {
 	approvalsNeeded.WithLabelValues(namespace, job, project).Set(float64(count))
 }
 
+// SetApprovalsNeededSince records when the current streak of pending approvals began for a project.
+func SetApprovalsNeededSince(namespace, job, project string, since time.Time) {
+	approvalsNeededSince.WithLabelValues(namespace, job, project).Set(float64(since.Unix()))
+}
+
+// ClearApprovalsNeededSince removes the pending-approval timestamp for a project.
+func ClearApprovalsNeededSince(namespace, job, project string) {
+	approvalsNeededSince.DeleteLabelValues(namespace, job, project)
+}
+
+// RehydrateMetrics re-emits per-project gauges from durable CRD status,
+// restoring state lost when the operator restarts before the next scheduled run.
+func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
+	for i := range projects {
+		p := projects[i]
+		SetRunFailed(namespace, job, p.Name, p.Status == api.JobStatusFailed)
+		if p.PRActivity != nil {
+			SetApprovalsNeeded(namespace, job, p.Name, p.PRActivity.NeedsApproval)
+		}
+		if p.ApprovalsNeededSince != nil {
+			SetApprovalsNeededSince(namespace, job, p.Name, p.ApprovalsNeededSince.Time)
+		} else {
+			ClearApprovalsNeededSince(namespace, job, p.Name)
+		}
+	}
+}
+
 // DeleteProjectMetrics removes all metrics for a project that was removed from discovery
 func DeleteProjectMetrics(namespace, job, project string) {
 	runFailed.DeleteLabelValues(namespace, job, project)
 	dependencyIssues.DeleteLabelValues(namespace, job, project)
 	approvalsNeeded.DeleteLabelValues(namespace, job, project)
+	approvalsNeededSince.DeleteLabelValues(namespace, job, project)
 	// Note: projectRuns counter has an additional "status" label, so we delete both possible values
 	projectRuns.DeleteLabelValues(namespace, job, project, "completed")
 	projectRuns.DeleteLabelValues(namespace, job, project, "failed")

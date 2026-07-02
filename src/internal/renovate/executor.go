@@ -28,6 +28,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -199,14 +200,14 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 	if err != nil {
 		return fmt.Errorf("failed to load RenovateJob for status check: %w", err)
 	}
-	projectIsRunning := false
-	for _, p := range renovateJob.Status.Projects {
-		if p.Name == project && p.Status == api.JobStatusRunning {
-			projectIsRunning = true
+	var currentStatus *api.ProjectStatus
+	for i := range renovateJob.Status.Projects {
+		if renovateJob.Status.Projects[i].Name == project {
+			currentStatus = &renovateJob.Status.Projects[i]
 			break
 		}
 	}
-	if !projectIsRunning {
+	if currentStatus == nil || currentStatus.Status != api.JobStatusRunning {
 		return nil
 	}
 
@@ -236,6 +237,15 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
 	}
 	metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, approvalsNeeded)
+	if newProjectStatus.PRActivity != nil {
+		since := utils.NextApprovalsNeededSince(currentStatus.ApprovalsNeededSince, approvalsNeeded, metav1.Now())
+		newProjectStatus.ApprovalsNeededSince = since
+		if since != nil {
+			metricStore.SetApprovalsNeededSince(jobId.Namespace, jobId.Name, project, since.Time)
+		} else {
+			metricStore.ClearApprovalsNeededSince(jobId.Namespace, jobId.Name, project)
+		}
+	}
 	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
 
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
