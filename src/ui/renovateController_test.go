@@ -461,13 +461,13 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 // Additional mock types needed for authorization tests
 type mockScheduler struct{}
 
-func (m *mockScheduler) Start()                                                {}
-func (m *mockScheduler) Stop()                                                 {}
-func (m *mockScheduler) AddSchedule(expr string, name string, fn func()) error { return nil }
-func (m *mockScheduler) AddScheduleReplaceExisting(expr string, name string, fn func()) error {
+func (m *mockScheduler) Start()                                                          {}
+func (m *mockScheduler) Stop()                                                           {}
+func (m *mockScheduler) AddSchedule(expr string, namespace, job string, fn func()) error { return nil }
+func (m *mockScheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fn func()) error {
 	return nil
 }
-func (m *mockScheduler) RemoveSchedule(name string) {}
+func (m *mockScheduler) RemoveSchedule(namespace, job string) {}
 func (m *mockScheduler) GetNextRunOnSchedule(schedule string) time.Time {
 	return time.Now().Add(24 * time.Hour)
 }

@@ -7,6 +7,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 )
 
 type GitHubEvent struct {
@@ -35,14 +36,20 @@ type GitHubRepository struct {
 }
 
 func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "github"
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
 		return
 	}
 
 	var payload GitHubEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to decode github webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -50,6 +57,7 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	valid, reason := isValidGitHubEvent(&payload)
 	if !valid {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.logger.Info("ignoring github webhook event", "reason", reason)
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
 		return
@@ -60,8 +68,10 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	project := payload.Repository.FullName
 
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Info("webhook resolve failed", "project", project, "error", err)
 		s.handleResolverError(w, err)
 		return
@@ -69,7 +79,7 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Info("received github event", "repository", project, "action", payload.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
+		ctx,
 		project,
 		jobId,
 		&types.RenovateStatusUpdate{
@@ -78,9 +88,11 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
 }
 
