@@ -145,9 +145,13 @@ func isPublicPath(path string) bool {
 	if strings.HasPrefix(path, "/auth/") {
 		return true
 	}
-	// Static assets must be accessible without auth so the page can render
+	// Static assets must be accessible without auth so the page can render.
+	// /components/ is fetched via XHR (Babel), which cannot follow the
+	// cross-origin redirect to the identity provider — a 302 there breaks
+	// rendering entirely instead of triggering a login.
 	if strings.HasPrefix(path, "/js/") || strings.HasPrefix(path, "/css/") ||
-		strings.HasPrefix(path, "/assets/") || path == "/favicon.ico" {
+		strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/components/") ||
+		path == "/favicon.ico" {
 		return true
 	}
 	return false
