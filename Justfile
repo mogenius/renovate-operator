@@ -87,6 +87,10 @@ test-unit: generate
 test-helm:
     helm unittest ./charts/renovate-operator/ --file "unittests/**/*.yaml"
 
+# Execute the over-the-wire webhook signing-token integration test (see src/integration/README.md)
+test-integration:
+    cd src && go test -tags integration -count=1 -v ./integration/...
+
 # Execute golangci-lint
 golangci-lint: generate
     cd src && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run --config=.golangci.yml '--timeout=1h' ./...
