@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.14.1](https://github.com/mogenius/renovate-operator/compare/4.14.0...4.14.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* **helm:** trim service account name helper ([4f1c0a4](https://github.com/mogenius/renovate-operator/commit/4f1c0a4d2b44a8696708a09b307fc273e4d9c02b))
+* **operator:** propagate operator labels to pod templates so pods carry them for NetworkPolicies ([89bff26](https://github.com/mogenius/renovate-operator/commit/89bff26a2185f4b60e873a55b5287980f90379bf))
+* **ui:** serve /components/ assets without auth to prevent blank page ([699d755](https://github.com/mogenius/renovate-operator/commit/699d755f0bc5ed98ee516680a0ceb2e78bac362d))
+
 ## [4.14.0](https://github.com/mogenius/renovate-operator/compare/4.13.0...4.14.0) (2026-06-25)
 
 
