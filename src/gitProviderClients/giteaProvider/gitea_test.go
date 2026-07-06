@@ -1,41 +1,17 @@
-package forgejoProvider
+package giteaProvider
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"renovate-operator/gitProviderClients"
 	"testing"
+
+	"renovate-operator/gitProviderClients"
 )
 
-func TestListRepoWebhooks(t *testing.T) {
-	handler := http.NewServeMux()
-	handler.HandleFunc("/api/v1/repos/org/repo1/hooks", func(w http.ResponseWriter, r *http.Request) {
-		hooks := []forgejoHook{
-			{ID: 1, Config: forgejoHookConfig{URL: "https://example.com/webhook"}, Events: []string{"issues", "pull_request"}},
-		}
-		_ = json.NewEncoder(w).Encode(hooks)
-	})
-
-	srv := httptest.NewServer(handler)
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "test-token")
-	hooks, err := c.ListRepoWebhooks(context.Background(), "org/repo1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(hooks) != 1 {
-		t.Fatalf("expected 1 hook, got %d", len(hooks))
-	}
-	if hooks[0].URL != "https://example.com/webhook" {
-		t.Errorf("expected webhook URL, got %s", hooks[0].URL)
-	}
-	// a hook reporting exactly the base issue/PR flags is up to date
-	if !hooks[0].EventsUpToDate {
-		t.Error("expected hook with base issue/PR flags to report EventsUpToDate")
-	}
+func newTestClient(url string) *GiteaClient {
+	return &GiteaClient{Endpoint: url, Token: "test-token", HTTPClient: http.DefaultClient}
 }
 
 func TestCreateRepoWebhook(t *testing.T) {
@@ -45,10 +21,10 @@ func TestCreateRepoWebhook(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 
-		var payload forgejoHook
+		var payload giteaHook
 		_ = json.NewDecoder(r.Body).Decode(&payload)
-		if payload.Type != "forgejo" {
-			t.Errorf("expected hook type forgejo, got %s", payload.Type)
+		if payload.Type != "gitea" {
+			t.Errorf("expected hook type gitea, got %s", payload.Type)
 		}
 		// the provider applies its fixed subscription
 		if len(payload.Events) != 2 || payload.Events[0] != "issues_only" || payload.Events[1] != "pull_request_only" {
@@ -56,9 +32,6 @@ func TestCreateRepoWebhook(t *testing.T) {
 		}
 		if payload.Config.URL != "https://example.com/webhook" {
 			t.Errorf("expected webhook URL, got %s", payload.Config.URL)
-		}
-		if payload.Config.ContentType != "json" {
-			t.Errorf("expected content type json, got %s", payload.Config.ContentType)
 		}
 		if payload.Config.AuthorizationHeader != "Bearer secret" {
 			t.Errorf("expected authorization header, got %s", payload.Config.AuthorizationHeader)
@@ -72,8 +45,7 @@ func TestCreateRepoWebhook(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "test-token")
-	hook, err := c.CreateRepoWebhook(context.Background(), "org/repo1", gitProviderClients.CreateWebhookOptions{
+	hook, err := newTestClient(srv.URL).CreateRepoWebhook(context.Background(), "org/repo1", gitProviderClients.CreateWebhookOptions{
 		URL:       "https://example.com/webhook",
 		AuthToken: "secret",
 		Active:    true,
@@ -83,6 +55,27 @@ func TestCreateRepoWebhook(t *testing.T) {
 	}
 	if hook.ID != "42" {
 		t.Errorf("expected hook ID 42, got %s", hook.ID)
+	}
+}
+
+func TestListRepoWebhooks(t *testing.T) {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/api/v1/repos/org/repo1/hooks", func(w http.ResponseWriter, r *http.Request) {
+		hooks := []giteaHook{
+			{ID: 1, Config: giteaHookConfig{URL: "https://example.com/webhook"}},
+		}
+		_ = json.NewEncoder(w).Encode(hooks)
+	})
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	hooks, err := newTestClient(srv.URL).ListRepoWebhooks(context.Background(), "org/repo1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(hooks) != 1 || hooks[0].URL != "https://example.com/webhook" {
+		t.Fatalf("unexpected hooks: %+v", hooks)
 	}
 }
 
@@ -105,14 +98,13 @@ func TestUpdateRepoWebhook(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(forgejoHook{ID: 42, Config: forgejoHookConfig{URL: "https://example.com/webhook"}, Active: true})
+		_ = json.NewEncoder(w).Encode(giteaHook{ID: 42, Config: giteaHookConfig{URL: "https://example.com/webhook"}, Active: true})
 	})
 
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "test-token")
-	hook, err := c.UpdateRepoWebhook(context.Background(), "org/repo1", "42", gitProviderClients.CreateWebhookOptions{
+	hook, err := newTestClient(srv.URL).UpdateRepoWebhook(context.Background(), "org/repo1", "42", gitProviderClients.CreateWebhookOptions{
 		URL:    "https://example.com/webhook",
 		Active: true,
 	})
@@ -136,28 +128,7 @@ func TestDeleteRepoWebhook(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "test-token")
-	err := c.DeleteRepoWebhook(context.Background(), "org/repo1", "42")
-	if err != nil {
+	if err := newTestClient(srv.URL).DeleteRepoWebhook(context.Background(), "org/repo1", "42"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestDeleteRepoWebhook_NotFoundIsSuccess(t *testing.T) {
-	handler := http.NewServeMux()
-	handler.HandleFunc("/api/v1/repos/org/repo1/hooks/42", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			t.Errorf("expected DELETE, got %s", r.Method)
-		}
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"message":"The target couldn't be found."}`))
-	})
-
-	srv := httptest.NewServer(handler)
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "test-token")
-	if err := c.DeleteRepoWebhook(context.Background(), "org/repo1", "42"); err != nil {
-		t.Fatalf("expected nil error for already-deleted webhook, got: %v", err)
 	}
 }

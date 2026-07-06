@@ -24,7 +24,7 @@ src/
 ├── health/                # Thread-safe health state tracking
 ├── internal/
 │   ├── crdManager/        # CRUD on RenovateJob CRDs and Kubernetes Jobs
-│   ├── forgejo/           # Forgejo-specific webhook sync
+│   ├── webhookSync/       # Provider-agnostic repo webhook sync (via GitProviderClient)
 │   ├── parser/            # Extracts discovered repos and dependency issues from Renovate logs
 │   ├── renovate/          # Core engine: discovery, executor, job definitions
 │   ├── types/             # Shared internal types
@@ -130,7 +130,8 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 
 - **Leader election** — only the leader runs the executor and scheduler to prevent duplicate job launches
 - **Platform credentials** live in Kubernetes Secrets, referenced from the CRD — never hardcoded
-- **Webhook servers** are platform-specific (`/webhook/v1/gitlab`, `/github`, `/forgejo`) but trigger the same internal scheduling interface
+- **Webhook servers** are platform-specific (`/webhook/v1/gitlab`, `/github`, `/forgejo`, `/gitea`, `/bitbucket`) but trigger the same internal scheduling interface
+- **Webhook sync is provider-agnostic and stateless** — after each discovery run, `crdManager.SyncWebhooks` ensures the operator's webhook exists on every discovered project (config: `spec.webhook.sync`) and removes it from the repos `ReconcileProjects` reported as removed. Hooks are identified by their delivery URL — no state is stored. The `webhook-cleanup` finalizer on the RenovateJob removes all hooks on deletion (best effort, never blocks deletion). The sync logic lives in `internal/webhookSync.Sync`, all platform access goes through `GitProviderClient` (implemented for all five providers). Sync uses the job's Renovate token by default; an optional dedicated webhook-management token can be set via `spec.webhook.sync.secretRef` (factory method `NewClientWithTokenRef`). Sync failures are logged, never block discovery (fail open)
 - **Discovery uses Renovate itself** — a discovery Job runs Renovate with `autodiscover: true` and its JSON logs are parsed to extract repositories
 - **Executor uses two passes per tick** — Pass 1 (`countRunningProjects`) tallies how many projects are still in `Running` status across all RenovateJobs (purely in-memory, no API calls); Pass 2 (`dispatchScheduled`) collects all Scheduled projects into a flat sorted list and dispatches new k8s Jobs up to the global and per-job parallelism limits. Running project status transitions are handled reactively by the `job_controller` (`ProcessProjectJobResult`) when k8s Jobs complete, not by the executor tick.
 - **Global parallelism limit** — `GLOBAL_PARALLELISM_LIMIT` env var (Helm: `config.globalParallelismLimit`, default `0` = unlimited) caps total concurrent executor jobs across all RenovateJobs. Per-job `Spec.Parallelism` is still enforced as an additional gate.

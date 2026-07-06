@@ -2,6 +2,8 @@
 
 The GitHub webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on GitHub pull requests or issues. This is particularly useful for responding to Renovate's "rebase" checkbox interactions.
 
+Webhooks can be added to each repository automatically by the operator — see [Automatic Webhook Sync](./sync.md). The rest of this page covers the GitHub-specific receiver and manual setup.
+
 ## Configuration
 
 Configure the GitHub webhook in your RenovateJob:

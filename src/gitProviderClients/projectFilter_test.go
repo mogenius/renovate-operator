@@ -102,19 +102,19 @@ func (m *mockGitProviderClient) GetRepositoryInfo(ctx context.Context, project s
 	return RepositoryInfo{}, nil
 }
 
-func (c *mockGitProviderClient) SearchReposByTopic(ctx context.Context, topic string) ([]Repository, error) {
-	return nil, fmt.Errorf("searching repositories by topic is not supported")
-}
-
-func (c *mockGitProviderClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]Webhook, error) {
+func (c *mockGitProviderClient) ListRepoWebhooks(ctx context.Context, project string) ([]Webhook, error) {
 	return nil, fmt.Errorf("listing webhooks is not supported")
 }
 
-func (c *mockGitProviderClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error) {
+func (c *mockGitProviderClient) CreateRepoWebhook(ctx context.Context, project string, opts CreateWebhookOptions) (*Webhook, error) {
 	return nil, fmt.Errorf("creating webhooks is not supported")
 }
 
-func (c *mockGitProviderClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
+func (c *mockGitProviderClient) UpdateRepoWebhook(ctx context.Context, project string, hookID string, opts CreateWebhookOptions) (*Webhook, error) {
+	return nil, nil
+}
+
+func (c *mockGitProviderClient) DeleteRepoWebhook(ctx context.Context, project string, hookID string) error {
 	return fmt.Errorf("deleting webhooks is not supported")
 }
 

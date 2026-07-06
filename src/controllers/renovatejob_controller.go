@@ -7,7 +7,6 @@ import (
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
-	"renovate-operator/internal/webhookSync"
 	"renovate-operator/scheduler"
 	"strings"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	crdManager "renovate-operator/internal/crdManager"
@@ -29,17 +29,20 @@ import (
 
 var reconcilerTracer = otel.Tracer("renovate-operator/reconciler")
 
+// webhookCleanupFinalizer marks RenovateJobs whose synced webhooks must be
+// removed from the Git platform before the resource is deleted.
+const webhookCleanupFinalizer = "renovate-operator.mogenius.com/webhook-cleanup"
+
 /*
 Reconciler for RenovateJob resources
 Watching for create/update/delete events and managing the schedules accordingly
 */
 type RenovateJobReconciler struct {
-	Discovery   renovate.DiscoveryAgent
-	Manager     crdManager.RenovateJobManager
-	Scheduler   scheduler.Scheduler
-	K8sClient   client.Client
-	WebhookSync webhookSync.WebhookSyncManager
-	GithubApp   github.GithubAppToken
+	Discovery renovate.DiscoveryAgent
+	Manager   crdManager.RenovateJobManager
+	Scheduler scheduler.Scheduler
+	K8sClient client.Client
+	GithubApp github.GithubAppToken
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -56,9 +59,12 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
 
 	if err == nil {
+		if !renovateJob.DeletionTimestamp.IsZero() {
+			return r.handleDeletion(ctx, logger, renovateJob)
+		}
 		// renovatejob object read without problem -> create the schedule
+		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
 		r.resetOrphanedRunning(ctx, renovateJob)
-		r.WebhookSync.EnsureSyncer(ctx, logger, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")
@@ -70,7 +76,6 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// the github app token secret is owned by the RenovateJob and cleaned up by Kubernetes GC
 		name := req.Name + "-" + req.Namespace
 		r.Scheduler.RemoveSchedule(name)
-		r.WebhookSync.RemoveSyncer(name)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
 		span.RecordError(err)
@@ -78,6 +83,40 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Error(err, "Failed to get RenovateJob")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
+}
+
+func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+	webhook := renovateJob.Spec.Webhook
+	syncEnabled := webhook != nil && webhook.Enabled && webhook.Sync != nil && webhook.Sync.Enabled
+
+	if syncEnabled == controllerutil.ContainsFinalizer(renovateJob, webhookCleanupFinalizer) {
+		return
+	}
+	if syncEnabled {
+		controllerutil.AddFinalizer(renovateJob, webhookCleanupFinalizer)
+	} else {
+		controllerutil.RemoveFinalizer(renovateJob, webhookCleanupFinalizer)
+	}
+	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
+		logger.Error(err, "failed to update webhook cleanup finalizer")
+	}
+}
+
+func (r *RenovateJobReconciler) handleDeletion(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(renovateJob, webhookCleanupFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+	if err := r.Manager.CleanupWebhooks(ctx, jobId); err != nil {
+		logger.Error(err, "failed to clean up webhooks during deletion, hooks may remain on the platform")
+	}
+
+	controllerutil.RemoveFinalizer(renovateJob, webhookCleanupFinalizer)
+	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconciler *RenovateJobReconciler) {

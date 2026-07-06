@@ -1,12 +1,12 @@
-# Forgejo Webhook Integration
+# Gitea Webhook Integration
 
-The Forgejo webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on Forgejo pull requests or issues. This is particularly useful for responding to Renovate's "rebase" checkbox interactions and Dependency Dashboard updates.
+The Gitea webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on Gitea pull requests or issues. This is particularly useful for responding to Renovate's "rebase" checkbox interactions and Dependency Dashboard updates.
 
-Webhooks can be added to each repository automatically by the operator — see [Automatic Webhook Sync](./sync.md). The rest of this page covers the Forgejo-specific receiver and manual setup.
+Webhooks can be added to each repository automatically by the operator — see [Automatic Webhook Sync](./sync.md). The rest of this page covers the Gitea-specific receiver and manual setup.
 
 ## Configuration
 
-Configure the Forgejo webhook in your RenovateJob:
+Configure the Gitea webhook in your RenovateJob:
 
 ```yaml
 apiVersion: renovate-operator.mogenius.com/v1alpha1
@@ -25,11 +25,11 @@ spec:
         key: token
 ```
 
-### Forgejo webhook setup
+### Gitea webhook setup
 
-1. Go to your Forgejo repository settings
-2. Navigate to **Webhooks** → **Add webhook** → **Forgejo**
-3. Set the **Target URL** to: `https://your-webhook-host/webhook/v1/forgejo`
+1. Go to your Gitea repository settings
+2. Navigate to **Webhooks** → **Add Webhook** → **Gitea**
+3. Set the **Target URL** to: `https://your-webhook-host/webhook/v1/gitea`
 4. Set **Content type** to `application/json`
 5. If using authentication, set **Authorization Header** to `Bearer YOUR_TOKEN_HERE`
 6. Select individual events:
@@ -40,7 +40,7 @@ spec:
 The operator automatically finds the RenovateJob that owns the repository by matching the incoming repository name against discovered projects. If you have multiple RenovateJobs and want to target a specific one, append `namespace` and/or `job` as query parameters:
 
 ```
-https://your-webhook-host/webhook/v1/forgejo?namespace=renovate-operator&job=my-renovate-job
+https://your-webhook-host/webhook/v1/gitea?namespace=renovate-operator&job=my-renovate-job
 ```
 
 ### Query parameters

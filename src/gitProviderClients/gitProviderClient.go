@@ -9,10 +9,10 @@ type GitProviderClient interface {
 	// pending-deletion filtering do not each incur their own request.
 	GetRepositoryInfo(ctx context.Context, project string) (RepositoryInfo, error)
 
-	SearchReposByTopic(ctx context.Context, topic string) ([]Repository, error)
-	ListRepoWebhooks(ctx context.Context, owner, repo string) ([]Webhook, error)
-	CreateRepoWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*Webhook, error)
-	DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error
+	ListRepoWebhooks(ctx context.Context, project string) ([]Webhook, error)
+	CreateRepoWebhook(ctx context.Context, project string, opts CreateWebhookOptions) (*Webhook, error)
+	UpdateRepoWebhook(ctx context.Context, project string, hookID string, opts CreateWebhookOptions) (*Webhook, error)
+	DeleteRepoWebhook(ctx context.Context, project string, hookID string) error
 }
 
 // RepositoryInfo captures repo attributes used to decide whether to skip a
@@ -42,23 +42,20 @@ type RepositoryPermissions struct {
 	Pull  bool `json:"pull"`
 }
 
+// Webhook is the provider-agnostic view of a repository webhook.
 type Webhook struct {
-	ID     int64         `json:"id"`
-	Type   string        `json:"type"`
-	Config WebhookConfig `json:"config"`
-	Events []string      `json:"events"`
-	Active bool          `json:"active"`
+	// ID of the hook in the platform's identifier format (numeric for
+	// Forgejo/Gitea/GitHub/GitLab, a UUID for Bitbucket).
+	ID             string
+	URL            string
+	Active         bool
+	EventsUpToDate bool
 }
 
-type WebhookConfig struct {
-	URL                 string `json:"url"`
-	ContentType         string `json:"content_type"`
-	AuthorizationHeader string `json:"authorization_header,omitempty"`
-}
-
+// CreateWebhookOptions describes a webhook to create in provider-agnostic
+// terms.
 type CreateWebhookOptions struct {
-	Type   string        `json:"type"`
-	Config WebhookConfig `json:"config"`
-	Events []string      `json:"events"`
-	Active bool          `json:"active"`
+	URL       string
+	AuthToken string
+	Active    bool
 }

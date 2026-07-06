@@ -4242,43 +4242,28 @@ spec:
                     type: object
                   enabled:
                     type: boolean
-                  forgejo:
-                    description: Forgejo-specific webhook configuration
+                  sync:
+                    description: |-
+                      configuration for syncing webhooks onto the repositories discovered for this
+                      job.
                     properties:
-                      sync:
-                        description: configuration for syncing webhooks to Forgejo
-                          repos by topic
+                      enabled:
+                        description: Flag to enable the automatic repo webhook sync
+                        type: boolean
+                      secretRef:
+                        description: |-
+                          Optional reference to a secret key holding the platform token used for
+                          webhook management. When not set, the job's platform token
+                          (spec.secretRef or spec.githubAppReference) is used. If key is empty,
+                          the common Renovate token key names are tried.
                         properties:
-                          authTokenSecretRef:
-                            description: reference to a secret and key
-                            properties:
-                              key:
-                                type: string
-                              name:
-                                type: string
-                            type: object
-                          enabled:
-                            type: boolean
-                          events:
-                            items:
-                              type: string
-                            type: array
-                          tokenSecretRef:
-                            description: reference to a secret and key
-                            properties:
-                              key:
-                                type: string
-                              name:
-                                type: string
-                            type: object
-                          topic:
+                          key:
                             type: string
-                          webhookURL:
+                          name:
                             type: string
-                        required:
-                        - enabled
-                        - webhookURL
                         type: object
+                    required:
+                    - enabled
                     type: object
                 required:
                 - enabled

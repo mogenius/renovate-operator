@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"renovate-operator/gitProviderClients"
 	"renovate-operator/internal/telemetry"
 	"strconv"
@@ -66,7 +65,11 @@ func (c *ForgejoClient) GetRepositoryInfo(ctx context.Context, project string) (
 }
 
 func (c *ForgejoClient) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	reqURL := c.Endpoint + path
+	//trim /api/v1 if it is included in the endpoint, to avoid double /api/v1 in the URL
+	endpoint := strings.TrimSuffix(c.Endpoint, "/")
+	endpoint = strings.TrimSuffix(endpoint, "/api/v1")
+
+	reqURL := endpoint + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -78,56 +81,71 @@ func (c *ForgejoClient) doRequest(ctx context.Context, method, path string, body
 	return c.HTTPClient.Do(req)
 }
 
-func (c *ForgejoClient) SearchReposByTopic(ctx context.Context, topic string) ([]gitProviderClients.Repository, error) {
-	var allRepos []gitProviderClients.Repository
-	page := 1
-	limit := 50
-
-	for {
-		params := url.Values{}
-		params.Set("topic", "true")
-		params.Set("q", topic)
-		params.Set("limit", strconv.Itoa(limit))
-		params.Set("page", strconv.Itoa(page))
-
-		resp, err := c.doRequest(ctx, http.MethodGet, "/api/v1/repos/search?"+params.Encode(), nil)
-		if err != nil {
-			return nil, fmt.Errorf("searching repos by topic: %w", err)
-		}
-
-		var result struct {
-			Data []gitProviderClients.Repository `json:"data"`
-		}
-		if err := decodeResponse(resp, &result); err != nil {
-			return nil, fmt.Errorf("searching repos by topic: %w", err)
-		}
-
-		if len(result.Data) == 0 {
-			break
-		}
-		allRepos = append(allRepos, result.Data...)
-		if len(result.Data) < limit {
-			break
-		}
-		page++
-	}
-
-	return allRepos, nil
+// wire format of the Forgejo/Gitea hooks API
+type forgejoHook struct {
+	ID int64 `json:"id"`
+	// Type is required on create; edits leave it empty (it cannot change).
+	Type   string            `json:"type,omitempty"`
+	Config forgejoHookConfig `json:"config"`
+	Events []string          `json:"events"`
+	Active bool              `json:"active"`
 }
 
-func (c *ForgejoClient) ListRepoWebhooks(ctx context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
+type forgejoHookConfig struct {
+	URL                 string `json:"url"`
+	ContentType         string `json:"content_type"`
+	AuthorizationHeader string `json:"authorization_header,omitempty"`
+}
+
+// forgejoWebhookEvents is the fixed subscription for operator-managed hooks:
+// just the base issue and pull request events. The aggregate names "issues"/
+// "pull_request" would enable every sub-event (assign, label, milestone,
+// comment, review, sync), which the operator never needs.
+var forgejoWebhookEvents = []string{"issues_only", "pull_request_only"}
+
+// forgejoReportedEvents is how the hooks API reports that subscription back:
+// the enabled base flags are listed as "issues"/"pull_request".
+var forgejoReportedEvents = []string{"issues", "pull_request"}
+
+func (h forgejoHook) toWebhook() gitProviderClients.Webhook {
+	return gitProviderClients.Webhook{
+		ID:             strconv.FormatInt(h.ID, 10),
+		URL:            h.Config.URL,
+		Active:         h.Active,
+		EventsUpToDate: eventsEqual(h.Events, forgejoReportedEvents),
+	}
+}
+
+// eventsEqual compares two event name lists as sets.
+func eventsEqual(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	set := make(map[string]struct{}, len(expected))
+	for _, event := range expected {
+		set[event] = struct{}{}
+	}
+	for _, event := range actual {
+		if _, ok := set[event]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *ForgejoClient) ListRepoWebhooks(ctx context.Context, project string) ([]gitProviderClients.Webhook, error) {
 	var allHooks []gitProviderClients.Webhook
 	page := 1
 	limit := 50
 
 	for {
-		path := fmt.Sprintf("/api/v1/repos/%s/%s/hooks?limit=%d&page=%d", owner, repo, limit, page)
+		path := fmt.Sprintf("/api/v1/repos/%s/hooks?limit=%d&page=%d", project, limit, page)
 		resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("listing webhooks: %w", err)
 		}
 
-		var hooks []gitProviderClients.Webhook
+		var hooks []forgejoHook
 		if err := decodeResponse(resp, &hooks); err != nil {
 			return nil, fmt.Errorf("listing webhooks: %w", err)
 		}
@@ -135,7 +153,9 @@ func (c *ForgejoClient) ListRepoWebhooks(ctx context.Context, owner, repo string
 		if len(hooks) == 0 {
 			break
 		}
-		allHooks = append(allHooks, hooks...)
+		for _, hook := range hooks {
+			allHooks = append(allHooks, hook.toWebhook())
+		}
 		if len(hooks) < limit {
 			break
 		}
@@ -145,27 +165,73 @@ func (c *ForgejoClient) ListRepoWebhooks(ctx context.Context, owner, repo string
 	return allHooks, nil
 }
 
-func (c *ForgejoClient) CreateRepoWebhook(ctx context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
-	body, err := json.Marshal(opts)
+func (c *ForgejoClient) CreateRepoWebhook(ctx context.Context, project string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	payload := forgejoHook{
+		Type: "forgejo",
+		Config: forgejoHookConfig{
+			URL:         opts.URL,
+			ContentType: "json",
+		},
+		Events: forgejoWebhookEvents,
+		Active: opts.Active,
+	}
+	if opts.AuthToken != "" {
+		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+	}
+
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling webhook options: %w", err)
 	}
 
-	path := fmt.Sprintf("/api/v1/repos/%s/%s/hooks", owner, repo)
+	path := fmt.Sprintf("/api/v1/repos/%s/hooks", project)
 	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating webhook: %w", err)
 	}
 
-	var hook gitProviderClients.Webhook
+	var hook forgejoHook
 	if err := decodeResponse(resp, &hook); err != nil {
 		return nil, fmt.Errorf("creating webhook: %w", err)
 	}
-	return &hook, nil
+	result := hook.toWebhook()
+	return &result, nil
 }
 
-func (c *ForgejoClient) DeleteRepoWebhook(ctx context.Context, owner, repo string, hookID int64) error {
-	path := fmt.Sprintf("/api/v1/repos/%s/%s/hooks/%d", owner, repo, hookID)
+func (c *ForgejoClient) UpdateRepoWebhook(ctx context.Context, project string, hookID string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	payload := forgejoHook{
+		Config: forgejoHookConfig{
+			URL:         opts.URL,
+			ContentType: "json",
+		},
+		Events: forgejoWebhookEvents,
+		Active: opts.Active,
+	}
+	if opts.AuthToken != "" {
+		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling webhook options: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v1/repos/%s/hooks/%s", project, hookID)
+	resp, err := c.doRequest(ctx, http.MethodPatch, path, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("updating webhook: %w", err)
+	}
+
+	var hook forgejoHook
+	if err := decodeResponse(resp, &hook); err != nil {
+		return nil, fmt.Errorf("updating webhook: %w", err)
+	}
+	result := hook.toWebhook()
+	return &result, nil
+}
+
+func (c *ForgejoClient) DeleteRepoWebhook(ctx context.Context, project string, hookID string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/hooks/%s", project, hookID)
 	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("deleting webhook: %w", err)

@@ -104,6 +104,11 @@ spec:
               value: {{ .Values.webhook.port | quote }}
             - name: WEBHOOK_SERVER_ENABLED
               value: "true"
+            {{- $webhookBaseUrl := include "renovate-operator.webhookBaseUrl" . }}
+            {{- if $webhookBaseUrl }}
+            - name: WEBHOOK_BASE_URL
+              value: {{ $webhookBaseUrl | quote }}
+            {{- end }}
             {{- end }}
             {{- if gt (int .Values.replicaCount) 1 }}
             - name: LEADER_ELECTION_ID

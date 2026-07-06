@@ -34,10 +34,17 @@ func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace str
 	}
 	return &api.RenovateJob{}, nil
 }
-func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error {
+func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
 	if f.reconcileProjectsFn != nil {
-		return f.reconcileProjectsFn(ctx, job, projects)
+		return nil, f.reconcileProjectsFn(ctx, job, projects)
 	}
+	return nil, nil
+}
+func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+	return nil
+}
+
+func (f *fakeJobManager) CleanupWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
 func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {

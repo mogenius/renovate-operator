@@ -77,11 +77,19 @@ func (m *mockRenovateJobManager) GetRenovateJob(ctx context.Context, name, names
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) error {
-	if m.reconcileProjectsFunc != nil {
-		return m.reconcileProjectsFunc(ctx, jobId, projects)
-	}
+func (m *mockRenovateJobManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {
 	return nil
+}
+
+func (m *mockRenovateJobManager) CleanupWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier) error {
+	return nil
+}
+
+func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) ([]string, error) {
+	if m.reconcileProjectsFunc != nil {
+		return nil, m.reconcileProjectsFunc(ctx, jobId, projects)
+	}
+	return nil, nil
 }
 
 // Implement remaining interface methods as no-ops
