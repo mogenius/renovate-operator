@@ -2,6 +2,8 @@
 
 The GitLab webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on GitLab merge requests or issues. This is particularly useful for responding to Renovate's "rebase" checkbox interactions.
 
+Webhooks can be added to each repository automatically by the operator — see [Automatic Webhook Sync](./sync.md). The rest of this page covers the GitLab-specific receiver and manual setup.
+
 ## Configuration
 
 Configure the GitLab webhook in your RenovateJob:

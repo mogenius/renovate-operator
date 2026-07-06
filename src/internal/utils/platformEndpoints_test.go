@@ -83,3 +83,36 @@ func TestGetPlatformAndEndpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookEndpointPath(t *testing.T) {
+	tests := []struct {
+		platform string
+		path     string
+		wantErr  bool
+	}{
+		{platform: "github", path: "/webhook/v1/github"},
+		{platform: "gitlab", path: "/webhook/v1/gitlab"},
+		{platform: "forgejo", path: "/webhook/v1/forgejo"},
+		{platform: "gitea", path: "/webhook/v1/gitea"},
+		{platform: "bitbucket", wantErr: true},
+		{platform: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			path, err := WebhookEndpointPath(tt.platform)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for platform %q", tt.platform)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if path != tt.path {
+				t.Errorf("expected %s, got %s", tt.path, path)
+			}
+		})
+	}
+}

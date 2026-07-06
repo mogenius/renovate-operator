@@ -1,216 +1,129 @@
+/*
+Package webhookSync keeps repository webhooks on the Git platform in sync with
+the projects of a RenovateJob. It is provider-agnostic: all platform access
+goes through the gitProviderClients.GitProviderClient interface.
+
+Sync is stateless — the operator's hooks are identified by their delivery URL
+(which carries the job's namespace/name), so no bookkeeping is persisted
+between runs. The platform is the source of truth.
+*/
 package webhookSync
 
 import (
 	"context"
-	"fmt"
-	"maps"
-	"renovate-operator/gitProviderClients"
-	"strings"
 	"sync"
+
+	"renovate-operator/gitProviderClients"
 
 	"github.com/go-logr/logr"
 )
 
-// WebhookSyncer manages webhook lifecycle on Forgejo repos tagged with a specific topic.
-type WebhookSyncer struct {
-	client       gitProviderClients.GitProviderClient
-	webhookURL   string
-	authToken    string
-	events       []string
-	topic        string
-	logger       logr.Logger
-	managedRepos map[string]int64 // repo fullName -> webhook ID
-	mu           sync.Mutex
+// maxConcurrentRequests caps parallel platform API calls during a sync cycle.
+const maxConcurrentRequests = 10
+
+// Options configures a webhook sync run. The events a hook subscribes to are
+// not configurable — each provider applies its own fixed, minimal set.
+type Options struct {
+	// WebhookURL is the full delivery URL (including namespace/job query
+	// parameters). It identifies hooks managed by the operator.
+	WebhookURL string
+	// AuthToken is optional; providers attach it in their platform-specific way.
+	AuthToken string
 }
 
-// NewWebhookSyncer creates a new WebhookSyncer.
-func NewWebhookSyncer(client gitProviderClients.GitProviderClient, webhookURL, authToken, topic string, events []string, logger logr.Logger) *WebhookSyncer {
-	if len(events) == 0 {
-		events = []string{"issues", "pull_request"}
-	}
-	return &WebhookSyncer{
-		client:       client,
-		webhookURL:   webhookURL,
-		authToken:    authToken,
-		events:       events,
-		topic:        topic,
-		logger:       logger,
-		managedRepos: make(map[string]int64),
-	}
-}
+// Sync ensures the operator's webhook exists on every project in desired and
+// removes the operator's webhook from the removed projects. Failures are
+// logged and skipped (fail open): a failed ensure is corrected on the next
+// cycle, a removal that fails is not retried — the orphaned hook is logged and
+// must be cleaned up manually (its deliveries are rejected by the operator).
+func Sync(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, opts Options, desired []string, removed []string) {
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, maxConcurrentRequests)
 
-// ManagedRepos returns a copy of the current managed repos state.
-func (s *WebhookSyncer) ManagedRepos() map[string]int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make(map[string]int64, len(s.managedRepos))
-	maps.Copy(out, s.managedRepos)
-	return out
-}
-
-// SetManagedRepos replaces the managed repos state (used to restore persisted state).
-func (s *WebhookSyncer) SetManagedRepos(m map[string]int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.managedRepos = make(map[string]int64, len(m))
-	maps.Copy(s.managedRepos, m)
-}
-
-// RunOnce executes one full sync cycle: ensures webhooks exist on eligible repos and removes them from opted-out repos.
-// When projects is non-empty those repos are used directly; otherwise repos are discovered by topic. This lets jobs
-// that autodiscover repositories without a topic still sync webhooks by passing their discovered project list.
-// It returns a consistent snapshot of the managed repos state as it was at the end of the sync cycle.
-func (s *WebhookSyncer) RunOnce(ctx context.Context, projects ...string) (map[string]int64, error) {
-	var repos []gitProviderClients.Repository
-
-	if len(projects) > 0 {
-		// Use the provided project list. Admin permission isn't known here, so it's
-		// assumed; repos where we actually lack admin surface as a 403 from the webhook
-		// API in the ensure step below and are skipped there.
-		repos = make([]gitProviderClients.Repository, 0, len(projects))
-		for _, fullName := range projects {
-			repos = append(repos, gitProviderClients.Repository{
-				FullName:    fullName,
-				Permissions: &gitProviderClients.RepositoryPermissions{Admin: true},
-			})
-		}
-	} else if s.topic != "" {
-		// Fall back to topic-based discovery (no lock needed — pure API call).
-		var err error
-		repos, err = s.client.SearchReposByTopic(ctx, s.topic)
-		if err != nil {
-			return nil, fmt.Errorf("searching repos by topic %q: %w", s.topic, err)
-		}
-	} else {
-		s.logger.Info("no projects provided and no topic configured, skipping webhook sync")
-		return s.snapshotManagedRepos(), nil
+	run := func(_ string, fn func()) {
+		wg.Add(1)
+		semaphore <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+			fn()
+		}()
 	}
 
-	// Step 2: Partition by admin permission
-	topicRepos := make(map[string]bool, len(repos))
-	adminRepos := make(map[string]gitProviderClients.Repository)
-	for _, repo := range repos {
-		topicRepos[repo.FullName] = true
-		if repo.Permissions != nil && repo.Permissions.Admin {
-			adminRepos[repo.FullName] = repo
-		} else {
-			s.logger.Info("skipping repo: no admin permission to manage webhooks", "repo", repo.FullName)
-		}
-	}
-
-	// Step 3: Ensure webhooks on admin repos
-	for fullName := range adminRepos {
-		parts := strings.SplitN(fullName, "/", 2)
-		if len(parts) != 2 {
-			s.logger.Error(fmt.Errorf("invalid repo full name: %s", fullName), "skipping repo")
-			continue
-		}
-		owner, repoName := parts[0], parts[1]
-
-		if err := s.ensureWebhook(ctx, owner, repoName, fullName); err != nil {
-			// Without an admin token the webhook API returns 403; that's expected when
-			// syncing an autodiscovered project list, so log it as info rather than error.
-			if strings.Contains(err.Error(), "403") {
-				s.logger.Info("skipping repo: no admin permission to manage webhooks", "repo", fullName)
-			} else {
-				s.logger.Error(err, "failed to ensure webhook", "repo", fullName)
+	for _, project := range desired {
+		run(project, func() {
+			if err := ensureWebhook(ctx, logger, client, opts, project); err != nil {
+				logger.Error(err, "failed to ensure webhook", "repo", project)
 			}
-			continue
-		}
+		})
 	}
 
-	// Step 4: Remove webhooks from repos that are no longer eligible.
-	// Snapshot the current managed repos so we can iterate without holding the lock during API calls.
-	s.mu.Lock()
-	pending := make(map[string]int64, len(s.managedRepos))
-	maps.Copy(pending, s.managedRepos)
-	s.mu.Unlock()
-
-	for fullName, hookID := range pending {
-		if _, stillActive := adminRepos[fullName]; stillActive {
-			continue
-		}
-
-		// Repo still has the topic but we lost admin access — we can't delete the webhook
-		if topicRepos[fullName] {
-			s.logger.Error(fmt.Errorf("lost admin permission on repo that still has topic %q", s.topic),
-				"cannot remove webhook: admin permission required, please remove the webhook manually",
-				"repo", fullName, "hookID", hookID)
-			s.mu.Lock()
-			delete(s.managedRepos, fullName)
-			s.mu.Unlock()
-			continue
-		}
-
-		parts := strings.SplitN(fullName, "/", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		owner, repoName := parts[0], parts[1]
-
-		if err := s.client.DeleteRepoWebhook(ctx, owner, repoName, hookID); err != nil {
-			s.logger.Error(err, "failed to remove webhook", "repo", fullName)
-			continue
-		}
-
-		s.logger.Info("removed webhook from repo (no longer matches topic)", "repo", fullName)
-		s.mu.Lock()
-		delete(s.managedRepos, fullName)
-		s.mu.Unlock()
+	for _, project := range removed {
+		run(project, func() {
+			removeWebhook(ctx, logger, client, opts.WebhookURL, project)
+		})
 	}
 
-	return s.snapshotManagedRepos(), nil
+	wg.Wait()
 }
 
-// snapshotManagedRepos returns a consistent copy of the managed repos state.
-func (s *WebhookSyncer) snapshotManagedRepos() map[string]int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	snapshot := make(map[string]int64, len(s.managedRepos))
-	maps.Copy(snapshot, s.managedRepos)
-	return snapshot
-}
+// ensureWebhook makes sure the operator's hook exists on the project with the
+// desired configuration. An existing hook whose event subscription or active
+// state drifted is updated in place. The auth token is write-only on every
+// platform and cannot be drift-checked.
+func ensureWebhook(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, opts Options, project string) error {
+	desired := gitProviderClients.CreateWebhookOptions{
+		URL:       opts.WebhookURL,
+		AuthToken: opts.AuthToken,
+		Active:    true,
+	}
 
-func (s *WebhookSyncer) ensureWebhook(ctx context.Context, owner, repo, fullName string) error {
-	// API calls without holding the lock
-	hooks, err := s.client.ListRepoWebhooks(ctx, owner, repo)
+	hooks, err := client.ListRepoWebhooks(ctx, project)
 	if err != nil {
-		return fmt.Errorf("listing webhooks: %w", err)
+		return err
 	}
-
-	// Check if our webhook already exists
 	for _, hook := range hooks {
-		if hook.Config.URL == s.webhookURL {
-			s.mu.Lock()
-			s.managedRepos[fullName] = hook.ID
-			s.mu.Unlock()
+		if hook.URL != opts.WebhookURL {
+			continue
+		}
+		if hook.Active && hook.EventsUpToDate {
 			return nil
 		}
+		if _, err := client.UpdateRepoWebhook(ctx, project, hook.ID, desired); err != nil {
+			return err
+		}
+		logger.Info("updated webhook whose configuration drifted", "repo", project, "hookID", hook.ID)
+		return nil
 	}
 
-	// Create the webhook
-	cfg := gitProviderClients.WebhookConfig{
-		URL:         s.webhookURL,
-		ContentType: "json",
-	}
-	if s.authToken != "" {
-		cfg.AuthorizationHeader = "Bearer " + s.authToken
-	}
-	opts := gitProviderClients.CreateWebhookOptions{
-		Type:   "forgejo",
-		Config: cfg,
-		Events: s.events,
-		Active: true,
-	}
-
-	hook, err := s.client.CreateRepoWebhook(ctx, owner, repo, opts)
+	hook, err := client.CreateRepoWebhook(ctx, project, desired)
 	if err != nil {
-		return fmt.Errorf("creating webhook: %w", err)
+		return err
+	}
+	logger.Info("created webhook on repo", "repo", project, "hookID", hook.ID)
+	return nil
+}
+
+// removeWebhook deletes the operator's hook (identified by its delivery URL)
+// from the project, if present.
+func removeWebhook(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, webhookURL, project string) {
+	hooks, err := client.ListRepoWebhooks(ctx, project)
+	if err != nil {
+		// The repo may already be gone together with its hooks; anything else
+		// leaves the hook orphaned (harmless: its deliveries are rejected).
+		logger.Error(err, "failed to list webhooks for removal, the operator's hook may remain orphaned", "repo", project)
+		return
 	}
 
-	s.mu.Lock()
-	s.managedRepos[fullName] = hook.ID
-	s.mu.Unlock()
-	s.logger.Info("created webhook on repo", "repo", fullName, "hookID", hook.ID)
-	return nil
+	for _, hook := range hooks {
+		if hook.URL != webhookURL {
+			continue
+		}
+		if err := client.DeleteRepoWebhook(ctx, project, hook.ID); err != nil {
+			logger.Error(err, "failed to remove webhook, it remains orphaned", "repo", project, "hookID", hook.ID)
+			return
+		}
+		logger.Info("removed webhook from repo", "repo", project, "hookID", hook.ID)
+		return
+	}
 }

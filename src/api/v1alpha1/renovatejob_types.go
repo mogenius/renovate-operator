@@ -117,24 +117,22 @@ type RenovateJobSecurityContext struct {
 
 // configuration for webhooks that can be used to trigger renovate runs
 type RenovateWebhook struct {
-	Enabled        bool                    `json:"enabled"`
-	Authentication *RenovateWebhookAuth    `json:"authentication,omitempty"`
-	Forgejo        *RenovateWebhookForgejo `json:"forgejo,omitempty"`
+	Enabled        bool                 `json:"enabled"`
+	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
+	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
 }
 
-// Forgejo-specific webhook configuration
-type RenovateWebhookForgejo struct {
-	Sync *RenovateWebhookForgejoSync `json:"sync,omitempty"`
-}
-
-// configuration for syncing webhooks to Forgejo repos by topic
-type RenovateWebhookForgejoSync struct {
-	Enabled            bool                        `json:"enabled"`
-	WebhookURL         string                      `json:"webhookURL"`
-	Topic              string                      `json:"topic,omitempty"`
-	Events             []string                    `json:"events,omitempty"`
-	TokenSecretRef     *RenovateSecretKeyReference `json:"tokenSecretRef,omitempty"`
-	AuthTokenSecretRef *RenovateSecretKeyReference `json:"authTokenSecretRef,omitempty"`
+// configuration for syncing webhooks onto the repositories discovered for this
+// job.
+type RenovateWebhookSync struct {
+	// Flag to enable the automatic repo webhook sync
+	Enabled bool `json:"enabled"`
+	// Optional reference to a secret key holding the platform token used for
+	// webhook management. When not set, the job's platform token
+	// (spec.secretRef or spec.githubAppReference) is used. If key is empty,
+	// the common Renovate token key names are tried.
+	// +optional
+	SecretRef *RenovateSecretKeyReference `json:"secretRef,omitempty"`
 }
 
 // authentication configuration for webhooks

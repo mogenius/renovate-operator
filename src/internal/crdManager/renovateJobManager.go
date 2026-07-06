@@ -7,18 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
 	"renovate-operator/gitProviderClients"
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
+	"renovate-operator/internal/webhookSync"
 	"renovate-operator/metricStore"
 
 	"github.com/go-logr/logr"
@@ -48,8 +51,18 @@ type RenovateJobManager interface {
 	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
-	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
-	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error
+	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD
+	// with the provided list. It returns the names of the projects that were
+	// removed (present before, absent now).
+	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error)
+	// SyncWebhooks ensures the operator's webhook exists on every project of
+	// the RenovateJob and removes it from the given removed projects (the diff
+	// reported by ReconcileProjects). Stateless: hooks are identified by their
+	// delivery URL on the platform.
+	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error
+	// CleanupWebhooks removes the operator's webhook from every project of the
+	// RenovateJob. Called by the deletion finalizer.
+	CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error
 	// StreamLogsForProject returns an io.ReadCloser that streams NDJSON log lines for the given
 	// project. For running pods Follow is true so the stream stays open until the container exits.
 	// For completed pods or log-store fallback the stream closes after all content is delivered.
@@ -257,7 +270,7 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	})
 }
 
-func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) error {
+func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
 
 	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
 		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
@@ -276,7 +289,8 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 	defer r.globalManagerLock(false)()
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	var removed []string
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
 		if err != nil {
 			return err
@@ -293,10 +307,11 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 			newProjectSet[project] = struct{}{}
 		}
 
-		// Delete metrics for projects that are being removed
+		// Collect removed projects (for webhook cleanup) and drop their metrics
+		removed = removed[:0]
 		for projectName := range crdProjectSet {
 			if _, exists := newProjectSet[projectName]; !exists {
-				// Project is being removed, clean up its metrics
+				removed = append(removed, projectName)
 				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
 			}
 		}
@@ -319,6 +334,131 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 		return r.client.Status().Update(ctx, renovateJob)
 	})
+	return removed, err
+}
+
+func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
+	unlock := r.globalManagerLock(true)
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	unlock()
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	webhook := renovateJob.Spec.Webhook
+	if webhook == nil || webhook.Sync == nil {
+		return nil
+	}
+	syncEnabled := webhook.Enabled && webhook.Sync.Enabled
+
+	// Reconcile toward the desired state: with sync enabled, hooks exist on all
+	// current projects and are removed from projects that dropped out; with
+	// sync disabled, hooks are removed from every project.
+	current := make([]string, 0, len(renovateJob.Status.Projects))
+	for _, project := range renovateJob.Status.Projects {
+		current = append(current, project.Name)
+	}
+	var desired, removed []string
+	if syncEnabled {
+		desired = current
+		removed = removedProjects
+	} else {
+		removed = append(current, removedProjects...)
+	}
+	if len(desired) == 0 && len(removed) == 0 {
+		return nil
+	}
+
+	return r.runWebhookSync(ctx, renovateJob, job, desired, removed)
+}
+
+func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
+	unlock := r.globalManagerLock(true)
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	unlock()
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	removed := make([]string, 0, len(renovateJob.Status.Projects))
+	for _, project := range renovateJob.Status.Projects {
+		removed = append(removed, project.Name)
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	return r.runWebhookSync(ctx, renovateJob, job, nil, removed)
+}
+
+// runWebhookSync builds the provider client and delivery URL, then runs one
+// webhook sync cycle over the given project sets.
+func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []string) error {
+	webhook := renovateJob.Spec.Webhook
+
+	var gitProvider gitProviderClients.GitProviderClient
+	var err error
+	if webhook != nil && webhook.Sync != nil && webhook.Sync.SecretRef != nil {
+		gitProvider, err = r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, webhook.Sync.SecretRef)
+	} else {
+		gitProvider, err = r.gitProviderClientFactory.NewClient(ctx, renovateJob)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create git provider client: %w", err)
+	}
+
+	rawURL, err := webhookURLForJob(renovateJob)
+	if err != nil {
+		return err
+	}
+	webhookURL, err := buildWebhookURL(rawURL, job)
+	if err != nil {
+		return fmt.Errorf("failed to parse webhookURL: %w", err)
+	}
+
+	var authToken string
+	if len(desired) > 0 && webhook != nil && webhook.Authentication != nil && webhook.Authentication.Enabled && webhook.Authentication.SecretRef != nil {
+		tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
+		if err != nil {
+			return fmt.Errorf("failed to read webhook auth token: %w", err)
+		}
+		if len(tokens) > 0 {
+			authToken = tokens[0]
+		}
+	}
+
+	opts := webhookSync.Options{
+		WebhookURL: webhookURL,
+		AuthToken:  authToken,
+	}
+	webhookSync.Sync(ctx, r.logger.WithName("webhook-sync"), gitProvider, opts, desired, removed)
+	return nil
+}
+
+func webhookURLForJob(renovateJob *api.RenovateJob) (string, error) {
+	baseURL := config.GetValue("WEBHOOK_BASE_URL")
+	if baseURL == "" {
+		return "", fmt.Errorf("webhook delivery URL is unknown: expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
+	}
+	platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+	path, err := utils.WebhookEndpointPath(platform)
+	if err != nil {
+		return "", fmt.Errorf("failed to derive webhook URL: %w", err)
+	}
+	return strings.TrimSuffix(baseURL, "/") + path, nil
+}
+
+// buildWebhookURL appends the namespace/job query parameters that the webhook
+// server uses to route incoming events to the right RenovateJob.
+func buildWebhookURL(rawURL string, job RenovateJobIdentifier) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	q := parsed.Query()
+	q.Set("namespace", job.Namespace)
+	q.Set("job", job.Name)
+	parsed.RawQuery = q.Encode()
+	return parsed.String(), nil
 }
 
 func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error) {

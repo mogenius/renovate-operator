@@ -150,8 +150,15 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
 
-	if err := e.manager.ReconcileProjects(ctx, renovateJob, projects); err != nil {
+	removedProjects, err := e.manager.ReconcileProjects(ctx, renovateJob, projects)
+	if err != nil {
 		return fmt.Errorf("failed to reconcile projects: %w", err)
+	}
+
+	// a webhook sync problem must not block discovery processing;
+	// the next discovery run retries the sync.
+	if err := e.manager.SyncWebhooks(ctx, jobId, removedProjects); err != nil {
+		log.FromContext(ctx).Error(err, "failed to sync webhooks", "renovateJob", jobId.Name)
 	}
 
 	if k8sJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] == "true" {

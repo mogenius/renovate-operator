@@ -124,7 +124,14 @@ func buildAuthCheckerFromRequest(r *http.Request, body []byte, manager credentia
 
 	signature := r.Header.Get("X-Hub-Signature-256")
 	if signature == "" {
+		// Bitbucket signs with sha256 but sends the WebSub-style header name
+		signature = r.Header.Get("X-Hub-Signature")
+	}
+	if signature == "" {
 		signature = r.Header.Get("X-Forgejo-Signature")
+	}
+	if signature == "" {
+		signature = r.Header.Get("X-Gitea-Signature")
 	}
 	if signature != "" {
 		sig := signature

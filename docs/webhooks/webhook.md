@@ -104,7 +104,7 @@ curl -X POST \
 
 ## Job resolution
 
-All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`) use the same resolution logic to find the target RenovateJob:
+All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`, `/gitea`) use the same resolution logic to find the target RenovateJob:
 
 1. List all RenovateJobs with `webhook.enabled: true`.
 2. Filter by `namespace` and `job` query parameters if provided.
