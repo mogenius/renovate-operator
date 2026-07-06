@@ -93,6 +93,10 @@ func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
 		return false, "object kind is not merge_request or issue"
 	}
 
+	if payload.ObjectKind == "merge_request" && payload.ObjectAttributes.Action == "merge" {
+		return true, ""
+	}
+
 	if payload.ObjectAttributes.Action != "update" {
 		return false, "event action is not update"
 	}
