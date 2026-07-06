@@ -30,6 +30,21 @@ func TestIsValidGitLabEvent(t *testing.T) {
 			reason: "",
 		},
 		{
+			name: "valid merge request gets merged",
+			payload: GitLabEvent{
+				ObjectKind: "merge_request",
+				ObjectAttributes: ObjectAttributes{
+					Action: "merge",
+				},
+				Project: Project{
+					Name:              "repo",
+					PathWithNamespace: "example/repo",
+				},
+			},
+			valid:  true,
+			reason: "",
+		},
+		{
 			name: "invalid action",
 			payload: GitLabEvent{
 				ObjectKind: "merge_request",
