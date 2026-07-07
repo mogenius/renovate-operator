@@ -8,6 +8,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"strings"
@@ -207,6 +208,7 @@ func (s *Server) authorizeJobAccess(r *http.Request, namespace, jobName string) 
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
+	apiV1.Use(telemetry.MuxMiddleware("renovate-operator-ui-api-v1"))
 	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")

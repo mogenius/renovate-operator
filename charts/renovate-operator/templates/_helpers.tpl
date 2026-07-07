@@ -46,21 +46,25 @@ Scheme: https if ingress.tls is set, http otherwise.
 {{- end -}}
 
 {{/*
-Returns the external base URL of the webhook server, derived from the chart's
-webhook exposure. Priority: webhook.route.hostnames[0] (https, TLS terminates
-at the Gateway) → webhook.ingress.host (https when webhook.ingress.tls is set,
-http otherwise). Empty when the webhook is not exposed by this chart.
+Returns the external base URL of the webhook server. When unifiedWebhookHost
+is true the UI ingress/route values are used; otherwise the webhook-specific
+values are used. Priority within each: route.hostnames[0] (https) →
+ingress.host (https when tls is set, http otherwise). Empty when not exposed.
 */}}
 {{- define "renovate-operator.webhookBaseUrl" -}}
+{{- $v := .Values.webhook -}}
+{{- if .Values.webhook.unifiedWebhookHost -}}
+{{- $v = .Values -}}
+{{- end -}}
 {{- $url := "" -}}
-{{- if and .Values.webhook.route.enabled .Values.webhook.route.hostnames -}}
-{{- $url = printf "https://%s" (index .Values.webhook.route.hostnames 0) -}}
-{{- else if and .Values.webhook.ingress.enabled .Values.webhook.ingress.host -}}
+{{- if and $v.route.enabled $v.route.hostnames -}}
+{{- $url = printf "https://%s" (index $v.route.hostnames 0) -}}
+{{- else if and $v.ingress.enabled $v.ingress.host -}}
 {{- $scheme := "http" -}}
-{{- if .Values.webhook.ingress.tls -}}
+{{- if $v.ingress.tls -}}
 {{- $scheme = "https" -}}
 {{- end -}}
-{{- $url = printf "%s://%s" $scheme .Values.webhook.ingress.host -}}
+{{- $url = printf "%s://%s" $scheme $v.ingress.host -}}
 {{- end -}}
 {{- $url -}}
 {{- end -}}

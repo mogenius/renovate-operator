@@ -31,18 +31,24 @@ func NewWebookServer(manager crdmanager.RenovateJobManager, logger logr.Logger) 
 	}
 }
 
+func RegisterWebhookRoutes(router *mux.Router, server *Server) {
+	assert.Assert(server.manager != nil, "failed to register webhook routes. manager must not be nil")
+
+	sub := router.PathPrefix("/webhook/v1").Subrouter()
+	sub.Use(telemetry.MuxMiddleware("renovate-operator-webhook"))
+	sub.HandleFunc("/schedule", server.runRenovate).Methods("POST")
+	sub.HandleFunc("/gitlab", server.gitLabWebhook).Methods("POST")
+	sub.HandleFunc("/github", server.githubWebhook).Methods("POST")
+	sub.HandleFunc("/forgejo", server.forgejoWebhook).Methods("POST")
+	sub.HandleFunc("/gitea", server.giteaWebhook).Methods("POST")
+	sub.HandleFunc("/bitbucket", server.bitbucketWebhook).Methods("POST")
+}
+
 func (s *Server) Run() {
 	assert.Assert(s.manager != nil, "failed to start server. manager must not be nil")
 
 	router := mux.NewRouter()
-	router.Use(telemetry.MuxMiddleware("renovate-operator-webhook"))
-	sub := router.PathPrefix("/webhook/v1").Subrouter()
-	sub.HandleFunc("/schedule", s.runRenovate).Methods("POST")
-	sub.HandleFunc("/gitlab", s.gitLabWebhook).Methods("POST")
-	sub.HandleFunc("/github", s.githubWebhook).Methods("POST")
-	sub.HandleFunc("/forgejo", s.forgejoWebhook).Methods("POST")
-	sub.HandleFunc("/gitea", s.giteaWebhook).Methods("POST")
-	sub.HandleFunc("/bitbucket", s.bitbucketWebhook).Methods("POST")
+	RegisterWebhookRoutes(router, s)
 
 	port := config.GetValue("WEBHOOK_SERVER_PORT")
 

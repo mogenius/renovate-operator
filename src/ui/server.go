@@ -27,6 +27,7 @@ type Server struct {
 	version              string
 	auth                 AuthProvider
 	defaultAllowedGroups []string
+	Router               *mux.Router
 }
 
 func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string) *Server {
@@ -39,16 +40,19 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		version:              version,
 		auth:                 auth,
 		defaultAllowedGroups: defaultAllowedGroups,
+		Router:               mux.NewRouter(),
 	}
 }
 
 func (s *Server) registerAuthRoutes(router *mux.Router) {
 	if s.auth != nil {
-		router.HandleFunc("/auth/login", s.auth.HandleLogin).Methods("GET")
-		router.HandleFunc("/auth/callback", s.auth.HandleCallback).Methods("GET")
-		router.HandleFunc("/auth/complete", s.auth.HandleComplete).Methods("GET")
-		router.HandleFunc("/auth/logout", s.auth.HandleLogout).Methods("GET", "POST")
-		router.HandleFunc("/auth/logged-out", s.handleLoggedOut).Methods("GET")
+		sub := router.PathPrefix("/auth").Subrouter()
+		sub.Use(telemetry.MuxMiddleware("renovate-operator-ui-auth"))
+		sub.HandleFunc("/login", s.auth.HandleLogin).Methods("GET")
+		sub.HandleFunc("/callback", s.auth.HandleCallback).Methods("GET")
+		sub.HandleFunc("/complete", s.auth.HandleComplete).Methods("GET")
+		sub.HandleFunc("/logout", s.auth.HandleLogout).Methods("GET", "POST")
+		sub.HandleFunc("/logged-out", s.handleLoggedOut).Methods("GET")
 	}
 
 	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
@@ -96,17 +100,14 @@ func (s *Server) Run() {
 	assert.Assert(s.manager != nil, "failed to start server. manager must not be nil")
 	assert.Assert(s.health != nil, "failed to start server. health check must not be nil")
 
-	router := mux.NewRouter()
-	router.Use(telemetry.MuxMiddleware("renovate-operator-ui"))
+	s.registerAuthRoutes(s.Router)
+	s.registerApiV1Routes(s.Router)
+	s.registerHealthRoutes(s.Router)
+	s.registerUiRoutes(s.Router)
 
-	s.registerAuthRoutes(router)
-	s.registerApiV1Routes(router)
-	s.registerHealthRoutes(router)
-	s.registerUiRoutes(router)
-
-	var handler http.Handler = router
+	var handler http.Handler = s.Router
 	if s.auth != nil {
-		handler = s.auth.AuthMiddleware(router)
+		handler = s.auth.AuthMiddleware(s.Router)
 	}
 
 	port := config.GetValue("SERVER_PORT")
