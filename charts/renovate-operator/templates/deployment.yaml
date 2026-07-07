@@ -104,6 +104,8 @@ spec:
               value: {{ .Values.webhook.port | quote }}
             - name: WEBHOOK_SERVER_ENABLED
               value: "true"
+            - name: WEBHOOK_SERVER_UNIFIED_HOST
+              value: {{ .Values.webhook.unifiedWebhookHost | quote }}
             {{- $webhookBaseUrl := include "renovate-operator.webhookBaseUrl" . }}
             {{- if $webhookBaseUrl }}
             - name: WEBHOOK_BASE_URL

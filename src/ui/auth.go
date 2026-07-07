@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"renovate-operator/config"
 	"strings"
 	"time"
 
@@ -154,6 +155,11 @@ func isPublicPath(path string) bool {
 		path == "/favicon.ico" {
 		return true
 	}
+
+	if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "true" && strings.HasPrefix(path, "/webhook") {
+		return true
+	}
+
 	return false
 }
 

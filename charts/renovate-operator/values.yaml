@@ -117,6 +117,8 @@ route:
 
 webhook:
   enabled: false
+  # -- if set to true the ui host will be used for webhooks
+  unifiedWebhookHost: false
   port: 8082
   ingress:
     # -- whether to enable the ingress for the webhook server

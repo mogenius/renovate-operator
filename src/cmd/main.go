@@ -221,6 +221,17 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "WEBHOOK_SERVER_UNIFIED_HOST",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'WEBHOOK_SERVER_UNIFIED_HOST' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
 			Key:      "DELETE_SUCCESSFUL_JOBS",
 			Optional: true,
 			Default:  "false",
@@ -483,12 +494,17 @@ func main() {
 
 	// UI and webhook servers run on all replicas
 	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups)
-	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
-		webhookServer.Run()
+
+		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
+			webhookServer.Run()
+		} else {
+			webhook.RegisterWebhookRoutes(uiServer.Router, webhookServer)
+		}
 	}
+	uiServer.Run()
 
 	executor := renovate.NewRenovateExecutor(
 		mgr.GetScheme(),

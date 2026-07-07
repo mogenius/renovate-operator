@@ -1,0 +1,130 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Helper renovate-operator.webhookBaseUrl
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: No WEBHOOK_BASE_URL when webhook is disabled
+  set:
+    webhook.enabled: false
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+
+- it: No WEBHOOK_BASE_URL when webhook is enabled but no ingress/route configured
+  set:
+    webhook.enabled: true
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+
+- it: Uses webhook ingress host (http) when unifiedWebhookHost is false
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: false
+    webhook.ingress.enabled: true
+    webhook.ingress.host: webhook.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "http://webhook.example.com"
+
+- it: Uses webhook ingress host (https) when TLS is configured
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: false
+    webhook.ingress.enabled: true
+    webhook.ingress.host: webhook.example.com
+    webhook.ingress.tls:
+    - hosts:
+      - webhook.example.com
+      secretName: webhook-tls
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "https://webhook.example.com"
+
+- it: Uses webhook route hostname (https) when unifiedWebhookHost is false
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: false
+    webhook.route.enabled: true
+    webhook.route.hostnames:
+    - webhook.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "https://webhook.example.com"
+
+- it: Uses UI ingress host (http) when unifiedWebhookHost is true
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: true
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "http://renovate.example.com"
+
+- it: Uses UI ingress host (https) when unifiedWebhookHost is true and TLS is configured
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: true
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+    ingress.tls:
+    - hosts:
+      - renovate.example.com
+      secretName: renovate-tls
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "https://renovate.example.com"
+
+- it: Uses UI route hostname (https) when unifiedWebhookHost is true
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: true
+    route.enabled: true
+    route.hostnames:
+    - renovate.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "https://renovate.example.com"
+
+- it: webhook-specific ingress takes priority over unified host
+  set:
+    webhook.enabled: true
+    webhook.unifiedWebhookHost: false
+    webhook.ingress.enabled: true
+    webhook.ingress.host: webhook.example.com
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "http://webhook.example.com"
