@@ -76,3 +76,129 @@ tests:
       content:
         name: OIDC_PKCE_ENABLED
         value: "false"
+
+- it: OIDC redirect URL derived from route defaults to http without ingress tls
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: http://renovate.example.org/auth/callback
+
+- it: OIDC redirectScheme overrides the detected scheme
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectScheme: https
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: https://renovate.example.org/auth/callback
+
+- it: OIDC redirectScheme is ignored when an explicit redirectUrl is set
+  set:
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectUrl: https://custom.example.org/auth/callback
+        redirectScheme: http
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: https://custom.example.org/auth/callback
+
+- it: OIDC redirectScheme rejects invalid values
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectScheme: ftp
+  asserts:
+  - failedTemplate:
+      errorPattern: must be either "http" or "https"
+
+- it: GitHub redirectScheme overrides the detected scheme
+  set:
+    ingress:
+      host: renovate.example.org
+    auth:
+      github:
+        enabled: true
+        existingSecret: my-github-secret
+        redirectScheme: https
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: GITHUB_REDIRECT_URL
+        value: https://renovate.example.org/auth/callback
+
+- it: Webhook base URL derived from ingress defaults to http without tls
+  set:
+    webhook:
+      enabled: true
+      ingress:
+        enabled: true
+        host: webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: http://webhook.example.org
+
+- it: Webhook baseUrlScheme overrides the scheme detected from ingress
+  set:
+    webhook:
+      enabled: true
+      baseUrlScheme: https
+      ingress:
+        enabled: true
+        host: webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: https://webhook.example.org
+
+- it: Webhook baseUrlScheme overrides the https default of route
+  set:
+    webhook:
+      enabled: true
+      baseUrlScheme: http
+      route:
+        enabled: true
+        hostnames:
+        - webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: http://webhook.example.org

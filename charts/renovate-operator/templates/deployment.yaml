@@ -133,7 +133,7 @@ spec:
                   name: {{ .Values.auth.oidc.existingSecret }}
                   key: {{ .Values.auth.oidc.sessionSecretKey }}
             {{- end }}
-            {{- $oidcRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.oidc.redirectUrl "Values" .Values) }}
+            {{- $oidcRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.oidc.redirectUrl "redirectScheme" .Values.auth.oidc.redirectScheme "Values" .Values) }}
             {{- if $oidcRedirectUrl }}
             - name: OIDC_REDIRECT_URL
               value: {{ $oidcRedirectUrl | quote }}
@@ -183,7 +183,7 @@ spec:
                   name: {{ .Values.auth.github.existingSecret }}
                   key: {{ .Values.auth.github.sessionSecretKey }}
             {{- end }}
-            {{- $githubRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.github.redirectUrl "Values" .Values) }}
+            {{- $githubRedirectUrl := include "renovate-operator.authRedirectUrl" (dict "redirectUrl" .Values.auth.github.redirectUrl "redirectScheme" .Values.auth.github.redirectScheme "Values" .Values) }}
             {{- if $githubRedirectUrl }}
             - name: GITHUB_REDIRECT_URL
               value: {{ $githubRedirectUrl | quote }}
