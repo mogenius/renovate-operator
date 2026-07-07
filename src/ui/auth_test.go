@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"renovate-operator/config"
 	"testing"
 	"time"
 
@@ -157,6 +158,14 @@ func TestGetSessionFromContext_NoSession(t *testing.T) {
 }
 
 func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
 	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
@@ -210,6 +219,14 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 }
 
 func TestIsPublicPath(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
 	public := []string{
 		"/health",
 		"/api/v1/auth/status",
