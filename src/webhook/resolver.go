@@ -26,6 +26,7 @@ type jobLister interface {
 type credentialValidator interface {
 	IsWebhookTokenValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error)
 	IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	IsWebhookStandardSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
 }
 
 // FindAndAuthenticateJob discovers which RenovateJob owns project and authenticates the request.
@@ -106,6 +107,17 @@ func hasProject(projects []api.ProjectStatus, project string) bool {
 // buildAuthCheckerFromRequest extracts auth credentials from request headers and returns
 // an AuthChecker that validates them against a RenovateJob. Returns nil if no credential is present.
 func buildAuthCheckerFromRequest(r *http.Request, body []byte, manager credentialValidator) AuthChecker {
+	// Standard Webhooks signature (https://www.standardwebhooks.com/) — a vendor-neutral scheme used by
+	// GitLab signing tokens among others; prefer the cryptographic signature when present.
+	if sig := r.Header.Get("Webhook-Signature"); sig != "" {
+		msgID := r.Header.Get("Webhook-Id")
+		timestamp := r.Header.Get("Webhook-Timestamp")
+		b := body
+		return func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) (bool, error) {
+			return manager.IsWebhookStandardSignatureValid(ctx, jobId, msgID, timestamp, sig, b)
+		}
+	}
+
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		authHeader = r.Header.Get("X-Gitlab-Token")

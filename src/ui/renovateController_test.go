@@ -119,6 +119,9 @@ func (m *mockRenovateJobManager) IsWebhookTokenValid(ctx context.Context, job cr
 func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	return true, nil
 }
+func (r *mockRenovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	return true, nil
+}
 
 func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil

@@ -14,10 +14,11 @@ import (
 
 // mockWebhookManager is used by webhook integration tests.
 type mockWebhookManager struct {
-	listRenovateJobsFullFunc    func(ctx context.Context) ([]api.RenovateJob, error)
-	updateProjectStatusFunc     func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
-	isWebhookTokenValidFunc     func(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error)
-	isWebhookSignatureValidFunc func(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	listRenovateJobsFullFunc            func(ctx context.Context) ([]api.RenovateJob, error)
+	updateProjectStatusFunc             func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	isWebhookTokenValidFunc             func(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error)
+	isWebhookSignatureValidFunc         func(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	isWebhookStandardSignatureValidFunc func(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
 }
 
 func (m *mockWebhookManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
@@ -44,6 +45,13 @@ func (m *mockWebhookManager) IsWebhookTokenValid(ctx context.Context, job crdman
 func (m *mockWebhookManager) IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	if m.isWebhookSignatureValidFunc != nil {
 		return m.isWebhookSignatureValidFunc(ctx, job, signature, body)
+	}
+	return true, nil
+}
+
+func (m *mockWebhookManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	if m.isWebhookStandardSignatureValidFunc != nil {
+		return m.isWebhookStandardSignatureValidFunc(ctx, job, msgID, timestamp, signature, body)
 	}
 	return true, nil
 }
