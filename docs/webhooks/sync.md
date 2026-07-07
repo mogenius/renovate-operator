@@ -74,6 +74,8 @@ The Helm chart derives `WEBHOOK_BASE_URL` at deploy time from the webhook exposu
 1. **HTTPRoute** — `webhook.route.hostnames[0]`, with `https` (TLS terminates at the Gateway).
 2. **Ingress** — `webhook.ingress.host`, with `https` when `webhook.ingress.tls` is set, `http` otherwise.
 
+Set `webhook.baseUrlScheme` to `http` or `https` to override the detected scheme, e.g. when TLS terminates at an external load balancer the chart cannot see.
+
 ## How sync works
 
 Webhook sync runs automatically at the end of each autodiscovery cycle (controlled by `spec.schedule`).
