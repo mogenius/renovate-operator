@@ -85,16 +85,16 @@ func (c *ForgejoClient) doRequest(ctx context.Context, method, path string, body
 type forgejoHook struct {
 	ID int64 `json:"id"`
 	// Type is required on create; edits leave it empty (it cannot change).
-	Type   string            `json:"type,omitempty"`
-	Config forgejoHookConfig `json:"config"`
-	Events []string          `json:"events"`
-	Active bool              `json:"active"`
+	Type                string            `json:"type,omitempty"`
+	Config              forgejoHookConfig `json:"config"`
+	Events              []string          `json:"events"`
+	AuthorizationHeader string            `json:"authorization_header,omitempty"`
+	Active              bool              `json:"active"`
 }
 
 type forgejoHookConfig struct {
-	URL                 string `json:"url"`
-	ContentType         string `json:"content_type"`
-	AuthorizationHeader string `json:"authorization_header,omitempty"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
 }
 
 // forgejoWebhookEvents is the fixed subscription for operator-managed hooks:
@@ -176,7 +176,7 @@ func (c *ForgejoClient) CreateRepoWebhook(ctx context.Context, project string, o
 		Active: opts.Active,
 	}
 	if opts.AuthToken != "" {
-		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+		payload.AuthorizationHeader = "Bearer " + opts.AuthToken
 	}
 
 	body, err := json.Marshal(payload)
@@ -208,7 +208,7 @@ func (c *ForgejoClient) UpdateRepoWebhook(ctx context.Context, project string, h
 		Active: opts.Active,
 	}
 	if opts.AuthToken != "" {
-		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+		payload.AuthorizationHeader = "Bearer " + opts.AuthToken
 	}
 
 	body, err := json.Marshal(payload)

@@ -60,8 +60,8 @@ func TestCreateRepoWebhook(t *testing.T) {
 		if payload.Config.ContentType != "json" {
 			t.Errorf("expected content type json, got %s", payload.Config.ContentType)
 		}
-		if payload.Config.AuthorizationHeader != "Bearer secret" {
-			t.Errorf("expected authorization header, got %s", payload.Config.AuthorizationHeader)
+		if payload.AuthorizationHeader != "Bearer secret" {
+			t.Errorf("expected authorization header, got %s", payload.AuthorizationHeader)
 		}
 
 		w.WriteHeader(http.StatusCreated)
