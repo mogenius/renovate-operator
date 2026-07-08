@@ -2,6 +2,7 @@ package renovate
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
@@ -251,6 +252,48 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 			},
 		})
 	}
+
+	if config.GetValue("S3_FORWARD_CACHE_TO_JOBS") == "true" && config.GetValue("S3_BUCKET") != "" {
+		s3CacheType := fmt.Sprintf("s3://%s/%s", config.GetValue("S3_BUCKET"), config.GetValue("S3_CACHE_PREFIX"))
+		predefinedEnvVars = append(predefinedEnvVars,
+			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE", Value: "enabled"},
+			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE_TYPE", Value: s3CacheType},
+			v1.EnvVar{Name: "AWS_REGION", Value: config.GetValue("S3_REGION")},
+		)
+		if ep := config.GetValue("S3_ENDPOINT"); ep != "" {
+			predefinedEnvVars = append(predefinedEnvVars,
+				v1.EnvVar{Name: "RENOVATE_S3_ENDPOINT", Value: ep},
+			)
+		}
+		if config.GetValue("S3_FORCE_PATH_STYLE") == "true" {
+			predefinedEnvVars = append(predefinedEnvVars,
+				v1.EnvVar{Name: "RENOVATE_S3_PATH_STYLE", Value: "true"},
+			)
+		}
+		if secretName := config.GetValue("S3_CREDENTIALS_SECRET_NAME"); secretName != "" {
+			predefinedEnvVars = append(predefinedEnvVars,
+				v1.EnvVar{
+					Name: "AWS_ACCESS_KEY_ID",
+					ValueFrom: &v1.EnvVarSource{
+						SecretKeyRef: &v1.SecretKeySelector{
+							LocalObjectReference: v1.LocalObjectReference{Name: secretName},
+							Key:                  "access-key-id",
+						},
+					},
+				},
+				v1.EnvVar{
+					Name: "AWS_SECRET_ACCESS_KEY",
+					ValueFrom: &v1.EnvVarSource{
+						SecretKeyRef: &v1.SecretKeySelector{
+							LocalObjectReference: v1.LocalObjectReference{Name: secretName},
+							Key:                  "secret-access-key",
+						},
+					},
+				},
+			)
+		}
+	}
+
 	return predefinedEnvVars
 }
 

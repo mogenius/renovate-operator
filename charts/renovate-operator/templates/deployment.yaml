@@ -223,6 +223,36 @@ spec:
               value: {{ .Values.config.globalParallelismLimit | quote }}
             - name: LOG_STORE_MODE
               value: {{ .Values.config.logStorage.mode | quote }}
+            {{- if .Values.s3.bucket }}
+            - name: S3_BUCKET
+              value: {{ .Values.s3.bucket | quote }}
+            - name: S3_REGION
+              value: {{ .Values.s3.region | quote }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.s3.endpoint | quote }}
+            - name: S3_FORCE_PATH_STYLE
+              value: {{ .Values.s3.forcePathStyle | quote }}
+            - name: S3_LOG_PREFIX
+              value: {{ .Values.s3.logPrefix | quote }}
+            - name: S3_CACHE_PREFIX
+              value: {{ .Values.s3.cachePrefix | quote }}
+            - name: S3_FORWARD_CACHE_TO_JOBS
+              value: {{ .Values.config.forwardS3CacheToJobs | quote }}
+            {{- if .Values.s3.existingSecret }}
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.s3.existingSecret }}
+                  key: access-key-id
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.s3.existingSecret }}
+                  key: secret-access-key
+            - name: S3_CREDENTIALS_SECRET_NAME
+              value: {{ .Values.s3.existingSecret | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.telemetry.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ required "telemetry.endpoint must be set when telemetry.enabled is true" .Values.telemetry.endpoint | quote }}

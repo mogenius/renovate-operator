@@ -9,6 +9,7 @@ import (
 	"renovate-operator/config"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -40,7 +41,7 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -66,7 +67,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -102,7 +103,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}})
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -142,7 +143,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -188,7 +189,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -240,7 +241,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
