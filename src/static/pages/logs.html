@@ -5,10 +5,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Logs - Renovate Operator</title>
-  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-small.png" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-small.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
 
-  <script src="/js/tailwind.min.js"></script>
+  <script src="js/tailwind.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -25,20 +25,20 @@
       },
     };
   </script>
-  <script src="/js/theme-utils.js"></script>
-  <script src="/js/babel.min.js"></script>
-  <script src="/js/babel-config.js"></script>
+  <script src="js/theme-utils.js"></script>
+  <script src="js/babel.min.js"></script>
+  <script src="js/babel-config.js"></script>
   <script type="module">
-    import { React, createRoot } from '/js/react-bundle.esm.js';
+    import { React, createRoot } from './js/react-bundle.esm.js';
     window.React = React;
     window.createRoot = createRoot;
   </script>
-  <script type="text/babel" src="/components/ThemeToggle.js"></script>
-  <script type="text/babel" src="/components/SiteHeader.js"></script>
-  <script type="text/babel" src="/components/StatBadge.js"></script>
-  <script type="text/babel" src="/components/Footer.js"></script>
+  <script type="text/babel" src="components/ThemeToggle.js"></script>
+  <script type="text/babel" src="components/SiteHeader.js"></script>
+  <script type="text/babel" src="components/StatBadge.js"></script>
+  <script type="text/babel" src="components/Footer.js"></script>
 
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 
 <body class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100 transition-colors duration-200">
@@ -143,22 +143,25 @@
       const [copied, setCopied] = useState(false);
       const [searchQuery, setSearchQuery] = useState("");
 
+      const BASE = window.__BASE_PATH__ || "";
+      const withBase = (url) => (url.startsWith("/") ? BASE + url : url);
+
       const authFetch = async (url, options = {}) => {
-        const response = await fetch(url, options);
+        const response = await fetch(withBase(url), options);
         if (response.status === 401) {
-          window.location.href = "/auth/login";
+          window.location.href = BASE + "/auth/login";
           throw new Error("Unauthorized");
         }
         return response;
       };
 
       useEffect(() => {
-        fetch("/api/v1/version")
+        fetch(BASE + "/api/v1/version")
           .then(r => r.ok ? r.json() : null)
           .then(d => d && setVersion(d.version))
           .catch(() => { });
 
-        fetch("/api/v1/auth/status")
+        fetch(BASE + "/api/v1/auth/status")
           .then(r => r.ok ? r.json() : null)
           .then(d => d && setAuthInfo(d))
           .catch(() => { });
@@ -172,7 +175,7 @@
         }
 
         const entries = [];
-        const url = `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
+        const url = `${BASE}/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
         const es = new EventSource(url);
 
         es.onmessage = (event) => {

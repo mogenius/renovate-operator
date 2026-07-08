@@ -88,6 +88,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Metrics](./docs/metrics.md)
 - [PR Activity](./docs/pr-activity.md)
 - [Authentication](./docs/auth.md)
+- [Serving the UI under a Sub-Path](./docs/base-path.md)
 - [Valkey / Redis Cache](./docs/valkey.md)
 
 ## Contributing

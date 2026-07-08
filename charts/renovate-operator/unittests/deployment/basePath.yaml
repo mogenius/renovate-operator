@@ -1,0 +1,63 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Base path (sub-path) support
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: No BASE_PATH env when basePath is empty
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: BASE_PATH
+
+- it: Sets BASE_PATH env when basePath is configured
+  set:
+    basePath: /renovate
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: BASE_PATH
+        value: "/renovate"
+
+- it: Normalizes basePath (adds leading slash, strips trailing slash)
+  set:
+    basePath: renovate/
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: BASE_PATH
+        value: "/renovate"
+
+- it: Appends basePath to auto-detected OIDC redirect URL
+  set:
+    basePath: /renovate
+    ingress.host: renovate.example.com
+    auth.oidc.enabled: true
+    auth.oidc.issuerUrl: https://issuer.example.com
+    auth.oidc.clientId: test-client
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: "http://renovate.example.com/renovate/auth/callback"
+
+- it: Appends basePath to auto-detected GitHub redirect URL
+  set:
+    basePath: /renovate
+    ingress.host: renovate.example.com
+    auth.github.enabled: true
+    auth.github.clientId: test-client
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: GITHUB_REDIRECT_URL
+        value: "http://renovate.example.com/renovate/auth/callback"

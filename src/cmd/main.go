@@ -217,6 +217,11 @@ func main() {
 			Default:  "false",
 		},
 		{
+			Key:      "BASE_PATH",
+			Optional: true,
+			Default:  "",
+		},
+		{
 			Key:      "WEBHOOK_BASE_URL",
 			Optional: true,
 		},

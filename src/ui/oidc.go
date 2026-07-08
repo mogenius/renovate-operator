@@ -170,7 +170,7 @@ func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
 			Name:     pkceCookieName,
 			Value:    verifier,
-			Path:     "/",
+			Path:     cookiePath(),
 			MaxAge:   300,
 			HttpOnly: true,
 			Secure:   isHTTPS(r),
@@ -204,7 +204,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
 			Name:     pkceCookieName,
 			Value:    "",
-			Path:     "/",
+			Path:     cookiePath(),
 			MaxAge:   -1,
 			HttpOnly: true,
 		})
@@ -313,7 +313,7 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
+	http.Redirect(w, r, withBase("/auth/logged-out"), http.StatusFound)
 }
 
 func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {

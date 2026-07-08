@@ -117,7 +117,7 @@ func (g *GitHubOAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	g.deleteSession(r)
 	g.clearSessionCookie(w)
-	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
+	http.Redirect(w, r, withBase("/auth/logged-out"), http.StatusFound)
 }
 
 func (g *GitHubOAuth) revokeGitHubToken(accessToken string) {
