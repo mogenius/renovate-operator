@@ -33,8 +33,8 @@ func TestCreateRepoWebhook(t *testing.T) {
 		if payload.Config.URL != "https://example.com/webhook" {
 			t.Errorf("expected webhook URL, got %s", payload.Config.URL)
 		}
-		if payload.Config.AuthorizationHeader != "Bearer secret" {
-			t.Errorf("expected authorization header, got %s", payload.Config.AuthorizationHeader)
+		if payload.AuthorizationHeader != "Bearer secret" {
+			t.Errorf("expected authorization header, got %s", payload.AuthorizationHeader)
 		}
 
 		w.WriteHeader(http.StatusCreated)

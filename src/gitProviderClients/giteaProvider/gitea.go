@@ -74,16 +74,16 @@ func (c *GiteaClient) doRequest(ctx context.Context, method, path string, body i
 type giteaHook struct {
 	ID int64 `json:"id"`
 	// Type is required on create; edits leave it empty (it cannot change).
-	Type   string          `json:"type,omitempty"`
-	Config giteaHookConfig `json:"config"`
-	Events []string        `json:"events"`
-	Active bool            `json:"active"`
+	Type                string          `json:"type,omitempty"`
+	Config              giteaHookConfig `json:"config"`
+	Events              []string        `json:"events"`
+	AuthorizationHeader string          `json:"authorization_header,omitempty"`
+	Active              bool            `json:"active"`
 }
 
 type giteaHookConfig struct {
-	URL                 string `json:"url"`
-	ContentType         string `json:"content_type"`
-	AuthorizationHeader string `json:"authorization_header,omitempty"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
 }
 
 // giteaWebhookEvents is the fixed subscription for operator-managed hooks:
@@ -165,7 +165,7 @@ func (c *GiteaClient) CreateRepoWebhook(ctx context.Context, project string, opt
 		Active: opts.Active,
 	}
 	if opts.AuthToken != "" {
-		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+		payload.AuthorizationHeader = "Bearer " + opts.AuthToken
 	}
 
 	body, err := json.Marshal(payload)
@@ -197,7 +197,7 @@ func (c *GiteaClient) UpdateRepoWebhook(ctx context.Context, project string, hoo
 		Active: opts.Active,
 	}
 	if opts.AuthToken != "" {
-		payload.Config.AuthorizationHeader = "Bearer " + opts.AuthToken
+		payload.AuthorizationHeader = "Bearer " + opts.AuthToken
 	}
 
 	body, err := json.Marshal(payload)
