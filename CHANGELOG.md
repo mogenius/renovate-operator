@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.0.0](https://github.com/mogenius/renovate-operator/compare/4.14.1...5.0.0) (2026-07-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* During the development of this feature the existing forgejo webhook sync expirienced a major rewrite. Forgejo users please note the updated docs and plan accordingly
+
+### Features
+
+* add automatic webhook sync for all suported git providers ([90532a5](https://github.com/mogenius/renovate-operator/commit/90532a52d486129fd8a09999762c5c38dc96c1fe))
+* add scheme override for auth redirect and webhook base URL ([#452](https://github.com/mogenius/renovate-operator/issues/452)) ([c5128f1](https://github.com/mogenius/renovate-operator/commit/c5128f1a48ad7fe4c70226ab34e9be83e7ab1673))
+* adding s3 configuration for renovate job logs and caching ([1010817](https://github.com/mogenius/renovate-operator/commit/1010817197fd15aa793fd1249d985937635bf7a9)), closes [#329](https://github.com/mogenius/renovate-operator/issues/329)
+* allow setting the webhook host to the ui host for small deployments ([738cd2f](https://github.com/mogenius/renovate-operator/commit/738cd2f6e5954904e417c56966a9b0eb7737fd79)), closes [#460](https://github.com/mogenius/renovate-operator/issues/460)
+* **operator:** serve UI, API and auth under a configurable sub-path ([58787c2](https://github.com/mogenius/renovate-operator/commit/58787c264d6629c127be65742881396ef36a1a75))
+* **webhook:** support Standard Webhooks signature authentication ([#454](https://github.com/mogenius/renovate-operator/issues/454)) ([dd01c86](https://github.com/mogenius/renovate-operator/commit/dd01c865ae1bb039358d1c81313a54e51fe20b0b))
+
+
+### Bug Fixes
+
+* **deps:** update go module directive to v1.26.5 ([12bebd7](https://github.com/mogenius/renovate-operator/commit/12bebd7edecad8cba3a8286fd9cde3ee55f37a44))
+* **deps:** update golang docker tag to v1.26.5 ([afc9d80](https://github.com/mogenius/renovate-operator/commit/afc9d802f0e1ac70f41a7231e24db318e5326778))
+
 ## [4.14.1](https://github.com/mogenius/renovate-operator/compare/4.14.0...4.14.1) (2026-07-02)
 
 
