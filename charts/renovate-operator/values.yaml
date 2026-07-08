@@ -74,6 +74,13 @@ config:
   # -- wether to forward valkey cache to renovatejobs - valkey needs to be configured
   forwardCacheToJobs: true
 
+# -- optional sub-path the UI, API and auth endpoints are served under (e.g. "/renovate")
+# -- so the operator can be co-hosted with other apps on the same hostname. Leave empty
+# -- to serve from the root path. When set, it is also used as the ingress/route path and
+# -- appended to auto-detected OAuth/OIDC redirect URLs. OAuth/OIDC redirect URLs registered
+# -- with your identity provider must include this sub-path.
+basePath: ""
+
 ingress:
   # -- whether to enable the ingress renovate-operator
   enabled: false

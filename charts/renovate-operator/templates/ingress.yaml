@@ -19,7 +19,7 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /
+          - path: {{ include "renovate-operator.basePath" . | default "/" }}
             pathType: Prefix
             backend:
               service:

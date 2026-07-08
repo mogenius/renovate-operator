@@ -52,10 +52,24 @@ Scheme: redirectScheme if set, https if ingress.tls is set, http otherwise.
 {{- if .redirectScheme -}}
 {{- $scheme = .redirectScheme -}}
 {{- end -}}
-{{- $url = printf "%s://%s/auth/callback" $scheme $host -}}
+{{- $basePath := include "renovate-operator.basePath" (dict "Values" $values) -}}
+{{- $url = printf "%s://%s%s/auth/callback" $scheme $host $basePath -}}
 {{- end -}}
 {{- end -}}
 {{- $url -}}
+{{- end -}}
+
+{{/*
+Normalizes the configured sub-path. Trims a trailing slash and ensures a
+leading slash for non-empty values (e.g. "renovate/" -> "/renovate").
+Returns an empty string when no base path is configured.
+*/}}
+{{- define "renovate-operator.basePath" -}}
+{{- $bp := .Values.basePath | default "" | trim | trimAll "/" -}}
+{{- if $bp -}}
+{{- $bp = printf "/%s" $bp -}}
+{{- end -}}
+{{- $bp -}}
 {{- end -}}
 
 {{/*

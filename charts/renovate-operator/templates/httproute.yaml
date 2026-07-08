@@ -28,7 +28,7 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: {{ include "renovate-operator.basePath" . | default "/" }}
       backendRefs:
         - name: {{ include "renovate-operator.fullname" . }}
           port: 8081

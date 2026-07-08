@@ -62,23 +62,24 @@ func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, err := fmt.Fprint(w, `<!DOCTYPE html>
+	base := BasePath()
+	_, err := fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Logged Out - Renovate Operator</title>
-  <script src="/js/tailwind.min.js"></script>
+  <script src="%s/js/tailwind.min.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center">
   <div class="text-center">
     <h1 class="text-2xl font-bold text-gray-800 mb-4">Successfully logged out</h1>
-    <a href="/auth/login" class="inline-block px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors">
+    <a href="%s/auth/login" class="inline-block px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors">
       Log in again
     </a>
   </div>
 </body>
-</html>`)
+</html>`, base, base)
 
 	if err != nil {
 		s.logger.Error(err, "failed to write logged-out response")
@@ -100,10 +101,23 @@ func (s *Server) Run() {
 	assert.Assert(s.manager != nil, "failed to start server. manager must not be nil")
 	assert.Assert(s.health != nil, "failed to start server. health check must not be nil")
 
-	s.registerAuthRoutes(s.Router)
-	s.registerApiV1Routes(s.Router)
-	s.registerHealthRoutes(s.Router)
-	s.registerUiRoutes(s.Router)
+	// When a base path is configured, all UI, API, auth and health routes are
+	// mounted under it so the operator can be co-hosted with other apps on the
+	// same hostname. The root router keeps handling the plain "/" so we can add
+	// a convenience redirect to the base path.
+	base := s.Router
+	basePath := BasePath()
+	if basePath != "" {
+		base = s.Router.PathPrefix(basePath).Subrouter()
+		s.Router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, basePath+"/", http.StatusFound)
+		}).Methods("GET")
+	}
+
+	s.registerAuthRoutes(base)
+	s.registerApiV1Routes(base)
+	s.registerHealthRoutes(base)
+	s.registerUiRoutes(base)
 
 	var handler http.Handler = s.Router
 	if s.auth != nil {

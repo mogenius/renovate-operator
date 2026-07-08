@@ -1,0 +1,38 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Ingress base path
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/ingress.yaml
+tests:
+- it: Uses root path when basePath is empty
+  set:
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+  asserts:
+  - equal:
+      path: spec.rules[0].http.paths[0].path
+      value: /
+
+- it: Uses configured basePath as the ingress path
+  set:
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+    basePath: /renovate
+  asserts:
+  - equal:
+      path: spec.rules[0].http.paths[0].path
+      value: /renovate
+
+- it: Normalizes basePath as the ingress path
+  set:
+    ingress.enabled: true
+    ingress.host: renovate.example.com
+    basePath: renovate/
+  asserts:
+  - equal:
+      path: spec.rules[0].http.paths[0].path
+      value: /renovate
