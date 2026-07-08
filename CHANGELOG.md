@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.1](https://github.com/mogenius/renovate-operator/compare/5.0.0...5.0.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* automatic webhook sync for forgejo/gitea does not properly set authorization header if configured ([94acbfb](https://github.com/mogenius/renovate-operator/commit/94acbfbce17328147cbbdc9d443d92e65e14143d)), closes [#476](https://github.com/mogenius/renovate-operator/issues/476)
+
 ## [5.0.0](https://github.com/mogenius/renovate-operator/compare/4.14.1...5.0.0) (2026-07-08)
 
 
