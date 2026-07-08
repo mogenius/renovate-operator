@@ -69,10 +69,12 @@ config:
   # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
   globalParallelismLimit: 0
   logStorage:
-    # -- log store mode: "disabled" (default, no-op), valkey (needs to be enabled) or "memory" (cache logs in-memory after job completion)
+    # -- log store mode: "disabled" (default, no-op), "memory" (in-process), "valkey" (needs valkey enabled), or "s3" (needs s3.bucket set)
     mode: disabled
-  # -- wether to forward valkey cache to renovatejobs - valkey needs to be configured
+  # -- whether to forward valkey cache to renovate jobs - valkey needs to be configured
   forwardCacheToJobs: true
+  # -- whether to forward S3 cache configuration to Renovate executor jobs - s3.bucket needs to be set
+  forwardS3CacheToJobs: true
 
 ingress:
   # -- whether to enable the ingress renovate-operator
@@ -317,6 +319,23 @@ valkey:
     enabled: false
     serviceMonitor:
       enabled: false
+
+s3:
+  # -- S3 bucket name; required when config.logStorage.mode=s3 or config.forwardS3CacheToJobs=true
+  bucket: ""
+  # -- AWS region (defaults to us-east-1)
+  region: "us-east-1"
+  # -- Custom S3-compatible endpoint URL for self-hosted object stores (e.g. RustFS); leave empty for AWS S3
+  endpoint: ""
+  # -- Enable path-style S3 addressing (required by some S3-compatible stores); leave false for AWS S3
+  forcePathStyle: false
+  # -- Object key prefix used by the operator log store (LOG_STORE_MODE=s3)
+  logPrefix: "renovate-logs"
+  # -- Object key prefix forwarded to Renovate jobs as RENOVATE_S3_URL
+  cachePrefix: "renovate-cache"
+  # -- Name of an existing Secret containing S3 credentials (optional; uses the pod's IAM role when absent)
+  # The Secret must have keys: access-key-id and secret-access-key
+  existingSecret: ""
 
 metrics:
   enabled: false

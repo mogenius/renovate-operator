@@ -24,6 +24,7 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
@@ -402,11 +403,61 @@ func main() {
 			Default:  "disabled",
 			Validate: func(value string) error {
 				switch value {
-				case "disabled", "memory", "valkey":
+				case "disabled", "memory", "valkey", "s3":
 					return nil
 				}
-				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory, valkey")
+				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory, valkey, s3")
 			},
+		},
+		{
+			Key:      "S3_BUCKET",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_REGION",
+			Optional: true,
+			Default:  "us-east-1",
+		},
+		{
+			Key:      "S3_ENDPOINT",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_ACCESS_KEY_ID",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_SECRET_ACCESS_KEY",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_LOG_PREFIX",
+			Optional: true,
+			Default:  "renovate-logs",
+		},
+		{
+			Key:      "S3_CACHE_PREFIX",
+			Optional: true,
+			Default:  "renovate-cache",
+		},
+		{
+			Key:      "S3_FORWARD_CACHE_TO_JOBS",
+			Optional: true,
+			Default:  "true",
+		},
+		{
+			Key:      "S3_FORCE_PATH_STYLE",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			Key:      "S3_CREDENTIALS_SECRET_NAME",
+			Optional: true,
+			Default:  "",
 		},
 		{
 			Key:      "GLOBAL_PARALLELISM_LIMIT",
@@ -469,7 +520,16 @@ func main() {
 		Password: config.GetValue("VALKEY_PASSWORD"),
 	}
 
-	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf)
+	s3Cfg := objectstore.S3Config{
+		Bucket:          config.GetValue("S3_BUCKET"),
+		Region:          config.GetValue("S3_REGION"),
+		Endpoint:        config.GetValue("S3_ENDPOINT"),
+		ForcePathStyle:  config.GetValue("S3_FORCE_PATH_STYLE") == "true",
+		AccessKeyID:     config.GetValue("S3_ACCESS_KEY_ID"),
+		SecretAccessKey: config.GetValue("S3_SECRET_ACCESS_KEY"),
+	}
+
+	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf, s3Cfg, config.GetValue("S3_LOG_PREFIX"))
 	assert.NoError(err, "failed to initialize logStore")
 
 	cp := clientProvider.StaticClientProvider()

@@ -89,6 +89,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [PR Activity](./docs/pr-activity.md)
 - [Authentication](./docs/auth.md)
 - [Valkey / Redis Cache](./docs/valkey.md)
+- [S3 Object Storage](./docs/s3.md)
 
 ## Contributing
 

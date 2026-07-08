@@ -43,7 +43,7 @@ Valkey is configured via environment variables (or the equivalent Helm values):
 | `VALKEY_PORT`                  | —                           | `6379`     | Valkey port. Used when `VALKEY_URL` is not set.                                                        |
 | `VALKEY_PASSWORD`              | —                           | `""`       | Valkey password. Used when `VALKEY_URL` is not set.                                                    |
 | `VALKEY_FORWARD_CACHE_TO_JOBS` | `config.forwardCacheToJobs` | `true`     | Forward the Renovate cache URL to executor jobs. Requires Valkey to be configured.                     |
-| `LOG_STORE_MODE`               | `config.logStorage.mode`    | `disabled` | Log storage backend: `disabled`, `memory`, or `valkey`.                                                |
+| `LOG_STORE_MODE`               | `config.logStorage.mode`    | `disabled` | Log storage backend: `disabled`, `memory`, `valkey`, or `s3` (see [S3 Object Storage](./s3.md)).       |
 
 ## Deploying with the bundled Helm chart
 
