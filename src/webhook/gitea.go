@@ -61,6 +61,9 @@ type GiteaUser struct {
 func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 	event := r.Header.Get("X-Gitea-Event")
 	if event == "" {
+		event = r.Header.Get("X-GitHub-Event")
+	}
+	if event == "" {
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing X-Gitea-Event header"})
 		return
 	}
