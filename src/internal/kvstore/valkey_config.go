@@ -60,11 +60,15 @@ func BuildValkeyURL(host, port, password string, db int) string {
 	if port == "" {
 		port = "6379"
 	}
-	var userInfo string
-	if password != "" {
-		userInfo = ":" + url.QueryEscape(password) + "@"
+	u := url.URL{
+		Scheme: "redis",
+		Host:   host + ":" + port,
+		Path:   fmt.Sprintf("/%d", db),
 	}
-	return fmt.Sprintf("redis://%s%s:%s/%d", userInfo, host, port, db)
+	if password != "" {
+		u.User = url.UserPassword("", password)
+	}
+	return u.String()
 }
 
 // offsetURLDB parses rawURL, reads its database index from the path as a base,
