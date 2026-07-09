@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"renovate-operator/internal/kvstore"
 	"slices"
 	"strings"
@@ -560,6 +561,21 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 	expected := "redis://:p%40ss%3Aword%2F123@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildValkeyURL_PasswordWithSpace(t *testing.T) {
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "pass word", 0)
+	expected := "redis://:pass%20word@valkey.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+	u, err := url.Parse(result)
+	if err != nil {
+		t.Fatalf("built URL does not parse: %v", err)
+	}
+	if pw, _ := u.User.Password(); pw != "pass word" {
+		t.Errorf("password round-trip: got %q, want %q", pw, "pass word")
 	}
 }
 
