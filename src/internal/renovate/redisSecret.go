@@ -16,12 +16,7 @@ import (
 const redisURLSecretName = "renovate-operator-job-redis-cache"
 
 func getRenovateCacheURL() string {
-	cfg := kvstore.ValkeyConfig{
-		URL:      config.GetValue("VALKEY_URL"),
-		Host:     config.GetValue("VALKEY_HOST"),
-		Port:     config.GetValue("VALKEY_PORT"),
-		Password: config.GetValue("VALKEY_PASSWORD"),
-	}
+	cfg := kvstore.ConfigFromEnv(config.GetValue)
 	return cfg.URLForUsage(kvstore.UsageRenovateCache)
 }
 
