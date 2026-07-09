@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/types"
 )
 
 type GitHubEvent struct {
@@ -41,72 +38,46 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload GitHubEvent
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var raw GitHubEvent
+	if err := json.Unmarshal(body, &raw); err != nil {
 		s.logger.Error(err, "failed to decode github webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
 	}
 
-	valid, reason := isValidGitHubEvent(&payload)
+	payload, valid := parseGitHubPayload(&raw)
 	if !valid {
-		s.logger.Info("ignoring github webhook event", "reason", reason)
-		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+		s.logger.V(5).Info("failed to parse webhook payload")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored"})
 		return
 	}
 
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-	project := payload.Repository.FullName
-
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
-	if err != nil {
-		s.logger.Info("webhook resolve failed", "project", project, "error", err)
-		s.handleResolverError(w, err)
-		return
-	}
-
-	s.logger.Info("received github event", "repository", project, "action", payload.Action, "priority", 1)
-	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		project,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
-		return
-	}
-
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
+	s.handleWebhookTrigger(w, r, body, payload)
 }
 
-func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
-	if payload.Action != "edited" {
-		return false, "event action is not edited"
+// parseGitHubPayload normalizes a raw GitHub event into a WebhookPayload and
+// validates it. Returns false when the event should be ignored.
+func parseGitHubPayload(raw *GitHubEvent) (WebhookPayload, bool) {
+	if raw.Action != "edited" {
+		return WebhookPayload{}, false
 	}
 
-	if payload.PullRequest == nil && payload.Issue == nil {
-		return false, "event is neither pull request nor issue"
+	var eventType, current string
+	if raw.PullRequest != nil {
+		eventType = "pull_request"
+		current = raw.PullRequest.Body
+	} else if raw.Issue != nil {
+		eventType = "issue"
+		current = raw.Issue.Body
+	} else {
+		return WebhookPayload{}, false
 	}
 
-	if (payload.PullRequest == nil || payload.PullRequest.Body == "") &&
-		(payload.Issue == nil || payload.Issue.Body == "") {
-		return false, "no body change detected"
-	}
-
-	var currentBody string
-	if payload.PullRequest != nil {
-		currentBody = payload.PullRequest.Body
-	} else if payload.Issue != nil {
-		currentBody = payload.Issue.Body
-	}
-
-	if !verifyRenovateDescriptionChange(currentBody) {
-		return false, "not a valid renovate checkbox change"
-	}
-	return true, ""
+	return WebhookPayload{
+		Provider:  "GitHub",
+		Project:   raw.Repository.FullName,
+		Action:    "edited",
+		EventType: eventType,
+		Body:      WebhookBody{Current: current},
+	}, true
 }

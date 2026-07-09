@@ -143,3 +143,38 @@ func (server *Server) writeJSON(w http.ResponseWriter, status int, data any) {
 		server.logger.Error(err, "failed to write JSON response")
 	}
 }
+
+func (s *Server) handleWebhookTrigger(w http.ResponseWriter, r *http.Request, body []byte, payload WebhookPayload) {
+	if valid, reason := isValidWebhookPayload(payload); !valid {
+		s.logger.Info("ignoring "+payload.Provider+" webhook event", "event", payload.Event, "repository", payload.Project, "reason", reason)
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+		return
+	}
+
+	namespace := r.URL.Query().Get("namespace")
+	jobName := r.URL.Query().Get("job")
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, payload.Project, checker)
+	if err != nil {
+		s.logger.Info("webhook resolve failed", "project", payload.Project, "error", err)
+		s.handleResolverError(w, err)
+		return
+	}
+
+	s.logger.Info("received "+payload.Provider+" event", "repository", payload.Project, "event", payload.Event, "action", payload.Action, "priority", 1)
+	err = s.manager.UpdateProjectStatus(
+		r.Context(),
+		payload.Project,
+		jobId,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
+		},
+	)
+	if s.handleUpdateProjectStatusError(w, err, payload.Project, jobId.Name, jobId.Namespace) {
+		return
+	}
+
+	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": payload.Project})
+}

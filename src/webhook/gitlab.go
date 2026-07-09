@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/types"
 )
 
 type GitLabEvent struct {
@@ -45,64 +42,53 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload GitLabEvent
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var raw GitLabEvent
+	if err := json.Unmarshal(body, &raw); err != nil {
 		s.logger.Error(err, "failed to decode gitlab webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
 	}
 
-	valid, reason := isValidGitLabEvent(&payload)
+	payload, valid := parseGitLabPayload(&raw)
 	if !valid {
-		s.logger.Info("ignoring GitLab webhook event", "reason", reason)
-		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+		s.logger.V(5).Info("failed to parse webhook payload")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored"})
 		return
 	}
 
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-	project := payload.Project.PathWithNamespace
-
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
-	if err != nil {
-		s.logger.Info("webhook resolve failed", "project", project, "error", err)
-		s.handleResolverError(w, err)
-		return
-	}
-
-	s.logger.Info("received GitLab event", "repository", project, "action", payload.ObjectAttributes.Action, "priority", 1)
-	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		project,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
-		return
-	}
-
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "project": project})
+	s.handleWebhookTrigger(w, r, body, payload)
 }
 
-func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
-	if payload.ObjectKind != "merge_request" && payload.ObjectKind != "issue" {
-		return false, "object kind is not merge_request or issue"
+// parseGitLabPayload normalizes a raw GitLab event into a WebhookPayload and
+// validates it. GitLab uses "update" as the action name and sends both the
+// previous and current description in Changes. Returns false when the event
+// should be ignored.
+func parseGitLabPayload(raw *GitLabEvent) (WebhookPayload, bool) {
+	var eventType string
+	switch raw.ObjectKind {
+	case "merge_request":
+		eventType = "pull_request"
+	case "issue":
+		eventType = "issue"
+	default:
+		return WebhookPayload{}, false
 	}
 
-	if payload.ObjectAttributes.Action != "update" {
-		return false, "event action is not update"
+	if raw.ObjectAttributes.Action != "update" {
+		return WebhookPayload{}, false
 	}
 
-	if payload.Changes.Description.Current == "" && payload.Changes.Description.Previous == "" {
-		return false, "no description change detected"
+	current := raw.Changes.Description.Current
+	previous := raw.Changes.Description.Previous
+	if current == "" && previous == "" {
+		return WebhookPayload{}, false
 	}
 
-	if !verifyRenovateDescriptionChange(payload.Changes.Description.Current) {
-		return false, "not a valid renovate checkbox change"
-	}
-	return true, ""
+	return WebhookPayload{
+		Provider:  "GitLab",
+		Project:   raw.Project.PathWithNamespace,
+		Action:    "edited",
+		EventType: eventType,
+		Body:      WebhookBody{Current: current, Previous: previous},
+	}, true
 }

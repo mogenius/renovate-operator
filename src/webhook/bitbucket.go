@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/types"
 )
 
 // Bitbucket Cloud webhook types and handler.
@@ -51,69 +48,49 @@ func (s *Server) bitbucketWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload BitbucketEvent
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var raw BitbucketEvent
+	if err := json.Unmarshal(body, &raw); err != nil {
 		s.logger.Error(err, "failed to decode Bitbucket webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
 	}
 
-	valid, reason := isValidBitbucketEvent(event, &payload)
+	payload, valid := parseBitbucketPayload(event, &raw)
 	if !valid {
-		s.logger.Info("ignoring Bitbucket webhook event", "event", event, "repository", payload.Repository.FullName, "reason", reason)
-		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+		s.logger.V(5).Info("failed to parse webhook payload")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored"})
 		return
 	}
 
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-	project := payload.Repository.FullName
-
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
-	if err != nil {
-		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)
-		s.handleResolverError(w, err)
-		return
-	}
-
-	s.logger.Info("received Bitbucket event", "event", event, "repository", project)
-	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		project,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
-		return
-	}
-
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
+	s.handleWebhookTrigger(w, r, body, payload)
 }
 
-func isValidBitbucketEvent(event string, payload *BitbucketEvent) (bool, string) {
+// parseBitbucketPayload normalizes a raw Bitbucket event into a WebhookPayload
+// and validates it. Bitbucket's event key encodes both the object type and
+// action (e.g. "pullrequest:fulfilled"), which is normalized to the standard
+// action vocabulary ("edited", "closed"). Returns false when the event should
+// be ignored.
+func parseBitbucketPayload(event string, raw *BitbucketEvent) (WebhookPayload, bool) {
+	var action string
 	switch event {
-	case "pullrequest:updated", "pullrequest:fulfilled", "pullrequest:rejected":
-		if payload.PullRequest == nil {
-			return false, "no pull request in payload"
-		}
-		if payload.PullRequest.Description == "" {
-			return false, "no pull request description"
-		}
-		if !isRenovateContent(payload.PullRequest.Description) {
-			return false, "not a Renovate pull request"
-		}
-		// merge/decline of a Renovate PR always triggers; description edits
-		// only when a checkbox was checked
-		if event == "pullrequest:updated" && !hasCheckboxBeenChecked(payload.PullRequest.Description) {
-			return false, "no checked checkbox"
-		}
-		return true, ""
-
+	case "pullrequest:updated":
+		action = "edited"
+	case "pullrequest:fulfilled", "pullrequest:rejected":
+		action = "closed"
 	default:
-		return false, "unsupported event type: " + event
+		return WebhookPayload{}, false
 	}
+
+	if raw.PullRequest == nil {
+		return WebhookPayload{}, false
+	}
+
+	return WebhookPayload{
+		Provider:  "Bitbucket",
+		Project:   raw.Repository.FullName,
+		Event:     event,
+		Action:    action,
+		EventType: "pull_request",
+		Body:      WebhookBody{Current: raw.PullRequest.Description},
+	}, true
 }

@@ -238,7 +238,11 @@ func TestForgejoEventValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid, reason := isValidForgejoEvent(tt.event, &tt.payload)
+			p, valid := parseForgejoPayload(tt.event, &tt.payload)
+			reason := "failed to parse payload"
+			if valid {
+				valid, reason = isValidWebhookPayload(p)
+			}
 			if valid != tt.valid || reason != tt.reason {
 				t.Errorf("expected valid=%v, reason=%q; got valid=%v, reason=%q", tt.valid, tt.reason, valid, reason)
 			}

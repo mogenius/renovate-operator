@@ -59,13 +59,17 @@ func TestGitHubEventValidation(t *testing.T) {
 				},
 			},
 			valid:  false,
-			reason: "no body change detected",
+			reason: "no pull request body",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid, reason := isValidGitHubEvent(&tt.payload)
+			p, valid := parseGitHubPayload(&tt.payload)
+			reason := "failed to parse payload"
+			if valid {
+				valid, reason = isValidWebhookPayload(p)
+			}
 			if valid != tt.valid || reason != tt.reason {
 				t.Errorf("expected valid=%v, reason=%q; got valid=%v, reason=%q", tt.valid, tt.reason, valid, reason)
 			}

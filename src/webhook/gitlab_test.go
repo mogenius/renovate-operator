@@ -75,7 +75,7 @@ func TestIsValidGitLabEvent(t *testing.T) {
 			reason: "no description change detected",
 		},
 		{
-			name: "not a valid renovate checkbox change",
+			name: "not a Renovate pull request",
 			payload: GitLabEvent{
 				ObjectKind: "merge_request",
 				ObjectAttributes: ObjectAttributes{
@@ -92,13 +92,17 @@ func TestIsValidGitLabEvent(t *testing.T) {
 				},
 			},
 			valid:  false,
-			reason: "not a valid renovate checkbox change",
+			reason: "not a Renovate pull request",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid, reason := isValidGitLabEvent(&tt.payload)
+			p, valid := parseGitLabPayload(&tt.payload)
+			reason := "failed to parse payload"
+			if valid {
+				valid, reason = isValidWebhookPayload(p)
+			}
 			if valid != tt.valid || reason != tt.reason {
 				t.Errorf("expected valid=%v, reason=%q; got valid=%v, reason=%q", tt.valid, tt.reason, valid, reason)
 			}

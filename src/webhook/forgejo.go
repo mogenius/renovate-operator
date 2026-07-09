@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/types"
 )
 
 // Forgejo webhook types and handler.
@@ -74,86 +71,50 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload ForgejoEvent
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var raw ForgejoEvent
+	if err := json.Unmarshal(body, &raw); err != nil {
 		s.logger.Error(err, "failed to decode Forgejo webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
 	}
 
-	valid, reason := isValidForgejoEvent(event, &payload)
+	payload, valid := parseForgejoPayload(event, &raw)
 	if !valid {
-		s.logger.Info("ignoring Forgejo webhook event", "event", event, "repository", payload.Repository.FullName, "reason", reason)
-		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+		s.logger.V(5).Info("failed to parse webhook payload")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored"})
 		return
 	}
 
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-	project := payload.Repository.FullName
-
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
-	if err != nil {
-		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)
-		s.handleResolverError(w, err)
-		return
-	}
-
-	s.logger.Info("received Forgejo event", "event", event, "repository", project, "action", payload.Action)
-	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		project,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
-		return
-	}
-
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
+	s.handleWebhookTrigger(w, r, body, payload)
 }
 
-func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
+// parseForgejoPayload normalizes a raw Forgejo event into a WebhookPayload and
+// validates it. The X-Forgejo-Event header value is used to determine the event
+// type. Returns false when the event should be ignored.
+func parseForgejoPayload(event string, raw *ForgejoEvent) (WebhookPayload, bool) {
+	var eventType, current string
 	switch event {
 	case "issues":
-		if payload.Action != "edited" {
-			return false, "issue action is not edited"
+		eventType = "issue"
+		if raw.Issue != nil {
+			current = raw.Issue.Body
 		}
-		if payload.Issue == nil || payload.Issue.Body == "" {
-			return false, "no issue body"
-		}
-		if !verifyRenovateDescriptionChange(payload.Issue.Body) {
-			return false, "not a valid renovate checkbox change"
-		}
-		return true, ""
-
 	case "pull_request":
-		if payload.PullRequest == nil {
-			return false, "no pull request in payload"
+		eventType = "pull_request"
+		if raw.PullRequest == nil {
+			return WebhookPayload{}, false
 		}
-		if payload.PullRequest.Body == "" {
-			return false, "no pull request body"
-		}
-		if !isRenovateContent(payload.PullRequest.Body) {
-			return false, "not a Renovate pull request"
-		}
-		switch payload.Action {
-		case "closed", "reopened":
-			return true, ""
-		case "edited":
-			if !hasCheckboxBeenChecked(payload.PullRequest.Body) {
-				return false, "no checked checkbox"
-			}
-			return true, ""
-		default:
-			return false, "pull request action is not edited, closed, or reopened"
-		}
-
+		current = raw.PullRequest.Body
 	default:
-		return false, "unsupported event type: " + event
+		return WebhookPayload{}, false
 	}
+
+	return WebhookPayload{
+		Provider:  "Forgejo",
+		Project:   raw.Repository.FullName,
+		Event:     event,
+		Action:    raw.Action,
+		EventType: eventType,
+		Body:      WebhookBody{Current: current},
+	}, true
 }
