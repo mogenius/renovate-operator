@@ -526,14 +526,14 @@ func TestValkeyStore_EncryptionAtRest(t *testing.T) {
 // --- Factory and URL builder tests ---
 
 func TestBuildValkeyURL_EmptyHost(t *testing.T) {
-	result := kvstore.BuildValkeyURL("", "6379", "", 0)
+	result := kvstore.BuildValkeyURL("", "6379", "", "", false, 0)
 	if result != "" {
 		t.Errorf("Expected empty string for empty host, got %q", result)
 	}
 }
 
 func TestBuildValkeyURL_HostAndPort(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6380", "", 0)
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6380", "", "", false, 0)
 	expected := "redis://valkey.example.com:6380/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -541,7 +541,7 @@ func TestBuildValkeyURL_HostAndPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_DefaultPort(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "", "", 0)
+	result := kvstore.BuildValkeyURL("valkey.example.com", "", "", "", false, 0)
 	expected := "redis://valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -549,7 +549,7 @@ func TestBuildValkeyURL_DefaultPort(t *testing.T) {
 }
 
 func TestBuildValkeyURL_WithPassword(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "s3cret", 0)
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "", "s3cret", false, 0)
 	expected := "redis://:s3cret@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -557,7 +557,7 @@ func TestBuildValkeyURL_WithPassword(t *testing.T) {
 }
 
 func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "p@ss:word/123", 0)
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "", "p@ss:word/123", false, 0)
 	expected := "redis://:p%40ss%3Aword%2F123@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -565,7 +565,7 @@ func TestBuildValkeyURL_PasswordWithSpecialChars(t *testing.T) {
 }
 
 func TestBuildValkeyURL_PasswordWithSpace(t *testing.T) {
-	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "pass word", 0)
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "", "pass word", false, 0)
 	expected := "redis://:pass%20word@valkey.example.com:6379/0"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
@@ -576,6 +576,68 @@ func TestBuildValkeyURL_PasswordWithSpace(t *testing.T) {
 	}
 	if pw, _ := u.User.Password(); pw != "pass word" {
 		t.Errorf("password round-trip: got %q, want %q", pw, "pass word")
+	}
+}
+
+func TestBuildValkeyURL_WithUsernameAndPassword(t *testing.T) {
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "renovate", "s3cret", false, 0)
+	expected := "redis://renovate:s3cret@valkey.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildValkeyURL_UsernameWithoutPassword(t *testing.T) {
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "renovate", "", false, 0)
+	expected := "redis://renovate@valkey.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildValkeyURL_UsernameWithSpecialChars(t *testing.T) {
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "user@domain", "s3cret", false, 0)
+	expected := "redis://user%40domain:s3cret@valkey.example.com:6379/0"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestBuildValkeyURL_TLS(t *testing.T) {
+	result := kvstore.BuildValkeyURL("valkey.example.com", "6379", "renovate", "s3cret", true, 1)
+	expected := "rediss://renovate:s3cret@valkey.example.com:6379/1"
+	if result != expected {
+		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+func TestURLForUsage_HostBased_UsernameAndTLS(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{Host: "valkey.example.com", Port: "6379", Username: "renovate", Password: "s3cret", TLS: true}
+	if got := cfg.URLForUsage(kvstore.UsageRenovateCache); got != "rediss://renovate:s3cret@valkey.example.com:6379/1" {
+		t.Errorf("UsageRenovateCache: got %q", got)
+	}
+}
+
+func TestConfigFromEnv_ReadsAllKeys(t *testing.T) {
+	values := map[string]string{
+		"VALKEY_URL":      "",
+		"VALKEY_HOST":     "valkey.example.com",
+		"VALKEY_PORT":     "6380",
+		"VALKEY_USERNAME": "renovate",
+		"VALKEY_PASSWORD": "s3cret",
+		"VALKEY_TLS":      "true",
+	}
+	cfg := kvstore.ConfigFromEnv(func(key string) string { return values[key] })
+	expected := kvstore.ValkeyConfig{Host: "valkey.example.com", Port: "6380", Username: "renovate", Password: "s3cret", TLS: true}
+	if cfg != expected {
+		t.Errorf("got %+v, want %+v", cfg, expected)
+	}
+}
+
+func TestURLForUsage_URLTakesPrecedenceOverHostFields(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{URL: "redis://valkey.example.com:6379/5", Host: "other.example.com", Username: "renovate", Password: "s3cret", TLS: true}
+	if got := cfg.URLForUsage(kvstore.UsageSessionStore); got != "redis://valkey.example.com:6379/5" {
+		t.Errorf("URL mode must ignore host-based fields: got %q", got)
 	}
 }
 

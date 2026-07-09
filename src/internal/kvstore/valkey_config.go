@@ -8,12 +8,15 @@ import (
 )
 
 // ValkeyConfig holds the configuration for connecting to Valkey.
-// Either URL or Host must be set; URL takes precedence over Host/Port/Password.
+// Either URL or Host must be set; URL takes precedence over
+// Host/Port/Username/Password/TLS.
 type ValkeyConfig struct {
 	URL      string
 	Host     string
 	Port     string
+	Username string
 	Password string
+	TLS      bool
 }
 
 func (cfg *ValkeyConfig) IsConfigured() bool {
@@ -28,7 +31,9 @@ func ConfigFromEnv(get func(key string) string) ValkeyConfig {
 		URL:      get("VALKEY_URL"),
 		Host:     get("VALKEY_HOST"),
 		Port:     get("VALKEY_PORT"),
+		Username: get("VALKEY_USERNAME"),
 		Password: get("VALKEY_PASSWORD"),
+		TLS:      get("VALKEY_TLS") == "true",
 	}
 }
 
@@ -60,25 +65,35 @@ func (cfg ValkeyConfig) URLForUsage(usage Usage) string {
 	if cfg.URL != "" {
 		return offsetURLDB(cfg.URL, int(usage))
 	}
-	return BuildValkeyURL(cfg.Host, cfg.Port, cfg.Password, int(usage))
+	return BuildValkeyURL(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.TLS, int(usage))
 }
 
-// BuildValkeyURL constructs a Valkey URL from host, port, password, and database index.
-// Returns "" if host is empty. Uses the redis:// scheme (wire-compatible with Valkey).
-func BuildValkeyURL(host, port, password string, db int) string {
+// BuildValkeyURL constructs a Valkey URL from host, port, credentials, and
+// database index. Returns "" if host is empty. Uses the redis:// scheme
+// (wire-compatible with Valkey), or rediss:// when useTLS is set.
+// A username without a password is emitted as user@host (valid for ACL users
+// created with nopass).
+func BuildValkeyURL(host, port, username, password string, useTLS bool, db int) string {
 	if host == "" {
 		return ""
 	}
 	if port == "" {
 		port = "6379"
 	}
+	scheme := "redis"
+	if useTLS {
+		scheme = "rediss"
+	}
 	u := url.URL{
-		Scheme: "redis",
+		Scheme: scheme,
 		Host:   host + ":" + port,
 		Path:   fmt.Sprintf("/%d", db),
 	}
-	if password != "" {
-		u.User = url.UserPassword("", password)
+	switch {
+	case password != "":
+		u.User = url.UserPassword(username, password)
+	case username != "":
+		u.User = url.User(username)
 	}
 	return u.String()
 }
