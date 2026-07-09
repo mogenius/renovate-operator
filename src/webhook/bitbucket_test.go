@@ -99,10 +99,10 @@ func TestBitbucketEventValidation(t *testing.T) {
 			valid: false,
 		},
 		{
-			name:  "renovate PR merged",
+			name:  "PR merged",
 			event: "pullrequest:fulfilled",
 			payload: BitbucketEvent{
-				PullRequest: &BitbucketPullRequest{Description: renovatePRBody},
+				PullRequest: &BitbucketPullRequest{Description: ""},
 				Repository:  BitbucketRepository{FullName: "ws/repo"},
 			},
 			valid: true,
