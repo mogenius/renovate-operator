@@ -92,7 +92,9 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 
 	// Initialize KV store (Valkey if configured, otherwise nil)
 	kvStore, kvErr := kvstore.NewKVStore(valkeyConf, kvstore.UsageSessionStore)
-	assert.Assert(kvErr == nil || kvErr == kvstore.ErrValkeyNotConfigured, "failed to initialize KV store")
+	if kvErr != nil && kvErr != kvstore.ErrValkeyNotConfigured {
+		assert.NoError(kvErr, "failed to initialize KV store")
+	}
 
 	// Wrap KV store with session-specific encryption and key prefix
 	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
