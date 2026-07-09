@@ -9,7 +9,6 @@ import (
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 	"sync"
-	"time"
 
 	"github.com/go-logr/logr"
 	"go.opentelemetry.io/otel"
@@ -81,20 +80,7 @@ func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.Ren
 		RenovateJobName: job.Name,
 	})
 	if err != nil && errors.IsNotFound(err) {
-		time.Sleep(1 * time.Second)
-
-		tries := 5
-		for errors.IsNotFound(err) {
-			tries--
-			if tries <= 0 {
-				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
-			}
-			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobType:         crdManager.DiscoveryJobType,
-				Namespace:       job.Namespace,
-				RenovateJobName: job.Name,
-			})
-		}
+		return api.JobStatusScheduled, nil
 	} else if err != nil {
 		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job: %w", err)
 	}
