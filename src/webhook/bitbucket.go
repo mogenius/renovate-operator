@@ -100,8 +100,8 @@ func isValidBitbucketEvent(event string, payload *BitbucketEvent) (bool, string)
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
 		}
-		if payload.PullRequest.Description == "" {
-			return false, "no pull request description"
+		if event == "pullrequest:fulfilled" {
+			return true, ""
 		}
 		if !isRenovateContent(payload.PullRequest.Description) {
 			return false, "not a Renovate pull request"
