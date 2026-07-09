@@ -20,6 +20,18 @@ func (cfg *ValkeyConfig) IsConfigured() bool {
 	return cfg.URL != "" || cfg.Host != ""
 }
 
+// ConfigFromEnv builds a ValkeyConfig by looking up the VALKEY_* configuration
+// values through the provided getter (typically config.GetValue). Keeping the
+// lookup injected avoids coupling this package to the config singleton.
+func ConfigFromEnv(get func(key string) string) ValkeyConfig {
+	return ValkeyConfig{
+		URL:      get("VALKEY_URL"),
+		Host:     get("VALKEY_HOST"),
+		Port:     get("VALKEY_PORT"),
+		Password: get("VALKEY_PASSWORD"),
+	}
+}
+
 // Usage identifies a logical Valkey database role.
 // The value doubles as an offset from the base database when a predefined URL is used,
 // or as an absolute database index when connecting via host/port.

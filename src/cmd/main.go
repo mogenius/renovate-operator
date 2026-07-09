@@ -524,12 +524,7 @@ func main() {
 
 	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
 
-	valkeyConf := kvstore.ValkeyConfig{
-		URL:      config.GetValue("VALKEY_URL"),
-		Host:     config.GetValue("VALKEY_HOST"),
-		Port:     config.GetValue("VALKEY_PORT"),
-		Password: config.GetValue("VALKEY_PASSWORD"),
-	}
+	valkeyConf := kvstore.ConfigFromEnv(config.GetValue)
 
 	s3Cfg := objectstore.S3Config{
 		Bucket:          config.GetValue("S3_BUCKET"),
