@@ -399,9 +399,19 @@ func main() {
 			Default:  "6379",
 		},
 		{
+			Key:      "VALKEY_USERNAME",
+			Optional: true,
+			Default:  "",
+		},
+		{
 			Key:      "VALKEY_PASSWORD",
 			Optional: true,
 			Default:  "",
+		},
+		{
+			Key:      "VALKEY_TLS",
+			Optional: true,
+			Default:  "false",
 		},
 		{
 			Key:      "VALKEY_FORWARD_CACHE_TO_JOBS",
