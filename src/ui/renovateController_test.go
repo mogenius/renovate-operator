@@ -15,7 +15,9 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -814,6 +816,64 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 				t.Errorf("Expected %d jobs, got %d", tt.wantCount, len(result))
 			}
 		})
+	}
+}
+
+func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+
+	const jobCount = 5
+	jobs := make([]api.RenovateJob, 0, jobCount)
+	for i := range jobCount {
+		jobs = append(jobs, api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job-" + string(rune('a'+i)),
+				Namespace: "default",
+			},
+			Spec: api.RenovateJobSpec{Schedule: "0 0 * * *"},
+		})
+	}
+
+	mockManager := &mockRenovateJobManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return jobs, nil
+		},
+	}
+
+	server := &Server{
+		manager:   mockManager,
+		logger:    logr.Discard(),
+		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil),
+		scheduler: &mockScheduler{},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/renovatejobs", nil)
+	w := httptest.NewRecorder()
+
+	start := time.Now()
+	server.getRenovateJobs(w, req)
+	elapsed := time.Since(start)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var result []RenovateJobInfo
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(result) != jobCount {
+		t.Fatalf("Expected %d jobs, got %d", jobCount, len(result))
+	}
+	if elapsed > 750*time.Millisecond {
+		t.Fatalf("getRenovateJobs took %s for %d jobs without discovery jobs, expected it to return without per-job polling", elapsed, jobCount)
 	}
 }
 
