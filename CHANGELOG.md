@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.1.0](https://github.com/mogenius/renovate-operator/compare/5.0.1...5.1.0) (2026-07-09)
+
+
+### Features
+
+* **ui:** make the OIDC groups claim name configurable ([9359d11](https://github.com/mogenius/renovate-operator/commit/9359d110f868f5f73dee50ef65fcf0c42f012533))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([98eed90](https://github.com/mogenius/renovate-operator/commit/98eed90a6d96646e9d926c1a1c9e8f7696e8f391))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.20.0 ([52e8119](https://github.com/mogenius/renovate-operator/commit/52e81198b99fdd874a7396ddf863e3b69874f825))
+* **ui:** avoid polling missing discovery jobs ([657dbd2](https://github.com/mogenius/renovate-operator/commit/657dbd206df0853b39357ae9aadd75b856f5fba7))
+
 ## [5.0.1](https://github.com/mogenius/renovate-operator/compare/5.0.0...5.0.1) (2026-07-08)
 
 
