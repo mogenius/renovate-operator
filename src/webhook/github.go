@@ -18,6 +18,7 @@ type GitHubEvent struct {
 
 type GitHubPullRequest struct {
 	ID     int    `json:"id"`
+	Merged bool   `json:"merged"`
 	Number int    `json:"number"`
 	Body   string `json:"body"`
 }
@@ -85,12 +86,16 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
-	if payload.Action != "edited" {
-		return false, "event action is not edited"
+	if payload.Action != "edited" && payload.Action != "closed" {
+		return false, "event action is not edited or closed"
 	}
 
 	if payload.PullRequest == nil && payload.Issue == nil {
 		return false, "event is neither pull request nor issue"
+	}
+
+	if payload.PullRequest != nil && payload.PullRequest.Merged {
+		return true, ""
 	}
 
 	if (payload.PullRequest == nil || payload.PullRequest.Body == "") &&

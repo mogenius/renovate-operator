@@ -25,6 +25,20 @@ func TestGitHubEventValidation(t *testing.T) {
 			reason: "",
 		},
 		{
+			name: "valid pull request gets merged",
+			payload: GitHubEvent{
+				Action: "closed",
+				PullRequest: &GitHubPullRequest{
+					Merged: true,
+				},
+				Repository: GitHubRepository{
+					FullName: "example/repo",
+				},
+			},
+			valid:  true,
+			reason: "",
+		},
+		{
 			name: "invalid action",
 			payload: GitHubEvent{
 				Action: "opened",
@@ -36,7 +50,7 @@ func TestGitHubEventValidation(t *testing.T) {
 				},
 			},
 			valid:  false,
-			reason: "event action is not edited",
+			reason: "event action is not edited or closed",
 		},
 		{
 			name: "no pull request or issue",
