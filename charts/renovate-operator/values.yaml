@@ -368,8 +368,7 @@ metrics:
     grafanaDashboard:
       allowCrossNamespaceImport: false
       instanceSelector:
-        matchLabels:
-          grafana.internal/instance: "grafana"
+        matchLabels: {}
 
 # -- list of extra manifests
 extraManifests: []
