@@ -39,6 +39,7 @@ type ForgejoEvent struct {
 
 type ForgejoPullRequest struct {
 	ID     int          `json:"id"`
+	Merged bool         `json:"merged"`
 	Number int          `json:"number"`
 	Body   string       `json:"body"`
 	User   *ForgejoUser `json:"user,omitempty"`
@@ -134,6 +135,9 @@ func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
 	case "pull_request":
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
+		}
+		if payload.PullRequest.Merged {
+			return true, ""
 		}
 		if payload.PullRequest.Body == "" {
 			return false, "no pull request body"
