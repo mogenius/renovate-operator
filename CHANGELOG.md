@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.2.0](https://github.com/mogenius/renovate-operator/compare/5.1.0...5.2.0) (2026-07-10)
+
+
+### Features
+
+* **helm:** add externalKeyValueStore values for external connections ([09e2cc3](https://github.com/mogenius/renovate-operator/commit/09e2cc31ccb636568a08ebe8990a1bb7b8a7c6c4))
+* **operator:** support username and TLS for host-based Valkey config ([869635a](https://github.com/mogenius/renovate-operator/commit/869635a3a06e267e04de0fa74ab0e9630b02a22e))
+
+
+### Bug Fixes
+
+* correctly escape spaces in user password when building the valkey url ([93c47c7](https://github.com/mogenius/renovate-operator/commit/93c47c768e218b44ccd96b8fe9f7bf857ba248df))
+* **helm:** grafana dashboard label selector allow default overwrite ([1655691](https://github.com/mogenius/renovate-operator/commit/16556913fdc1ed7ebd01a30b17fc465bd11bb1ad)), closes [#485](https://github.com/mogenius/renovate-operator/issues/485)
+* **operator:** surface the underlying error when KV store init fails ([9f91cf0](https://github.com/mogenius/renovate-operator/commit/9f91cf058a821702e1b0f6efafe214141ea85254))
+* **ui:** do not close log expansion if logs are selected ([21da12f](https://github.com/mogenius/renovate-operator/commit/21da12f7329e61d22cd9329a27803f5ff78a0925)), closes [#491](https://github.com/mogenius/renovate-operator/issues/491)
+* **webhook:** Trigger Renovate on BitBucket PR merge ([d88d8b0](https://github.com/mogenius/renovate-operator/commit/d88d8b0cf2864b55369131ef78c88572ea31d4fe))
+* **webhook:** Trigger Renovate on Forgejo PR merge ([71c1097](https://github.com/mogenius/renovate-operator/commit/71c1097259afc75cac27359fa3b388e2888532c3))
+* **webhook:** Trigger Renovate on Gitea PR merge ([4935563](https://github.com/mogenius/renovate-operator/commit/4935563f6ccfd22f65faa58890d6fd31c1aecc61))
+* **webhook:** Trigger Renovate on Github PR merge ([02a522c](https://github.com/mogenius/renovate-operator/commit/02a522c5701e9ae0a0214f17362799ecf4cc3414))
+* **webhook:** Trigger Renovate on Gitlab MR merge ([e8000cb](https://github.com/mogenius/renovate-operator/commit/e8000cb65825084426f4261423b515d93d4d825d)), closes [#463](https://github.com/mogenius/renovate-operator/issues/463)
+
 ## [5.1.0](https://github.com/mogenius/renovate-operator/compare/5.0.1...5.1.0) (2026-07-09)
 
 
