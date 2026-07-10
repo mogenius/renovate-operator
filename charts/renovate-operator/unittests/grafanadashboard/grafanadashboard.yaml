@@ -1,0 +1,32 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: GrafanaDashboard instanceSelector
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/grafanadashboard.yaml
+capabilities:
+  apiVersions:
+  - grafana.integreatly.org/v1beta1/GrafanaDashboard
+
+tests:
+- it: Uses default matchLabels when none are set
+  set:
+    metrics.dashboard.enabled: true
+  asserts:
+  - equal:
+      path: spec.instanceSelector.matchLabels
+      value:
+        grafana.internal/instance: grafana
+
+- it: Uses only provided matchLabels when set, without merging the default
+  set:
+    metrics.dashboard.enabled: true
+    metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels.dashboards: grafana
+  asserts:
+  - equal:
+      path: spec.instanceSelector.matchLabels
+      value:
+        dashboards: grafana

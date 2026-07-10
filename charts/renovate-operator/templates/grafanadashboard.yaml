@@ -5,7 +5,17 @@ metadata:
   name: renovate-operator-dashboard
   namespace: {{ .Values.metrics.dashboard.namespace | default .Release.Namespace }}
 spec:
-  {{- toYaml .Values.metrics.dashboard.grafanaDashboard | nindent 2 }}
+  {{- toYaml (omit .Values.metrics.dashboard.grafanaDashboard "instanceSelector") | nindent 2 }}
+  instanceSelector:
+    {{- with omit (default (dict) .Values.metrics.dashboard.grafanaDashboard.instanceSelector) "matchLabels" }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    matchLabels:
+      {{- if .Values.metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels }}
+      {{- toYaml .Values.metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels | nindent 6 }}
+      {{- else }}
+      grafana.internal/instance: "grafana"
+      {{- end }}
   configMapRef:
     name: renovate-operator-dashboard
     key: renovate-operator.json
