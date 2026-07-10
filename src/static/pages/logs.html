@@ -84,6 +84,7 @@
       const expanded = manuallySet ? manualExpanded : autoExpand;
 
       const handleClick = () => {
+        if (window.getSelection && window.getSelection().toString()) return;
         setManuallySet(true);
         setManualExpanded(!expanded);
       };
