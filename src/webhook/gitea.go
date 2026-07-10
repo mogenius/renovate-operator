@@ -36,6 +36,7 @@ type GiteaEvent struct {
 
 type GiteaPullRequest struct {
 	ID     int        `json:"id"`
+	Merged bool       `json:"merged"`
 	Number int        `json:"number"`
 	Body   string     `json:"body"`
 	User   *GiteaUser `json:"user,omitempty"`
@@ -131,6 +132,9 @@ func isValidGiteaEvent(event string, payload *GiteaEvent) (bool, string) {
 	case "pull_request":
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
+		}
+		if payload.PullRequest.Merged {
+			return true, ""
 		}
 		if payload.PullRequest.Body == "" {
 			return false, "no pull request body"
