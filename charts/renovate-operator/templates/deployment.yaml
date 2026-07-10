@@ -198,7 +198,58 @@ spec:
               value: {{ $githubRedirectUrl | quote }}
             {{- end }}
             {{- end }}
-            {{- if .Values.valkey.existingSecret }}
+            {{- $ekv := .Values.externalKeyValueStore }}
+            {{- if or $ekv.host $ekv.existingSecret.name }}
+            {{- if and $ekv.existingSecret.name $ekv.existingSecret.urlKey }}
+            - name: VALKEY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ekv.existingSecret.name }}
+                  key: {{ $ekv.existingSecret.urlKey }}
+            {{- else }}
+            {{- if and $ekv.existingSecret.name $ekv.existingSecret.hostKey }}
+            - name: VALKEY_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ekv.existingSecret.name }}
+                  key: {{ $ekv.existingSecret.hostKey }}
+            {{- else if $ekv.host }}
+            - name: VALKEY_HOST
+              value: {{ $ekv.host | quote }}
+            {{- end }}
+            {{- if and $ekv.existingSecret.name $ekv.existingSecret.portKey }}
+            - name: VALKEY_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ekv.existingSecret.name }}
+                  key: {{ $ekv.existingSecret.portKey }}
+            {{- else if $ekv.port }}
+            - name: VALKEY_PORT
+              value: {{ $ekv.port | quote }}
+            {{- end }}
+            {{- if and $ekv.existingSecret.name $ekv.existingSecret.usernameKey }}
+            - name: VALKEY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ekv.existingSecret.name }}
+                  key: {{ $ekv.existingSecret.usernameKey }}
+            {{- else if $ekv.username }}
+            - name: VALKEY_USERNAME
+              value: {{ $ekv.username | quote }}
+            {{- end }}
+            {{- if and $ekv.existingSecret.name $ekv.existingSecret.passwordKey }}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ekv.existingSecret.name }}
+                  key: {{ $ekv.existingSecret.passwordKey }}
+            {{- end }}
+            {{- if $ekv.useTls }}
+            - name: VALKEY_TLS
+              value: "true"
+            {{- end }}
+            {{- end }}
+            {{- else if .Values.valkey.existingSecret }}
             - name: VALKEY_URL
               valueFrom:
                 secretKeyRef:

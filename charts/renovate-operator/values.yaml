@@ -297,15 +297,48 @@ logging:
   # -- log format for the operator, one of: json, console
   format: "json"
 
+# -- optional: connection to an external redis-protocol-compatible key value store (e.g. Redis / Valkey)
+# -- Takes precedence over the deprecated valkey.existingSecret and the bundled valkey instance.
+# -- Active when host or existingSecret.name is set.
+externalKeyValueStore:
+  # -- whether the connection should be made with TLS encryption enabled (rediss://)
+  useTls: false
+  # -- host for the connection; alternatively provide via existingSecret.hostKey
+  host: ~
+  # -- port for the connection; alternatively provide via existingSecret.portKey
+  port: 6379
+  # -- username for authentication; alternatively provide via existingSecret.usernameKey.
+  # -- Omit to authenticate as the default user.
+  username: ~
+  # -- secret containing connection and authentication values.
+  # -- Keys win over their clear-value counterparts above.
+  existingSecret:
+    # -- name of the secret containing connection and authentication information
+    name: ~
+    # -- key containing the full connection url (e.g. "rediss://user:password@valkey:6379/0").
+    # -- When set, all other keys and clear values are ignored.
+    urlKey: ~
+    # -- key containing the host for the connection
+    hostKey: ~
+    # -- key containing the port for the connection
+    portKey: ~
+    # -- key containing the username for authentication
+    usernameKey: ~
+    # -- key containing the password for authentication.
+    # -- The password can only be provided via secret.
+    passwordKey: ~
+
 # -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
 valkey:
   # Enable Valkey for session storage. When enabled, the operator will create a Valkey deployment and use it to store sessions.
   enabled: false
 
+  # -- DEPRECATED: use externalKeyValueStore.existingSecret instead; will be removed in a future release.
   # -- name of an existing secret containing the Valkey URL for session storage
   # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
   # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
   existingSecret: ""
+  # -- DEPRECATED: use externalKeyValueStore.existingSecret.urlKey instead; will be removed in a future release.
   # -- key in the existing secret that contains the Valkey URL
   existingSecretKey: "valkey-url"
   auth:
