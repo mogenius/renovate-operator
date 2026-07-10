@@ -36,16 +36,18 @@ If `VALKEY_URL` has no database component (e.g. `redis://valkey:6379`), the base
 
 Valkey is configured via environment variables (or the equivalent Helm values):
 
-| Environment variable           | Helm value                  | Default    | Description                                                                                                       |
-|--------------------------------|-----------------------------|------------|-------------------------------------------------------------------------------------------------------------------|
-| `VALKEY_URL`                   | —                           | `""`       | Full connection URL, e.g. `redis://user:password@valkey:6379/0`. Takes precedence over all host-based variables.  |
-| `VALKEY_HOST`                  | —                           | `""`       | Valkey hostname. Used when `VALKEY_URL` is not set.                                                               |
-| `VALKEY_PORT`                  | —                           | `6379`     | Valkey port. Used when `VALKEY_URL` is not set.                                                                   |
-| `VALKEY_USERNAME`              | —                           | `""`       | Valkey ACL username. Used when `VALKEY_URL` is not set. Omit to authenticate as the `default` user.               |
-| `VALKEY_PASSWORD`              | —                           | `""`       | Valkey password. Used when `VALKEY_URL` is not set.                                                               |
-| `VALKEY_TLS`                   | —                           | `false`    | Connect with TLS (`rediss://`). Used when `VALKEY_URL` is not set; a URL carries its own scheme.                  |
-| `VALKEY_FORWARD_CACHE_TO_JOBS` | `config.forwardCacheToJobs` | `true`     | Forward the Renovate cache URL to executor jobs. Requires Valkey to be configured.                                |
-| `LOG_STORE_MODE`               | `config.logStorage.mode`    | `disabled` | Log storage backend: `disabled`, `memory`, `valkey`, or `s3` (see [S3 Object Storage](./s3.md)).                  |
+| Environment variable           | Helm value                                    | Default    | Description                                                                                                       |
+|--------------------------------|-----------------------------------------------|------------|-------------------------------------------------------------------------------------------------------------------|
+| `VALKEY_URL`                   | `externalKeyValueStore.existingSecret.urlKey` | `""`       | Full connection URL, e.g. `redis://user:password@valkey:6379/0`. Takes precedence over all host-based variables.  |
+| `VALKEY_HOST`                  | `externalKeyValueStore.host` or `.existingSecret.hostKey` | `""` | Valkey hostname. Used when `VALKEY_URL` is not set.                                                          |
+| `VALKEY_PORT`                  | `externalKeyValueStore.port` or `.existingSecret.portKey` | `6379` | Valkey port. Used when `VALKEY_URL` is not set.                                                            |
+| `VALKEY_USERNAME`              | `externalKeyValueStore.username` or `.existingSecret.usernameKey` | `""` | Valkey ACL username. Used when `VALKEY_URL` is not set. Omit to authenticate as the `default` user. |
+| `VALKEY_PASSWORD`              | `externalKeyValueStore.existingSecret.passwordKey` | `""`  | Valkey password. Used when `VALKEY_URL` is not set. Only available via secret.                                    |
+| `VALKEY_TLS`                   | `externalKeyValueStore.useTls`                | `false`    | Connect with TLS (`rediss://`). Used when `VALKEY_URL` is not set; a URL carries its own scheme.                  |
+| `VALKEY_FORWARD_CACHE_TO_JOBS` | `config.forwardCacheToJobs`                   | `true`     | Forward the Renovate cache URL to executor jobs. Requires Valkey to be configured.                                |
+| `LOG_STORE_MODE`               | `config.logStorage.mode`                      | `disabled` | Log storage backend: `disabled`, `memory`, `valkey`, or `s3` (see [S3 Object Storage](./s3.md)).                  |
+
+Host, port, and username can each be set as a clear Helm value or sourced from the secret; the secret key wins when both are set. The password (and the full URL) can only be provided via secret.
 
 The server certificate of a TLS-enabled Valkey must chain to a publicly trusted CA — there is currently no option to supply a custom CA bundle. Note that the executor jobs receive the same URL, so Renovate's containers must be able to verify the certificate too.
 
@@ -58,12 +60,17 @@ valkey:
   enabled: true
 ```
 
-To use an external Valkey instance, provide the URL via an existing Kubernetes secret:
+## Connecting to an external instance
+
+An external Redis-protocol-compatible store (Redis, Valkey, …) is configured via the top-level `externalKeyValueStore` value, which takes precedence over the bundled instance. The connection is active when `host` or `existingSecret.name` is set.
+
+To provide the full connection URL via an existing Kubernetes secret:
 
 ```yaml
-valkey:
-  existingSecret: "my-valkey-secret"
-  existingSecretKey: "valkey-url"  # default key name
+externalKeyValueStore:
+  existingSecret:
+    name: "my-valkey-secret"
+    urlKey: "valkey-url"
 ```
 
 The secret must contain the full connection URL under the configured key:
@@ -74,43 +81,27 @@ kind: Secret
 metadata:
   name: my-valkey-secret
 stringData:
-  valkey-url: "redis://:yourpassword@valkey.example.com:6379/0"
+  valkey-url: "redis://user:yourpassword@valkey.example.com:6379/0"
 ```
 
-### External Valkey with credentials in separate secret fields
+When `urlKey` is set, all other `externalKeyValueStore` values are ignored.
 
-When an external Valkey's credentials arrive as separate secret fields rather than a ready-made URL — for example the [Aiven operator](https://aiven.github.io/aiven-operator/)'s `ServiceUser` secret with its `SERVICEUSER_USERNAME` and `SERVICEUSER_PASSWORD` keys — use the host-based variables via the chart's `extraEnv` instead of templating a URL yourself. The operator constructs the connection URL:
+> **Deprecated:** `valkey.existingSecret` / `valkey.existingSecretKey` configure the same URL-via-secret connection and are superseded by `externalKeyValueStore.existingSecret`; they will be removed in a future release.
+
+### Credentials in separate secret fields
+
+When the credentials arrive as separate secret fields rather than a ready-made URL — for example the [Aiven operator](https://aiven.github.io/aiven-operator/)'s `ServiceUser` secret with its `SERVICEUSER_*` keys — configure the fields individually and the operator constructs the connection URL. Each of host, port, and username can come from the secret (`existingSecret.{param}Key`) or be set as a clear value (`{param}`); the password can only come from the secret:
 
 ```yaml
-valkey:
-  enabled: false
-
-extraEnv:
-  - name: VALKEY_HOST
-    valueFrom:
-      secretKeyRef:
-        name: my-valkey-serviceuser
-        key: SERVICEUSER_HOST
-  - name: VALKEY_PORT
-    valueFrom:
-      secretKeyRef:
-        name: my-valkey-serviceuser
-        key: SERVICEUSER_PORT
-  - name: VALKEY_USERNAME
-    valueFrom:
-      secretKeyRef:
-        name: my-valkey-serviceuser
-        key: SERVICEUSER_USERNAME
-  - name: VALKEY_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: my-valkey-serviceuser
-        key: SERVICEUSER_PASSWORD
-  - name: VALKEY_TLS
-    value: "true"
+externalKeyValueStore:
+  useTls: true
+  existingSecret:
+    name: my-valkey-serviceuser
+    hostKey: SERVICEUSER_HOST
+    portKey: SERVICEUSER_PORT
+    usernameKey: SERVICEUSER_USERNAME
+    passwordKey: SERVICEUSER_PASSWORD
 ```
-
-`extraEnv` entries are appended after the chart's built-in environment variables, so they also take precedence over any Valkey settings the chart emits itself.
 
 ## High availability
 
