@@ -11,8 +11,6 @@ import (
 )
 
 // RenovateJobSpec defines the desired state of RenovateJob
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 type RenovateJobSpec struct {
 	// Cron schedule in standard cron format
 	Schedule string `json:"schedule"`
@@ -244,6 +242,8 @@ type RenovateExecutionOptions struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.spec.schedule`
+// +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.provider.name`
 type RenovateJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
