@@ -91,6 +91,7 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Serving the UI under a Sub-Path](./docs/base-path.md)
 - [Valkey / Redis Cache](./docs/valkey.md)
 - [S3 Object Storage](./docs/s3.md)
+- [Templated Pod Labels](./docs/pod-label-templates.md)
 
 ## Contributing
 

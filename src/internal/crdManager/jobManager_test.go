@@ -2,6 +2,7 @@ package crdmanager
 
 import (
 	"context"
+	"renovate-operator/config"
 	"testing"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -60,6 +61,13 @@ func TestGetJob(t *testing.T) {
 }
 
 func TestCreateJob(t *testing.T) {
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "POD_LABEL_TEMPLATES", Optional: true, Default: "{}"},
+	})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+
 	scheme := runtime.NewScheme()
 	if err := batchv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add batch scheme: %v", err)
@@ -91,7 +99,7 @@ func TestCreateJob(t *testing.T) {
 		},
 	}
 
-	_, err := CreateJobWithGeneration(context.Background(), client, job, JobSelector{
+	_, err = CreateJobWithGeneration(context.Background(), client, job, JobSelector{
 		RenovateJobName: "new-job",
 		JobType:         ExecutorJobType,
 		Namespace:       "test-ns",

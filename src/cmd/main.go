@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"strconv"
@@ -493,6 +494,18 @@ func main() {
 				}
 				if parsed < 0 {
 					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' must be 0 (unlimited) or a positive integer")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POD_LABEL_TEMPLATES",
+			Optional: true,
+			Default:  "{}",
+			Validate: func(value string) error {
+				var templates map[string]string
+				if err := json.Unmarshal([]byte(value), &templates); err != nil {
+					return fmt.Errorf("'POD_LABEL_TEMPLATES' must be a JSON object of label-key to template string: %w", err)
 				}
 				return nil
 			},
