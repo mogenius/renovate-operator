@@ -276,6 +276,8 @@ spec:
             {{- end }}
             - name: GLOBAL_PARALLELISM_LIMIT
               value: {{ .Values.config.globalParallelismLimit | quote }}
+            - name: POD_LABEL_TEMPLATES
+              value: {{ .Values.config.podLabelTemplates | toJson | quote }}
             - name: LOG_STORE_MODE
               value: {{ .Values.config.logStorage.mode | quote }}
             {{- if .Values.s3.bucket }}

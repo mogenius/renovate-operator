@@ -46,11 +46,7 @@ func KubernetesCompatibleProjectName(project string) string {
 
 func KubernetesCompatibleName(name string) string {
 	name = strings.ToLower(name) // Ensure lowercase for consistency
-	name = invalidChars.ReplaceAllString(name, "-")
-	name = multipleHyphens.ReplaceAllString(name, "-")
-	name = strings.Trim(name, "-")
-
-	return name
+	return collapseSeparators(name, invalidChars, multipleHyphens, "-")
 }
 
 func DiscoveryJobName(in *api.RenovateJob) string {

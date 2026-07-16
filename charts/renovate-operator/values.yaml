@@ -68,6 +68,11 @@ config:
   jobTTLSecondsAfterFinished: -1
   # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
   globalParallelismLimit: 0
+  # -- map of label-key to template string, applied to every Renovate Job/Pod. Supports
+  # -- {job} (RenovateJob name), {project} (project slug, empty on discovery jobs),
+  # -- {jobType} ("discovery"/"executor"), {namespace}. Empty-placeholder separators are
+  # -- collapsed automatically, e.g. "{jobType}-{job}-{project}" -> "discovery-myjob" when project is empty.
+  podLabelTemplates: {}
   logStorage:
     # -- log store mode: "disabled" (default, no-op), "memory" (in-process), "valkey" (needs valkey enabled), or "s3" (needs s3.bucket set)
     mode: disabled
