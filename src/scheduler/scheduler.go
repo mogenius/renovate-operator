@@ -25,11 +25,13 @@ type Scheduler interface {
 	// Removes a schedule by name.
 	RemoveSchedule(name string)
 	// Gets the next run time for a cron schedule expression.
-	GetNextRunOnSchedule(schedule string) time.Time
+	// key is used as a seed for Jenkins-style H expressions; pass an empty string for plain cron.
+	GetNextRunOnSchedule(schedule, key string) time.Time
 }
 
 type scheduler struct {
 	cronManager *cron.Cron
+	hashParser  cron.Parser
 	entries     map[string]schedulerEntry
 	mu          sync.RWMutex
 	health      health.HealthCheck
@@ -46,6 +48,7 @@ func NewScheduler(logger logr.Logger, health health.HealthCheck) Scheduler {
 		cron.WithLogger(logger))
 	return &scheduler{
 		cronManager: cronManager,
+		hashParser:  cron.FullParser(),
 		entries:     make(map[string]schedulerEntry),
 		health:      health,
 		mu:          sync.RWMutex{},
@@ -73,7 +76,11 @@ func (s *scheduler) Stop() {
 func (s *scheduler) AddSchedule(expr string, name string, fn func()) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	id, err := s.cronManager.AddFunc(expr, s.execute(name, expr, fn))
+	sched, err := s.hashParser.ParseWithHashKey(expr, name)
+	if err != nil {
+		return err
+	}
+	id, err := s.cronManager.ScheduleJob(sched, cron.FuncJob(s.execute(name, expr, fn)))
 	if err != nil {
 		return err
 	}
@@ -85,7 +92,7 @@ func (s *scheduler) AddSchedule(expr string, name string, fn func()) error {
 	s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 		e.Scheduler[name] = health.SingleSchedulerHealth{
 			Name:      name,
-			NextRun:   s.GetNextRunOnSchedule(expr),
+			NextRun:   s.GetNextRunOnSchedule(expr, name),
 			Schedule:  expr,
 			IsRunning: true,
 		}
@@ -123,12 +130,8 @@ func (s *scheduler) RemoveSchedule(name string) {
 
 }
 
-func (s *scheduler) GetNextRunOnSchedule(schedule string) time.Time {
-	parser, err := cron.TryNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-	if err != nil {
-		return time.Time{}
-	}
-	sched, err := parser.Parse(schedule)
+func (s *scheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
+	sched, err := s.hashParser.ParseWithHashKey(schedule, key)
 	if err != nil {
 		return time.Time{}
 	}
@@ -141,7 +144,7 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 		s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
 				Name:      key,
-				NextRun:   s.GetNextRunOnSchedule(schedule),
+				NextRun:   s.GetNextRunOnSchedule(schedule, key),
 				Schedule:  schedule,
 				IsRunning: true,
 			}
@@ -151,7 +154,7 @@ func (s *scheduler) execute(key string, schedule string, fn func()) func() {
 		defer s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
 			e.Scheduler[key] = health.SingleSchedulerHealth{
 				Name:      key,
-				NextRun:   s.GetNextRunOnSchedule(schedule),
+				NextRun:   s.GetNextRunOnSchedule(schedule, key),
 				Schedule:  schedule,
 				IsRunning: false,
 			}

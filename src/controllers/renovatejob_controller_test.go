@@ -161,7 +161,7 @@ func (f *fakeScheduler) AddSchedule(expr string, name string, fn func()) error {
 	// behave like AddScheduleReplaceExisting for tests
 	return f.AddScheduleReplaceExisting(expr, name, fn)
 }
-func (f *fakeScheduler) GetNextRunOnSchedule(schedule string) time.Time { return time.Time{} }
+func (f *fakeScheduler) GetNextRunOnSchedule(schedule, key string) time.Time { return time.Time{} }
 
 // Test createScheduler: ensure the scheduled function creates a discovery job
 func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {

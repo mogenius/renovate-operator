@@ -274,7 +274,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		result = append(result, RenovateJobInfo{
 			Name:             renovateJob.Name,
 			Namespace:        renovateJob.Namespace,
-			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
+			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname()),
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
 			DiscoveryStatus:  discoveryStatus,

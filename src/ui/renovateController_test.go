@@ -481,7 +481,7 @@ func (m *mockScheduler) AddScheduleReplaceExisting(expr string, name string, fn 
 	return nil
 }
 func (m *mockScheduler) RemoveSchedule(name string) {}
-func (m *mockScheduler) GetNextRunOnSchedule(schedule string) time.Time {
+func (m *mockScheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
 	return time.Now().Add(24 * time.Hour)
 }
 
