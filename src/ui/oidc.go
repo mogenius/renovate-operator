@@ -298,11 +298,14 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Apply 3-layer group validation
 	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
 
-	if len(claims.Groups) > 0 && len(validatedGroups) == 0 {
-		o.logger.Info("WARNING: User authenticated but all groups filtered out",
+	filterActive := o.groupFilterConfig.AllowedPrefix != "" || o.groupFilterConfig.AllowedPattern != nil
+	if filterActive && len(validatedGroups) == 0 {
+		o.logger.Info("Access denied: no groups matching configured filter",
 			"user", claims.Email,
 			"id_token_groups", idTokenGroups,
 			"groups_before_validation", claims.Groups)
+		http.Redirect(w, r, withBase("/auth/unauthorized"), http.StatusFound)
+		return
 	}
 
 	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {

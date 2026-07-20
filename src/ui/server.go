@@ -53,37 +53,18 @@ func (s *Server) registerAuthRoutes(router *mux.Router) {
 		sub.HandleFunc("/complete", s.auth.HandleComplete).Methods("GET")
 		sub.HandleFunc("/logout", s.auth.HandleLogout).Methods("GET", "POST")
 		sub.HandleFunc("/logged-out", s.handleLoggedOut).Methods("GET")
+		sub.HandleFunc("/unauthorized", s.handleUnauthorized).Methods("GET")
 	}
 
 	router.HandleFunc("/api/v1/auth/status", s.getAuthStatus).Methods("GET")
 }
 
 func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	base := BasePath()
-	_, err := fmt.Fprintf(w, `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Logged Out - Renovate Operator</title>
-  <script src="%s/js/tailwind.min.js"></script>
-</head>
-<body class="bg-gray-50 min-h-screen flex items-center justify-center">
-  <div class="text-center">
-    <h1 class="text-2xl font-bold text-gray-800 mb-4">Successfully logged out</h1>
-    <a href="%s/auth/login" class="inline-block px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors">
-      Log in again
-    </a>
-  </div>
-</body>
-</html>`, base, base)
+	s.serveHTML(w, r, "./static/pages/logged-out.html")
+}
 
-	if err != nil {
-		s.logger.Error(err, "failed to write logged-out response")
-	}
+func (s *Server) handleUnauthorized(w http.ResponseWriter, r *http.Request) {
+	s.serveHTML(w, r, "./static/pages/unauthorized.html")
 }
 
 func (s *Server) getAuthStatus(w http.ResponseWriter, r *http.Request) {
