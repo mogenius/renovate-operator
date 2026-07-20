@@ -221,6 +221,7 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 func TestIsPublicPath(t *testing.T) {
 	defs := []config.ConfigItemDescription{
 		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+		{Key: "PUBLIC_PATH_PREFIXES", Optional: true, Default: ""},
 	}
 
 	if err := config.InitializeConfigModule(defs); err != nil {
@@ -246,6 +247,38 @@ func TestIsPublicPath(t *testing.T) {
 
 	protected := []string{
 		"/",
+		"/api/v1/renovatejobs",
+		"/pages/logs.html",
+	}
+	for _, path := range protected {
+		if isPublicPath(path) {
+			t.Errorf("expected %s to be protected", path)
+		}
+	}
+}
+
+func TestIsPublicPath_ConfiguredPrefixes(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+		{Key: "PUBLIC_PATH_PREFIXES", Optional: true, Default: "/metrics, /api/v1/public/"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
+	public := []string{
+		"/metrics",
+		"/metrics/",
+		"/api/v1/public/repos",
+	}
+	for _, path := range public {
+		if !isPublicPath(path) {
+			t.Errorf("expected %s to be public via configured prefix", path)
+		}
+	}
+
+	protected := []string{
 		"/api/v1/renovatejobs",
 		"/pages/logs.html",
 	}

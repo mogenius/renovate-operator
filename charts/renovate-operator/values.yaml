@@ -179,6 +179,8 @@ webhook:
 auth:
   # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
   defaultAllowedGroups: ""
+  # -- additional path prefixes that bypass authentication (e.g. ["/metrics", "/api/v1/public/"])
+  extraPublicPaths: []
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false

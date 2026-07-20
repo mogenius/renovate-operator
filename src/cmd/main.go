@@ -193,6 +193,11 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 func main() {
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{
+			Key:      "PUBLIC_PATH_PREFIXES",
+			Optional: true,
+			Default:  "",
+		},
+		{
 			Key:      "SERVER_PORT",
 			Optional: true,
 			Default:  "8081",

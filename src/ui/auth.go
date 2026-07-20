@@ -138,6 +138,21 @@ func openGCM(gcm cipher.AEAD, data []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
+func configuredPublicPrefixes() []string {
+	raw := config.GetValue("PUBLIC_PATH_PREFIXES")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	prefixes := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			prefixes = append(prefixes, t)
+		}
+	}
+	return prefixes
+}
+
 func isPublicPath(path string) bool {
 	// Health, auth endpoints, auth status API
 	if path == "/health" || path == "/api/v1/auth/status" {
@@ -158,6 +173,12 @@ func isPublicPath(path string) bool {
 
 	if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "true" && strings.HasPrefix(path, "/webhook") {
 		return true
+	}
+
+	for _, prefix := range configuredPublicPrefixes() {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
 	}
 
 	return false
