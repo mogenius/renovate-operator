@@ -220,13 +220,22 @@
         DEBUG: "text-gray-400 dark:text-slate-500",
       };
 
+      const LEVELS_STORAGE_KEY = "logs.selectedLevels";
+
       const initialLevels = useMemo(() => {
-        const raw = params.get("levels");
+        // Explicit URL param wins over the persisted preference.
+        const raw = params.get("levels") ?? (() => {
+          try { return localStorage.getItem(LEVELS_STORAGE_KEY); } catch { return null; }
+        })();
         if (!raw) return new Set(ALL_LEVELS);
         const requested = raw.split(",").map(s => s.trim().toUpperCase()).filter(s => ALL_LEVELS.includes(s));
         return requested.length > 0 ? new Set(requested) : new Set(ALL_LEVELS);
       }, []);
       const [selectedLevels, setSelectedLevels] = useState(initialLevels);
+
+      useEffect(() => {
+        try { localStorage.setItem(LEVELS_STORAGE_KEY, ALL_LEVELS.filter(l => selectedLevels.has(l)).join(",")); } catch {}
+      }, [selectedLevels]);
       const [filterOpen, setFilterOpen] = useState(false);
       const filterRef = useRef(null);
 
