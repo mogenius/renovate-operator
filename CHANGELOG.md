@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.3.0](https://github.com/mogenius/renovate-operator/compare/5.2.0...5.3.0) (2026-07-21)
+
+
+### Features
+
+* add extra labels to renovate job pods from global label templates ([8506a24](https://github.com/mogenius/renovate-operator/commit/8506a240b746d2b9d87962c431f30be4abc0cb78)), closes [#457](https://github.com/mogenius/renovate-operator/issues/457)
+* adding a button to download the selected logs in the ui ([6552d39](https://github.com/mogenius/renovate-operator/commit/6552d3977bfbb4a4c50f2c6bbc7d562f0e782f82)), closes [#508](https://github.com/mogenius/renovate-operator/issues/508)
+* adding the option for the cron parser to support jenkins style hash parsers ([3685505](https://github.com/mogenius/renovate-operator/commit/3685505fa190b387680769d48de87120a2302a0f)), closes [#495](https://github.com/mogenius/renovate-operator/issues/495)
+* **ui:** persist log level filter ([e63e8ab](https://github.com/mogenius/renovate-operator/commit/e63e8ab7f99c3337a72588ada96b6508efc2853f))
+
+
+### Bug Fixes
+
+* adding printer columns to renovatejob crd ([0cc97c1](https://github.com/mogenius/renovate-operator/commit/0cc97c1deae6ca9e650860f63b6d81d261920c30))
+* **deps:** update aws-sdk-go-v2 monorepo ([4be0aaf](https://github.com/mogenius/renovate-operator/commit/4be0aafc1ff63135e39115cc18da63f3a1a0ef9c))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.105.2 ([998ff8c](https://github.com/mogenius/renovate-operator/commit/998ff8ce59b8f8ff4b55acae89442377c1d4b26d))
+* **deps:** update module github.com/go-logr/logr to v1.4.4 ([a50454e](https://github.com/mogenius/renovate-operator/commit/a50454e8b09aebf9bd1bfb7c0b52c29ea66ad2b8))
+* **deps:** update module github.com/prometheus/client_golang to v1.24.0 ([5f79fb2](https://github.com/mogenius/renovate-operator/commit/5f79fb2692e8d4fa12e0b8035a5623002ae4397c))
+* honor group settings when authorizing users ([da04964](https://github.com/mogenius/renovate-operator/commit/da04964c9030d6e3ad10801756903aada3cb6103))
+
 ## [5.2.0](https://github.com/mogenius/renovate-operator/compare/5.1.0...5.2.0) (2026-07-10)
 
 
