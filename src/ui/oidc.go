@@ -298,8 +298,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Apply 3-layer group validation
 	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
 
-	filterActive := o.groupFilterConfig.AllowedPrefix != "" || o.groupFilterConfig.AllowedPattern != nil
-	if filterActive && len(validatedGroups) == 0 {
+	if isGroupFilterDenied(o.groupFilterConfig, validatedGroups) {
 		o.logger.Info("Access denied: no groups matching configured filter",
 			"user", claims.Email,
 			"id_token_groups", idTokenGroups,
@@ -400,6 +399,14 @@ func mergeGroups(idTokenGroups, userInfoGroups []string) []string {
 		}
 	}
 	return merged
+}
+
+// isGroupFilterDenied reports whether group filtering is active and the user
+// has no validated groups that pass the filter. When true, HandleCallback
+// redirects to /auth/unauthorized instead of completing the login.
+func isGroupFilterDenied(cfg GroupFilterConfig, validatedGroups []string) bool {
+	filterActive := cfg.AllowedPrefix != "" || cfg.AllowedPattern != nil
+	return filterActive && len(validatedGroups) == 0
 }
 
 // buildOIDCScopes returns the base OIDC scopes plus any additional scopes, deduplicated.
