@@ -270,6 +270,19 @@
         });
       }, [filteredLogs]);
 
+      const handleDownload = useCallback(() => {
+        if (!filteredLogs) return;
+        const text = filteredLogs.map(e => JSON.stringify(e)).join("\n");
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const safeName = (project || "renovate").replace(/[^a-zA-Z0-9._-]/g, "_");
+        a.href = url;
+        a.download = `${safeName}.log`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, [filteredLogs, project]);
+
       return (
         <div className="min-h-screen flex flex-col">
           <SiteHeader version={version} authInfo={authInfo}>
@@ -379,6 +392,16 @@
                         Copy logs
                       </>
                     )}
+                  </button>
+                  {/* Download button */}
+                  <button
+                    onClick={handleDownload}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                    </svg>
+                    Download
                   </button>
                 </div>
                 </>
