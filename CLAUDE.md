@@ -148,3 +148,8 @@ Use the following commands to validate the code:
 # Important
 
 Every change to the structure should be adapted here!
+
+# Planned Work
+
+See [TODO.md](TODO.md) for the step-by-step implementation plan for GitHub Enterprise App support
+(auto-discovery of installation IDs via `GithubEnterpriseAppReference`).

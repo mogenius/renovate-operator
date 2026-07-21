@@ -70,6 +70,10 @@ type RenovateJobSpec struct {
 	// Reference to a Github App for authentication, this will automatically mount a secret with
 	// RENOVATE_TOKEN
 	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
+	// Reference to a GitHub Enterprise App for authentication. When set, the operator discovers all
+	// installation IDs automatically — no explicit installation ID required.
+	// +optional
+	GithubEnterpriseAppReference *GithubEnterpriseAppReference `json:"githubEnterpriseAppReference,omitempty"`
 	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
 	// +optional
 	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
@@ -100,11 +104,19 @@ type RenovateJobServiceAccount struct {
 	Name                         string `json:"name,omitempty"`
 }
 
+type GithubAppCredentials struct {
+	SecretName     string `json:"secretName"`
+	AppIdSecretKey string `json:"appIdSecretKey"`
+	PemSecretKey   string `json:"pemSecretKey"`
+}
+
 type GithubAppReference struct {
-	SecretName              string `json:"secretName"`
-	AppIdSecretKey          string `json:"appIdSecretKey"`
+	GithubAppCredentials    `json:",inline"`
 	InstallationIdSecretKey string `json:"installationIdSecretKey"`
-	PemSecretKey            string `json:"pemSecretKey"`
+}
+
+type GithubEnterpriseAppReference struct {
+	GithubAppCredentials `json:",inline"`
 }
 
 // security context for either the pod or the container
@@ -221,6 +233,10 @@ type ProjectStatus struct {
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
+	// TokenSecretName names the Kubernetes Secret holding RENOVATE_TOKEN for this project.
+	// When non-empty the executor uses it instead of the job-level default.
+	// +optional
+	TokenSecretName string `json:"tokenSecretName,omitempty"`
 }
 
 type RenovateProjectStatus string

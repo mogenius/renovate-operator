@@ -273,10 +273,12 @@ func TestCreateGithubAppTokenFromJob_SecretNotFound(t *testing.T) {
 		},
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: &api.GithubAppReference{
-				SecretName:              "github-app-secret",
-				AppIdSecretKey:          "app-id",
+				GithubAppCredentials: api.GithubAppCredentials{
+					SecretName:     "github-app-secret",
+					AppIdSecretKey: "app-id",
+					PemSecretKey:   "private-key",
+				},
 				InstallationIdSecretKey: "installation-id",
-				PemSecretKey:            "private-key",
 			},
 		},
 	}
@@ -353,10 +355,12 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 				},
 				Spec: api.RenovateJobSpec{
 					GithubAppReference: &api.GithubAppReference{
-						SecretName:              "github-app-secret",
-						AppIdSecretKey:          "app-id",
+						GithubAppCredentials: api.GithubAppCredentials{
+							SecretName:     "github-app-secret",
+							AppIdSecretKey: "app-id",
+							PemSecretKey:   "private-key",
+						},
 						InstallationIdSecretKey: "installation-id",
-						PemSecretKey:            "private-key",
 					},
 				},
 			}
@@ -429,10 +433,12 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 		},
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: &api.GithubAppReference{
-				SecretName:              "github-app-secret",
-				AppIdSecretKey:          "app-id",
+				GithubAppCredentials: api.GithubAppCredentials{
+					SecretName:     "github-app-secret",
+					AppIdSecretKey: "app-id",
+					PemSecretKey:   "private-key",
+				},
 				InstallationIdSecretKey: "installation-id",
-				PemSecretKey:            "private-key",
 			},
 		},
 	}
