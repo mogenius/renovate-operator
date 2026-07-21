@@ -6,7 +6,7 @@ and shows others that the project is actively used and trusted.
 
 ## How to Add Yourself
 
-Open a pull request and add an entry to the [Adopters](#adopters) section below using the template.
+Open a pull request and add an entry to the [Adopters](#adopters), or [Individual Users](#individual-users), section below using the template.
 Please keep entries in **alphabetical order** by organization name.
 Only add yourself if you are running the operator in a permanent deployment (not a demo or trial).
 
@@ -31,3 +31,12 @@ Running the operator to manage dependency updates across internal services.
 - **Repositories**: ~150
 - **Link**: https://github.com/mogenius/renovate-operator
 - **Contact**: @lukashankeln
+
+## Individual Users
+
+### Christian Olsen
+Running the operator on my Homelab Kubernetes cluster, managing dependency updates across all my projects.
+- **Providers**: GitHub
+- **Repositories**: ~10
+- **Link**: https://github.com/chrede88
+- **Contact**: @chrede88
