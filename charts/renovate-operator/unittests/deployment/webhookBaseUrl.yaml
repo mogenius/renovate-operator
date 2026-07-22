@@ -128,3 +128,17 @@ tests:
       content:
         name: WEBHOOK_BASE_URL
         value: "http://webhook.example.com"
+
+- it: Allows baseUrl override
+  set:
+    webhook.enabled: true
+    webhook.baseUrl: "https://renovate.example.com"
+    route.enabled: true
+    route.hostnames:
+    - renovate.internal.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: "https://renovate.example.com"
