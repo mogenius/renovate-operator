@@ -2,6 +2,7 @@ package metricStore
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
@@ -192,13 +193,6 @@ var (
 		},
 		[]string{labelNamespace, labelJob, labelProject})
 
-	pullRequestsAwaitingApproval = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "renovate_operator_pull_requests_awaiting_approval",
-			Help: "Number of pull requests awaiting human approval after the last run",
-		},
-		[]string{labelNamespace, labelJob, labelProject})
-
 	repositoriesByStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "renovate_operator_repositories_by_status",
@@ -337,7 +331,6 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		logIssues,
 		// Group L
 		openPullRequests,
-		pullRequestsAwaitingApproval,
 		repositoriesByStatus,
 		pullRequestsCreated,
 		pullRequestsMerged,
@@ -536,10 +529,6 @@ func SetOpenPullRequests(namespace, job, project string, count int) {
 	openPullRequests.WithLabelValues(namespace, job, project).Set(float64(count))
 }
 
-func SetPullRequestsAwaitingApproval(namespace, job, project string, count int) {
-	pullRequestsAwaitingApproval.WithLabelValues(namespace, job, project).Set(float64(count))
-}
-
 // SetRepositoriesByStatus sets the count of repositories for a job in a given Renovate
 // result status. The status label must be a bounded value from NormalizeRepositoryStatus:
 // disabled, no_config, onboarding, onboarding_closed, unknown, or other.
@@ -644,6 +633,45 @@ func IncSecretResolutionError(ctx context.Context, errorType string) {
 }
 
 // ---------------------------------------------------------------------------
+// Hydration
+// ---------------------------------------------------------------------------
+
+var hydratedJobs sync.Map // key: "namespace/job" → struct{}{}
+
+// RehydrateMetrics re-emits per-project gauges from durable CRD status on the
+// first reconcile after startup. Subsequent calls for the same job are no-ops.
+func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
+	key := namespace + "/" + job
+	if _, loaded := hydratedJobs.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+	for i := range projects {
+		p := &projects[i]
+
+		SetRunFailed(namespace, job, p.Name, p.Status == api.JobStatusFailed)
+
+		hasIssues := p.LogIssues != nil && (p.LogIssues.WarnCount > 0 || p.LogIssues.ErrorCount > 0)
+		SetDependencyIssues(namespace, job, p.Name, hasIssues)
+
+		if p.LogIssues != nil {
+			SetLogIssues(namespace, job, p.Name, "warn", p.LogIssues.WarnCount)
+			SetLogIssues(namespace, job, p.Name, "error", p.LogIssues.ErrorCount)
+		}
+
+		if p.PRActivity != nil {
+			SetApprovalsNeeded(namespace, job, p.Name, p.PRActivity.NeedsApproval)
+			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.NeedsApproval+p.PRActivity.Unchanged)
+		}
+
+		if p.Duration != nil {
+			if d, err := time.ParseDuration(*p.Duration); err == nil {
+				SetLastExecutionDuration(namespace, job, p.Name, d.Seconds())
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
@@ -653,7 +681,6 @@ func DeleteProjectMetrics(namespace, job, project string) {
 	dependencyIssues.DeleteLabelValues(namespace, job, project)
 	approvalsNeeded.DeleteLabelValues(namespace, job, project)
 	openPullRequests.DeleteLabelValues(namespace, job, project)
-	pullRequestsAwaitingApproval.DeleteLabelValues(namespace, job, project)
 	lastExecutionDuration.DeleteLabelValues(namespace, job, project)
 	logIssues.DeleteLabelValues(namespace, job, project, "warn")
 	logIssues.DeleteLabelValues(namespace, job, project, "error")

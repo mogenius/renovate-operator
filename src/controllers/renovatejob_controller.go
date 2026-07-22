@@ -7,6 +7,7 @@ import (
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"strings"
 	"time"
@@ -64,6 +65,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
+		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
 		r.resetOrphanedRunning(ctx, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
