@@ -22,6 +22,17 @@ func GetPlatformAndEndpoint(provider *api.RenovateProvider) (string, string) {
 	return provider.Name, endpoint
 }
 
+// GetPublicEndpoint returns the endpoint to use for public-facing UI links.
+// When provider.PublicEndpoint is set it is returned; otherwise the API endpoint
+// from GetPlatformAndEndpoint is used, preserving the existing behaviour.
+func GetPublicEndpoint(provider *api.RenovateProvider) string {
+	if provider != nil && provider.PublicEndpoint != "" {
+		return provider.PublicEndpoint
+	}
+	_, endpoint := GetPlatformAndEndpoint(provider)
+	return endpoint
+}
+
 // WebhookEndpointPath returns the operator's webhook server path for the given
 // platform.
 func WebhookEndpointPath(platform string) (string, error) {

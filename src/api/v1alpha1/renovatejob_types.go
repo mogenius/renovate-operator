@@ -158,6 +158,10 @@ This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environmen
 type RenovateProvider struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint,omitempty"`
+	// PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
+	// When set, this overrides Endpoint for dashboard links while Endpoint continues to be
+	// used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+	PublicEndpoint string `json:"publicEndpoint,omitempty"`
 }
 
 // PRAction represents what happened to a PR in a Renovate run.

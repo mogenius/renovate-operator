@@ -255,7 +255,8 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		platform, platformEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+		platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+		platformEndpoint := utils.GetPublicEndpoint(renovateJob.Spec.Provider)
 
 		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {

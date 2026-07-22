@@ -84,6 +84,53 @@ func TestGetPlatformAndEndpoint(t *testing.T) {
 	}
 }
 
+func TestGetPublicEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider *api.RenovateProvider
+		expected string
+	}{
+		{
+			name: "publicEndpoint set — returned as-is",
+			provider: &api.RenovateProvider{
+				Name:           "gitea",
+				Endpoint:       "http://gitea.internal",
+				PublicEndpoint: "https://gitea.example.com",
+			},
+			expected: "https://gitea.example.com",
+		},
+		{
+			name: "publicEndpoint not set — falls back to endpoint",
+			provider: &api.RenovateProvider{
+				Name:     "gitea",
+				Endpoint: "http://gitea.internal",
+			},
+			expected: "http://gitea.internal",
+		},
+		{
+			name: "publicEndpoint not set, github default — falls back to default API endpoint",
+			provider: &api.RenovateProvider{
+				Name: "github",
+			},
+			expected: "https://api.github.com",
+		},
+		{
+			name:     "nil provider",
+			provider: nil,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := GetPublicEndpoint(tt.provider)
+			if endpoint != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, endpoint)
+			}
+		})
+	}
+}
+
 func TestWebhookEndpointPath(t *testing.T) {
 	tests := []struct {
 		platform string
