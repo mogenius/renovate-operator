@@ -484,6 +484,41 @@ func TestScratchVolume(t *testing.T) {
 	})
 }
 
+func TestAttachTokenSecretEnvFrom(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+	})
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Spec:       api.RenovateJobSpec{Image: "img"},
+	}
+
+	t.Run("empty secret name is a no-op", func(t *testing.T) {
+		k8sJob := newRenovateJob(job, "proj", "")
+		container := expectContainer(t, k8sJob)
+		before := len(container.EnvFrom)
+		attachTokenSecretEnvFrom(k8sJob, "")
+		container = expectContainer(t, k8sJob)
+		if len(container.EnvFrom) != before {
+			t.Fatalf("expected EnvFrom length %d, got %d", before, len(container.EnvFrom))
+		}
+	})
+
+	t.Run("non-empty secret name appends EnvFrom SecretRef", func(t *testing.T) {
+		const secretName = "rj-github-app-12345-abcd"
+		k8sJob := newRenovateJob(job, "proj", "")
+		attachTokenSecretEnvFrom(k8sJob, secretName)
+		container := expectContainer(t, k8sJob)
+		if len(container.EnvFrom) == 0 {
+			t.Fatal("expected at least one EnvFrom entry")
+		}
+		last := container.EnvFrom[len(container.EnvFrom)-1]
+		if last.SecretRef == nil || last.SecretRef.Name != secretName {
+			t.Fatalf("expected last EnvFrom SecretRef.Name=%q, got %+v", secretName, last)
+		}
+	})
+}
+
 func TestOtelEnvVarsForJobs(t *testing.T) {
 	t.Run("returns OTEL vars when forwarding enabled with endpoint", func(t *testing.T) {
 		t.Setenv("RENOVATE_FORWARD_OTEL", "true")

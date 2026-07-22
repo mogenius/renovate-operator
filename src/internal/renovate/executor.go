@@ -404,6 +404,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
 		k8sJob := newRenovateJob(renovateJob, project.Name, carrier.Get("traceparent"))
+		attachTokenSecretEnvFrom(k8sJob, project.TokenSecretName)
 		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
