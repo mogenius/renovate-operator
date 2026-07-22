@@ -114,6 +114,9 @@ func (worker *fakeGithubAppToken) CreateGithubAppTokenFromJob(job *api.RenovateJ
 func (worker *fakeGithubAppToken) CreateGithubAppToken(appID, installationID, pem, githubApi string) (string, error) {
 	return "", nil
 }
+func (worker *fakeGithubAppToken) EnsureTokensForEnterpriseApp(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	return nil, nil
+}
 
 type fakeDiscovery struct {
 	createDiscoveryJobFn func(ctx context.Context, job api.RenovateJob) (string, error)

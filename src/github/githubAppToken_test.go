@@ -2,6 +2,7 @@ package github
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	api "renovate-operator/api/v1alpha1"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -222,17 +225,7 @@ func TestCreateGithubAppToken_PKCS8Format(t *testing.T) {
 }
 
 func TestCreateGithubAppTokenFromJob_NoReference(t *testing.T) {
-	scheme := runtime.NewScheme()
-	err := corev1.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add corev1 to scheme: %v", err)
-	}
-	err = api.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add api to scheme: %v", err)
-	}
-
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(newEnterpriseScheme(t)).Build()
 	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 	job := &api.RenovateJob{
@@ -245,7 +238,7 @@ func TestCreateGithubAppTokenFromJob_NoReference(t *testing.T) {
 		},
 	}
 
-	_, err = tokenCreator.CreateGithubAppTokenFromJob(job)
+	_, err := tokenCreator.CreateGithubAppTokenFromJob(job)
 	if err == nil {
 		t.Error("Expected error when GithubAppReference is nil")
 	}
@@ -255,17 +248,7 @@ func TestCreateGithubAppTokenFromJob_NoReference(t *testing.T) {
 }
 
 func TestCreateGithubAppTokenFromJob_SecretNotFound(t *testing.T) {
-	scheme := runtime.NewScheme()
-	err := corev1.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add corev1 to scheme: %v", err)
-	}
-	err = api.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add api to scheme: %v", err)
-	}
-
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(newEnterpriseScheme(t)).Build()
 	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 	job := &api.RenovateJob{
@@ -285,22 +268,14 @@ func TestCreateGithubAppTokenFromJob_SecretNotFound(t *testing.T) {
 		},
 	}
 
-	_, err = tokenCreator.CreateGithubAppTokenFromJob(job)
+	_, err := tokenCreator.CreateGithubAppTokenFromJob(job)
 	if err == nil {
 		t.Error("Expected error when secret doesn't exist")
 	}
 }
 
 func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
-	scheme := runtime.NewScheme()
-	err := corev1.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add corev1 to scheme: %v", err)
-	}
-	err = api.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add api to scheme: %v", err)
-	}
+	scheme := newEnterpriseScheme(t)
 
 	tests := []struct {
 		name       string
@@ -379,16 +354,6 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 }
 
 func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
-	scheme := runtime.NewScheme()
-	err := corev1.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add corev1 to scheme: %v", err)
-	}
-	err = api.AddToScheme(scheme)
-	if err != nil {
-		t.Fatalf("Failed to add api to scheme: %v", err)
-	}
-
 	_, pemString, err := generateTestRSAKey()
 	if err != nil {
 		t.Fatalf("Failed to generate test key: %v", err)
@@ -422,7 +387,7 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 	}
 
 	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
+		WithScheme(newEnterpriseScheme(t)).
 		WithObjects(secret).
 		Build()
 
@@ -610,6 +575,282 @@ func TestMintJWT(t *testing.T) {
 				t.Errorf("exp %v out of expected range [%v, %v]", exp, minEXP, maxEXP)
 			}
 		})
+	}
+}
+
+func newEnterpriseScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1: %v", err)
+	}
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api: %v", err)
+	}
+	return scheme
+}
+
+func newEnterpriseJob(secretName string) *api.RenovateJob {
+	return &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-job", Namespace: "default"},
+		Spec: api.RenovateJobSpec{
+			Provider: &api.RenovateProvider{Name: "github"},
+			GithubEnterpriseAppReference: &api.GithubEnterpriseAppReference{
+				GithubAppCredentials: api.GithubAppCredentials{
+					SecretName:     secretName,
+					AppIdSecretKey: "app-id",
+					PemSecretKey:   "private-key",
+				},
+			},
+		},
+	}
+}
+
+func TestListInstallationIDs_Success(t *testing.T) {
+	_, pemString, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	mockClient := &http.Client{
+		Transport: &mockRoundTripper{
+			responseFunc: func(req *http.Request) (*http.Response, error) {
+				if req.Method != "GET" {
+					t.Errorf("expected GET, got %s", req.Method)
+				}
+				if !strings.HasSuffix(req.URL.Path, "/app/installations") {
+					t.Errorf("unexpected URL path: %s", req.URL.Path)
+				}
+				if req.Header.Get("Accept") != "application/vnd.github+json" {
+					t.Errorf("missing Accept header")
+				}
+				if req.Header.Get("Authorization") == "" {
+					t.Errorf("missing Authorization header")
+				}
+				body, _ := json.Marshal([]map[string]any{{"id": 111}, {"id": 222}})
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+	g := NewGitHubAppTokenCreatorWithHTTPClient(fakeClient, mockClient)
+
+	ids, err := g.listInstallationIDs("12345", pemString, "https://api.github.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "111" || ids[1] != "222" {
+		t.Errorf("expected [111 222], got %v", ids)
+	}
+}
+
+func TestListInstallationIDs_APIError(t *testing.T) {
+	_, pemString, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	mockClient := &http.Client{
+		Transport: &mockRoundTripper{
+			responseFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: 401,
+					Body:       io.NopCloser(bytes.NewReader([]byte(`{"message":"Bad credentials"}`))),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+	g := NewGitHubAppTokenCreatorWithHTTPClient(fakeClient, mockClient)
+
+	_, err = g.listInstallationIDs("12345", pemString, "https://api.github.com")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "GitHub error") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestListInstallationIDs_InvalidPEM(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+	g := NewGitHubAppTokenCreator(fakeClient)
+
+	_, err := g.listInstallationIDs("12345", "not-a-pem", "https://api.github.com")
+	if err == nil {
+		t.Fatal("expected error for invalid PEM, got nil")
+	}
+}
+
+func TestEnsureTokensForEnterpriseApp_NoReference(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(newEnterpriseScheme(t)).Build()
+	g := NewGitHubAppTokenCreator(fakeClient)
+
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-job", Namespace: "default"},
+		Spec:       api.RenovateJobSpec{GithubEnterpriseAppReference: nil},
+	}
+
+	_, err := g.EnsureTokensForEnterpriseApp(context.Background(), job)
+	if err == nil {
+		t.Fatal("expected error when GithubEnterpriseAppReference is nil")
+	}
+}
+
+func TestEnsureTokensForEnterpriseApp_SecretNotFound(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(newEnterpriseScheme(t)).Build()
+	g := NewGitHubAppTokenCreator(fakeClient)
+
+	job := newEnterpriseJob("missing-secret")
+
+	_, err := g.EnsureTokensForEnterpriseApp(context.Background(), job)
+	if err == nil {
+		t.Fatal("expected error when k8s secret is absent")
+	}
+}
+
+func TestEnsureTokensForEnterpriseApp_Success(t *testing.T) {
+	_, pemString, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	callCount := 0
+	mockClient := &http.Client{
+		Transport: &mockRoundTripper{
+			responseFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				if req.Method == "GET" {
+					body, _ := json.Marshal([]map[string]any{{"id": 111}, {"id": 222}})
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewReader(body)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				// POST: extract installation ID from URL to return distinct tokens
+				installID := "unknown"
+				if strings.Contains(req.URL.Path, "/111/") {
+					installID = "111"
+				} else if strings.Contains(req.URL.Path, "/222/") {
+					installID = "222"
+				}
+				resp := map[string]string{
+					"token":      "token-" + installID,
+					"expires_at": time.Now().Add(2 * time.Hour).Format(time.RFC3339),
+				}
+				body, _ := json.Marshal(resp)
+				return &http.Response{
+					StatusCode: 201,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	scheme := newEnterpriseScheme(t)
+	appSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "enterprise-secret", Namespace: "default"},
+		Data: map[string][]byte{
+			"app-id":      []byte("12345"),
+			"private-key": []byte(pemString),
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(appSecret).Build()
+	g := NewGitHubAppTokenCreatorWithHTTPClient(fakeClient, mockClient)
+
+	job := newEnterpriseJob("enterprise-secret")
+
+	secretNames, err := g.EnsureTokensForEnterpriseApp(context.Background(), job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(secretNames) != 2 {
+		t.Fatalf("expected 2 secret names, got %d: %v", len(secretNames), secretNames)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 HTTP calls (1 GET + 2 POSTs), got %d", callCount)
+	}
+
+	// Verify both secrets were created in k8s
+	for _, name := range secretNames {
+		s := &corev1.Secret{}
+		if err := fakeClient.Get(context.Background(), client.ObjectKey{Name: name, Namespace: "default"}, s); err != nil {
+			t.Errorf("secret %s not found: %v", name, err)
+		}
+		if _, ok := s.Data["RENOVATE_TOKEN"]; !ok {
+			t.Errorf("secret %s missing RENOVATE_TOKEN", name)
+		}
+	}
+}
+
+func TestEnsureTokensForEnterpriseApp_SkipsFreshToken(t *testing.T) {
+	_, pemString, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	postCount := 0
+	mockClient := &http.Client{
+		Transport: &mockRoundTripper{
+			responseFunc: func(req *http.Request) (*http.Response, error) {
+				if req.Method == "POST" {
+					postCount++
+					t.Errorf("unexpected POST to %s: fresh token should have been skipped", req.URL.Path)
+				}
+				body, _ := json.Marshal([]map[string]any{{"id": 111}})
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	scheme := newEnterpriseScheme(t)
+	job := newEnterpriseJob("enterprise-secret")
+	appSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "enterprise-secret", Namespace: "default"},
+		Data: map[string][]byte{
+			"app-id":      []byte("12345"),
+			"private-key": []byte(pemString),
+		},
+	}
+
+	// Pre-create a fresh token secret for installation 111
+	freshSecretName := GetNameForGithubAppInstallationSecret(job, "111")
+	freshSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      freshSecretName,
+			Namespace: "default",
+			Annotations: map[string]string{
+				tokenExpiresAtAnnotation: time.Now().Add(2 * time.Hour).Format(time.RFC3339),
+			},
+		},
+		Data: map[string][]byte{"RENOVATE_TOKEN": []byte("existing-token")},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(appSecret, freshSecret).Build()
+	g := NewGitHubAppTokenCreatorWithHTTPClient(fakeClient, mockClient)
+
+	secretNames, err := g.EnsureTokensForEnterpriseApp(context.Background(), job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(secretNames) != 1 || secretNames[0] != freshSecretName {
+		t.Errorf("expected [%s], got %v", freshSecretName, secretNames)
+	}
+	if postCount != 0 {
+		t.Errorf("expected no POST calls for fresh token, got %d", postCount)
 	}
 }
 
