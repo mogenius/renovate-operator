@@ -325,8 +325,8 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 type scheduledCandidate struct {
 	project     api.ProjectStatus
 	renovateJob *api.RenovateJob
-	// jobOldestWait is the smallest LastRun time among all Scheduled projects in the same
-	// RenovateJob. Used as the fairness key: jobs whose projects have been waiting the longest
+	// jobOldestWait is the smallest LastTransition time among all Scheduled projects in the same
+	// RenovateJob. Used as the fairness key: jobs whose projects have been queued longest
 	// are dispatched first to prevent starvation.
 	jobOldestWait time.Time
 }
@@ -350,8 +350,8 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			if p.Status != api.JobStatusScheduled {
 				continue
 			}
-			if p.LastRun.Time.Before(oldestWait) {
-				oldestWait = p.LastRun.Time
+			if p.LastTransition.Time.Before(oldestWait) {
+				oldestWait = p.LastTransition.Time
 			}
 			candidates = append(candidates, scheduledCandidate{
 				project:     p,
@@ -423,8 +423,8 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "executor")
 
 		// Queue wait: time the project spent in Scheduled before this dispatch.
-		if project.ScheduledAt != nil {
-			metricStore.ObserveQueueWait(ctx, renovateJob.Namespace, renovateJob.Name, time.Since(project.ScheduledAt.Time).Seconds())
+		if !project.LastTransition.IsZero() {
+			metricStore.ObserveQueueWait(ctx, renovateJob.Namespace, renovateJob.Name, time.Since(project.LastTransition.Time).Seconds())
 		}
 
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {

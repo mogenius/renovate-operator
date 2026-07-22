@@ -106,10 +106,17 @@ func (in *RenovateJobIdentifier) Fullname() string {
 	return in.Name + "-" + in.Namespace
 }
 
+func NonZeroTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
 type RenovateProjectStatus struct {
 	Name                 string                    `json:"name"`
 	Status               api.RenovateProjectStatus `json:"status"`
-	LastRun              time.Time                 `json:"lastRun"`
+	LastTransition       *time.Time                `json:"lastTransition,omitempty"`
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
@@ -162,7 +169,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 			result = append(result, RenovateProjectStatus{
 				Name:                 project.Name,
 				Status:               project.Status,
-				LastRun:              project.LastRun.Time,
+				LastTransition:       NonZeroTime(project.LastTransition.Time),
 				Priority:             project.Priority,
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
@@ -186,7 +193,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 		result = append(result, RenovateProjectStatus{
 			Name:                 project.Name,
 			Status:               project.Status,
-			LastRun:              project.LastRun.Time,
+			LastTransition:       NonZeroTime(project.LastTransition.Time),
 			Priority:             project.Priority,
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
@@ -334,10 +341,9 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 				// add new project to the list
 				now := v1.Now()
 				newProjects = append(newProjects, api.ProjectStatus{
-					Name:        project,
-					Status:      api.JobStatusScheduled,
-					LastRun:     now,
-					ScheduledAt: &now,
+					Name:           project,
+					Status:         api.JobStatusScheduled,
+					LastTransition: now,
 				})
 			}
 		}

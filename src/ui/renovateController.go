@@ -263,7 +263,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			projects = append(projects, crdmanager.RenovateProjectStatus{
 				Name:                 p.Name,
 				Status:               p.Status,
-				LastRun:              p.LastRun.Time,
+				LastTransition:       crdmanager.NonZeroTime(p.LastTransition.Time),
 				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,

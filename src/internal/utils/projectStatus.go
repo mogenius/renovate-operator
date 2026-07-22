@@ -29,8 +29,7 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	// cannot schedule a project that is currently running
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
-		now := v1.Now()
-		projectStatus.ScheduledAt = &now
+		projectStatus.LastTransition = v1.Now()
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
 		}
@@ -45,6 +44,7 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 	// can only set a project to running if it is currently scheduled
 	if projectStatus.Status == api.JobStatusScheduled {
 		projectStatus.Status = api.JobStatusRunning
+		projectStatus.LastTransition = v1.Now()
 		projectStatus.Priority = 0
 	}
 	projectStatus.Duration = nil
@@ -59,7 +59,7 @@ func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredSta
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusCompleted
 		projectStatus.Priority = 0
-		projectStatus.LastRun = v1.Now()
+		projectStatus.LastTransition = v1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -73,7 +73,7 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusFailed
 		projectStatus.Priority = 0
-		projectStatus.LastRun = v1.Now()
+		projectStatus.LastTransition = v1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -87,7 +87,7 @@ func validateProjectStatusCancelled(projectStatus *api.ProjectStatus, desiredSta
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusCancelled
 		projectStatus.Priority = 0
-		projectStatus.LastRun = v1.Now()
+		projectStatus.LastTransition = v1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)

@@ -4302,7 +4302,9 @@ spec:
                   properties:
                     duration:
                       type: string
-                    lastRun:
+                    lastTransition:
+                      description: LastTransition records when the project most recently
+                        changed state.
                       format: date-time
                       type: string
                     logIssues:
@@ -4383,16 +4385,9 @@ spec:
                       type: integer
                     renovateResultStatus:
                       type: string
-                    scheduledAt:
-                      description: |-
-                        ScheduledAt records when the project most recently entered the Scheduled
-                        state, used to measure queue wait time when it is dispatched.
-                      format: date-time
-                      type: string
                     status:
                       type: string
                   required:
-                  - lastRun
                   - name
                   - status
                   type: object
