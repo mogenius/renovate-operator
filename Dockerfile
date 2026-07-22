@@ -25,7 +25,7 @@ RUN mkdir -p src/static/js && \
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js" && \
     echo "All JavaScript dependencies downloaded successfully!"
 RUN mkdir -p /bundle && \
-    npm install --prefix /bundle "react@19.2.8" "react-dom@19.2.7" esbuild --save=false && \
+    npm install --prefix /bundle "react@19.2.8" "react-dom@19.2.8" esbuild --save=false && \
     echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" \
         > /bundle/entry.mjs && \
     /bundle/node_modules/.bin/esbuild /bundle/entry.mjs \
