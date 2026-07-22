@@ -80,7 +80,7 @@ func (f *fakeManager) CleanupWebhooks(ctx context.Context, job crdManager.Renova
 	return nil
 }
 
-func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
+func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error) {
 	if f.reconcileProjectsFn != nil {
 		return nil, f.reconcileProjectsFn(ctx, job, projects)
 	}

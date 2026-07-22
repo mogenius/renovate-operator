@@ -201,7 +201,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("unexpected error getting job for reconcile: %v", err)
 	}
 
-	_, err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
+	_, err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
@@ -305,6 +305,77 @@ func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_BASE_URL") {
 		t.Fatalf("expected actionable error without base URL, got %v", err)
 	}
+}
+
+func TestReconcileProjects_TokenSecretName(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+
+	makeManager := func(projects []api.ProjectStatus) (RenovateJobManager, *api.RenovateJob) {
+		j := makeJob("job1", "default", projects)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+		mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+		ctx := context.Background()
+		rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
+		if err != nil {
+			t.Fatalf("unexpected error getting job: %v", err)
+		}
+		return mgr, rJob
+	}
+
+	ctx := context.Background()
+
+	t.Run("empty tokenSecretName leaves new project with empty field", func(t *testing.T) {
+		mgr, rJob := makeManager(nil)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, ""); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "" {
+			t.Fatalf("expected empty TokenSecretName, got %q", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("tokenSecretName is set on new project", func(t *testing.T) {
+		mgr, rJob := makeManager(nil)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, "job1-github-app-123-abcd"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "job1-github-app-123-abcd" {
+			t.Fatalf("expected TokenSecretName %q, got %q", "job1-github-app-123-abcd", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("tokenSecretName updates carry-over project", func(t *testing.T) {
+		existing := []api.ProjectStatus{{Name: "org/repo", Status: api.JobStatusCompleted, TokenSecretName: "old-secret"}}
+		mgr, rJob := makeManager(existing)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, "new-secret"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "new-secret" {
+			t.Fatalf("expected TokenSecretName %q, got %q", "new-secret", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("empty tokenSecretName preserves carry-over project TokenSecretName", func(t *testing.T) {
+		existing := []api.ProjectStatus{{Name: "org/repo", Status: api.JobStatusCompleted, TokenSecretName: "existing-secret"}}
+		mgr, rJob := makeManager(existing)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, ""); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "existing-secret" {
+			t.Fatalf("expected TokenSecretName %q to be preserved, got %q", "existing-secret", job.Status.Projects[0].TokenSecretName)
+		}
+	})
 }
 
 func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {

@@ -57,7 +57,7 @@ type RenovateJobManager interface {
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD
 	// with the provided list. It returns the names of the projects that were
 	// removed (present before, absent now).
-	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error)
+	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error)
 	// SyncWebhooks ensures the operator's webhook exists on every project of
 	// the RenovateJob and removes it from the given removed projects (the diff
 	// reported by ReconcileProjects). Stateless: hooks are identified by their
@@ -284,7 +284,7 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	})
 }
 
-func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
+func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error) {
 
 	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
 		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
@@ -335,7 +335,9 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 		newProjects := make([]api.ProjectStatus, 0, len(projects))
 		for _, project := range projects {
 			if crdProject, exists := crdProjectSet[project]; exists {
-				// add project that exist in the new project list
+				if tokenSecretName != "" {
+					crdProject.TokenSecretName = tokenSecretName
+				}
 				newProjects = append(newProjects, crdProject)
 			} else {
 				// add new project to the list
@@ -344,6 +346,7 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 					Name:           project,
 					Status:         api.JobStatusScheduled,
 					LastTransition: now,
+					TokenSecretName: tokenSecretName,
 				})
 			}
 		}

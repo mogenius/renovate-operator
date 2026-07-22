@@ -87,7 +87,7 @@ func (m *mockWebhookManager) CleanupWebhooks(ctx context.Context, job crdmanager
 	return nil
 }
 
-func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) ([]string, error) {
+func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error) {
 	return nil, nil
 }
 
