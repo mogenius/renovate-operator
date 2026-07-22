@@ -32,6 +32,9 @@ const (
 	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
 	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
 	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
+	// JOB_ANNOTATION_TOKEN_SECRET_NAME stores the per-installation token secret name used by a
+	// discovery Job, so ProcessDiscoveryJobResult can stamp it onto reconciled projects.
+	JOB_ANNOTATION_TOKEN_SECRET_NAME = "renovate-operator.mogenius.com/token-secret-name"
 
 	// RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY triggers a discovery run when set to "true".
 	// Removed from the RenovateJob once the discovery job is created.
