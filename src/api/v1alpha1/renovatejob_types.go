@@ -235,6 +235,8 @@ type ProjectStatus struct {
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
 	// TokenSecretName names the Kubernetes Secret holding RENOVATE_TOKEN for this project.
 	// When non-empty the executor uses it instead of the job-level default.
+	// Needed sine for github enterprise applications, a job creates executor pods for projects that are potentially in different organisations
+	// 		and each organisation has its own installation ID and therefore its own token.
 	// +optional
 	TokenSecretName string `json:"tokenSecretName,omitempty"`
 }
