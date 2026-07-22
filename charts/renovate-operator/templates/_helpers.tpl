@@ -77,12 +77,16 @@ Returns the external base URL of the webhook server. When unifiedWebhookHost
 is true the UI ingress/route values are used; otherwise the webhook-specific
 values are used. Priority within each: route.hostnames[0] (https) →
 ingress.host (https when tls is set, http otherwise). webhook.baseUrlScheme
-overrides the detected scheme. Empty when not exposed.
+overrides the detected scheme. webhook.baseUrl overrides the value. Empty when
+not exposed.
 */}}
 {{- define "renovate-operator.webhookBaseUrl" -}}
 {{- $override := .Values.webhook.baseUrlScheme -}}
 {{- include "renovate-operator.validateScheme" (dict "scheme" $override "key" "webhook.baseUrlScheme") -}}
 {{- $v := .Values.webhook -}}
+{{- if .Values.webhook.baseUrl -}}
+{{- .Values.webhook.baseUrl -}}
+{{- else -}}
 {{- if .Values.webhook.unifiedWebhookHost -}}
 {{- $v = .Values -}}
 {{- end -}}
@@ -97,4 +101,5 @@ overrides the detected scheme. Empty when not exposed.
 {{- $url = printf "%s://%s" (default $scheme $override) $v.ingress.host -}}
 {{- end -}}
 {{- $url -}}
+{{- end -}}
 {{- end -}}

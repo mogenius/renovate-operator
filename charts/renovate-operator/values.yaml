@@ -134,6 +134,8 @@ webhook:
   # -- if set to true the ui host will be used for webhooks
   unifiedWebhookHost: false
   port: 8082
+  # -- optional: override the webhook base URL (WEBHOOK_BASE_URL), e.g. when the ingress or gateway is behind a proxy.
+  baseUrl: ""
   # -- optional: override the scheme (http or https) of the auto-derived webhook base URL (WEBHOOK_BASE_URL), e.g. when TLS terminates at an external load balancer or Gateway
   baseUrlScheme: ""
   ingress:
