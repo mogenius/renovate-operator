@@ -195,6 +195,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       renovateJob.Namespace,
 		RenovateJobName: renovateJob.Name,
+		TokenSecretName: options.TokenSecretName,
 	})
 	if err != nil && !errors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check for existing discovery job: %w", err)
@@ -239,6 +240,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       renovateJob.Namespace,
 		RenovateJobName: renovateJob.Name,
+		TokenSecretName: options.TokenSecretName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery job: %w", err)

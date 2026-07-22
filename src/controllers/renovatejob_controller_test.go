@@ -69,7 +69,7 @@ func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job 
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (f *fakeManager) CleanupWebhooks(ctx context.Context, job crdManager.Renova
 	return nil
 }
 
-func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error) {
+func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	if f.reconcileProjectsFn != nil {
 		return nil, f.reconcileProjectsFn(ctx, job, projects)
 	}

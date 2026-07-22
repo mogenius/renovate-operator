@@ -2,6 +2,7 @@ package controllers
 
 import (
 	context "context"
+	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
 	"renovate-operator/internal/renovate"
@@ -154,30 +155,11 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 			return
 		}
 
-		if currentJob.Spec.GithubEnterpriseAppReference != nil {
-			secretNames, err := reconciler.GithubApp.EnsureTokensForEnterpriseApp(ctx, currentJob)
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
-				logger.Error(err, "Failed to ensure enterprise github app tokens")
-				return
-			}
-			for _, secretName := range secretNames {
-				if _, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, renovate.DiscoveryJobOptions{
-					TriggerAllProjects: true,
-					TokenSecretName:    secretName,
-				}); err != nil {
-					logger.Error(err, "Failed to create discovery job for installation", "secretName", secretName)
-				}
-			}
-		} else {
-			_, err = reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, renovate.DiscoveryJobOptions{TriggerAllProjects: true})
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
-				logger.Error(err, "Failed to create discovery job for RenovateJob")
-				return
-			}
+		if err := dispatchDiscovery(ctx, logger, reconciler, currentJob, true); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			logger.Error(err, "Failed to create discovery job for RenovateJob")
+			return
 		}
 		logger.V(2).Info("Discovery job(s) created, completion handled by job controller")
 	}
@@ -190,6 +172,30 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		return
 	}
 	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
+}
+
+// dispatchDiscovery creates one discovery Job per GitHub Enterprise App installation
+// (minting/refreshing each installation's token first via EnsureTokensForEnterpriseApp),
+// or a single job for plain (non-enterprise) providers. triggerAllProjects is forwarded
+// to DiscoveryJobOptions unchanged, so callers keep their existing schedule-all semantics.
+func dispatchDiscovery(ctx context.Context, logger logr.Logger, reconciler *RenovateJobReconciler, job *api.RenovateJob, triggerAllProjects bool) error {
+	if job.Spec.GithubEnterpriseAppReference != nil {
+		secretNames, err := reconciler.GithubApp.EnsureTokensForEnterpriseApp(ctx, job)
+		if err != nil {
+			return fmt.Errorf("failed to ensure enterprise github app tokens: %w", err)
+		}
+		for _, secretName := range secretNames {
+			if _, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{
+				TriggerAllProjects: triggerAllProjects,
+				TokenSecretName:    secretName,
+			}); err != nil {
+				logger.Error(err, "Failed to create discovery job for installation", "secretName", secretName)
+			}
+		}
+		return nil
+	}
+	_, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: triggerAllProjects})
+	return err
 }
 
 // resetOrphanedRunning resets Running projects whose k8s Job no longer exists (e.g. deleted
@@ -256,7 +262,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 
 	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY] == "true" {
-		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *renovateJob, renovate.DiscoveryJobOptions{}); err != nil {
+		if err := dispatchDiscovery(ctx, logger, r, renovateJob, false); err != nil {
 			logger.Error(err, "failed to trigger discovery")
 		} else {
 			logger.V(1).Info("discovery triggered via annotation")

@@ -34,13 +34,13 @@ func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace str
 	}
 	return &api.RenovateJob{}, nil
 }
-func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]string, error) {
+func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	if f.reconcileProjectsFn != nil {
 		return nil, f.reconcileProjectsFn(ctx, job, projects, tokenSecretName)
 	}
 	return nil, nil
 }
-func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 

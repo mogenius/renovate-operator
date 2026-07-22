@@ -157,12 +157,23 @@ Verify: `just build`, `just test-unit`
 
 ---
 
-## Known Limitations (follow-up tasks)
+## Known Limitations (resolved)
 
-- `skipForks`, `skipPendingDeletion`, and `webhook.sync` are **not** supported when using
-  `githubEnterpriseAppReference`. The factory does not yet route per-project API calls through
-  `project.TokenSecretName`. Document in CRD / Helm chart comments.
-- Per-installation webhook sync: out of scope for now.
+- ~~`skipForks`, `skipPendingDeletion`, and `webhook.sync` are **not** supported when using
+  `githubEnterpriseAppReference`.~~ Fixed: `ReconcileProjects`'s fork/pending-deletion filtering
+  and `runWebhookSync` (webhook sync + cleanup) now build their `GitProviderClient` via
+  `NewClientWithTokenRef` keyed on each project's `ProjectStatus.TokenSecretName` when set,
+  falling back to the job-level default otherwise. Webhook sync groups desired/removed projects
+  by installation token and runs one sync per group.
+- ~~Per-installation webhook sync: out of scope for now.~~ Implemented as part of the above.
+
+Two additional bugs were found and fixed while wiring this up:
+- The discovery-job "already running" dedup check wasn't installation-aware, so looping over
+  installations in `createScheduler` only ever created a discovery Job for the first installation
+  per cron tick. Fixed by scoping `JobSelector`/labels to `TokenSecretName` for discovery jobs.
+- The manual discovery-trigger annotation bypassed per-installation dispatch entirely. Fixed by
+  extracting the enterprise-vs-plain dispatch logic into a shared `dispatchDiscovery` helper used
+  by both the cron scheduler and the annotation trigger.
 
 ---
 
