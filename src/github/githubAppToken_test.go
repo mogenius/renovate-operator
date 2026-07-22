@@ -12,7 +12,9 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -449,6 +451,165 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 	}
 	if token != "ghs_validTokenFromSecret" {
 		t.Errorf("Expected token 'ghs_validTokenFromSecret', got %q", token)
+	}
+}
+
+// jwtBackdateSec matches the iat backdating in mintJWT (clock-skew tolerance).
+// jwtLifetimeSec matches the exp window in mintJWT.
+// jwtTestTolerance is the slack we allow for test execution time.
+const (
+	jwtBackdateSec  = 60
+	jwtLifetimeSec  = 600
+	jwtTestTolerance = 1
+)
+
+func TestParsePEMKey(t *testing.T) {
+	_, pkcs1PEM, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate PKCS1 test key: %v", err)
+	}
+
+	pkcs8Key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate PKCS8 test key: %v", err)
+	}
+	pkcs8Bytes, err := x509.MarshalPKCS8PrivateKey(pkcs8Key)
+	if err != nil {
+		t.Fatalf("failed to marshal PKCS8 key: %v", err)
+	}
+	pkcs8PEM := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8Bytes}))
+
+	tests := []struct {
+		name      string
+		pemStr    string
+		wantError bool
+	}{
+		{
+			name:   "valid PKCS1 RSA key",
+			pemStr: pkcs1PEM,
+		},
+		{
+			name:   "valid PKCS8 RSA key",
+			pemStr: pkcs8PEM,
+		},
+		{
+			name:   "leading and trailing whitespace is trimmed",
+			pemStr: "  \n" + pkcs1PEM + "\n  ",
+		},
+		{
+			name:      "empty string",
+			pemStr:    "",
+			wantError: true,
+		},
+		{
+			name:      "non-PEM string",
+			pemStr:    "not-a-pem-string",
+			wantError: true,
+		},
+		{
+			name:      "valid PEM header but invalid base64 body",
+			pemStr:    "-----BEGIN RSA PRIVATE KEY-----\ninvalid-base64\n-----END RSA PRIVATE KEY-----",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := parsePEMKey(tt.pemStr)
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if key == nil {
+				t.Fatal("expected non-nil key")
+			}
+		})
+	}
+}
+
+func TestMintJWT(t *testing.T) {
+	privateKey, _, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		appID     string
+		key       *rsa.PrivateKey
+		wantError bool
+	}{
+		{
+			name:  "valid key and appID",
+			appID: "123456",
+			key:   privateKey,
+		},
+		{
+			name:  "empty appID",
+			appID: "",
+			key:   privateKey,
+		},
+		{
+			name:      "nil key",
+			appID:     "123456",
+			key:       nil,
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := time.Now()
+			tokenStr, err := mintJWT(tt.appID, tt.key)
+			after := time.Now()
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			claims := jwt.MapClaims{}
+			parsed, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+				if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+					t.Errorf("unexpected signing method: %v", token.Header["alg"])
+				}
+				return &privateKey.PublicKey, nil
+			})
+			if err != nil {
+				t.Fatalf("failed to parse JWT: %v", err)
+			}
+			if !parsed.Valid {
+				t.Fatal("JWT is not valid")
+			}
+
+			iss, err := claims.GetIssuer()
+			if err != nil || iss != tt.appID {
+				t.Errorf("expected iss=%q, got %q (err: %v)", tt.appID, iss, err)
+			}
+
+			iat, _ := claims["iat"].(float64)
+			exp, _ := claims["exp"].(float64)
+			minIAT := float64(before.Unix()) - jwtBackdateSec - jwtTestTolerance
+			maxIAT := float64(after.Unix()) - jwtBackdateSec + jwtTestTolerance
+			if iat < minIAT || iat > maxIAT {
+				t.Errorf("iat %v out of expected range [%v, %v]", iat, minIAT, maxIAT)
+			}
+			minEXP := float64(before.Unix()) + jwtLifetimeSec - jwtTestTolerance
+			maxEXP := float64(after.Unix()) + jwtLifetimeSec + jwtTestTolerance
+			if exp < minEXP || exp > maxEXP {
+				t.Errorf("exp %v out of expected range [%v, %v]", exp, minEXP, maxEXP)
+			}
+		})
 	}
 }
 

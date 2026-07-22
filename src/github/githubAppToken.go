@@ -25,6 +25,42 @@ import (
 
 const tokenExpiresAtAnnotation = "renovate-operator.mogenius.com/token-expires-at"
 
+func parsePEMKey(pemStr string) (*rsa.PrivateKey, error) {
+	pemStr = strings.TrimSpace(pemStr)
+	if !strings.HasPrefix(pemStr, "-----BEGIN") {
+		return nil, fmt.Errorf("PEM data does not start with BEGIN marker (starts with: %s...)", pemStr[:min(50, len(pemStr))])
+	}
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("failed to parse PEM block")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		raw, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err2)
+		}
+		var ok bool
+		key, ok = raw.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("not an RSA private key")
+		}
+	}
+	return key, nil
+}
+
+func mintJWT(appID string, key *rsa.PrivateKey) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("private key must not be nil")
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iat": time.Now().Unix() - 60,
+		"exp": time.Now().Unix() + (10 * 60),
+		"iss": appID,
+	})
+	return tok.SignedString(key)
+}
+
 type GithubAppToken interface {
 	// EnsureToken creates or renews the GitHub App token secret for the job when
 	// the existing token has less than 30 minutes remaining. The secret is owned
@@ -154,37 +190,12 @@ func (g *githubappToken) CreateGithubAppToken(appID, installationID, pemString, 
 }
 
 func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pemString, githubApi string) (string, time.Time, error) {
-	pemString = strings.TrimSpace(pemString)
-
-	if !strings.HasPrefix(pemString, "-----BEGIN") {
-		return "", time.Time{}, fmt.Errorf("PEM data does not start with BEGIN marker (starts with: %s...)", pemString[:min(50, len(pemString))])
-	}
-
-	block, _ := pem.Decode([]byte(pemString))
-	if block == nil {
-		return "", time.Time{}, fmt.Errorf("failed to parse PEM block")
-	}
-
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	privateKey, err := parsePEMKey(pemString)
 	if err != nil {
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		var ok bool
-		privateKey, ok = key.(*rsa.PrivateKey)
-		if !ok {
-			return "", time.Time{}, fmt.Errorf("not an RSA private key")
-		}
+		return "", time.Time{}, err
 	}
 
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iat": time.Now().Unix() - 60,
-		"exp": time.Now().Unix() + (10 * 60),
-		"iss": appID,
-	})
-
-	signedJWT, err := jwtToken.SignedString(privateKey)
+	signedJWT, err := mintJWT(appID, privateKey)
 	if err != nil {
 		return "", time.Time{}, err
 	}
