@@ -3220,6 +3220,12 @@ spec:
                     type: string
                   name:
                     type: string
+                  publicEndpoint:
+                    description: |-
+                      PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
+                      When set, this overrides Endpoint for dashboard links while Endpoint continues to be
+                      used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+                    type: string
                 required:
                 - name
                 type: object
