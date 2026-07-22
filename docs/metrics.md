@@ -62,7 +62,6 @@ metrics for free (`controller_runtime_reconcile_*`, workqueue depth/latency,
 | Name                                              | Type    | Description                                                | Labels                                          |
 |---------------------------------------------------|---------|------------------------------------------------------------|-------------------------------------------------|
 | renovate_operator_open_pull_requests              | Gauge   | Open Renovate-managed pull requests after the last run     | `renovate_namespace`, `renovate_job`, `project` |
-| renovate_operator_pull_requests_awaiting_approval | Gauge   | Pull requests awaiting human approval after the last run   | `renovate_namespace`, `renovate_job`, `project` |
 | renovate_operator_pull_requests_created_total     | Counter | Pull requests created                                      | `renovate_namespace`, `renovate_job`            |
 | renovate_operator_pull_requests_merged_total      | Counter | Pull requests automerged (updates that landed)             | `renovate_namespace`, `renovate_job`            |
 | renovate_operator_pull_requests_updated_total     | Counter | Pull requests updated                                      | `renovate_namespace`, `renovate_job`            |

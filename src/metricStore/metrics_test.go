@@ -271,7 +271,6 @@ func TestDeleteProjectMetricsRemovesNewSeries(t *testing.T) {
 	ns, job, proj := "del2-ns", "del2-job", "del2-proj"
 
 	SetOpenPullRequests(ns, job, proj, 4)
-	SetPullRequestsAwaitingApproval(ns, job, proj, 2)
 	SetLastExecutionDuration(ns, job, proj, 12.5)
 	SetLogIssues(ns, job, proj, "warn", 1)
 	SetLogIssues(ns, job, proj, "error", 1)
