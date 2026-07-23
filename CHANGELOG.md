@@ -1,5 +1,29 @@
 # Changelog
 
+## [5.4.0](https://github.com/mogenius/renovate-operator/compare/5.3.0...5.4.0) (2026-07-23)
+
+
+### Features
+
+* adding public endpoint option ([95b600a](https://github.com/mogenius/renovate-operator/commit/95b600adaef539443407c2bf66f2233204087a15)), closes [#502](https://github.com/mogenius/renovate-operator/issues/502)
+* **helm:** Allow overriding the webhook baseUrl ([8e69df7](https://github.com/mogenius/renovate-operator/commit/8e69df78acd47998d032ca95a3f2249ef48011c9))
+* hydrate metrics from crd state on startup ([6ba5a20](https://github.com/mogenius/renovate-operator/commit/6ba5a204b1566a61e46f25ac54c5b39359165b7c))
+* improve grafana dashboard with new metrics ([cc454dd](https://github.com/mogenius/renovate-operator/commit/cc454dde42ded2dd01e0dd7a9fd0254578504e1a))
+* **metrics:** expand Prometheus/OTel metrics for SRE and SecOps ([d58b98f](https://github.com/mogenius/renovate-operator/commit/d58b98fe9be0af9f265053957fe9e43274ecff3c))
+* unify last Run and scheduled at into lastTransition ([2401ed4](https://github.com/mogenius/renovate-operator/commit/2401ed4793e51c4ce00f06003acaa48513832af5))
+
+
+### Bug Fixes
+
+* add metric hydration for missing metrics ([0f58f9c](https://github.com/mogenius/renovate-operator/commit/0f58f9cee90ebca6bbf859e270afc25c617da7be))
+* adding missing metrics for gitea and bitbucket webhooks ([ecd9d9c](https://github.com/mogenius/renovate-operator/commit/ecd9d9c29ac7952fcb4687eac95f3f1d439d938b))
+* **deps:** update aws-sdk-go-v2 monorepo ([7a640e6](https://github.com/mogenius/renovate-operator/commit/7a640e606b0a1fd230f05ff7dcc254f08191a410))
+* **deps:** update dependency react to v19.2.8 ([d8db772](https://github.com/mogenius/renovate-operator/commit/d8db772932b7b6aab06b55d61bb4c902cd350653))
+* **deps:** update dependency react-dom to v19.2.8 ([6b576ba](https://github.com/mogenius/renovate-operator/commit/6b576ba2d3954f7ab1c7dac5c54327a518527806))
+* **deps:** update helm release valkey to v0.11.0 ([1813e0a](https://github.com/mogenius/renovate-operator/commit/1813e0a5685a54bc42d3e35fbf801d4b4960d624))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.106.0 ([d8af1d5](https://github.com/mogenius/renovate-operator/commit/d8af1d5c83d5274e3a493ad453d79df8f1307fe5))
+* **otel:** upgrade semconv to match otel sdk version ([579a29a](https://github.com/mogenius/renovate-operator/commit/579a29a7ac90a6052ba4ef3b146684c8cd903f32))
+
 ## [5.3.0](https://github.com/mogenius/renovate-operator/compare/5.2.0...5.3.0) (2026-07-21)
 
 
