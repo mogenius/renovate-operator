@@ -224,7 +224,7 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name     string                `json:"name"`
+	Name string `json:"name"`
 	// LastTransition records when the project most recently changed state.
 	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
 	Duration             *string               `json:"duration,omitempty"`
@@ -235,7 +235,7 @@ type ProjectStatus struct {
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
 	// TokenSecretName names the Kubernetes Secret holding RENOVATE_TOKEN for this project.
 	// When non-empty the executor uses it instead of the job-level default.
-	// Needed sine for github enterprise applications, a job creates executor pods for projects that are potentially in different organisations
+	// Needed since for github enterprise applications, a job creates executor pods for projects that are potentially in different organisations
 	// 		and each organisation has its own installation ID and therefore its own token.
 	// +optional
 	TokenSecretName string `json:"tokenSecretName,omitempty"`
