@@ -668,6 +668,22 @@ func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
 				SetLastExecutionDuration(namespace, job, p.Name, d.Seconds())
 			}
 		}
+
+		// Initialize execution counters at 0 so series are visible from startup.
+		projectRuns.WithLabelValues(namespace, job, p.Name, string(api.JobStatusCompleted))
+		projectRuns.WithLabelValues(namespace, job, p.Name, string(api.JobStatusFailed))
+	}
+
+	SetDiscoveredRepositories(namespace, job, len(projects))
+
+	statusCounts := make(map[string]int)
+	for i := range projects {
+		if projects[i].RenovateResultStatus != nil {
+			statusCounts[NormalizeRepositoryStatus(*projects[i].RenovateResultStatus)]++
+		}
+	}
+	for status, count := range statusCounts {
+		SetRepositoriesByStatus(namespace, job, status, count)
 	}
 }
 
