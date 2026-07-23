@@ -286,95 +286,112 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 }
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
-
-	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
-		providerClient, err := r.filterClient(ctx, renovateJob, tokenSecretName)
-		if err != nil {
-			r.logger.Error(err, "Failed to create git provider client for project filtering")
-		} else {
-			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
-			if err != nil {
-				r.logger.Error(err, "Failed to filter discovered repositories")
-			} else {
-				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
-				projects = newProjects
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
-			}
-		}
-	}
+	projects = r.filterDiscoveredProjects(ctx, renovateJob, tokenSecretName, projects)
 
 	defer r.globalManagerLock(false)()
 
 	var removed []api.ProjectStatus
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
+		liveJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
 		if err != nil {
 			return err
 		}
-		// Build a set of current CRD projects
-		crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
-		for i, crdProject := range renovateJob.Status.Projects {
-			crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
+
+		liveJob.Status.Projects, removed = diffProjects(liveJob.Status.Projects, projects, tokenSecretName)
+		for _, p := range removed {
+			metricStore.DeleteProjectMetrics(liveJob.Namespace, liveJob.Name, p.Name)
 		}
 
-		// Build a set of new projects for quick lookup
-		newProjectSet := make(map[string]struct{}, len(projects))
-		for _, project := range projects {
-			newProjectSet[project] = struct{}{}
-		}
-
-		// Collect removed projects (for webhook cleanup) and drop their metrics.
-		// When tokenSecretName is set (enterprise-app mode), only consider
-		// projects that belong to this installation — projects from other
-		// installations are preserved unchanged.
-		removed = removed[:0]
-		for projectName, crdProject := range crdProjectSet {
-			if tokenSecretName != "" && crdProject.TokenSecretName != tokenSecretName {
-				continue
-			}
-			if _, exists := newProjectSet[projectName]; !exists {
-				removed = append(removed, crdProject)
-				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
-			}
-		}
-
-		newProjects := make([]api.ProjectStatus, 0, len(renovateJob.Status.Projects))
-		// Preserve projects from other installations: those with a different
-		// TokenSecretName that are NOT in this reconcile's incoming project list.
-		// Projects in the incoming list are claimed by this reconcile regardless
-		// of their current TokenSecretName (handles token rotation).
-		if tokenSecretName != "" {
-			for _, crdProject := range crdProjectSet {
-				if crdProject.TokenSecretName != tokenSecretName {
-					if _, inIncoming := newProjectSet[crdProject.Name]; !inIncoming {
-						newProjects = append(newProjects, crdProject)
-					}
-				}
-			}
-		}
-		for _, project := range projects {
-			if crdProject, exists := crdProjectSet[project]; exists {
-				if tokenSecretName != "" {
-					crdProject.TokenSecretName = tokenSecretName
-				}
-				newProjects = append(newProjects, crdProject)
-			} else {
-				// add new project to the list
-				now := v1.Now()
-				newProjects = append(newProjects, api.ProjectStatus{
-					Name:           project,
-					Status:         api.JobStatusScheduled,
-					LastTransition: now,
-					TokenSecretName: tokenSecretName,
-				})
-			}
-		}
-		renovateJob.Status.Projects = newProjects
-
-		return r.client.Status().Update(ctx, renovateJob)
+		return r.client.Status().Update(ctx, liveJob)
 	})
 	return removed, err
+}
+
+// filterDiscoveredProjects applies skipForks/skipPendingDeletion filtering to a
+// freshly discovered project list, if configured. Fails open: any error is
+// logged and the original, unfiltered list is returned — filtering must never
+// block discovery.
+func (r *renovateJobManager) filterDiscoveredProjects(ctx context.Context, renovateJob *api.RenovateJob, tokenSecretName string, projects []string) []string {
+	if !(renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) || r.gitProviderClientFactory == nil {
+		return projects
+	}
+
+	providerClient, err := r.filterClient(ctx, renovateJob, tokenSecretName)
+	if err != nil {
+		r.logger.Error(err, "Failed to create git provider client for project filtering")
+		return projects
+	}
+
+	filtered, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
+	if err != nil {
+		r.logger.Error(err, "Failed to filter discovered repositories")
+		return projects
+	}
+
+	r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(filtered))
+	metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
+	metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
+	return filtered
+}
+
+// inScope reports whether an existing CRD project is owned by the installation
+// identified by tokenSecretName. An empty tokenSecretName (legacy,
+// non-enterprise-app jobs run a single installation) is in scope for every
+// project, preserving the original full-overwrite behavior.
+func inScope(p api.ProjectStatus, tokenSecretName string) bool {
+	return tokenSecretName == "" || p.TokenSecretName == tokenSecretName
+}
+
+// diffProjects reconciles one installation's freshly discovered project names
+// against the CRD's current project list. It is pure — no I/O, no locking — so
+// the per-installation ownership rules below can be unit tested directly.
+//
+// Any project named in incoming is claimed by tokenSecretName going forward
+// (existing status is preserved; new projects start Scheduled). This is what
+// lets a rotated secret name take over a carried-over project, regardless of
+// which installation last owned it. Everything else in current is either
+// passed through untouched in all (it belongs to a different installation, so
+// this reconcile has no opinion on it) or reported in removed (it belonged to
+// this installation but was not rediscovered).
+func diffProjects(current []api.ProjectStatus, incoming []string, tokenSecretName string) (all, removed []api.ProjectStatus) {
+	currentByName := make(map[string]api.ProjectStatus, len(current))
+	for _, p := range current {
+		currentByName[p.Name] = p
+	}
+	incomingSet := make(map[string]struct{}, len(incoming))
+	for _, name := range incoming {
+		incomingSet[name] = struct{}{}
+	}
+
+	all = make([]api.ProjectStatus, 0, len(current)+len(incoming))
+	for _, name := range incoming {
+		if p, exists := currentByName[name]; exists {
+			if tokenSecretName != "" {
+				p.TokenSecretName = tokenSecretName
+			}
+			all = append(all, p)
+		} else {
+			all = append(all, api.ProjectStatus{
+				Name:            name,
+				Status:          api.JobStatusScheduled,
+				LastTransition:  v1.Now(),
+				TokenSecretName: tokenSecretName,
+			})
+		}
+	}
+
+	for name, p := range currentByName {
+		if _, stillIncoming := incomingSet[name]; stillIncoming {
+			continue
+		}
+		if inScope(p, tokenSecretName) {
+			removed = append(removed, p)
+		} else {
+			all = append(all, p)
+		}
+	}
+
+	return all, removed
 }
 
 func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {

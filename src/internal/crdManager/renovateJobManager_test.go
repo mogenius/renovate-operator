@@ -2,6 +2,7 @@ package crdmanager
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -448,6 +449,75 @@ func TestReconcileProjects_EnterpriseAppMultiInstallation(t *testing.T) {
 			t.Errorf("project %q missing from Status.Projects after both installations reconciled", expected)
 		}
 	}
+}
+
+// TestDiffProjects exercises the pure reconciliation core directly — no fake
+// client, no CRD round trip — covering the same ownership rules the fault in
+// TestReconcileProjects_EnterpriseAppMultiInstallation depended on.
+func TestDiffProjects(t *testing.T) {
+	completed := func(name, tokenSecretName string) api.ProjectStatus {
+		return api.ProjectStatus{Name: name, Status: api.JobStatusCompleted, TokenSecretName: tokenSecretName}
+	}
+	projectNames := func(projects []api.ProjectStatus) []string {
+		names := make([]string, len(projects))
+		for i, p := range projects {
+			names[i] = p.Name
+		}
+		return names
+	}
+
+	t.Run("legacy non-enterprise job: incoming list is the full truth", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a", ""), completed("c", "")}
+		all, removed := diffProjects(current, []string{"a", "b"}, "")
+
+		if len(removed) != 1 || removed[0].Name != "c" {
+			t.Fatalf("expected only c removed, got %v", removed)
+		}
+		names := projectNames(all)
+		if len(names) != 2 || !slices.Contains(names, "a") || !slices.Contains(names, "b") {
+			t.Fatalf("expected [a b], got %v", names)
+		}
+	})
+
+	t.Run("installation A's projects survive installation B's reconcile untouched", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a1", "secret-a"), completed("a2", "secret-a")}
+		all, removed := diffProjects(current, []string{"b1"}, "secret-b")
+
+		if len(removed) != 0 {
+			t.Fatalf("expected no removals, got %v", removed)
+		}
+		names := projectNames(all)
+		for _, want := range []string{"a1", "a2", "b1"} {
+			if !slices.Contains(names, want) {
+				t.Fatalf("expected %s to survive, got %v", want, names)
+			}
+		}
+	})
+
+	t.Run("installation B dropping its own project is removed, A's is not touched", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a1", "secret-a"), completed("b1", "secret-b"), completed("b2", "secret-b")}
+		all, removed := diffProjects(current, []string{"b1"}, "secret-b")
+
+		if len(removed) != 1 || removed[0].Name != "b2" {
+			t.Fatalf("expected only b2 removed, got %v", removed)
+		}
+		names := projectNames(all)
+		if !slices.Contains(names, "a1") || !slices.Contains(names, "b1") {
+			t.Fatalf("expected a1 and b1 to survive, got %v", names)
+		}
+	})
+
+	t.Run("rotated secret name claims a carried-over project regardless of prior owner", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("shared", "old-secret")}
+		all, removed := diffProjects(current, []string{"shared"}, "new-secret")
+
+		if len(removed) != 0 {
+			t.Fatalf("expected no removals, got %v", removed)
+		}
+		if len(all) != 1 || all[0].TokenSecretName != "new-secret" || all[0].Status != api.JobStatusCompleted {
+			t.Fatalf("expected shared claimed with new-secret and status preserved, got %v", all)
+		}
+	})
 }
 
 func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {
