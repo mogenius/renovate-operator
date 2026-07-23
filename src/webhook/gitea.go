@@ -7,6 +7,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 )
 
 // Gitea webhook types and handler.
@@ -60,20 +61,27 @@ type GiteaUser struct {
 }
 
 func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "gitea"
+
 	event := r.Header.Get("X-Gitea-Event")
 	if event == "" {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing X-Gitea-Event header"})
 		return
 	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
 		return
 	}
 
 	var payload GiteaEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to decode Gitea webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -81,6 +89,7 @@ func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 
 	valid, reason := isValidGiteaEvent(event, &payload)
 	if !valid {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.logger.Info("ignoring Gitea webhook event", "event", event, "repository", payload.Repository.FullName, "reason", reason)
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
 		return
@@ -91,8 +100,10 @@ func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 	project := payload.Repository.FullName
 
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(r.Context(), s.manager, namespace, jobName, project, checker)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)
 		s.handleResolverError(w, err)
 		return
@@ -100,7 +111,7 @@ func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Info("received Gitea event", "event", event, "repository", project, "action", payload.Action)
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
+		ctx,
 		project,
 		jobId,
 		&types.RenovateStatusUpdate{
@@ -109,9 +120,11 @@ func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
 }
 
