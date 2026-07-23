@@ -378,6 +378,78 @@ func TestReconcileProjects_TokenSecretName(t *testing.T) {
 	})
 }
 
+// TestReconcileProjects_EnterpriseAppMultiInstallation demonstrates the fault
+// described in the code review: when enterprise-app mode creates one discovery
+// Job per installation, each call to ReconcileProjects rebuilds Status.Projects
+// solely from that installation's discovered repos. The second call therefore
+// marks the first installation's repos as "removed" and overwrites them in the
+// CRD, even though they are still valid.
+//
+// This test FAILS with the current implementation and should PASS after the fix.
+func TestReconcileProjects_EnterpriseAppMultiInstallation(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+
+	j := makeJob("job1", "default", nil)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	ctx := context.Background()
+
+	// Installation A finishes first and writes its repos.
+	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job: %v", err)
+	}
+	removedA, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo-a1", "org/repo-a2"}, "secret-a")
+	if err != nil {
+		t.Fatalf("installation A reconcile failed: %v", err)
+	}
+	if len(removedA) != 0 {
+		t.Fatalf("expected no removals after installation A, got %v", removedA)
+	}
+
+	// Installation B finishes second and writes only its own repos.
+	rJob, err = mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job: %v", err)
+	}
+	removedB, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo-b1", "org/repo-b2"}, "secret-b")
+	if err != nil {
+		t.Fatalf("installation B reconcile failed: %v", err)
+	}
+
+	// BUG: the current implementation reports A's repos as "removed" because
+	// they are absent from B's project list. This should be empty.
+	if len(removedB) != 0 {
+		t.Fatalf("installation B incorrectly reported %d removed projects (expected 0): %v", len(removedB), removedB)
+	}
+
+	// BUG: Status.Projects should contain repos from both installations, but
+	// the current implementation overwrites it with only B's repos.
+	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job after both reconciles: %v", err)
+	}
+	if len(job.Status.Projects) != 4 {
+		t.Fatalf("expected 4 projects (2 per installation), got %d: %v", len(job.Status.Projects), job.Status.Projects)
+	}
+	projectNames := make(map[string]struct{}, len(job.Status.Projects))
+	for _, p := range job.Status.Projects {
+		projectNames[p.Name] = struct{}{}
+	}
+	for _, expected := range []string{"org/repo-a1", "org/repo-a2", "org/repo-b1", "org/repo-b2"} {
+		if _, ok := projectNames[expected]; !ok {
+			t.Errorf("project %q missing from Status.Projects after both installations reconciled", expected)
+		}
+	}
+}
+
 func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {
 	setBaseURL(t, "https://hooks.example.com")
 

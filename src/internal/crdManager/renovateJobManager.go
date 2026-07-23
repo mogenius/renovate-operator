@@ -324,16 +324,35 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 			newProjectSet[project] = struct{}{}
 		}
 
-		// Collect removed projects (for webhook cleanup) and drop their metrics
+		// Collect removed projects (for webhook cleanup) and drop their metrics.
+		// When tokenSecretName is set (enterprise-app mode), only consider
+		// projects that belong to this installation — projects from other
+		// installations are preserved unchanged.
 		removed = removed[:0]
 		for projectName, crdProject := range crdProjectSet {
+			if tokenSecretName != "" && crdProject.TokenSecretName != tokenSecretName {
+				continue
+			}
 			if _, exists := newProjectSet[projectName]; !exists {
 				removed = append(removed, crdProject)
 				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
 			}
 		}
 
-		newProjects := make([]api.ProjectStatus, 0, len(projects))
+		newProjects := make([]api.ProjectStatus, 0, len(renovateJob.Status.Projects))
+		// Preserve projects from other installations: those with a different
+		// TokenSecretName that are NOT in this reconcile's incoming project list.
+		// Projects in the incoming list are claimed by this reconcile regardless
+		// of their current TokenSecretName (handles token rotation).
+		if tokenSecretName != "" {
+			for _, crdProject := range crdProjectSet {
+				if crdProject.TokenSecretName != tokenSecretName {
+					if _, inIncoming := newProjectSet[crdProject.Name]; !inIncoming {
+						newProjects = append(newProjects, crdProject)
+					}
+				}
+			}
+		}
 		for _, project := range projects {
 			if crdProject, exists := crdProjectSet[project]; exists {
 				if tokenSecretName != "" {

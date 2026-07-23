@@ -4406,7 +4406,7 @@ spec:
                     tokenSecretName:
                       description: "TokenSecretName names the Kubernetes Secret holding
                         RENOVATE_TOKEN for this project.\nWhen non-empty the executor
-                        uses it instead of the job-level default.\nNeeded sine for
+                        uses it instead of the job-level default.\nNeeded since for
                         github enterprise applications, a job creates executor pods
                         for projects that are potentially in different organisations\n\t\tand
                         each organisation has its own installation ID and therefore
