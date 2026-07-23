@@ -539,10 +539,28 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, err := s.discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: false}); err != nil {
-		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
-		internalServerError(w, err, "failed to create discovery job")
-		return
+	if job.Spec.GithubEnterpriseAppReference != nil {
+		secretNames, err := s.githubApp.EnsureTokensForEnterpriseApp(ctx, job)
+		if err != nil {
+			internalServerError(w, err, "failed to ensure enterprise github app tokens")
+			return
+		}
+		for _, secretName := range secretNames {
+			if _, err := s.discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{
+				TriggerAllProjects: false,
+				TokenSecretName:    secretName,
+			}); err != nil {
+				s.logger.Error(err, "Failed to start discovery for installation", "secretName", secretName)
+				internalServerError(w, err, "failed to create discovery job")
+				return
+			}
+		}
+	} else {
+		if _, err := s.discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: false}); err != nil {
+			s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
+			internalServerError(w, err, "failed to create discovery job")
+			return
+		}
 	}
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})

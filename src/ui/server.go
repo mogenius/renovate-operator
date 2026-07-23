@@ -7,6 +7,7 @@ import (
 
 	"renovate-operator/assert"
 	"renovate-operator/config"
+	"renovate-operator/github"
 	"renovate-operator/health"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
@@ -20,6 +21,7 @@ import (
 type Server struct {
 	manager              crdmanager.RenovateJobManager
 	discovery            renovate.DiscoveryAgent
+	githubApp            github.GithubAppToken
 	scheduler            scheduler.Scheduler
 	logger               logr.Logger
 	server               *http.Server
@@ -30,12 +32,13 @@ type Server struct {
 	Router               *mux.Router
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string, githubApp github.GithubAppToken) *Server {
 	return &Server{
 		manager:              manager,
 		logger:               logger,
 		health:               health,
 		discovery:            discovery,
+		githubApp:            githubApp,
 		scheduler:            scheduler,
 		version:              version,
 		auth:                 auth,
