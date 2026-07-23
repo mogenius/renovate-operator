@@ -40,7 +40,7 @@ type DiscoveryAgent interface {
 }
 
 type DiscoveryJobOptions struct {
-	// Wether to trigger all projects once the discovery is fnished
+	// Whether to trigger all projects once the discovery is finished
 	TriggerAllProjects bool
 	// TokenSecretName overrides the token secret used by the discovery job.
 	// Empty means derive from the job spec (non-enterprise path).

@@ -379,14 +379,10 @@ func TestReconcileProjects_TokenSecretName(t *testing.T) {
 	})
 }
 
-// TestReconcileProjects_EnterpriseAppMultiInstallation demonstrates the fault
-// described in the code review: when enterprise-app mode creates one discovery
-// Job per installation, each call to ReconcileProjects rebuilds Status.Projects
-// solely from that installation's discovered repos. The second call therefore
-// marks the first installation's repos as "removed" and overwrites them in the
-// CRD, even though they are still valid.
-//
-// This test FAILS with the current implementation and should PASS after the fix.
+// TestReconcileProjects_EnterpriseAppMultiInstallation demonstrates that when
+// enterprise-app mode creates one discovery Job per installation, each call to
+// ReconcileProjects must merge — not overwrite — Status.Projects so that repos
+// from earlier installations are not incorrectly marked as removed.
 func TestReconcileProjects_EnterpriseAppMultiInstallation(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {
@@ -425,14 +421,10 @@ func TestReconcileProjects_EnterpriseAppMultiInstallation(t *testing.T) {
 		t.Fatalf("installation B reconcile failed: %v", err)
 	}
 
-	// BUG: the current implementation reports A's repos as "removed" because
-	// they are absent from B's project list. This should be empty.
 	if len(removedB) != 0 {
 		t.Fatalf("installation B incorrectly reported %d removed projects (expected 0): %v", len(removedB), removedB)
 	}
 
-	// BUG: Status.Projects should contain repos from both installations, but
-	// the current implementation overwrites it with only B's repos.
 	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
 	if err != nil {
 		t.Fatalf("unexpected error getting job after both reconciles: %v", err)

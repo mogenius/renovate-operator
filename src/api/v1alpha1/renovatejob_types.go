@@ -163,10 +163,6 @@ type RenovateJobMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-/*
-Renovate Provider Information
-This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
-*/
 type RenovateProvider struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint,omitempty"`
