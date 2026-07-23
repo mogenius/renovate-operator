@@ -295,24 +295,30 @@ func (g *githubappToken) listInstallationIDs(appID, pemStr, githubApi string) ([
 	return g.listInstallationIDsWithJWT(signedJWT, githubApi)
 }
 
-// listInstallationIDsWithJWT lists installations given an already-signed app JWT, so
+// listInstallationIDsWithJWT lists all installations given an already-signed app JWT, so
 // EnsureTokensForEnterpriseApp can reuse the same JWT it mints for the token-creation loop.
+// The endpoint is paginated; we request 100 per page and stop when a page returns fewer than 100.
 func (g *githubappToken) listInstallationIDsWithJWT(signedJWT, githubApi string) ([]string, error) {
-	url := fmt.Sprintf("%s/app/installations", githubApi)
-	body, err := g.doGithubAppRequest("GET", url, signedJWT)
-	if err != nil {
-		return nil, err
-	}
+	var ids []string
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s/app/installations?per_page=100&page=%d", githubApi, page)
+		body, err := g.doGithubAppRequest("GET", url, signedJWT)
+		if err != nil {
+			return nil, err
+		}
 
-	var installations []struct {
-		ID int64 `json:"id"`
-	}
-	if err = json.Unmarshal(body, &installations); err != nil {
-		return nil, err
-	}
-	ids := make([]string, len(installations))
-	for i, inst := range installations {
-		ids[i] = strconv.FormatInt(inst.ID, 10)
+		var installations []struct {
+			ID int64 `json:"id"`
+		}
+		if err = json.Unmarshal(body, &installations); err != nil {
+			return nil, err
+		}
+		for _, inst := range installations {
+			ids = append(ids, strconv.FormatInt(inst.ID, 10))
+		}
+		if len(installations) < 100 {
+			break
+		}
 	}
 	return ids, nil
 }

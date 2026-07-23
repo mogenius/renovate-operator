@@ -2,6 +2,7 @@ package controllers
 
 import (
 	context "context"
+	stderrors "errors"
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
@@ -184,15 +185,17 @@ func dispatchDiscovery(ctx context.Context, logger logr.Logger, reconciler *Reno
 		if err != nil {
 			return fmt.Errorf("failed to ensure enterprise github app tokens: %w", err)
 		}
+		var errs []error
 		for _, secretName := range secretNames {
 			if _, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{
 				TriggerAllProjects: triggerAllProjects,
 				TokenSecretName:    secretName,
 			}); err != nil {
 				logger.Error(err, "Failed to create discovery job for installation", "secretName", secretName)
+				errs = append(errs, err)
 			}
 		}
-		return nil
+		return stderrors.Join(errs...)
 	}
 	_, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: triggerAllProjects})
 	return err
