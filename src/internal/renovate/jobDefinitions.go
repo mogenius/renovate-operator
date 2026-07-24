@@ -254,7 +254,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 	}
 
 	if config.GetValue("S3_FORWARD_CACHE_TO_JOBS") == "true" && config.GetValue("S3_BUCKET") != "" {
-		s3CacheType := fmt.Sprintf("s3://%s/%s", config.GetValue("S3_BUCKET"), config.GetValue("S3_CACHE_PREFIX"))
+		s3CacheType := fmt.Sprintf("s3://%s/%s/", config.GetValue("S3_BUCKET"), config.GetValue("S3_CACHE_PREFIX"))
 		predefinedEnvVars = append(predefinedEnvVars,
 			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE", Value: "enabled"},
 			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE_TYPE", Value: s3CacheType},
