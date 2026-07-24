@@ -732,7 +732,7 @@ func computeStandardWebhookSignature(key []byte, signedContent string) string {
 // matchesAnyStandardWebhookSignature reports whether expected (raw base64) matches any "v1" entry
 // in a space-separated webhook-signature header value. Comparison is constant-time.
 func matchesAnyStandardWebhookSignature(header, expected string) bool {
-	for _, part := range strings.Fields(header) {
+	for part := range strings.FieldsSeq(header) {
 		version, sig, found := strings.Cut(part, ",")
 		if !found || version != "v1" {
 			continue

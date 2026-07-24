@@ -230,7 +230,7 @@ func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
 	body := w.Body.String()
 	// Count data events that are not the terminal "done" event
 	dataCount := 0
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(line, "data: ") && line != "data: {}" {
 			dataCount++
 		}

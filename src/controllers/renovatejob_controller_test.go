@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -444,13 +445,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 		t.Fatalf("expected 2 projects scheduled, got %v", scheduled)
 	}
 	for _, want := range []string{"org/a", "org/c"} {
-		found := false
-		for _, got := range scheduled {
-			if got == want {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(scheduled, want)
 		if !found {
 			t.Fatalf("expected %q to be scheduled, got %v", want, scheduled)
 		}
