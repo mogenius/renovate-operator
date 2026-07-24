@@ -583,6 +583,49 @@
           );
         }, [filteredJobs]);
 
+        const SEARCH_PARAM = "search";
+
+        const [searchTerm, setSearchTerm] = useState(() => {
+          try {
+            return new URLSearchParams(window.location.search).get(SEARCH_PARAM) || "";
+          } catch {
+            return "";
+          }
+        });
+
+        useEffect(() => {
+          try {
+            const url = new URL(window.location.href);
+            if (searchTerm) {
+              url.searchParams.set(SEARCH_PARAM, searchTerm);
+            } else {
+              url.searchParams.delete(SEARCH_PARAM);
+            }
+            window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+          } catch {}
+        }, [searchTerm]);
+
+        const clearSearch = useCallback(() => setSearchTerm(""), []);
+
+        const searchFilteredJobs = useMemo(() => {
+          const term = searchTerm.trim().toLowerCase();
+          if (!term) return filteredJobs;
+          return filteredJobs
+            .map((job) => ({
+              ...job,
+              projects: (Array.isArray(job.projects) ? job.projects : [])
+                .filter((p) => (p.name || "").toLowerCase().includes(term)),
+            }))
+            .filter((job) => job.projects.length > 0);
+        }, [filteredJobs, searchTerm]);
+
+        const searchFilteredProjectCount = useMemo(() => {
+          return searchFilteredJobs.reduce(
+            (total, job) => total + (Array.isArray(job.projects) ? job.projects.length : 0),
+            0
+          );
+        }, [searchFilteredJobs]);
+
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
             nextToastIdRef.current += 1;
@@ -1027,24 +1070,78 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {selectedStatFilter && (
+                  <div>
+                    <label htmlFor="project-search" className="sr-only">Search projects</label>
+                    <div className="relative">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <svg className="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <input
+                        id="project-search"
+                        type="search"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
+                        placeholder="Search projects…"
+                        className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        aria-label="Search projects by name"
+                      />
+                      {searchTerm && (
+                        <button
+                          type="button"
+                          onClick={clearSearch}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+                          aria-label="Clear search"
+                        >
+                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {(selectedStatFilter || searchTerm.trim()) && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
                       <p className="text-sm text-gray-700 dark:text-slate-300">
-                        Showing <span className="font-semibold text-primary">{filteredProjectCount}</span>{" "}
-                        matching project{filteredProjectCount === 1 ? "" : "s"} in {filteredJobs.length}{" "}
-                        job{filteredJobs.length === 1 ? "" : "s"} for <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span>
+                        Showing{" "}
+                        <span className="font-semibold text-primary">{searchFilteredProjectCount}</span>{" "}
+                        project{searchFilteredProjectCount === 1 ? "" : "s"} in{" "}
+                        <span className="font-semibold text-primary">{searchFilteredJobs.length}</span>{" "}
+                        job{searchFilteredJobs.length === 1 ? "" : "s"}
+                        {selectedStatFilter && (
+                          <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
+                        )}
+                        {searchTerm.trim() && (
+                          <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
+                        )}
                       </p>
-                      <button
-                        type="button"
-                        onClick={clearStatFilter}
-                        className="self-start sm:self-auto text-sm font-medium text-primary hover:text-primary-hover transition-colors"
-                      >
-                        Clear filter
-                      </button>
+                      <div className="flex items-center gap-3 self-start sm:self-auto">
+                        {searchTerm.trim() && (
+                          <button
+                            type="button"
+                            onClick={clearSearch}
+                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                          >
+                            Clear search
+                          </button>
+                        )}
+                        {selectedStatFilter && (
+                          <button
+                            type="button"
+                            onClick={clearStatFilter}
+                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                          >
+                            Clear filter
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {filteredJobs.map((job) => (
+                  {searchFilteredJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
@@ -1056,7 +1153,7 @@
                     />
                   ))}
 
-                  {filteredJobs.length === 0 && !loading && !error && (
+                  {searchFilteredJobs.length === 0 && !loading && !error && (
                     <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
                       <svg
                         className="w-16 h-16 text-gray-400 mx-auto mb-4"
@@ -1073,21 +1170,40 @@
                         />
                       </svg>
                       <h3 className="text-lg font-semibold text-gray-700 dark:text-slate-300 mb-2">
-                        {selectedStatFilter ? "No jobs match this filter" : "No Renovate Jobs Found"}
+                        {searchTerm.trim()
+                          ? "No projects match your search"
+                          : selectedStatFilter
+                          ? "No jobs match this filter"
+                          : "No Renovate Jobs Found"}
                       </h3>
                       <p className="text-gray-500 dark:text-slate-400 mb-4">
-                        {selectedStatFilter
+                        {searchTerm.trim()
+                          ? `No projects found matching "${searchTerm.trim()}".`
+                          : selectedStatFilter
                           ? `Try clearing the ${STAT_FILTER_LABELS[selectedStatFilter]} filter to see all jobs again.`
                           : "Create a RenovateJob resource to get started."}
                       </p>
-                      {selectedStatFilter && (
-                        <button
-                          type="button"
-                          onClick={clearStatFilter}
-                          className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
-                        >
-                          Show all jobs
-                        </button>
+                      {(searchTerm.trim() || selectedStatFilter) && (
+                        <div className="flex items-center justify-center gap-3">
+                          {searchTerm.trim() && (
+                            <button
+                              type="button"
+                              onClick={clearSearch}
+                              className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                            >
+                              Clear search
+                            </button>
+                          )}
+                          {selectedStatFilter && (
+                            <button
+                              type="button"
+                              onClick={clearStatFilter}
+                              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                            >
+                              Clear filter
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
