@@ -70,7 +70,7 @@ func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job 
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
-func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (f *fakeManager) CleanupWebhooks(ctx context.Context, job crdManager.Renova
 	return nil
 }
 
-func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
+func (f *fakeManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	if f.reconcileProjectsFn != nil {
 		return nil, f.reconcileProjectsFn(ctx, job, projects)
 	}
@@ -114,6 +114,9 @@ func (worker *fakeGithubAppToken) CreateGithubAppTokenFromJob(job *api.RenovateJ
 }
 func (worker *fakeGithubAppToken) CreateGithubAppToken(appID, installationID, pem, githubApi string) (string, error) {
 	return "", nil
+}
+func (worker *fakeGithubAppToken) EnsureTokensForEnterpriseApp(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	return nil, nil
 }
 
 type fakeDiscovery struct {

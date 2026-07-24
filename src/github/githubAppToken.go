@@ -11,6 +11,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,42 @@ import (
 
 const tokenExpiresAtAnnotation = "renovate-operator.mogenius.com/token-expires-at"
 
+func parsePEMKey(pemStr string) (*rsa.PrivateKey, error) {
+	pemStr = strings.TrimSpace(pemStr)
+	if !strings.HasPrefix(pemStr, "-----BEGIN") {
+		return nil, fmt.Errorf("PEM data does not start with BEGIN marker (starts with: %s...)", pemStr[:min(50, len(pemStr))])
+	}
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("failed to parse PEM block")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		raw, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err2)
+		}
+		var ok bool
+		key, ok = raw.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("not an RSA private key")
+		}
+	}
+	return key, nil
+}
+
+func mintJWT(appID string, key *rsa.PrivateKey) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("private key must not be nil")
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iat": time.Now().Unix() - 60,
+		"exp": time.Now().Unix() + (10 * 60),
+		"iss": appID,
+	})
+	return tok.SignedString(key)
+}
+
 type GithubAppToken interface {
 	// EnsureToken creates or renews the GitHub App token secret for the job when
 	// the existing token has less than 30 minutes remaining. The secret is owned
@@ -32,6 +69,7 @@ type GithubAppToken interface {
 	EnsureToken(ctx context.Context, job *api.RenovateJob) error
 	CreateGithubAppTokenFromJob(job *api.RenovateJob) (string, error)
 	CreateGithubAppToken(appID, installationID, pem, githubApi string) (string, error)
+	EnsureTokensForEnterpriseApp(ctx context.Context, job *api.RenovateJob) ([]string, error)
 }
 
 type githubappToken struct {
@@ -60,28 +98,79 @@ func NewGitHubAppTokenCreatorWithLogger(client client.Client, logger logr.Logger
 	}
 }
 
+// isTokenFresh returns true if the secret exists and its token has >30 min remaining.
+// Returns (false, nil) when missing or expiring. Returns (false, err) on unexpected k8s errors.
+func (g *githubappToken) isTokenFresh(ctx context.Context, namespace, secretName string) (bool, error) {
+	existing := &corev1.Secret{}
+	err := g.client.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, existing)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get token secret %s: %w", secretName, err)
+	}
+	expiresAtStr, ok := existing.Annotations[tokenExpiresAtAnnotation]
+	if !ok {
+		return false, nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339, expiresAtStr)
+	if err != nil {
+		return false, nil
+	}
+	return time.Until(expiresAt) > 30*time.Minute, nil
+}
+
+// readBaseCredentials fetches the Kubernetes Secret referenced by creds and returns the
+// appID, PEM string, resolved GitHub API endpoint, and the secret itself (so callers can
+// read additional keys without a second Get).
+func (g *githubappToken) readBaseCredentials(ctx context.Context, creds api.GithubAppCredentials, namespace string, provider *api.RenovateProvider) (appID, pemStr, githubApi string, secret *corev1.Secret, err error) {
+	secret = &corev1.Secret{}
+	if err = g.client.Get(ctx, types.NamespacedName{Name: creds.SecretName, Namespace: namespace}, secret); err != nil {
+		return "", "", "", nil, fmt.Errorf("failed to get github app secret %s: %w", creds.SecretName, err)
+	}
+	pemBytes, ok := secret.Data[creds.PemSecretKey]
+	if !ok {
+		return "", "", "", nil, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", creds.PemSecretKey, creds.SecretName)
+	}
+	appIDBytes, ok := secret.Data[creds.AppIdSecretKey]
+	if !ok {
+		return "", "", "", nil, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", creds.AppIdSecretKey, creds.SecretName)
+	}
+	_, githubApi = utils.GetPlatformAndEndpoint(provider)
+	return string(appIDBytes), string(pemBytes), githubApi, secret, nil
+}
+
+// upsertTokenSecret creates or updates a Secret holding RENOVATE_TOKEN and its expiry annotation,
+// owned by job so Kubernetes GC cleans it up on deletion.
+func (g *githubappToken) upsertTokenSecret(ctx context.Context, job *api.RenovateJob, secretName, token string, expiresAt time.Time) error {
+	s := &corev1.Secret{}
+	s.Namespace = job.Namespace
+	s.Name = secretName
+	_, err := controllerutil.CreateOrUpdate(ctx, g.client, s, func() error {
+		s.Data = map[string][]byte{"RENOVATE_TOKEN": []byte(token)}
+		if s.Annotations == nil {
+			s.Annotations = make(map[string]string)
+		}
+		s.Annotations[tokenExpiresAtAnnotation] = expiresAt.Format(time.RFC3339)
+		return controllerutil.SetControllerReference(job, s, g.client.Scheme())
+	})
+	return err
+}
+
 func (g *githubappToken) EnsureToken(ctx context.Context, job *api.RenovateJob) error {
 	if job.Spec.GithubAppReference == nil {
 		return nil
 	}
 
 	secretName := GetNameForGithubAppSecret(job)
-	existing := &corev1.Secret{}
-	err := g.client.Get(ctx, client.ObjectKey{Name: secretName, Namespace: job.Namespace}, existing)
-	if err == nil {
-		if expiresAtStr, ok := existing.Annotations[tokenExpiresAtAnnotation]; ok {
-			if expiresAt, parseErr := time.Parse(time.RFC3339, expiresAtStr); parseErr == nil {
-				if time.Until(expiresAt) > 30*time.Minute {
-					return nil
-				}
-			}
-		}
-		g.logger.Info("github app token expiring soon, renewing", "job", job.Fullname())
-	} else if !k8serrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get github app token secret: %w", err)
-	} else {
-		g.logger.Info("creating github app token", "job", job.Fullname())
+	fresh, err := g.isTokenFresh(ctx, job.Namespace, secretName)
+	if err != nil {
+		return err
 	}
+	if fresh {
+		return nil
+	}
+	g.logger.Info("github app token expiring soon, renewing", "job", job.Fullname())
 
 	appID, installID, pemStr, githubApi, err := g.readJobCredentials(ctx, job)
 	if err != nil {
@@ -93,49 +182,23 @@ func (g *githubappToken) EnsureToken(ctx context.Context, job *api.RenovateJob) 
 		return err
 	}
 
-	secret := &corev1.Secret{}
-	secret.Namespace = job.Namespace
-	secret.Name = secretName
-	_, err = controllerutil.CreateOrUpdate(ctx, g.client, secret, func() error {
-		secret.Data = map[string][]byte{
-			"RENOVATE_TOKEN": []byte(token),
-		}
-		if secret.Annotations == nil {
-			secret.Annotations = make(map[string]string)
-		}
-		secret.Annotations[tokenExpiresAtAnnotation] = expiresAt.Format(time.RFC3339)
-		return controllerutil.SetControllerReference(job, secret, g.client.Scheme())
-	})
-
-	return err
+	return g.upsertTokenSecret(ctx, job, secretName, token, expiresAt)
 }
 
 func (g *githubappToken) readJobCredentials(ctx context.Context, job *api.RenovateJob) (appID, installID, pemStr, githubApi string, err error) {
 	if job.Spec.GithubAppReference == nil {
 		return "", "", "", "", fmt.Errorf("github App Reference needs to be defined")
 	}
-
 	ref := job.Spec.GithubAppReference
-	secret := &corev1.Secret{}
-	if err = g.client.Get(ctx, types.NamespacedName{Name: ref.SecretName, Namespace: job.Namespace}, secret); err != nil {
-		return "", "", "", "", fmt.Errorf("failed to get github app secret %s: %w", ref.SecretName, err)
-	}
-
-	pemBytes, exists := secret.Data[ref.PemSecretKey]
-	if !exists {
-		return "", "", "", "", fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.PemSecretKey, ref.SecretName)
-	}
-	appIDBytes, exists := secret.Data[ref.AppIdSecretKey]
-	if !exists {
-		return "", "", "", "", fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.AppIdSecretKey, ref.SecretName)
+	appID, pemStr, githubApi, secret, err := g.readBaseCredentials(ctx, ref.GithubAppCredentials, job.Namespace, job.Spec.Provider)
+	if err != nil {
+		return "", "", "", "", err
 	}
 	installIDBytes, exists := secret.Data[ref.InstallationIdSecretKey]
 	if !exists {
 		return "", "", "", "", fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.InstallationIdSecretKey, ref.SecretName)
 	}
-
-	_, githubApi = utils.GetPlatformAndEndpoint(job.Spec.Provider)
-	return string(appIDBytes), string(installIDBytes), string(pemBytes), githubApi, nil
+	return appID, string(installIDBytes), pemStr, githubApi, nil
 }
 
 func (g *githubappToken) CreateGithubAppTokenFromJob(job *api.RenovateJob) (string, error) {
@@ -153,53 +216,19 @@ func (g *githubappToken) CreateGithubAppToken(appID, installationID, pemString, 
 	return token, err
 }
 
-func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pemString, githubApi string) (string, time.Time, error) {
-	pemString = strings.TrimSpace(pemString)
-
-	if !strings.HasPrefix(pemString, "-----BEGIN") {
-		return "", time.Time{}, fmt.Errorf("PEM data does not start with BEGIN marker (starts with: %s...)", pemString[:min(50, len(pemString))])
-	}
-
-	block, _ := pem.Decode([]byte(pemString))
-	if block == nil {
-		return "", time.Time{}, fmt.Errorf("failed to parse PEM block")
-	}
-
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+// doGithubAppRequest executes an authenticated GitHub App API request and returns the response
+// body. Returns an error for transport failures or non-2xx status codes.
+func (g *githubappToken) doGithubAppRequest(method, url, signedJWT string) ([]byte, error) {
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		var ok bool
-		privateKey, ok = key.(*rsa.PrivateKey)
-		if !ok {
-			return "", time.Time{}, fmt.Errorf("not an RSA private key")
-		}
-	}
-
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iat": time.Now().Unix() - 60,
-		"exp": time.Now().Unix() + (10 * 60),
-		"iss": appID,
-	})
-
-	signedJWT, err := jwtToken.SignedString(privateKey)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-
-	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", githubApi, installationID)
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to create installation token request: %w", err)
+		return nil, fmt.Errorf("failed to create %s request: %w", method, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+signedJWT)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		return "", time.Time{}, err
+		return nil, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -207,11 +236,34 @@ func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pem
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode > 299 {
+		return nil, fmt.Errorf("GitHub error: %s", string(body))
+	}
+	return body, nil
+}
+
+func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pemString, githubApi string) (string, time.Time, error) {
+	privateKey, err := parsePEMKey(pemString)
+	if err != nil {
 		return "", time.Time{}, err
 	}
+	signedJWT, err := mintJWT(appID, privateKey)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return g.createInstallationTokenWithJWT(signedJWT, installationID, githubApi)
+}
 
-	if resp.StatusCode > 299 {
-		return "", time.Time{}, fmt.Errorf("GitHub error: %s", string(body))
+// createInstallationTokenWithJWT mints an installation access token given an already-signed
+// app JWT, letting callers that mint many tokens in a loop (e.g. EnsureTokensForEnterpriseApp)
+// reuse a single JWT instead of re-parsing the PEM and re-signing per call.
+func (g *githubappToken) createInstallationTokenWithJWT(signedJWT, installationID, githubApi string) (string, time.Time, error) {
+	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", githubApi, installationID)
+	body, err := g.doGithubAppRequest("POST", url, signedJWT)
+	if err != nil {
+		return "", time.Time{}, err
 	}
 
 	type tokenResponse struct {
@@ -229,4 +281,98 @@ func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pem
 	}
 
 	return tr.Token, tr.ExpiresAt, nil
+}
+
+func (g *githubappToken) listInstallationIDs(appID, pemStr, githubApi string) ([]string, error) {
+	privateKey, err := parsePEMKey(pemStr)
+	if err != nil {
+		return nil, err
+	}
+	signedJWT, err := mintJWT(appID, privateKey)
+	if err != nil {
+		return nil, err
+	}
+	return g.listInstallationIDsWithJWT(signedJWT, githubApi)
+}
+
+// listInstallationIDsWithJWT lists all installations given an already-signed app JWT, so
+// EnsureTokensForEnterpriseApp can reuse the same JWT it mints for the token-creation loop.
+// The endpoint is paginated; we request 100 per page and stop when a page returns fewer than 100.
+func (g *githubappToken) listInstallationIDsWithJWT(signedJWT, githubApi string) ([]string, error) {
+	var ids []string
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s/app/installations?per_page=100&page=%d", githubApi, page)
+		body, err := g.doGithubAppRequest("GET", url, signedJWT)
+		if err != nil {
+			return nil, err
+		}
+
+		var installations []struct {
+			ID int64 `json:"id"`
+		}
+		if err = json.Unmarshal(body, &installations); err != nil {
+			return nil, err
+		}
+		for _, inst := range installations {
+			ids = append(ids, strconv.FormatInt(inst.ID, 10))
+		}
+		if len(installations) < 100 {
+			break
+		}
+	}
+	return ids, nil
+}
+
+// Secret names are deterministic: GetNameForGithubAppInstallationSecret(job, id) can regenerate
+// each name from the job and installation ID alone, so the returned slice need not be persisted.
+func (g *githubappToken) EnsureTokensForEnterpriseApp(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	if job.Spec.GithubEnterpriseAppReference == nil {
+		return nil, fmt.Errorf("GithubEnterpriseAppReference is not defined")
+	}
+	ref := job.Spec.GithubEnterpriseAppReference
+	appID, pemStr, githubApi, _, err := g.readBaseCredentials(ctx, ref.GithubAppCredentials, job.Namespace, job.Spec.Provider)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the PEM and mint the JWT once, then reuse both across the installation-listing
+	// call and every per-installation token mint below (the JWT's 10-minute window comfortably
+	// covers the whole loop) instead of re-parsing and re-signing per installation.
+	privateKey, err := parsePEMKey(pemStr)
+	if err != nil {
+		return nil, err
+	}
+	signedJWT, err := mintJWT(appID, privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	installIDs, err := g.listInstallationIDsWithJWT(signedJWT, githubApi)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list installation IDs: %w", err)
+	}
+
+	secretNames := make([]string, 0, len(installIDs))
+	for _, id := range installIDs {
+		secretName := GetNameForGithubAppInstallationSecret(job, id)
+		fresh, err := g.isTokenFresh(ctx, job.Namespace, secretName)
+		if err != nil {
+			return nil, err
+		}
+		if fresh {
+			secretNames = append(secretNames, secretName)
+			continue
+		}
+		g.logger.Info("creating/renewing enterprise github app token", "job", job.Fullname(), "installationID", id)
+
+		token, expiresAt, err := g.createInstallationTokenWithJWT(signedJWT, id, githubApi)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token for installation %s: %w", id, err)
+		}
+		if err = g.upsertTokenSecret(ctx, job, secretName, token, expiresAt); err != nil {
+			return nil, fmt.Errorf("failed to upsert token secret %s: %w", secretName, err)
+		}
+		secretNames = append(secretNames, secretName)
+	}
+	return secretNames, nil
 }

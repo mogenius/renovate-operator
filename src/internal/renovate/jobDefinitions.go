@@ -199,6 +199,24 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 	return batchJob
 }
 
+// attachTokenSecretEnvFrom adds a RENOVATE_TOKEN envFrom source for a GitHub Enterprise App
+// installation to an already-built Job. Only used for jobs where the token secret is
+// resolved per-installation at dispatch time (see GithubEnterpriseAppReference); the plain
+// GithubAppReference case is handled entirely within newDiscoveryJob/newRenovateJob.
+func attachTokenSecretEnvFrom(k8sJob *batchv1.Job, secretName string) {
+	if secretName == "" {
+		return
+	}
+	container := &k8sJob.Spec.Template.Spec.Containers[0]
+	container.EnvFrom = append(container.EnvFrom, v1.EnvFromSource{
+		SecretRef: &v1.SecretEnvSource{
+			LocalObjectReference: v1.LocalObjectReference{
+				Name: secretName,
+			},
+		},
+	})
+}
+
 func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 
 	predefinedEnvVars := []v1.EnvVar{

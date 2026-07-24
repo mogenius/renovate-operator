@@ -3169,6 +3169,22 @@ spec:
                 - pemSecretKey
                 - secretName
                 type: object
+              githubEnterpriseAppReference:
+                description: |-
+                  Reference to a GitHub Enterprise App for authentication. When set, the operator discovers all
+                  installation IDs automatically — no explicit installation ID required.
+                properties:
+                  appIdSecretKey:
+                    type: string
+                  pemSecretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - appIdSecretKey
+                - pemSecretKey
+                - secretName
+                type: object
               image:
                 description: Renovate Docker image to use
                 type: string
@@ -4386,6 +4402,15 @@ spec:
                     renovateResultStatus:
                       type: string
                     status:
+                      type: string
+                    tokenSecretName:
+                      description: "TokenSecretName names the Kubernetes Secret holding
+                        RENOVATE_TOKEN for this project.\nWhen non-empty the executor
+                        uses it instead of the job-level default.\nNeeded since for
+                        github enterprise applications, a job creates executor pods
+                        for projects that are potentially in different organisations\n\t\tand
+                        each organisation has its own installation ID and therefore
+                        its own token."
                       type: string
                   required:
                   - name

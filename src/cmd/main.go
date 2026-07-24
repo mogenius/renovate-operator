@@ -583,8 +583,10 @@ func main() {
 	auth := initAuth(valkeyConf)
 	defer auth.cleanup()
 
+	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups, githubAppToken)
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
@@ -606,8 +608,6 @@ func main() {
 		ls,
 		podLogReader,
 	)
-
-	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.

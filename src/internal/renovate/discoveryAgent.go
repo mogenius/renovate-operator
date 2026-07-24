@@ -40,8 +40,11 @@ type DiscoveryAgent interface {
 }
 
 type DiscoveryJobOptions struct {
-	// Wether to trigger all projects once the discovery is fnished
+	// Whether to trigger all projects once the discovery is finished
 	TriggerAllProjects bool
+	// TokenSecretName overrides the token secret used by the discovery job.
+	// Empty means derive from the job spec (non-enterprise path).
+	TokenSecretName string
 }
 
 type discoveryAgent struct {
@@ -141,7 +144,8 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	metricStore.IncDiscoveryJob(ctx, jobId.Namespace, jobId.Name, "completed")
 	metricStore.SetDiscoveredRepositories(jobId.Namespace, jobId.Name, len(projects))
 
-	removedProjects, err := e.manager.ReconcileProjects(ctx, renovateJob, projects)
+	tokenSecretName := k8sJob.Annotations[crdManager.JOB_ANNOTATION_TOKEN_SECRET_NAME]
+	removedProjects, err := e.manager.ReconcileProjects(ctx, renovateJob, projects, tokenSecretName)
 	if err != nil {
 		return fmt.Errorf("failed to reconcile projects: %w", err)
 	}
@@ -191,6 +195,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       renovateJob.Namespace,
 		RenovateJobName: renovateJob.Name,
+		TokenSecretName: options.TokenSecretName,
 	})
 	if err != nil && !errors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check for existing discovery job: %w", err)
@@ -217,11 +222,15 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
+	attachTokenSecretEnvFrom(discoveryJob, options.TokenSecretName)
+	if discoveryJob.Annotations == nil {
+		discoveryJob.Annotations = make(map[string]string)
+	}
 	if options.TriggerAllProjects {
-		if discoveryJob.Annotations == nil {
-			discoveryJob.Annotations = make(map[string]string)
-		}
 		discoveryJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] = "true"
+	}
+	if options.TokenSecretName != "" {
+		discoveryJob.Annotations[crdManager.JOB_ANNOTATION_TOKEN_SECRET_NAME] = options.TokenSecretName
 	}
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)
@@ -231,6 +240,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		JobType:         crdManager.DiscoveryJobType,
 		Namespace:       renovateJob.Namespace,
 		RenovateJobName: renovateJob.Name,
+		TokenSecretName: options.TokenSecretName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery job: %w", err)

@@ -2,6 +2,7 @@ package crdmanager
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -201,7 +202,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("unexpected error getting job for reconcile: %v", err)
 	}
 
-	_, err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
+	_, err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"}, "")
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
@@ -305,6 +306,210 @@ func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_BASE_URL") {
 		t.Fatalf("expected actionable error without base URL, got %v", err)
 	}
+}
+
+func TestReconcileProjects_TokenSecretName(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+
+	makeManager := func(projects []api.ProjectStatus) (RenovateJobManager, *api.RenovateJob) {
+		j := makeJob("job1", "default", projects)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+		mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+		ctx := context.Background()
+		rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
+		if err != nil {
+			t.Fatalf("unexpected error getting job: %v", err)
+		}
+		return mgr, rJob
+	}
+
+	ctx := context.Background()
+
+	t.Run("empty tokenSecretName leaves new project with empty field", func(t *testing.T) {
+		mgr, rJob := makeManager(nil)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, ""); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "" {
+			t.Fatalf("expected empty TokenSecretName, got %q", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("tokenSecretName is set on new project", func(t *testing.T) {
+		mgr, rJob := makeManager(nil)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, "job1-github-app-123-abcd"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "job1-github-app-123-abcd" {
+			t.Fatalf("expected TokenSecretName %q, got %q", "job1-github-app-123-abcd", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("tokenSecretName updates carry-over project", func(t *testing.T) {
+		existing := []api.ProjectStatus{{Name: "org/repo", Status: api.JobStatusCompleted, TokenSecretName: "old-secret"}}
+		mgr, rJob := makeManager(existing)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, "new-secret"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "new-secret" {
+			t.Fatalf("expected TokenSecretName %q, got %q", "new-secret", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+
+	t.Run("empty tokenSecretName preserves carry-over project TokenSecretName", func(t *testing.T) {
+		existing := []api.ProjectStatus{{Name: "org/repo", Status: api.JobStatusCompleted, TokenSecretName: "existing-secret"}}
+		mgr, rJob := makeManager(existing)
+		if _, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo"}, ""); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		job, _ := mgr.GetRenovateJob(ctx, "job1", "default")
+		if job.Status.Projects[0].TokenSecretName != "existing-secret" {
+			t.Fatalf("expected TokenSecretName %q to be preserved, got %q", "existing-secret", job.Status.Projects[0].TokenSecretName)
+		}
+	})
+}
+
+// TestReconcileProjects_EnterpriseAppMultiInstallation demonstrates that when
+// enterprise-app mode creates one discovery Job per installation, each call to
+// ReconcileProjects must merge — not overwrite — Status.Projects so that repos
+// from earlier installations are not incorrectly marked as removed.
+func TestReconcileProjects_EnterpriseAppMultiInstallation(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+
+	j := makeJob("job1", "default", nil)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	ctx := context.Background()
+
+	// Installation A finishes first and writes its repos.
+	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job: %v", err)
+	}
+	removedA, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo-a1", "org/repo-a2"}, "secret-a")
+	if err != nil {
+		t.Fatalf("installation A reconcile failed: %v", err)
+	}
+	if len(removedA) != 0 {
+		t.Fatalf("expected no removals after installation A, got %v", removedA)
+	}
+
+	// Installation B finishes second and writes only its own repos.
+	rJob, err = mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job: %v", err)
+	}
+	removedB, err := mgr.ReconcileProjects(ctx, rJob, []string{"org/repo-b1", "org/repo-b2"}, "secret-b")
+	if err != nil {
+		t.Fatalf("installation B reconcile failed: %v", err)
+	}
+
+	if len(removedB) != 0 {
+		t.Fatalf("installation B incorrectly reported %d removed projects (expected 0): %v", len(removedB), removedB)
+	}
+
+	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
+	if err != nil {
+		t.Fatalf("unexpected error getting job after both reconciles: %v", err)
+	}
+	if len(job.Status.Projects) != 4 {
+		t.Fatalf("expected 4 projects (2 per installation), got %d: %v", len(job.Status.Projects), job.Status.Projects)
+	}
+	projectNames := make(map[string]struct{}, len(job.Status.Projects))
+	for _, p := range job.Status.Projects {
+		projectNames[p.Name] = struct{}{}
+	}
+	for _, expected := range []string{"org/repo-a1", "org/repo-a2", "org/repo-b1", "org/repo-b2"} {
+		if _, ok := projectNames[expected]; !ok {
+			t.Errorf("project %q missing from Status.Projects after both installations reconciled", expected)
+		}
+	}
+}
+
+// TestDiffProjects exercises the pure reconciliation core directly — no fake
+// client, no CRD round trip — covering the same ownership rules the fault in
+// TestReconcileProjects_EnterpriseAppMultiInstallation depended on.
+func TestDiffProjects(t *testing.T) {
+	completed := func(name, tokenSecretName string) api.ProjectStatus {
+		return api.ProjectStatus{Name: name, Status: api.JobStatusCompleted, TokenSecretName: tokenSecretName}
+	}
+	projectNames := func(projects []api.ProjectStatus) []string {
+		names := make([]string, len(projects))
+		for i, p := range projects {
+			names[i] = p.Name
+		}
+		return names
+	}
+
+	t.Run("legacy non-enterprise job: incoming list is the full truth", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a", ""), completed("c", "")}
+		all, removed := diffProjects(current, []string{"a", "b"}, "")
+
+		if len(removed) != 1 || removed[0].Name != "c" {
+			t.Fatalf("expected only c removed, got %v", removed)
+		}
+		names := projectNames(all)
+		if len(names) != 2 || !slices.Contains(names, "a") || !slices.Contains(names, "b") {
+			t.Fatalf("expected [a b], got %v", names)
+		}
+	})
+
+	t.Run("installation A's projects survive installation B's reconcile untouched", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a1", "secret-a"), completed("a2", "secret-a")}
+		all, removed := diffProjects(current, []string{"b1"}, "secret-b")
+
+		if len(removed) != 0 {
+			t.Fatalf("expected no removals, got %v", removed)
+		}
+		names := projectNames(all)
+		for _, want := range []string{"a1", "a2", "b1"} {
+			if !slices.Contains(names, want) {
+				t.Fatalf("expected %s to survive, got %v", want, names)
+			}
+		}
+	})
+
+	t.Run("installation B dropping its own project is removed, A's is not touched", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("a1", "secret-a"), completed("b1", "secret-b"), completed("b2", "secret-b")}
+		all, removed := diffProjects(current, []string{"b1"}, "secret-b")
+
+		if len(removed) != 1 || removed[0].Name != "b2" {
+			t.Fatalf("expected only b2 removed, got %v", removed)
+		}
+		names := projectNames(all)
+		if !slices.Contains(names, "a1") || !slices.Contains(names, "b1") {
+			t.Fatalf("expected a1 and b1 to survive, got %v", names)
+		}
+	})
+
+	t.Run("rotated secret name claims a carried-over project regardless of prior owner", func(t *testing.T) {
+		current := []api.ProjectStatus{completed("shared", "old-secret")}
+		all, removed := diffProjects(current, []string{"shared"}, "new-secret")
+
+		if len(removed) != 0 {
+			t.Fatalf("expected no removals, got %v", removed)
+		}
+		if len(all) != 1 || all[0].TokenSecretName != "new-secret" || all[0].Status != api.JobStatusCompleted {
+			t.Fatalf("expected shared claimed with new-secret and status preserved, got %v", all)
+		}
+	})
 }
 
 func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {

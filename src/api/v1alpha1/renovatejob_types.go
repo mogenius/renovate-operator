@@ -70,6 +70,10 @@ type RenovateJobSpec struct {
 	// Reference to a Github App for authentication, this will automatically mount a secret with
 	// RENOVATE_TOKEN
 	GithubAppReference *GithubAppReference `json:"githubAppReference,omitempty"`
+	// Reference to a GitHub Enterprise App for authentication. When set, the operator discovers all
+	// installation IDs automatically — no explicit installation ID required.
+	// +optional
+	GithubEnterpriseAppReference *GithubEnterpriseAppReference `json:"githubEnterpriseAppReference,omitempty"`
 	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
 	// +optional
 	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
@@ -100,11 +104,19 @@ type RenovateJobServiceAccount struct {
 	Name                         string `json:"name,omitempty"`
 }
 
+type GithubAppCredentials struct {
+	SecretName     string `json:"secretName"`
+	AppIdSecretKey string `json:"appIdSecretKey"`
+	PemSecretKey   string `json:"pemSecretKey"`
+}
+
 type GithubAppReference struct {
-	SecretName              string `json:"secretName"`
-	AppIdSecretKey          string `json:"appIdSecretKey"`
+	GithubAppCredentials    `json:",inline"`
 	InstallationIdSecretKey string `json:"installationIdSecretKey"`
-	PemSecretKey            string `json:"pemSecretKey"`
+}
+
+type GithubEnterpriseAppReference struct {
+	GithubAppCredentials `json:",inline"`
 }
 
 // security context for either the pod or the container
@@ -151,10 +163,6 @@ type RenovateJobMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-/*
-Renovate Provider Information
-This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
-*/
 type RenovateProvider struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint,omitempty"`
@@ -212,7 +220,7 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name     string                `json:"name"`
+	Name string `json:"name"`
 	// LastTransition records when the project most recently changed state.
 	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
 	Duration             *string               `json:"duration,omitempty"`
@@ -221,6 +229,12 @@ type ProjectStatus struct {
 	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
 	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
 	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
+	// TokenSecretName names the Kubernetes Secret holding RENOVATE_TOKEN for this project.
+	// When non-empty the executor uses it instead of the job-level default.
+	// Needed since for github enterprise applications, a job creates executor pods for projects that are potentially in different organisations
+	// 		and each organisation has its own installation ID and therefore its own token.
+	// +optional
+	TokenSecretName string `json:"tokenSecretName,omitempty"`
 }
 
 type RenovateProjectStatus string
