@@ -1,6 +1,6 @@
 # Pod Scheduling
 
-The Renovate Operator provides flexible scheduling options for the Renovate job pods. You can control where and how your Renovate jobs are scheduled across your Kubernetes cluster using node selectors, affinity rules, tolerations, and topology spread constraints.
+The Renovate Operator provides flexible scheduling options for the Renovate job pods. You can control where and how your Renovate jobs are scheduled across your Kubernetes cluster using node selectors, affinity rules, tolerations, topology spread constraints, and priority classes.
 
 ## Available Scheduling Options
 
@@ -197,6 +197,34 @@ spec:
 - Ensure no single zone has too many pods
 - Prevent resource hotspots
 
+### Priority Class
+
+Use `priorityClassName` to set the scheduling priority of the Renovate pods. Priority decides who wins when the cluster is short on capacity: the scheduler places higher-priority pending pods first, and a pending pod may preempt (evict) running pods whose priority is strictly lower.
+
+Renovate runs are batch work that can usually wait, so the most common choice is a *negative* priority so that Renovate yields to user-facing workloads instead of competing with them.
+
+```yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: renovate-low-priority
+value: -100
+globalDefault: false
+description: "Renovate jobs yield to user-facing workloads"
+---
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-with-priority-class
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  image: renovate/renovate:43.104.1
+  secretRef: "renovate-secret"
+  parallelism: 1
+  priorityClassName: renovate-low-priority
+```
+
 ## Combining Scheduling Options
 
 You can combine multiple scheduling options for fine-grained control:
@@ -254,6 +282,9 @@ spec:
       labelSelector:
         matchLabels:
           app: renovate
+
+  # Yield to user-facing workloads when the cluster is full
+  priorityClassName: renovate-low-priority
 ```
 
 ## Additional Resources
@@ -262,3 +293,4 @@ spec:
 - [Affinity and Anti-affinity](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity)
 - [Taints and Tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
 - [Topology Spread Constraints](https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/)
+- [Pod Priority and Preemption](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/)

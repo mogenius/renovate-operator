@@ -152,6 +152,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 					WhenUnsatisfiable: v1.ScheduleAnyway,
 				},
 			},
+			PriorityClassName: "renovate-low-priority",
 			ImagePullSecrets: []v1.LocalObjectReference{
 				{
 					Name: "my-pull-secret",
@@ -225,6 +226,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectNodeSelector(t, dj, map[string]string{"disktype": "ssd"})
 	expectTolerations(t, dj, job.Spec.Tolerations)
 	expectTopologySpreadConstraints(t, dj, job.Spec.TopologySpreadConstraints)
+	expectPriorityClassName(t, dj, "renovate-low-priority")
 
 	// test renovate job
 	rj := newRenovateJob(job, "proj", "")
@@ -254,6 +256,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectNodeSelector(t, rj, map[string]string{"disktype": "ssd"})
 	expectTolerations(t, rj, job.Spec.Tolerations)
 	expectTopologySpreadConstraints(t, rj, job.Spec.TopologySpreadConstraints)
+	expectPriorityClassName(t, rj, "renovate-low-priority")
 }
 
 func TestNewJob_WithoutSettings(t *testing.T) {
@@ -308,6 +311,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectNodeSelector(t, dj, nil)
 	expectTolerations(t, dj, nil)
 	expectTopologySpreadConstraints(t, dj, nil)
+	expectPriorityClassName(t, dj, "")
 
 	// test renovate job
 	rj := newRenovateJob(job, "myproj", "")
@@ -337,6 +341,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectNodeSelector(t, rj, nil)
 	expectTolerations(t, rj, nil)
 	expectTopologySpreadConstraints(t, rj, nil)
+	expectPriorityClassName(t, rj, "")
 }
 
 func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
@@ -744,5 +749,11 @@ func expectTolerations(t *testing.T, job *batchv1.Job, expectedTolerations []v1.
 func expectTopologySpreadConstraints(t *testing.T, job *batchv1.Job, expectedConstraints []v1.TopologySpreadConstraint) {
 	if !reflect.DeepEqual(job.Spec.Template.Spec.TopologySpreadConstraints, expectedConstraints) {
 		t.Fatalf("topology spread constraints mismatch:\nexpected: %+v\ngot:      %+v", expectedConstraints, job.Spec.Template.Spec.TopologySpreadConstraints)
+	}
+}
+
+func expectPriorityClassName(t *testing.T, job *batchv1.Job, expectedPriorityClassName string) {
+	if job.Spec.Template.Spec.PriorityClassName != expectedPriorityClassName {
+		t.Fatalf("expected priority class name %q, got %q", expectedPriorityClassName, job.Spec.Template.Spec.PriorityClassName)
 	}
 }
