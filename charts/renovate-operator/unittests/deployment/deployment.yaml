@@ -140,7 +140,7 @@ tests:
         redirectScheme: ftp
   asserts:
   - failedTemplate:
-      errorPattern: must be either "http" or "https"
+      errorPattern: "at '/auth/oidc/redirectScheme': value must be one of '', 'http', 'https'"
 
 - it: GitHub redirectScheme overrides the detected scheme
   set:

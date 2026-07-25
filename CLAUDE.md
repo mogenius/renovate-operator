@@ -137,12 +137,14 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 - **Global parallelism limit** — `GLOBAL_PARALLELISM_LIMIT` env var (Helm: `config.globalParallelismLimit`, default `0` = unlimited) caps total concurrent executor jobs across all RenovateJobs. Per-job `Spec.Parallelism` is still enforced as an additional gate.
 - **Anti-starvation via priority-then-oldest-wait sort** — in Pass 2, candidates are sorted first by `Priority` descending, then by the oldest `LastRun` time among Scheduled projects in their RenovateJob. Among equal-priority candidates, the job that has been waiting longest dispatches first, preventing starvation.
 - **UI sub-path (`BASE_PATH`)** — the UI, API, auth and health routes can be served under a sub-path so the operator can be co-hosted with other apps on one hostname. `BASE_PATH` env (Helm: top-level `basePath`, default `""` = root) is normalized in `ui.BasePath()` (leading slash, no trailing slash). `server.go` mounts all routes on a `PathPrefix(basePath)` subrouter and redirects `/` → base path; `ui.go` strips the prefix for static files and injects `<base href>` + `window.__BASE_PATH__` into `index.html`/`logs.html`; the frontend builds all runtime URLs from `BASE`; auth redirects use `withBase()` and cookies are scoped via `cookiePath()`. The Helm `basePath` also drives the Ingress/HTTPRoute path and is appended to auto-detected OAuth/OIDC redirect URLs (`renovate-operator.basePath` helper). OAuth/OIDC redirect URLs registered with the identity provider must include the sub-path.
+- **Chart values are schema-validated** — `charts/renovate-operator/values.schema.json` (JSON Schema draft 2020-12, requires Helm v4+) is the contract for chart values. The root object and every operator-owned block are `additionalProperties: false`, so typos fail at install time; enums mirror what the operator accepts (`crd.mode`, `image.pullPolicy`, `config.logStorage.mode`, `logging.*`, `telemetry.protocol`, the `*Scheme` values). Pass-through blocks stay permissive (`valkey` for the subchart, `resources`/`affinity`/`securityContext.pod|container`, `metrics.dashboard.grafanaDashboard`). Every new value added to `values.yaml` must be declared here as well, otherwise the chart rejects it.
 
 # Verification
 
 Use the following commands to validate the code:
 - `just build`
 - `just test-unit`
+- `just test-helm`
 - `just generate`
 
 # Important
