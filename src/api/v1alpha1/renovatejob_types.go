@@ -44,6 +44,9 @@ type RenovateJobSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// Topology spread constraints for scheduling the resulting pod
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	// PriorityClassName for the resulting pod, used to set the pod's scheduling priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 	// Settings for the serviceaccount the renovate pod should use
 	ServiceAccount *RenovateJobServiceAccount `json:"serviceAccount,omitempty"`
 	// Metadata that shall be applied to the resulting pod
@@ -212,7 +215,7 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name     string                `json:"name"`
+	Name string `json:"name"`
 	// LastTransition records when the project most recently changed state.
 	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
 	Duration             *string               `json:"duration,omitempty"`

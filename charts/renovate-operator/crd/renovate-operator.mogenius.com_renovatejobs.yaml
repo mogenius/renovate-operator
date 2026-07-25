@@ -3212,6 +3212,10 @@ spec:
                 description: Maximum number of projects to process in parallel
                 format: int32
                 type: integer
+              priorityClassName:
+                description: PriorityClassName for the resulting pod, used to set
+                  the pod's scheduling priority.
+                type: string
               provider:
                 description: Renovate Provider Information to fill "RENOVATE_ENDPOINT"
                   and "RENOVATE_PLATFORM" environment variables in the renovate container
