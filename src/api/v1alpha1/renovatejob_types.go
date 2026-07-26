@@ -115,7 +115,15 @@ type RenovateJobSecurityContext struct {
 
 // configuration for webhooks that can be used to trigger renovate runs
 type RenovateWebhook struct {
-	Enabled        bool                 `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Externally reachable base URL of the operator's webhook server for this
+	// job, e.g. https://renovate.example.com. The platform-specific path is
+	// appended to it. Takes precedence over the operator-wide
+	// WEBHOOK_BASE_URL environment variable, which is used when this is empty.
+	// Set it when a platform needs a different hostname to reach the operator
+	// than the operator-wide default provides.
+	// +optional
+	BaseURL        string               `json:"baseUrl,omitempty"`
 	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
 	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
 }
