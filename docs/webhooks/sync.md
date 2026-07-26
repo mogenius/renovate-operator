@@ -76,6 +76,24 @@ The Helm chart derives `WEBHOOK_BASE_URL` at deploy time from the webhook exposu
 
 Set `webhook.baseUrlScheme` to `http` or `https` to override the detected scheme, e.g. when TLS terminates at an external load balancer the chart cannot see.
 
+### Per-job base URL
+
+`WEBHOOK_BASE_URL` is operator-wide, but one operator instance commonly serves several platforms — one RenovateJob per platform — and those platforms do not always reach the operator on the same hostname. A platform running inside the same cluster can deliver to an internal-only address, while a hosted platform must reach a public one.
+
+Set the optional `spec.webhook.baseUrl` on a RenovateJob to give that job its own externally reachable base URL. It takes precedence over `WEBHOOK_BASE_URL`; the platform-specific path and the `?namespace=...&job=...` query parameters are appended to it as usual.
+
+```yaml
+spec:
+  webhook:
+    enabled: true
+    # this job's platform reaches the operator on an internal hostname
+    baseUrl: https://renovate-operator.renovate-operator.svc.cluster.local
+    sync:
+      enabled: true
+```
+
+Jobs that leave `baseUrl` unset keep using `WEBHOOK_BASE_URL`, so mixing internal and public jobs in one operator needs the override only on the jobs that differ from the deployment-wide default. Sync fails for a job only when both `spec.webhook.baseUrl` and `WEBHOOK_BASE_URL` are empty.
+
 ## How sync works
 
 Webhook sync runs automatically at the end of each autodiscovery cycle (controlled by `spec.schedule`).
