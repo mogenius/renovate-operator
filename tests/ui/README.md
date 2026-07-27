@@ -1,11 +1,8 @@
 # UI browser tests
 
-Playwright tests for the operator's frontend in `src/static`.
-
-The frontend is a client-side React app: it is served as-is and gets everything it
-renders as JSON from `/api/v1/*`. That makes it testable without a Kubernetes
-cluster — the tests serve the real `index.html` and stub the API with
-`page.route`, so a spec can put the dashboard into any state it needs.
+Playwright tests for the client-side React frontend in `src/static`. The tests
+serve the real `index.html` and stub its `/api/v1/*` requests, so they do not need
+a Kubernetes cluster.
 
 These tests live outside `src/static` on purpose: the Dockerfile copies that whole
 tree into the image (`COPY --from=builder /workspace/static /app/static`), so
@@ -13,10 +10,7 @@ anything placed there would ship to production and be served by the file server.
 
 ## Clicking through the UI by hand
 
-The dashboard renders nothing but an error state without an API — it fetches
-`/api/v1/renovatejobs` on mount and every 30s — so a plain file server gives you
-zero job cards. `just ui-dev` serves the real `src/static` with a mocked API
-instead, no cluster and no Go build:
+Use `just ui-dev` to serve `src/static` with a mocked API:
 
 ```sh
 just ui-dev                                     # http://127.0.0.1:8098
@@ -24,17 +18,12 @@ MOCK_JOB_COUNT=12 MOCK_PROJECTS_PER_JOB=40 just ui-dev   # a heavier dashboard
 BASE_PATH=/renovate just ui-dev                 # exercise the sub-path
 ```
 
-It listens on 8098, not the 8099 the specs use, so a dev server left running in
-another terminal cannot collide with `just test-ui`.
+The development server uses port 8098 while the specs use 8099. Edit
+`src/static/index.html` and reload the browser; there is no build step.
 
-Edit `src/static/index.html` and reload the browser; there is no build step.
-
-The mock (`mockOperatorApi.mjs`) answers the eight endpoints the dashboard calls.
-The five POST endpoints return an empty `200` without changing anything, so
-triggering a renovate run will not flip a project to Running. It is there to
-exercise layout and client-side state — expansion, filters, sorting, theming — not
-the operator's job lifecycle. Anything unmocked returns a JSON 404 naming the
-route, so a missing endpoint is obvious rather than silent.
+The mock supports the dashboard's API endpoints, but POST requests return `200`
+without changing fixture state. It is intended for layout and client-side
+behavior, not the operator's job lifecycle. Unhandled routes return a JSON 404.
 
 ## Running
 
@@ -51,10 +40,9 @@ the Chromium build on first run.
 
 ## Confirming a spec has teeth
 
-A UI test that passes both before and after a change proves nothing.
 `test-ui-baseline` serves `index.html` from another git revision while keeping the
-current specs, so you can watch a new spec fail against the code it was written
-for:
+current specs. Use it to verify that a new spec fails without its corresponding
+change:
 
 ```sh
 just test-ui-baseline HEAD                        # before the working-tree change
@@ -79,11 +67,8 @@ tests/ui/
 ```
 
 `staticFrontendServer.mjs` mirrors `serveHTML` and `registerUiRoutes` in
-`src/ui/ui.go` rather than being a generic file server. The frontend only learns
-its sub-path from the `<base>` tag and `window.__BASE_PATH__` that the Go server
-splices into `<head>`, so serving the files plainly would test a page the operator
-never ships. Keep it in sync when those handlers change; setting `BASE_PATH` runs
-the suite under a sub-path.
+`src/ui/ui.go`, including its `<base>` and `window.__BASE_PATH__` injection. Keep
+it in sync when those handlers change. Set `BASE_PATH` to run under a sub-path.
 
 ## Writing specs
 
@@ -91,10 +76,6 @@ the suite under a sub-path.
 `crdManager.RenovateProjectStatus`. When a field is added to either Go struct, add
 it there too — the tests are only as honest as those payloads.
 
-The page carries very few test-friendly hooks, so the page object leans on what is
-already meaningful: the one `<h2>` per job card, the `aria-label` on the chevron
-(`Expand job details` / `Collapse job details`), and the `title` on the stat
-badges. Prefer adding a stable hook to a new component over matching Tailwind
-classes. Note that the chevron button is marked `aria-hidden="true"` despite
-carrying an `aria-label`, so it has to be matched with a CSS selector rather than
-`getByLabel`.
+Prefer semantic locators or stable hooks (`aria-label`, `title`, or
+`data-testid`) over Tailwind classes. The job-card chevron is `aria-hidden`, so
+the page object locates it with CSS rather than `getByLabel`.

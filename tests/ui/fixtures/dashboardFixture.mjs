@@ -7,6 +7,8 @@
 import { test as base, expect } from "@playwright/test";
 
 const OPERATOR_VERSION = "test-version";
+const BASE_PATH = (process.env.BASE_PATH ?? "").trim().replace(/^\/+|\/+$/g, "");
+const DASHBOARD_PATH = BASE_PATH === "" ? "/" : `/${BASE_PATH}/`;
 
 export const test = base.extend({
   /**
@@ -53,7 +55,7 @@ class DashboardPage {
     const query = new URLSearchParams();
     if (statFilter) query.set("filter", statFilter);
     if (search) query.set("search", search);
-    await this.page.goto(query.size ? `/?${query}` : "/");
+    await this.page.goto(query.size ? `${DASHBOARD_PATH}?${query}` : DASHBOARD_PATH);
     // Babel compiles the page's JSX in the browser, so wait for real content
     // rather than a load event.
     await expect(this.jobHeadings.first()).toBeVisible();
