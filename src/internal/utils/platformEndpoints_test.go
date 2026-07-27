@@ -83,3 +83,83 @@ func TestGetPlatformAndEndpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPublicEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider *api.RenovateProvider
+		expected string
+	}{
+		{
+			name: "publicEndpoint set — returned as-is",
+			provider: &api.RenovateProvider{
+				Name:           "gitea",
+				Endpoint:       "http://gitea.internal",
+				PublicEndpoint: "https://gitea.example.com",
+			},
+			expected: "https://gitea.example.com",
+		},
+		{
+			name: "publicEndpoint not set — falls back to endpoint",
+			provider: &api.RenovateProvider{
+				Name:     "gitea",
+				Endpoint: "http://gitea.internal",
+			},
+			expected: "http://gitea.internal",
+		},
+		{
+			name: "publicEndpoint not set, github default — falls back to default API endpoint",
+			provider: &api.RenovateProvider{
+				Name: "github",
+			},
+			expected: "https://api.github.com",
+		},
+		{
+			name:     "nil provider",
+			provider: nil,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := GetPublicEndpoint(tt.provider)
+			if endpoint != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, endpoint)
+			}
+		})
+	}
+}
+
+func TestWebhookEndpointPath(t *testing.T) {
+	tests := []struct {
+		platform string
+		path     string
+		wantErr  bool
+	}{
+		{platform: "github", path: "/webhook/v1/github"},
+		{platform: "gitlab", path: "/webhook/v1/gitlab"},
+		{platform: "forgejo", path: "/webhook/v1/forgejo"},
+		{platform: "gitea", path: "/webhook/v1/gitea"},
+		{platform: "bitbucket", wantErr: true},
+		{platform: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			path, err := WebhookEndpointPath(tt.platform)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for platform %q", tt.platform)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if path != tt.path {
+				t.Errorf("expected %s, got %s", tt.path, path)
+			}
+		})
+	}
+}

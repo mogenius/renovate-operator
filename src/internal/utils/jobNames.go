@@ -30,13 +30,23 @@ func ExecutorJobName(in *api.RenovateJob, project string) string {
 	return fullName + "-" + hashStr
 }
 
+func KubernetesCompatibleProjectName(project string) string {
+	cleanNamed := KubernetesCompatibleName(project)
+	if len(cleanNamed) <= 63 {
+		return cleanNamed
+	}
+
+	// Generate hash of the full name
+	hash := sha256.Sum256([]byte(cleanNamed))
+	hashStr := fmt.Sprintf("%x", hash[:4]) // Use first 4 bytes (8 hex chars)
+
+	cleanNamed = cleanNamed[:54]
+	return cleanNamed + "-" + hashStr
+}
+
 func KubernetesCompatibleName(name string) string {
 	name = strings.ToLower(name) // Ensure lowercase for consistency
-	name = invalidChars.ReplaceAllString(name, "-")
-	name = multipleHyphens.ReplaceAllString(name, "-")
-	name = strings.Trim(name, "-")
-
-	return name
+	return collapseSeparators(name, invalidChars, multipleHyphens, "-")
 }
 
 func DiscoveryJobName(in *api.RenovateJob) string {

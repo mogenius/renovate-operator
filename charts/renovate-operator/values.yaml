@@ -11,7 +11,7 @@ crd:
   image:
     registry: registry.k8s.io
     repository: kubectl
-    tag: v1.36.2
+    tag: v1.36.3
     pullPolicy: "IfNotPresent"
     # -- imagePullSecrets for the operator pod
     imagePullSecrets: []
@@ -68,11 +68,25 @@ config:
   jobTTLSecondsAfterFinished: -1
   # -- global limit for concurrent renovate executor jobs across all RenovateJobs (0 = unlimited)
   globalParallelismLimit: 0
+  # -- map of label-key to template string, applied to every Renovate Job/Pod. Supports
+  # -- {job} (RenovateJob name), {project} (project slug, empty on discovery jobs),
+  # -- {jobType} ("discovery"/"executor"), {namespace}. Empty-placeholder separators are
+  # -- collapsed automatically, e.g. "{jobType}-{job}-{project}" -> "discovery-myjob" when project is empty.
+  podLabelTemplates: {}
   logStorage:
-    # -- log store mode: "disabled" (default, no-op), valkey (needs to be enabled) or "memory" (cache logs in-memory after job completion)
+    # -- log store mode: "disabled" (default, no-op), "memory" (in-process), "valkey" (needs valkey enabled), or "s3" (needs s3.bucket set)
     mode: disabled
-  # -- wether to forward valkey cache to renovatejobs - valkey needs to be configured
+  # -- whether to forward valkey cache to renovate jobs - valkey needs to be configured
   forwardCacheToJobs: true
+  # -- whether to forward S3 cache configuration to Renovate executor jobs - s3.bucket needs to be set
+  forwardS3CacheToJobs: true
+
+# -- optional sub-path the UI, API and auth endpoints are served under (e.g. "/renovate")
+# -- so the operator can be co-hosted with other apps on the same hostname. Leave empty
+# -- to serve from the root path. When set, it is also used as the ingress/route path and
+# -- appended to auto-detected OAuth/OIDC redirect URLs. OAuth/OIDC redirect URLs registered
+# -- with your identity provider must include this sub-path.
+basePath: ""
 
 ingress:
   # -- whether to enable the ingress renovate-operator
@@ -117,7 +131,13 @@ route:
 
 webhook:
   enabled: false
+  # -- if set to true the ui host will be used for webhooks
+  unifiedWebhookHost: false
   port: 8082
+  # -- optional: override the webhook base URL (WEBHOOK_BASE_URL), e.g. when the ingress or gateway is behind a proxy.
+  baseUrl: ""
+  # -- optional: override the scheme (http or https) of the auto-derived webhook base URL (WEBHOOK_BASE_URL), e.g. when TLS terminates at an external load balancer or Gateway
+  baseUrlScheme: ""
   ingress:
     # -- whether to enable the ingress for the webhook server
     enabled: false
@@ -176,6 +196,8 @@ auth:
     sessionSecretKey: ""
     # -- optional: OIDC redirect URL (auto-detected from ingress host if empty)
     redirectUrl: ""
+    # -- optional: override the scheme (http or https) of the auto-detected redirect URL, e.g. when TLS terminates at an external load balancer or Gateway (ignored when redirectUrl is set)
+    redirectScheme: ""
     # -- optional: skip TLS verification for the OIDC provider (not recommended for production)
     insecureSkipVerify: false
     # -- optional: OIDC end_session_endpoint URL for provider logout (auto-discovered if available)
@@ -186,6 +208,9 @@ auth:
     # -- optional: only accept groups matching this regex pattern (e.g., "^(team-|platform-).*")
     # -- Leave empty to accept all groups. Can be combined with allowedGroupPrefix.
     allowedGroupPattern: ""
+    # -- optional: name of the OIDC claim that carries group memberships (defaults to "groups")
+    # -- Set this if your provider emits groups under a namespaced claim, e.g. "https://example.com/groups".
+    groupsClaim: ""
     # -- optional: additional OIDC scopes to request (e.g., "groups" for Keycloak)
     additionalScopes: []
     # -- optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo)
@@ -212,6 +237,8 @@ auth:
     sessionSecretKey: ""
     # -- optional: GitHub OAuth redirect URL (auto-detected from ingress host if empty)
     redirectUrl: ""
+    # -- optional: override the scheme (http or https) of the auto-detected redirect URL, e.g. when TLS terminates at an external load balancer or Gateway (ignored when redirectUrl is set)
+    redirectScheme: ""
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
@@ -277,15 +304,48 @@ logging:
   # -- log format for the operator, one of: json, console
   format: "json"
 
+# -- optional: connection to an external redis-protocol-compatible key value store (e.g. Redis / Valkey)
+# -- Takes precedence over the deprecated valkey.existingSecret and the bundled valkey instance.
+# -- Active when host or existingSecret.name is set.
+externalKeyValueStore:
+  # -- whether the connection should be made with TLS encryption enabled (rediss://)
+  useTls: false
+  # -- host for the connection; alternatively provide via existingSecret.hostKey
+  host: ~
+  # -- port for the connection; alternatively provide via existingSecret.portKey
+  port: 6379
+  # -- username for authentication; alternatively provide via existingSecret.usernameKey.
+  # -- Omit to authenticate as the default user.
+  username: ~
+  # -- secret containing connection and authentication values.
+  # -- Keys win over their clear-value counterparts above.
+  existingSecret:
+    # -- name of the secret containing connection and authentication information
+    name: ~
+    # -- key containing the full connection url (e.g. "rediss://user:password@valkey:6379/0").
+    # -- When set, all other keys and clear values are ignored.
+    urlKey: ~
+    # -- key containing the host for the connection
+    hostKey: ~
+    # -- key containing the port for the connection
+    portKey: ~
+    # -- key containing the username for authentication
+    usernameKey: ~
+    # -- key containing the password for authentication.
+    # -- The password can only be provided via secret.
+    passwordKey: ~
+
 # -- optional: deploy a Valkey instance for session storage (recommended for multi-replica)
 valkey:
   # Enable Valkey for session storage. When enabled, the operator will create a Valkey deployment and use it to store sessions.
   enabled: false
 
+  # -- DEPRECATED: use externalKeyValueStore.existingSecret instead; will be removed in a future release.
   # -- name of an existing secret containing the Valkey URL for session storage
   # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
   # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
   existingSecret: ""
+  # -- DEPRECATED: use externalKeyValueStore.existingSecret.urlKey instead; will be removed in a future release.
   # -- key in the existing secret that contains the Valkey URL
   existingSecretKey: "valkey-url"
   auth:
@@ -310,6 +370,23 @@ valkey:
     serviceMonitor:
       enabled: false
 
+s3:
+  # -- S3 bucket name; required when config.logStorage.mode=s3 or config.forwardS3CacheToJobs=true
+  bucket: ""
+  # -- AWS region (defaults to us-east-1)
+  region: "us-east-1"
+  # -- Custom S3-compatible endpoint URL for self-hosted object stores (e.g. RustFS); leave empty for AWS S3
+  endpoint: ""
+  # -- Enable path-style S3 addressing (required by some S3-compatible stores); leave false for AWS S3
+  forcePathStyle: false
+  # -- Object key prefix used by the operator log store (LOG_STORE_MODE=s3)
+  logPrefix: "renovate-logs"
+  # -- Object key prefix forwarded to Renovate jobs as RENOVATE_S3_URL
+  cachePrefix: "renovate-cache"
+  # -- Name of an existing Secret containing S3 credentials (optional; uses the pod's IAM role when absent)
+  # The Secret must have keys: access-key-id and secret-access-key
+  existingSecret: ""
+
 metrics:
   enabled: false
   serviceMonitor:
@@ -317,6 +394,7 @@ metrics:
     enabled: false
     # -- scrape interval for the ServiceMonitor, defaults to Prometheus global scrape interval
     interval: ~
+    labels: {}
   dashboard:
     # -- whether to create a Grafana dashboard for the operator metrics
     enabled: false
@@ -330,8 +408,7 @@ metrics:
     grafanaDashboard:
       allowCrossNamespaceImport: false
       instanceSelector:
-        matchLabels:
-          grafana.internal/instance: "grafana"
+        matchLabels: {}
 
 # -- list of extra manifests
 extraManifests: []

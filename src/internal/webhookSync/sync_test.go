@@ -3,393 +3,225 @@ package webhookSync
 import (
 	"context"
 	"fmt"
-	"renovate-operator/gitProviderClients"
+	"sync"
 	"testing"
+
+	"renovate-operator/gitProviderClients"
+	"strconv"
 
 	"github.com/go-logr/logr"
 )
 
-type mockClient struct {
-	repos      []gitProviderClients.Repository
-	hooks      map[string][]gitProviderClients.Webhook // "owner/repo" -> hooks
-	created    map[string][]gitProviderClients.CreateWebhookOptions
-	edited     map[string][]gitProviderClients.CreateWebhookOptions
-	deleted    map[string][]int64
-	nextHookID int64
-	searchErr  error
-	listErr    map[string]error
-	createErr  map[string]error
-	editErr    map[string]error
-	deleteErr  map[string]error
+type fakeClient struct {
+	mu sync.Mutex
+	// hooks per project full name
+	hooks  map[string][]gitProviderClients.Webhook
+	nextID int
+
+	listErr   map[string]error
+	createErr map[string]error
+	deleteErr map[string]error
+
+	created []string
+	updated []string
+	deleted []string
 }
 
-func newMockClient() *mockClient {
-	return &mockClient{
-		hooks:      make(map[string][]gitProviderClients.Webhook),
-		created:    make(map[string][]gitProviderClients.CreateWebhookOptions),
-		edited:     make(map[string][]gitProviderClients.CreateWebhookOptions),
-		deleted:    make(map[string][]int64),
-		listErr:    make(map[string]error),
-		createErr:  make(map[string]error),
-		editErr:    make(map[string]error),
-		deleteErr:  make(map[string]error),
-		nextHookID: 100,
+func newFakeClient() *fakeClient {
+	return &fakeClient{
+		hooks:  make(map[string][]gitProviderClients.Webhook),
+		nextID: 1,
 	}
 }
 
-func (m *mockClient) GetRepositoryInfo(_ context.Context, _ string) (gitProviderClients.RepositoryInfo, error) {
+func (f *fakeClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
 	return gitProviderClients.RepositoryInfo{}, nil
 }
 
-func (m *mockClient) SearchReposByTopic(_ context.Context, _ string) ([]gitProviderClients.Repository, error) {
-	if m.searchErr != nil {
-		return nil, m.searchErr
-	}
-	return m.repos, nil
-}
-
-func (m *mockClient) ListRepoWebhooks(_ context.Context, owner, repo string) ([]gitProviderClients.Webhook, error) {
-	key := owner + "/" + repo
-	if err, ok := m.listErr[key]; ok {
+func (f *fakeClient) ListRepoWebhooks(ctx context.Context, project string) ([]gitProviderClients.Webhook, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.listErr[project]; err != nil {
 		return nil, err
 	}
-	return m.hooks[key], nil
+	return append([]gitProviderClients.Webhook(nil), f.hooks[project]...), nil
 }
 
-func (m *mockClient) CreateRepoWebhook(_ context.Context, owner, repo string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
-	key := owner + "/" + repo
-	if err, ok := m.createErr[key]; ok {
+func (f *fakeClient) CreateRepoWebhook(ctx context.Context, project string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.createErr[project]; err != nil {
 		return nil, err
 	}
-	m.created[key] = append(m.created[key], opts)
-	m.nextHookID++
-	hook := &gitProviderClients.Webhook{ID: m.nextHookID, Config: opts.Config, Events: opts.Events}
-	m.hooks[key] = append(m.hooks[key], *hook)
-	return hook, nil
+	hook := gitProviderClients.Webhook{ID: strconv.Itoa(f.nextID), URL: opts.URL, Active: opts.Active, EventsUpToDate: true}
+	f.nextID++
+	f.hooks[project] = append(f.hooks[project], hook)
+	f.created = append(f.created, project)
+	return &hook, nil
 }
 
-func (m *mockClient) EditRepoWebhook(_ context.Context, owner, repo string, hookID int64, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
-	key := owner + "/" + repo
-	if err, ok := m.editErr[key]; ok {
-		return nil, err
-	}
-	m.edited[key] = append(m.edited[key], opts)
-	hook := &gitProviderClients.Webhook{ID: hookID, Config: opts.Config, Events: opts.Events}
-	// Update the hook in the hooks list
-	for i, h := range m.hooks[key] {
-		if h.ID == hookID {
-			m.hooks[key][i] = *hook
-			break
+func (f *fakeClient) UpdateRepoWebhook(ctx context.Context, project string, hookID string, opts gitProviderClients.CreateWebhookOptions) (*gitProviderClients.Webhook, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	hooks := f.hooks[project]
+	for i, hook := range hooks {
+		if hook.ID == hookID {
+			hooks[i] = gitProviderClients.Webhook{ID: hookID, URL: opts.URL, Active: opts.Active, EventsUpToDate: true}
+			f.updated = append(f.updated, project)
+			return &hooks[i], nil
 		}
 	}
-	return hook, nil
+	return nil, fmt.Errorf("hook %s not found", hookID)
 }
 
-func (m *mockClient) DeleteRepoWebhook(_ context.Context, owner, repo string, hookID int64) error {
-	key := owner + "/" + repo
-	if err, ok := m.deleteErr[key]; ok {
+func (f *fakeClient) DeleteRepoWebhook(ctx context.Context, project string, hookID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.deleteErr[project]; err != nil {
 		return err
 	}
-	m.deleted[key] = append(m.deleted[key], hookID)
-	return nil
+	hooks := f.hooks[project]
+	for i, hook := range hooks {
+		if hook.ID == hookID {
+			f.hooks[project] = append(hooks[:i], hooks[i+1:]...)
+			f.deleted = append(f.deleted, project)
+			return nil
+		}
+	}
+	return fmt.Errorf("hook %s not found", hookID)
 }
 
-func TestSyncCreatesWebhooksOnNewRepos(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
+var testOpts = Options{WebhookURL: "https://operator.example.com/webhook/v1/forgejo?job=a&namespace=b"}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "secret-token", "renovate", nil, logr.Discard())
+func TestSyncCreatesMissingWebhooks(t *testing.T) {
+	client := newFakeClient()
 
-	state, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a", "org/b"}, nil)
 
-	if len(mc.created["org/repo1"]) != 1 {
-		t.Errorf("expected 1 webhook created for org/repo1, got %d", len(mc.created["org/repo1"]))
-	}
-	if len(mc.created["org/repo2"]) != 1 {
-		t.Errorf("expected 1 webhook created for org/repo2, got %d", len(mc.created["org/repo2"]))
-	}
-
-	// Verify auth header (top-level, not in config)
-	if mc.created["org/repo1"][0].AuthorizationHeader != "Bearer secret-token" {
-		t.Errorf("expected Bearer auth header, got %q", mc.created["org/repo1"][0].AuthorizationHeader)
-	}
-	// Verify secret in config
-	if mc.created["org/repo1"][0].Config.Secret != "secret-token" {
-		t.Errorf("expected secret in config, got %q", mc.created["org/repo1"][0].Config.Secret)
-	}
-
-	// Verify returned state matches internal state
-	if len(state) != 2 {
-		t.Errorf("expected 2 repos in returned state, got %d", len(state))
-	}
-	if state["org/repo1"] == 0 || state["org/repo2"] == 0 {
-		t.Errorf("expected both repos in returned state, got %v", state)
+	for _, project := range []string{"org/a", "org/b"} {
+		if len(client.hooks[project]) != 1 {
+			t.Errorf("expected 1 hook on %s, got %d", project, len(client.hooks[project]))
+		}
 	}
 }
 
-func TestSyncUpdatesExistingWebhook(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
-	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
-		{ID: 99, Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
+func TestSyncReusesExistingWebhook(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: testOpts.WebhookURL, Active: true, EventsUpToDate: true},
+		{ID: "8", URL: "https://something-else.example.com"},
 	}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "my-secret", "renovate", nil, logr.Discard())
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
 
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if len(client.created) != 0 {
+		t.Errorf("expected no hook creation, got %v", client.created)
 	}
-
-	// Should not create a new webhook
-	if len(mc.created["org/repo1"]) != 0 {
-		t.Errorf("expected no webhooks created, got %d", len(mc.created["org/repo1"]))
-	}
-
-	// Should edit the existing webhook to ensure config is current
-	if len(mc.edited["org/repo1"]) != 1 {
-		t.Fatalf("expected 1 webhook edit, got %d", len(mc.edited["org/repo1"]))
-	}
-	editedOpts := mc.edited["org/repo1"][0]
-	if editedOpts.Config.Secret != "my-secret" {
-		t.Errorf("expected secret 'my-secret' in edited webhook config, got %q", editedOpts.Config.Secret)
-	}
-	if editedOpts.AuthorizationHeader != "Bearer my-secret" {
-		t.Errorf("expected Bearer auth header at top level, got %q", editedOpts.AuthorizationHeader)
-	}
-
-	// Verify the existing hook was tracked
-	if syncer.managedRepos["org/repo1"] != 99 {
-		t.Errorf("expected managed hook ID 99, got %d", syncer.managedRepos["org/repo1"])
+	if len(client.updated) != 0 {
+		t.Errorf("expected no hook update for matching config, got %v", client.updated)
 	}
 }
 
-func TestSyncRemovesWebhookWhenRepoLosesTopic(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+func TestSyncUpdatesDriftedWebhook(t *testing.T) {
+	client := newFakeClient()
+	// over-subscribed hook, e.g. created before event narrowing existed
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: testOpts.WebhookURL, Active: true, EventsUpToDate: false},
 	}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
 
-	// First run: create webhooks on both repos
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("first run error: %v", err)
+	if len(client.created) != 0 {
+		t.Errorf("expected no hook creation, got %v", client.created)
 	}
-
-	repo2HookID := syncer.managedRepos["org/repo2"]
-	if repo2HookID == 0 {
-		t.Fatal("expected repo2 to have a managed hook")
+	if len(client.updated) != 1 {
+		t.Fatalf("expected drifted hook to be updated, got %v", client.updated)
 	}
-
-	// Second run: repo2 loses the topic
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
-	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
-		{ID: syncer.managedRepos["org/repo1"], Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
-	}
-
-	_, err = syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("second run error: %v", err)
-	}
-
-	if len(mc.deleted["org/repo2"]) != 1 {
-		t.Errorf("expected 1 deletion for org/repo2, got %d", len(mc.deleted["org/repo2"]))
-	}
-	if mc.deleted["org/repo2"][0] != repo2HookID {
-		t.Errorf("expected deletion of hook %d, got %d", repo2HookID, mc.deleted["org/repo2"][0])
-	}
-	if _, exists := syncer.managedRepos["org/repo2"]; exists {
-		t.Error("expected org/repo2 to be removed from managedRepos")
+	hook := client.hooks["org/a"][0]
+	if !hook.EventsUpToDate || !hook.Active {
+		t.Errorf("expected hook reset to the provider subscription and active, got %+v", hook)
 	}
 }
 
-func TestSyncLogsErrorWhenAdminLostButTopicRemains(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
+func TestSyncUpdatesInactiveWebhook(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: testOpts.WebhookURL, Active: false, EventsUpToDate: true},
 	}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
 
-	// First run: create webhook
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("first run error: %v", err)
+	if len(client.updated) != 1 {
+		t.Fatalf("expected inactive hook to be updated, got %v", client.updated)
 	}
-	if len(mc.created["org/repo1"]) != 1 {
-		t.Fatalf("expected webhook created on first run")
-	}
-
-	// Second run: repo still has topic but we lost admin
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: false}},
-	}
-
-	_, err = syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("second run error: %v", err)
-	}
-
-	// Should NOT attempt to delete (no admin access to do so)
-	if len(mc.deleted["org/repo1"]) != 0 {
-		t.Errorf("expected no deletion attempts (no admin access), got %d", len(mc.deleted["org/repo1"]))
-	}
-
-	// Should remove from managedRepos (we can't manage it anymore)
-	if _, exists := syncer.managedRepos["org/repo1"]; exists {
-		t.Error("expected org/repo1 to be removed from managedRepos after losing admin")
+	if !client.hooks["org/a"][0].Active {
+		t.Error("expected hook to be re-activated")
 	}
 }
 
-func TestSyncSkipsReposWithoutAdminPermission(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/admin-repo", Name: "admin-repo", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/no-admin", Name: "no-admin", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: false}},
-		{ID: 3, FullName: "org/nil-perms", Name: "nil-perms", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: nil},
+func TestSyncRemovesHookFromRemovedRepos(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/old"] = []gitProviderClients.Webhook{
+		{ID: "3", URL: testOpts.WebhookURL},
+		{ID: "4", URL: "https://something-else.example.com"},
 	}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/new"}, []string{"org/old"})
 
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if len(client.hooks["org/old"]) != 1 || client.hooks["org/old"][0].ID != "4" {
+		t.Errorf("expected only the operator's hook removed from org/old, got %+v", client.hooks["org/old"])
 	}
-
-	if len(mc.created["org/admin-repo"]) != 1 {
-		t.Errorf("expected webhook on admin-repo, got %d", len(mc.created["org/admin-repo"]))
-	}
-	if len(mc.created["org/no-admin"]) != 0 {
-		t.Error("expected no webhook on no-admin repo")
-	}
-	if len(mc.created["org/nil-perms"]) != 0 {
-		t.Error("expected no webhook on nil-perms repo")
+	if len(client.hooks["org/new"]) != 1 {
+		t.Error("expected hook ensured on org/new")
 	}
 }
 
-func TestSyncHandlesAPIErrorsWithoutAborting(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-		{ID: 2, FullName: "org/repo2", Name: "repo2", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
-	mc.listErr["org/repo1"] = fmt.Errorf("connection refused")
-
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
-
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestSyncRemovalSkipsForeignHooks(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/old"] = []gitProviderClients.Webhook{
+		{ID: "4", URL: "https://something-else.example.com"},
 	}
 
-	// repo1 should have failed, but repo2 should succeed
-	if len(mc.created["org/repo2"]) != 1 {
-		t.Errorf("expected webhook on repo2 despite repo1 failure, got %d", len(mc.created["org/repo2"]))
+	Sync(context.Background(), logr.Discard(), client, testOpts, nil, []string{"org/old"})
+
+	if len(client.deleted) != 0 {
+		t.Errorf("expected no deletion when no hook matches the operator URL, got %v", client.deleted)
 	}
 }
 
-func TestSyncStateRebuiltOnFirstRun(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
-	// Simulate existing webhook (created before syncer existed)
-	mc.hooks["org/repo1"] = []gitProviderClients.Webhook{
-		{ID: 55, Config: gitProviderClients.WebhookConfig{URL: "https://webhook.example.com/hook"}},
-	}
+func TestSyncRemovesAllWhenDisabled(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/a"] = []gitProviderClients.Webhook{{ID: "1", URL: testOpts.WebhookURL}}
+	client.hooks["org/b"] = []gitProviderClients.Webhook{{ID: "2", URL: testOpts.WebhookURL}}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	// the caller passes all current projects as removed when sync is disabled
+	Sync(context.Background(), logr.Discard(), client, testOpts, nil, []string{"org/a", "org/b"})
 
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should detect existing webhook, edit it, and track it without creating a new one
-	if len(mc.created["org/repo1"]) != 0 {
-		t.Errorf("expected no new webhooks, got %d", len(mc.created["org/repo1"]))
-	}
-	if len(mc.edited["org/repo1"]) != 1 {
-		t.Errorf("expected 1 edit call, got %d", len(mc.edited["org/repo1"]))
-	}
-	if syncer.managedRepos["org/repo1"] != 55 {
-		t.Errorf("expected tracked hook ID 55, got %d", syncer.managedRepos["org/repo1"])
-	}
-
-	// Now remove the topic
-	mc.repos = nil
-	_, err = syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should remove the webhook
-	if len(mc.deleted["org/repo1"]) != 1 || mc.deleted["org/repo1"][0] != 55 {
-		t.Errorf("expected deletion of hook 55, got %v", mc.deleted["org/repo1"])
+	if len(client.hooks["org/a"]) != 0 || len(client.hooks["org/b"]) != 0 {
+		t.Error("expected all operator hooks deleted")
 	}
 }
 
-func TestSyncDefaultEvents(t *testing.T) {
-	mc := newMockClient()
-	mc.repos = []gitProviderClients.Repository{
-		{ID: 1, FullName: "org/repo1", Name: "repo1", Owner: struct {
-			Login string `json:"login"`
-		}{Login: "org"}, Permissions: &gitProviderClients.RepositoryPermissions{Admin: true}},
-	}
+func TestSyncContinuesAfterEnsureFailure(t *testing.T) {
+	client := newFakeClient()
+	client.listErr = map[string]error{"org/a": fmt.Errorf("boom")}
 
-	syncer := NewWebhookSyncer(mc, "https://webhook.example.com/hook", "", "renovate", nil, logr.Discard())
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a", "org/b"}, nil)
 
-	_, err := syncer.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if len(client.hooks["org/b"]) != 1 {
+		t.Error("expected org/b to be ensured despite org/a failing")
 	}
+}
 
-	if len(mc.created["org/repo1"]) != 1 {
-		t.Fatalf("expected 1 webhook, got %d", len(mc.created["org/repo1"]))
-	}
-	events := mc.created["org/repo1"][0].Events
-	if len(events) != 2 || events[0] != "issues" || events[1] != "pull_request" {
-		t.Errorf("expected default events [issues, pull_request], got %v", events)
+func TestSyncRemovalFailureDoesNotPanic(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/old"] = []gitProviderClients.Webhook{{ID: "3", URL: testOpts.WebhookURL}}
+	client.deleteErr = map[string]error{"org/old": fmt.Errorf("boom")}
+
+	// the failure is logged; the hook stays orphaned (documented behavior)
+	Sync(context.Background(), logr.Discard(), client, testOpts, nil, []string{"org/old"})
+
+	if len(client.hooks["org/old"]) != 1 {
+		t.Error("expected hook to remain when deletion fails")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"renovate-operator/config"
 	"testing"
 	"time"
 
@@ -157,6 +158,14 @@ func TestGetSessionFromContext_NoSession(t *testing.T) {
 }
 
 func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
 	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
 		t.Fatalf("Failed to create baseAuth: %v", err)
@@ -206,5 +215,43 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 	}
 	if len(capturedSession.Groups) != 1 || capturedSession.Groups[0] != "team-a" {
 		t.Errorf("Groups not in context correctly: %v", capturedSession.Groups)
+	}
+}
+
+func TestIsPublicPath(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
+	public := []string{
+		"/health",
+		"/api/v1/auth/status",
+		"/auth/login",
+		"/auth/callback",
+		"/js/babel.min.js",
+		"/css/styles.css",
+		"/assets/favicon.png",
+		"/components/StatBadge.js",
+		"/favicon.ico",
+	}
+	for _, path := range public {
+		if !isPublicPath(path) {
+			t.Errorf("expected %s to be public", path)
+		}
+	}
+
+	protected := []string{
+		"/",
+		"/api/v1/renovatejobs",
+		"/pages/logs.html",
+	}
+	for _, path := range protected {
+		if isPublicPath(path) {
+			t.Errorf("expected %s to be protected", path)
+		}
 	}
 }

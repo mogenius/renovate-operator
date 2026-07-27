@@ -1,9 +1,11 @@
 package logStore
 
 import (
+	"context"
 	"fmt"
 
 	"renovate-operator/internal/kvstore"
+	"renovate-operator/internal/objectstore"
 
 	"github.com/go-logr/logr"
 )
@@ -21,18 +23,25 @@ type LogStore interface {
 
 // NewLogStore creates a LogStore based on the provided mode.
 // Supported modes: "disabled" (default, no-op), "memory" (in-memory store),
-// "valkey" (Valkey-backed; initialises its own KVStore on DB 1).
-// cfg is ignored for non-valkey modes.
-func NewLogStore(logger logr.Logger, mode string, cfg kvstore.ValkeyConfig) (LogStore, error) {
+// "valkey" (Valkey-backed; initialises its own KVStore on DB 1),
+// "s3" (S3-backed; s3Cfg.Bucket must be set, logPrefix sets the object key prefix).
+// valkeyCfg is ignored for non-valkey modes; s3Cfg and logPrefix are ignored for non-s3 modes.
+func NewLogStore(logger logr.Logger, mode string, valkeyCfg kvstore.ValkeyConfig, s3Cfg objectstore.S3Config, logPrefix string) (LogStore, error) {
 	switch mode {
 	case "memory":
 		return &memoryLogStore{data: make(map[string]string)}, nil
 	case "valkey":
-		kv, err := kvstore.NewKVStore(cfg, kvstore.UsageRenovateLogs)
+		kv, err := kvstore.NewKVStore(valkeyCfg, kvstore.UsageRenovateLogs)
 		if err != nil {
 			return nil, err
 		}
 		return &valkeyLogStore{kv: kv, logger: logger}, nil
+	case "s3":
+		store, err := newS3LogStore(context.Background(), s3Cfg, logPrefix, logger)
+		if err != nil {
+			return nil, fmt.Errorf("initializing S3 log store: %w", err)
+		}
+		return store, nil
 	default:
 		return noopLogStore{}, nil
 	}

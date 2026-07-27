@@ -2,10 +2,12 @@ package webhook
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+
 	api "renovate-operator/api/v1alpha1"
-	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 )
 
 type GitLabEvent struct {
@@ -38,9 +40,20 @@ type ChangeDescription struct {
 }
 
 func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
-	var payload GitLabEvent
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	ctx := r.Context()
+	const provider = "gitlab"
+
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	var payload GitLabEvent
+	if err := json.Unmarshal(body, &payload); err != nil {
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to decode gitlab webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -48,43 +61,52 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 
 	valid, reason := isValidGitLabEvent(&payload)
 	if !valid {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.logger.Info("ignoring GitLab webhook event", "reason", reason)
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
 		return
 	}
 
 	namespace := r.URL.Query().Get("namespace")
-	job := r.URL.Query().Get("job")
-	if namespace == "" || job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace or job query parameter"})
+	jobName := r.URL.Query().Get("job")
+	project := payload.Project.PathWithNamespace
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
+	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.logger.Info("webhook resolve failed", "project", project, "error", err)
+		s.handleResolverError(w, err)
 		return
 	}
 
-	// Process the webhook payload
-	s.logger.Info("received GitLab event", "repository", payload.Project.PathWithNamespace, "action", payload.ObjectAttributes.Action, "priority", 1)
+	s.logger.Info("received GitLab event", "repository", project, "action", payload.ObjectAttributes.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		payload.Project.PathWithNamespace,
-		crdmanager.RenovateJobIdentifier{
-			Name:      job,
-			Namespace: namespace,
-		},
+		ctx,
+		project,
+		jobId,
 		&types.RenovateStatusUpdate{
 			Status:   api.JobStatusScheduled,
 			Priority: 1,
 		},
 	)
-	if s.handleUpdateProjectStatusError(w, err, payload.Project.PathWithNamespace, job, namespace) {
+	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "project": payload.Project.PathWithNamespace})
-
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
+	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "project": project})
 }
 
 func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
 	if payload.ObjectKind != "merge_request" && payload.ObjectKind != "issue" {
 		return false, "object kind is not merge_request or issue"
+	}
+
+	if payload.ObjectKind == "merge_request" && payload.ObjectAttributes.Action == "merge" {
+		return true, ""
 	}
 
 	if payload.ObjectAttributes.Action != "update" {
@@ -95,7 +117,6 @@ func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
 		return false, "no description change detected"
 	}
 
-	// Verify that this is a Renovate event and a checkbox was checked
 	if !verifyRenovateDescriptionChange(payload.Changes.Description.Current) {
 		return false, "not a valid renovate checkbox change"
 	}

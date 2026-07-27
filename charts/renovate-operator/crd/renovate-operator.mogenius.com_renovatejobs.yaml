@@ -14,7 +14,14 @@ spec:
     singular: renovatejob
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.schedule
+      name: Schedule
+      type: string
+    - jsonPath: .spec.provider.name
+      name: Provider
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         properties:
@@ -3213,6 +3220,12 @@ spec:
                     type: string
                   name:
                     type: string
+                  publicEndpoint:
+                    description: |-
+                      PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
+                      When set, this overrides Endpoint for dashboard links while Endpoint continues to be
+                      used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+                    type: string
                 required:
                 - name
                 type: object
@@ -4242,43 +4255,28 @@ spec:
                     type: object
                   enabled:
                     type: boolean
-                  forgejo:
-                    description: Forgejo-specific webhook configuration
+                  sync:
+                    description: |-
+                      configuration for syncing webhooks onto the repositories discovered for this
+                      job.
                     properties:
-                      sync:
-                        description: configuration for syncing webhooks to Forgejo
-                          repos by topic
+                      enabled:
+                        description: Flag to enable the automatic repo webhook sync
+                        type: boolean
+                      secretRef:
+                        description: |-
+                          Optional reference to a secret key holding the platform token used for
+                          webhook management. When not set, the job's platform token
+                          (spec.secretRef or spec.githubAppReference) is used. If key is empty,
+                          the common Renovate token key names are tried.
                         properties:
-                          authTokenSecretRef:
-                            description: reference to a secret and key
-                            properties:
-                              key:
-                                type: string
-                              name:
-                                type: string
-                            type: object
-                          enabled:
-                            type: boolean
-                          events:
-                            items:
-                              type: string
-                            type: array
-                          tokenSecretRef:
-                            description: reference to a secret and key
-                            properties:
-                              key:
-                                type: string
-                              name:
-                                type: string
-                            type: object
-                          topic:
+                          key:
                             type: string
-                          webhookURL:
+                          name:
                             type: string
-                        required:
-                        - enabled
-                        - webhookURL
                         type: object
+                    required:
+                    - enabled
                     type: object
                 required:
                 - enabled
@@ -4304,7 +4302,9 @@ spec:
                   properties:
                     duration:
                       type: string
-                    lastRun:
+                    lastTransition:
+                      description: LastTransition records when the project most recently
+                        changed state.
                       format: date-time
                       type: string
                     logIssues:
@@ -4388,7 +4388,6 @@ spec:
                     status:
                       type: string
                   required:
-                  - lastRun
                   - name
                   - status
                   type: object

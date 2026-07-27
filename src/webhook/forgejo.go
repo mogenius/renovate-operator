@@ -2,10 +2,12 @@ package webhook
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+
 	api "renovate-operator/api/v1alpha1"
-	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 )
 
 // Forgejo webhook types and handler.
@@ -38,6 +40,7 @@ type ForgejoEvent struct {
 
 type ForgejoPullRequest struct {
 	ID     int          `json:"id"`
+	Merged bool         `json:"merged"`
 	Number int          `json:"number"`
 	Body   string       `json:"body"`
 	User   *ForgejoUser `json:"user,omitempty"`
@@ -61,15 +64,27 @@ type ForgejoUser struct {
 }
 
 func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "forgejo"
+
 	event := r.Header.Get("X-Forgejo-Event")
 	if event == "" {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing X-Forgejo-Event header"})
 		return
 	}
 
-	var payload ForgejoEvent
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	var payload ForgejoEvent
+	if err := json.Unmarshal(body, &payload); err != nil {
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to decode Forgejo webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
@@ -77,36 +92,43 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 
 	valid, reason := isValidForgejoEvent(event, &payload)
 	if !valid {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.logger.Info("ignoring Forgejo webhook event", "event", event, "repository", payload.Repository.FullName, "reason", reason)
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
 		return
 	}
 
 	namespace := r.URL.Query().Get("namespace")
-	job := r.URL.Query().Get("job")
-	if namespace == "" || job == "" {
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing namespace or job query parameter"})
+	jobName := r.URL.Query().Get("job")
+	project := payload.Repository.FullName
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
+	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)
+		s.handleResolverError(w, err)
 		return
 	}
 
-	s.logger.Info("received Forgejo event", "event", event, "repository", payload.Repository.FullName, "action", payload.Action)
+	s.logger.Info("received Forgejo event", "event", event, "repository", project, "action", payload.Action)
 	err = s.manager.UpdateProjectStatus(
-		r.Context(),
-		payload.Repository.FullName,
-		crdmanager.RenovateJobIdentifier{
-			Name:      job,
-			Namespace: namespace,
-		},
+		ctx,
+		project,
+		jobId,
 		&types.RenovateStatusUpdate{
 			Status:   api.JobStatusScheduled,
 			Priority: 1,
 		},
 	)
-	if s.handleUpdateProjectStatusError(w, err, payload.Repository.FullName, job, namespace) {
+	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		return
 	}
 
-	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": payload.Repository.FullName})
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
+	s.writeJSON(w, http.StatusAccepted, map[string]string{"message": "renovate job scheduled", "repository": project})
 }
 
 func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
@@ -126,6 +148,9 @@ func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
 	case "pull_request":
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
+		}
+		if payload.PullRequest.Merged {
+			return true, ""
 		}
 		if payload.PullRequest.Body == "" {
 			return false, "no pull request body"

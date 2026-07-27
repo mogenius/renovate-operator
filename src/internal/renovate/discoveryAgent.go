@@ -8,8 +8,8 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 	"sync"
-	"time"
 
 	"github.com/go-logr/logr"
 	"go.opentelemetry.io/otel"
@@ -81,20 +81,7 @@ func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.Ren
 		RenovateJobName: job.Name,
 	})
 	if err != nil && errors.IsNotFound(err) {
-		time.Sleep(1 * time.Second)
-
-		tries := 5
-		for errors.IsNotFound(err) {
-			tries--
-			if tries <= 0 {
-				return api.JobStatusFailed, fmt.Errorf("discovery job not found: %w", err)
-			}
-			existingDiscoveryJob, err = crdManager.GetJobByLabel(ctx, e.client, crdManager.JobSelector{
-				JobType:         crdManager.DiscoveryJobType,
-				Namespace:       job.Namespace,
-				RenovateJobName: job.Name,
-			})
-		}
+		return api.JobStatusScheduled, nil
 	} else if err != nil {
 		return api.JobStatusFailed, fmt.Errorf("failed to get discovery job: %w", err)
 	}
@@ -117,7 +104,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return nil
 	}
 
-	status, _, err := getJobStatus(k8sJob)
+	status, _, _, err := getJobStatus(k8sJob)
 	if err != nil {
 		return err
 	}
@@ -127,6 +114,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 
 	if status == api.JobStatusFailed {
 		log.FromContext(ctx).Info("discovery job failed", "renovateJob", jobId.Name)
+		metricStore.IncDiscoveryJob(ctx, jobId.Namespace, jobId.Name, "failed")
 		_ = crdManager.MarkJobProcessed(ctx, e.client, k8sJob)
 		return nil
 	}
@@ -150,8 +138,18 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	}
 	log.FromContext(ctx).V(2).Info("Discovered projects", "count", len(projects), "job", renovateJob.Fullname())
 
-	if err := e.manager.ReconcileProjects(ctx, renovateJob, projects); err != nil {
+	metricStore.IncDiscoveryJob(ctx, jobId.Namespace, jobId.Name, "completed")
+	metricStore.SetDiscoveredRepositories(jobId.Namespace, jobId.Name, len(projects))
+
+	removedProjects, err := e.manager.ReconcileProjects(ctx, renovateJob, projects)
+	if err != nil {
 		return fmt.Errorf("failed to reconcile projects: %w", err)
+	}
+
+	// a webhook sync problem must not block discovery processing;
+	// the next discovery run retries the sync.
+	if err := e.manager.SyncWebhooks(ctx, jobId, removedProjects); err != nil {
+		log.FromContext(ctx).Error(err, "failed to sync webhooks", "renovateJob", jobId.Name)
 	}
 
 	if k8sJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] == "true" {
@@ -237,5 +235,8 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery job: %w", err)
 	}
+
+	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")
+
 	return generation, nil
 }

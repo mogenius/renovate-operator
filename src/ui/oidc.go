@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,11 @@ import (
 
 const pkceCookieName = "pkce_verifier"
 
+// defaultGroupsClaim is the OIDC claim that group memberships are read from when
+// OIDC_GROUPS_CLAIM is not set. Providers that emit groups under a namespaced
+// claim (e.g. "https://example.com/groups") can override it.
+const defaultGroupsClaim = "groups"
+
 type OIDCConfig struct {
 	IssuerURL           string
 	ClientID            string
@@ -34,6 +40,7 @@ type OIDCConfig struct {
 	AdditionalScopes    []string
 	FetchUserInfoGroups bool
 	PKCEEnabled         bool
+	GroupsClaim         string
 }
 
 type OIDCAuth struct {
@@ -47,6 +54,7 @@ type OIDCAuth struct {
 	groupFilterConfig   GroupFilterConfig
 	fetchUserInfoGroups bool
 	pkceEnabled         bool
+	groupsClaim         string
 }
 
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
@@ -140,6 +148,14 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		logger.Info("OIDC userinfo group fetching enabled -- groups will be fetched from both ID token and userinfo endpoint; userinfo failures will block login")
 	}
 
+	groupsClaim := cfg.GroupsClaim
+	if groupsClaim == "" {
+		groupsClaim = defaultGroupsClaim
+	}
+	if groupsClaim != defaultGroupsClaim {
+		logger.Info("OIDC groups claim name overridden", "claim", groupsClaim)
+	}
+
 	return &OIDCAuth{
 		baseAuth:            base,
 		provider:            provider,
@@ -151,6 +167,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		groupFilterConfig:   groupFilterConfig,
 		fetchUserInfoGroups: cfg.FetchUserInfoGroups,
 		pkceEnabled:         cfg.PKCEEnabled,
+		groupsClaim:         groupsClaim,
 	}, nil
 }
 
@@ -170,7 +187,7 @@ func (o *OIDCAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
 			Name:     pkceCookieName,
 			Value:    verifier,
-			Path:     "/",
+			Path:     cookiePath(),
 			MaxAge:   300,
 			HttpOnly: true,
 			Secure:   isHTTPS(r),
@@ -204,7 +221,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
 			Name:     pkceCookieName,
 			Value:    "",
-			Path:     "/",
+			Path:     cookiePath(),
 			MaxAge:   -1,
 			HttpOnly: true,
 		})
@@ -233,10 +250,16 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	var claims struct {
 		Email  string   `json:"email"`
 		Name   string   `json:"name"`
-		Groups []string `json:"groups,omitempty"`
+		Groups []string `json:"-"` // read from the configurable claim below
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		o.logger.Error(err, "failed to parse claims")
+		http.Error(w, "failed to parse claims", http.StatusInternalServerError)
+		return
+	}
+	claims.Groups, err = extractGroupsClaim(idToken, o.groupsClaim)
+	if err != nil {
+		o.logger.Error(err, "failed to parse group claim")
 		http.Error(w, "failed to parse claims", http.StatusInternalServerError)
 		return
 	}
@@ -259,10 +282,8 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to fetch userinfo", http.StatusInternalServerError)
 			return
 		}
-		var userInfoClaims struct {
-			Groups []string `json:"groups,omitempty"`
-		}
-		if err := userInfo.Claims(&userInfoClaims); err != nil {
+		userInfoGroups, err := extractGroupsClaim(userInfo, o.groupsClaim)
+		if err != nil {
 			o.logger.Error(err, "failed to parse userinfo claims")
 			http.Error(w, "failed to parse userinfo claims", http.StatusInternalServerError)
 			return
@@ -270,18 +291,20 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		o.logger.V(1).Info("userinfo groups received",
 			"user", claims.Email,
 			"id_token_groups", claims.Groups,
-			"userinfo_groups", userInfoClaims.Groups)
-		claims.Groups = mergeGroups(claims.Groups, userInfoClaims.Groups)
+			"userinfo_groups", userInfoGroups)
+		claims.Groups = mergeGroups(claims.Groups, userInfoGroups)
 	}
 
 	// Apply 3-layer group validation
 	validatedGroups := ValidateAndNormalizeGroups(claims.Groups, o.groupFilterConfig, o.logger)
 
-	if len(claims.Groups) > 0 && len(validatedGroups) == 0 {
-		o.logger.Info("WARNING: User authenticated but all groups filtered out",
+	if isGroupFilterDenied(o.groupFilterConfig, validatedGroups) {
+		o.logger.Info("Access denied: no groups matching configured filter",
 			"user", claims.Email,
 			"id_token_groups", idTokenGroups,
 			"groups_before_validation", claims.Groups)
+		http.Redirect(w, r, withBase("/auth/unauthorized"), http.StatusFound)
+		return
 	}
 
 	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {
@@ -314,7 +337,7 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/auth/logged-out", http.StatusFound)
+	http.Redirect(w, r, withBase("/auth/logged-out"), http.StatusFound)
 }
 
 func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +346,41 @@ func (o *OIDCAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 func (o *OIDCAuth) SupportsGroups() bool {
 	return true
+}
+
+// claimReader is implemented by *oidc.IDToken and *oidc.UserInfo; both expose
+// the raw claim set via Claims(v).
+type claimReader interface {
+	Claims(v any) error
+}
+
+// extractGroupsClaim reads group memberships from an OIDC claim set using the
+// configured claim name (see defaultGroupsClaim). It tolerates the claim being
+// absent, a JSON array of strings, or a single string.
+func extractGroupsClaim(r claimReader, claimName string) ([]string, error) {
+	var raw map[string]json.RawMessage
+	if err := r.Claims(&raw); err != nil {
+		return nil, err
+	}
+	return parseGroupsClaim(raw[claimName]), nil
+}
+
+// parseGroupsClaim decodes a single OIDC claim value into a list of groups,
+// accepting either a JSON array of strings or a single string; anything else
+// (absent, null, empty, or a non-string type) yields no groups.
+func parseGroupsClaim(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var groups []string
+	if err := json.Unmarshal(raw, &groups); err == nil {
+		return groups
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil && single != "" {
+		return []string{single}
+	}
+	return nil
 }
 
 // mergeGroups combines groups from the ID token and userinfo endpoint,
@@ -342,6 +400,14 @@ func mergeGroups(idTokenGroups, userInfoGroups []string) []string {
 		}
 	}
 	return merged
+}
+
+// isGroupFilterDenied reports whether group filtering is active and the user
+// has no validated groups that pass the filter. When true, HandleCallback
+// redirects to /auth/unauthorized instead of completing the login.
+func isGroupFilterDenied(cfg GroupFilterConfig, validatedGroups []string) bool {
+	filterActive := cfg.AllowedPrefix != "" || cfg.AllowedPattern != nil
+	return filterActive && len(validatedGroups) == 0
 }
 
 // buildOIDCScopes returns the base OIDC scopes plus any additional scopes, deduplicated.

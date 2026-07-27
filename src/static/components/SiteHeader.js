@@ -1,5 +1,6 @@
 function SiteHeader({ version, authInfo, children }) {
   const showAuth = authInfo && authInfo.enabled && authInfo.authenticated;
+  const base = window.__BASE_PATH__ || "";
 
   const authBlock = showAuth && (
     <div className="flex items-center gap-2">
@@ -10,7 +11,7 @@ function SiteHeader({ version, authInfo, children }) {
         {authInfo.name || authInfo.email}
       </span>
       <a
-        href="/auth/logout"
+        href={`${base}/auth/logout`}
         className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
       >
         Logout
@@ -24,9 +25,9 @@ function SiteHeader({ version, authInfo, children }) {
         {/* Brand strip */}
         <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <a href="/" className="shrink-0">
+            <a href={`${base}/`} className="shrink-0">
               <img
-                src="/assets/logo.png"
+                src={`${base}/assets/logo.png`}
                 alt="Renovate Operator Logo"
                 className="h-10 sm:h-16 lg:h-20 w-auto object-contain dark:brightness-0 dark:invert"
               />

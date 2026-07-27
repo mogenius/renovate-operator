@@ -75,9 +75,12 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Autodiscovery](./docs/autodiscovery.md)
 - Webhook API
   - [Generic](./docs/webhooks/webhook.md)
+  - [Automatic Webhook Sync](./docs/webhooks/sync.md)
   - [Forgejo](./docs/webhooks/forgejo.md)
+  - [Gitea](./docs/webhooks/gitea.md)
   - [GitHub](./docs/webhooks/github.md)
   - [GitLab](./docs/webhooks/gitlab.md)
+  - [Bitbucket](./docs/webhooks/bitbucket.md)
 - [Using a config.js](./docs/extra-volumes.md)
 - [Image Pull Secrets](./docs/image-pull-secrets.md)
 - [Scheduling](./docs/scheduling.md)
@@ -85,7 +88,10 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Metrics](./docs/metrics.md)
 - [PR Activity](./docs/pr-activity.md)
 - [Authentication](./docs/auth.md)
+- [Serving the UI under a Sub-Path](./docs/base-path.md)
 - [Valkey / Redis Cache](./docs/valkey.md)
+- [S3 Object Storage](./docs/s3.md)
+- [Templated Pod Labels](./docs/pod-label-templates.md)
 
 ## Contributing
 

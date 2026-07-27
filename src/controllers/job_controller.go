@@ -4,9 +4,8 @@ import (
 	context "context"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
-	"renovate-operator/internal/webhookSync"
 
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 
@@ -22,10 +21,9 @@ Reconciler for batchv1.Job resources owned by the operator.
 Handles completion of discovery and executor jobs reactively.
 */
 type JobReconciler struct {
-	Executor    renovate.RenovateExecutor
-	Discovery   renovate.DiscoveryAgent
-	WebhookSync webhookSync.WebhookSyncManager
-	K8sClient   client.Client
+	Executor  renovate.RenovateExecutor
+	Discovery renovate.DiscoveryAgent
+	K8sClient client.Client
 }
 
 func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -72,7 +70,6 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			logger.Error(err, "Error processing discovery job result", "jobName", job.Name)
 			return ctrl.Result{}, err
 		}
-		r.WebhookSync.RunSync(ctx, logger, jobId)
 	case string(crdManager.ExecutorJobType):
 		project := job.Annotations[crdManager.JOB_ANNOTATION_PROJECT]
 

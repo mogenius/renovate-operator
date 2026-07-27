@@ -2,11 +2,14 @@ package crdmanager
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -38,7 +41,7 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -64,7 +67,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -100,7 +103,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}})
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -140,7 +143,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -186,7 +189,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -198,7 +201,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("unexpected error getting job for reconcile: %v", err)
 	}
 
-	err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
+	_, err = mgr.ReconcileProjects(ctx, rJob, []string{"a", "b"})
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
@@ -238,7 +241,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	j := makeJob("job1", "default", projects)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{})
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -259,5 +262,56 @@ func TestGetProjectsFilters(t *testing.T) {
 	}
 	if len(all) != 2 {
 		t.Fatalf("expected 2 projects from GetProjectsForRenovateJob, got %d", len(all))
+	}
+}
+
+// setBaseURL (re)initializes the config singleton with the given
+// WEBHOOK_BASE_URL, mirroring how the Helm chart provides it via env.
+func setBaseURL(t *testing.T, baseURL string) {
+	t.Setenv("WEBHOOK_BASE_URL", baseURL)
+	if err := config.InitializeConfigModule([]config.ConfigItemDescription{{Key: "WEBHOOK_BASE_URL", Optional: true}}); err != nil {
+		t.Fatalf("failed to initialize config: %v", err)
+	}
+}
+
+func syncJob(platform string) *api.RenovateJob {
+	return &api.RenovateJob{
+		Spec: api.RenovateJobSpec{
+			Provider: &api.RenovateProvider{Name: platform},
+			Webhook: &api.RenovateWebhook{
+				Enabled: true,
+				Sync:    &api.RenovateWebhookSync{Enabled: true},
+			},
+		},
+	}
+}
+
+func TestWebhookURLForJobUsesBaseURLAndPlatformPath(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com/")
+
+	url, err := webhookURLForJob(syncJob("forgejo"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://hooks.example.com/webhook/v1/forgejo" {
+		t.Errorf("expected base URL plus platform path, got %s", url)
+	}
+}
+
+func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
+	setBaseURL(t, "")
+
+	_, err := webhookURLForJob(syncJob("forgejo"))
+	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_BASE_URL") {
+		t.Fatalf("expected actionable error without base URL, got %v", err)
+	}
+}
+
+func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com")
+
+	_, err := webhookURLForJob(syncJob("bitbucket"))
+	if err == nil {
+		t.Fatal("expected error for platform without webhook endpoint")
 	}
 }

@@ -152,7 +152,7 @@ func TestGetJobStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, duration, err := getJobStatus(tt.job)
+			status, durationStr, _, err := getJobStatus(tt.job)
 
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
@@ -160,7 +160,7 @@ func TestGetJobStatus(t *testing.T) {
 			if status != tt.expectedStatus {
 				t.Errorf("expected status %v, got %v", tt.expectedStatus, status)
 			}
-			if tt.expectDuration && duration == "" {
+			if tt.expectDuration && durationStr == "" {
 				t.Errorf("expected a duration, got empty string")
 			}
 		})

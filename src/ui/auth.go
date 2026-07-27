@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"renovate-operator/config"
 	"strings"
 	"time"
 
@@ -145,17 +146,39 @@ func isPublicPath(path string) bool {
 	if strings.HasPrefix(path, "/auth/") {
 		return true
 	}
-	// Static assets must be accessible without auth so the page can render
+	// Static assets must be accessible without auth so the page can render.
+	// /components/ is fetched via XHR (Babel), which cannot follow the
+	// cross-origin redirect to the identity provider — a 302 there breaks
+	// rendering entirely instead of triggering a login.
 	if strings.HasPrefix(path, "/js/") || strings.HasPrefix(path, "/css/") ||
-		strings.HasPrefix(path, "/assets/") || path == "/favicon.ico" {
+		strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/components/") ||
+		path == "/favicon.ico" {
 		return true
 	}
+
+	if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "true" && strings.HasPrefix(path, "/webhook") {
+		return true
+	}
+
 	return false
 }
 
 func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
+		// Strip the configured base path so route matching below operates on
+		// application-relative paths regardless of the sub-path the UI is
+		// served under.
+		base := BasePath()
+		// When BASE_PATH is set, cookies are scoped to that path, so the root "/"
+		// must remain accessible to allow the redirect to the base path.
+		if base != "" && r.URL.Path == "/" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, base)
+		if path == "" {
+			path = "/"
+		}
 
 		// Allow public paths without authentication
 		if isPublicPath(path) {
@@ -175,7 +198,7 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 			// cannot be read. This typically means the encryption key differs
 			// between replicas (SESSION_SECRET not set).
 			if _, markerErr := r.Cookie(authCompletedCookie); markerErr == nil {
-				http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
+				http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: cookiePath(), MaxAge: -1, HttpOnly: true})
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusInternalServerError)
 				_, err := fmt.Fprintf(w, "Authentication loop detected: login succeeded but the session cookie "+
@@ -203,13 +226,13 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 			}
 			// UI requests get redirected to login
 			b.logger.Info("redirecting to login", "path", path)
-			http.Redirect(w, r, "/auth/login", http.StatusFound)
+			http.Redirect(w, r, withBase("/auth/login"), http.StatusFound)
 			return
 		}
 
 		// Clean up marker cookie after successful session read
 		if _, markerErr := r.Cookie(authCompletedCookie); markerErr == nil {
-			http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
+			http.SetCookie(w, &http.Cookie{Name: authCompletedCookie, Value: "", Path: cookiePath(), MaxAge: -1, HttpOnly: true})
 		}
 
 		// Add session to context
@@ -263,7 +286,7 @@ func (b *baseAuth) buildCompleteURL(ctx context.Context, email, name string, opt
 		return "", err
 	}
 
-	return "/auth/complete?s=" + url.QueryEscape(encrypted), nil
+	return withBase("/auth/complete") + "?s=" + url.QueryEscape(encrypted), nil
 }
 
 // handleComplete reads the encrypted session token from the URL query parameter,
@@ -345,7 +368,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    freshCookie,
-		Path:     "/",
+		Path:     cookiePath(),
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
 		Secure:   secure,
@@ -355,7 +378,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     authCompletedCookie,
 		Value:    "1",
-		Path:     "/",
+		Path:     cookiePath(),
 		MaxAge:   60,
 		HttpOnly: true,
 		Secure:   secure,
@@ -364,7 +387,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 
 	b.logger.Info("session cookie set via /auth/complete", "email", logEmail, "name", logName, "secure", secure, "cookieLen", len(freshCookie))
 
-	err := writeCallbackRedirect(w, "/")
+	err := writeCallbackRedirect(w, withBase("/"))
 	if err != nil {
 		b.logger.Error(err, "failed to write callback redirect response")
 	}
@@ -393,7 +416,7 @@ func (b *baseAuth) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
-		Path:     "/",
+		Path:     cookiePath(),
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
@@ -407,7 +430,7 @@ func (b *baseAuth) setStateCookie(w http.ResponseWriter, r *http.Request) (strin
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName,
 		Value:    state,
-		Path:     "/",
+		Path:     cookiePath(),
 		MaxAge:   300,
 		HttpOnly: true,
 		Secure:   isHTTPS(r),
@@ -431,7 +454,7 @@ func (b *baseAuth) clearStateCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName,
 		Value:    "",
-		Path:     "/",
+		Path:     cookiePath(),
 		MaxAge:   -1,
 		HttpOnly: true,
 	})

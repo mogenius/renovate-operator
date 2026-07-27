@@ -8,6 +8,15 @@ release:
 templates:
 - templates/deployment.yaml
 tests:
+- it: Uses explicit service account name
+  set:
+    serviceAccount:
+      name: custom-service-account
+  asserts:
+  - equal:
+      path: spec.template.spec.serviceAccountName
+      value: custom-service-account
+
 - it: Test default valkey credential secret
   set:
     valkey:
@@ -67,3 +76,274 @@ tests:
       content:
         name: OIDC_PKCE_ENABLED
         value: "false"
+
+- it: OIDC redirect URL derived from route defaults to http without ingress tls
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: http://renovate.example.org/auth/callback
+
+- it: OIDC redirectScheme overrides the detected scheme
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectScheme: https
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: https://renovate.example.org/auth/callback
+
+- it: OIDC redirectScheme is ignored when an explicit redirectUrl is set
+  set:
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectUrl: https://custom.example.org/auth/callback
+        redirectScheme: http
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_REDIRECT_URL
+        value: https://custom.example.org/auth/callback
+
+- it: OIDC redirectScheme rejects invalid values
+  set:
+    route:
+      enabled: true
+      hostnames:
+      - renovate.example.org
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+        redirectScheme: ftp
+  asserts:
+  - failedTemplate:
+      errorPattern: must be either "http" or "https"
+
+- it: GitHub redirectScheme overrides the detected scheme
+  set:
+    ingress:
+      host: renovate.example.org
+    auth:
+      github:
+        enabled: true
+        existingSecret: my-github-secret
+        redirectScheme: https
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: GITHUB_REDIRECT_URL
+        value: https://renovate.example.org/auth/callback
+
+- it: Webhook base URL derived from ingress defaults to http without tls
+  set:
+    webhook:
+      enabled: true
+      ingress:
+        enabled: true
+        host: webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: http://webhook.example.org
+
+- it: Webhook baseUrlScheme overrides the scheme detected from ingress
+  set:
+    webhook:
+      enabled: true
+      baseUrlScheme: https
+      ingress:
+        enabled: true
+        host: webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: https://webhook.example.org
+
+- it: Webhook baseUrlScheme overrides the https default of route
+  set:
+    webhook:
+      enabled: true
+      baseUrlScheme: http
+      route:
+        enabled: true
+        hostnames:
+        - webhook.example.org
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_BASE_URL
+        value: http://webhook.example.org
+
+- it: External key value store url from secret ignores all other keys
+  set:
+    externalKeyValueStore:
+      host: ignored.example.com
+      username: ignored
+      existingSecret:
+        name: my-kv-secret
+        urlKey: url
+        passwordKey: password
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_URL
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: url
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_HOST
+        value: ignored.example.com
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: password
+
+- it: External key value store with all connection values from secret
+  set:
+    externalKeyValueStore:
+      useTls: true
+      existingSecret:
+        name: my-kv-secret
+        hostKey: SERVICEUSER_HOST
+        portKey: SERVICEUSER_PORT
+        usernameKey: SERVICEUSER_USERNAME
+        passwordKey: SERVICEUSER_PASSWORD
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_HOST
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: SERVICEUSER_HOST
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PORT
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: SERVICEUSER_PORT
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: SERVICEUSER_USERNAME
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: SERVICEUSER_PASSWORD
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_TLS
+        value: "true"
+
+- it: External key value store clear values with secret keys taking precedence
+  set:
+    externalKeyValueStore:
+      host: valkey.example.com
+      port: 6380
+      username: clear-user
+      existingSecret:
+        name: my-kv-secret
+        usernameKey: username
+        passwordKey: password
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_HOST
+        value: valkey.example.com
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_PORT
+        value: "6380"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: my-kv-secret
+            key: username
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_USERNAME
+        value: clear-user
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_TLS
+        value: "true"
+
+- it: External key value store takes precedence over deprecated valkey.existingSecret
+  set:
+    valkey:
+      existingSecret: legacy-secret
+    externalKeyValueStore:
+      host: valkey.example.com
+      existingSecret:
+        name: my-kv-secret
+        passwordKey: password
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_HOST
+        value: valkey.example.com
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_URL
+        valueFrom:
+          secretKeyRef:
+            name: legacy-secret
+            key: valkey-url

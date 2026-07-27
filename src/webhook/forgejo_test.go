@@ -205,6 +205,19 @@ func TestForgejoEventValidation(t *testing.T) {
 			valid:  false,
 			reason: "no pull request in payload",
 		},
+		{
+			name:  "pull request gets merged",
+			event: "pull_request",
+			payload: ForgejoEvent{
+				Action: "closed",
+				PullRequest: &ForgejoPullRequest{
+					Merged: true,
+				},
+				Repository: ForgejoRepository{FullName: "example/repo"},
+			},
+			valid:  true,
+			reason: "",
+		},
 
 		// Unsupported events
 		{

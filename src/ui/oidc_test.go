@@ -1,9 +1,85 @@
 package ui
 
 import (
+	"regexp"
 	"slices"
 	"testing"
 )
+
+func TestIsGroupFilterDenied(t *testing.T) {
+	pattern := regexp.MustCompile(`^renovate-`)
+
+	tests := []struct {
+		name            string
+		cfg             GroupFilterConfig
+		validatedGroups []string
+		want            bool
+	}{
+		{
+			name:            "no filter, no groups — allowed",
+			cfg:             GroupFilterConfig{},
+			validatedGroups: nil,
+			want:            false,
+		},
+		{
+			name:            "no filter, some groups — allowed",
+			cfg:             GroupFilterConfig{},
+			validatedGroups: []string{"team-a"},
+			want:            false,
+		},
+		{
+			name:            "prefix filter, empty validated groups — denied",
+			cfg:             GroupFilterConfig{AllowedPrefix: "renovate-"},
+			validatedGroups: nil,
+			want:            true,
+		},
+		{
+			name:            "prefix filter, empty slice — denied",
+			cfg:             GroupFilterConfig{AllowedPrefix: "renovate-"},
+			validatedGroups: []string{},
+			want:            true,
+		},
+		{
+			name:            "prefix filter, matching groups survive — allowed",
+			cfg:             GroupFilterConfig{AllowedPrefix: "renovate-"},
+			validatedGroups: []string{"renovate-admin"},
+			want:            false,
+		},
+		{
+			name:            "pattern filter, empty validated groups — denied",
+			cfg:             GroupFilterConfig{AllowedPattern: pattern},
+			validatedGroups: []string{},
+			want:            true,
+		},
+		{
+			name:            "pattern filter, matching groups survive — allowed",
+			cfg:             GroupFilterConfig{AllowedPattern: pattern},
+			validatedGroups: []string{"renovate-team"},
+			want:            false,
+		},
+		{
+			name:            "both prefix and pattern, no survivors — denied",
+			cfg:             GroupFilterConfig{AllowedPrefix: "renovate-", AllowedPattern: pattern},
+			validatedGroups: []string{},
+			want:            true,
+		},
+		{
+			name:            "both prefix and pattern, survivors — allowed",
+			cfg:             GroupFilterConfig{AllowedPrefix: "renovate-", AllowedPattern: pattern},
+			validatedGroups: []string{"renovate-admin"},
+			want:            false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isGroupFilterDenied(tt.cfg, tt.validatedGroups)
+			if got != tt.want {
+				t.Errorf("isGroupFilterDenied() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestBuildOIDCScopes(t *testing.T) {
 	tests := []struct {
@@ -131,6 +207,30 @@ func TestMergeGroups(t *testing.T) {
 			got := mergeGroups(tt.idTokenGroups, tt.userInfoGroups)
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("mergeGroups() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseGroupsClaim(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"array of strings", `["team-a","team-b"]`, []string{"team-a", "team-b"}},
+		{"single string coerced to slice", `"team-a"`, []string{"team-a"}},
+		{"empty array", `[]`, []string{}},
+		{"absent claim", ``, nil},
+		{"null", `null`, nil},
+		{"empty string", `""`, nil},
+		{"non-string type ignored", `42`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseGroupsClaim([]byte(tt.raw))
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("parseGroupsClaim(%q) = %v, want %v", tt.raw, got, tt.want)
 			}
 		})
 	}

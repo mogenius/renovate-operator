@@ -4,25 +4,31 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
 	"renovate-operator/gitProviderClients"
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
+	"renovate-operator/internal/webhookSync"
 	"renovate-operator/metricStore"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,8 +54,18 @@ type RenovateJobManager interface {
 	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
-	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD with the provided list.
-	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error
+	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD
+	// with the provided list. It returns the names of the projects that were
+	// removed (present before, absent now).
+	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error)
+	// SyncWebhooks ensures the operator's webhook exists on every project of
+	// the RenovateJob and removes it from the given removed projects (the diff
+	// reported by ReconcileProjects). Stateless: hooks are identified by their
+	// delivery URL on the platform.
+	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error
+	// CleanupWebhooks removes the operator's webhook from every project of the
+	// RenovateJob. Called by the deletion finalizer.
+	CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error
 	// StreamLogsForProject returns an io.ReadCloser that streams NDJSON log lines for the given
 	// project. For running pods Follow is true so the stream stays open until the container exits.
 	// For completed pods or log-store fallback the stream closes after all content is delivered.
@@ -59,6 +75,10 @@ type RenovateJobManager interface {
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
 	// IsWebhookSignatureValid checks if the provided signature is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error)
+	// IsWebhookStandardSignatureValid checks a Standard Webhooks signature (https://www.standardwebhooks.com/)
+	// against the webhook signing keys configured for the specified RenovateJob CRD. Standard Webhooks is a
+	// vendor-neutral signing scheme; GitLab "signing tokens" are one implementation of it, not the only one.
+	IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
 	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
 	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
 	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
@@ -86,10 +106,17 @@ func (in *RenovateJobIdentifier) Fullname() string {
 	return in.Name + "-" + in.Namespace
 }
 
+func NonZeroTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
 type RenovateProjectStatus struct {
 	Name                 string                    `json:"name"`
 	Status               api.RenovateProjectStatus `json:"status"`
-	LastRun              time.Time                 `json:"lastRun"`
+	LastTransition       *time.Time                `json:"lastTransition,omitempty"`
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
@@ -142,7 +169,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 			result = append(result, RenovateProjectStatus{
 				Name:                 project.Name,
 				Status:               project.Status,
-				LastRun:              project.LastRun.Time,
+				LastTransition:       NonZeroTime(project.LastTransition.Time),
 				Priority:             project.Priority,
 				RenovateResultStatus: project.RenovateResultStatus,
 				Duration:             project.Duration,
@@ -166,7 +193,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 		result = append(result, RenovateProjectStatus{
 			Name:                 project.Name,
 			Status:               project.Status,
-			LastRun:              project.LastRun.Time,
+			LastTransition:       NonZeroTime(project.LastTransition.Time),
 			Priority:             project.Priority,
 			RenovateResultStatus: project.RenovateResultStatus,
 			Duration:             project.Duration,
@@ -257,26 +284,29 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	})
 }
 
-func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) error {
+func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
 
 	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
 		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
 		if err != nil {
 			r.logger.Error(err, "Failed to create git provider client for project filtering")
 		} else {
-			newProjects, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
+			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
 			if err != nil {
 				r.logger.Error(err, "Failed to filter discovered repositories")
 			} else {
 				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
 				projects = newProjects
+				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
+				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
 			}
 		}
 	}
 
 	defer r.globalManagerLock(false)()
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	var removed []string
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
 		if err != nil {
 			return err
@@ -293,10 +323,11 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 			newProjectSet[project] = struct{}{}
 		}
 
-		// Delete metrics for projects that are being removed
+		// Collect removed projects (for webhook cleanup) and drop their metrics
+		removed = removed[:0]
 		for projectName := range crdProjectSet {
 			if _, exists := newProjectSet[projectName]; !exists {
-				// Project is being removed, clean up its metrics
+				removed = append(removed, projectName)
 				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
 			}
 		}
@@ -308,10 +339,11 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 				newProjects = append(newProjects, crdProject)
 			} else {
 				// add new project to the list
+				now := v1.Now()
 				newProjects = append(newProjects, api.ProjectStatus{
-					Name:    project,
-					Status:  api.JobStatusScheduled,
-					LastRun: v1.Now(),
+					Name:           project,
+					Status:         api.JobStatusScheduled,
+					LastTransition: now,
 				})
 			}
 		}
@@ -319,6 +351,131 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 		return r.client.Status().Update(ctx, renovateJob)
 	})
+	return removed, err
+}
+
+func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
+	unlock := r.globalManagerLock(true)
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	unlock()
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	webhook := renovateJob.Spec.Webhook
+	if webhook == nil || webhook.Sync == nil {
+		return nil
+	}
+	syncEnabled := webhook.Enabled && webhook.Sync.Enabled
+
+	// Reconcile toward the desired state: with sync enabled, hooks exist on all
+	// current projects and are removed from projects that dropped out; with
+	// sync disabled, hooks are removed from every project.
+	current := make([]string, 0, len(renovateJob.Status.Projects))
+	for _, project := range renovateJob.Status.Projects {
+		current = append(current, project.Name)
+	}
+	var desired, removed []string
+	if syncEnabled {
+		desired = current
+		removed = removedProjects
+	} else {
+		removed = append(current, removedProjects...)
+	}
+	if len(desired) == 0 && len(removed) == 0 {
+		return nil
+	}
+
+	return r.runWebhookSync(ctx, renovateJob, job, desired, removed)
+}
+
+func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
+	unlock := r.globalManagerLock(true)
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	unlock()
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	removed := make([]string, 0, len(renovateJob.Status.Projects))
+	for _, project := range renovateJob.Status.Projects {
+		removed = append(removed, project.Name)
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	return r.runWebhookSync(ctx, renovateJob, job, nil, removed)
+}
+
+// runWebhookSync builds the provider client and delivery URL, then runs one
+// webhook sync cycle over the given project sets.
+func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []string) error {
+	webhook := renovateJob.Spec.Webhook
+
+	var gitProvider gitProviderClients.GitProviderClient
+	var err error
+	if webhook != nil && webhook.Sync != nil && webhook.Sync.SecretRef != nil {
+		gitProvider, err = r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, webhook.Sync.SecretRef)
+	} else {
+		gitProvider, err = r.gitProviderClientFactory.NewClient(ctx, renovateJob)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create git provider client: %w", err)
+	}
+
+	rawURL, err := webhookURLForJob(renovateJob)
+	if err != nil {
+		return err
+	}
+	webhookURL, err := buildWebhookURL(rawURL, job)
+	if err != nil {
+		return fmt.Errorf("failed to parse webhookURL: %w", err)
+	}
+
+	var authToken string
+	if len(desired) > 0 && webhook != nil && webhook.Authentication != nil && webhook.Authentication.Enabled && webhook.Authentication.SecretRef != nil {
+		tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
+		if err != nil {
+			return fmt.Errorf("failed to read webhook auth token: %w", err)
+		}
+		if len(tokens) > 0 {
+			authToken = tokens[0]
+		}
+	}
+
+	opts := webhookSync.Options{
+		WebhookURL: webhookURL,
+		AuthToken:  authToken,
+	}
+	webhookSync.Sync(ctx, r.logger.WithName("webhook-sync"), gitProvider, opts, desired, removed)
+	return nil
+}
+
+func webhookURLForJob(renovateJob *api.RenovateJob) (string, error) {
+	baseURL := config.GetValue("WEBHOOK_BASE_URL")
+	if baseURL == "" {
+		return "", fmt.Errorf("webhook delivery URL is unknown: expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
+	}
+	platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+	path, err := utils.WebhookEndpointPath(platform)
+	if err != nil {
+		return "", fmt.Errorf("failed to derive webhook URL: %w", err)
+	}
+	return strings.TrimSuffix(baseURL, "/") + path, nil
+}
+
+// buildWebhookURL appends the namespace/job query parameters that the webhook
+// server uses to route incoming events to the right RenovateJob.
+func buildWebhookURL(rawURL string, job RenovateJobIdentifier) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	q := parsed.Query()
+	q.Set("namespace", job.Namespace)
+	q.Set("job", job.Name)
+	parsed.RawQuery = q.Encode()
+	return parsed.String(), nil
 }
 
 func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error) {
@@ -377,11 +534,17 @@ func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.
 		Namespace: job.Namespace,
 	}, secret)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			metricStore.IncSecretResolutionError(ctx, "not_found")
+		} else {
+			metricStore.IncSecretResolutionError(ctx, "api_error")
+		}
 		return nil, err
 	}
 
 	authData, exists := secret.Data[job.Spec.Webhook.Authentication.SecretRef.Key]
 	if !exists {
+		metricStore.IncSecretResolutionError(ctx, "key_missing")
 		return nil, fmt.Errorf("secret key %s not found in secret %s", job.Spec.Webhook.Authentication.SecretRef.Key, job.Spec.Webhook.Authentication.SecretRef.Name)
 	}
 
@@ -445,6 +608,56 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 	return false, nil
 }
 
+// IsWebhookStandardSignatureValid validates a Standard Webhooks signature against the keys configured for
+// the RenovateJob. Standard Webhooks (https://www.standardwebhooks.com/) is a vendor-neutral webhook
+// signing scheme implemented by multiple providers — GitLab "signing tokens" among them — so this path is
+// not GitLab-specific and works for any compliant sender. The signed content is "{msgID}.{timestamp}.{body}",
+// keyed by the HMAC-SHA256 key decoded from each configured secret. The signature header is a space-separated
+// list of "v1,<base64>" entries; a match against any entry for any configured key authenticates the request.
+// The timestamp must be within standardWebhookTimestampTolerance of now to reject replayed requests.
+func (r *renovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
+	defer r.globalManagerLock(true)()
+
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return false, err
+	}
+
+	if renovateJob.Spec.Webhook == nil ||
+		renovateJob.Spec.Webhook.Authentication == nil ||
+		!renovateJob.Spec.Webhook.Authentication.Enabled {
+		// Webhook authentication is not enabled
+		return false, nil
+	}
+
+	if msgID == "" || signature == "" {
+		return false, nil
+	}
+	if !isStandardWebhookTimestampFresh(timestamp, time.Now()) {
+		r.logger.V(1).Info("rejecting webhook: signature timestamp outside tolerance", "namespace", job.Namespace, "name", job.Name, "timestamp", timestamp)
+		return false, nil
+	}
+
+	tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
+	if err != nil {
+		return false, err
+	}
+
+	signedContent := msgID + "." + timestamp + "." + string(body)
+	for _, token := range tokens {
+		key, ok := decodeStandardWebhookSigningKey(token)
+		if !ok {
+			continue
+		}
+		expected := computeStandardWebhookSignature(key, signedContent)
+		if matchesAnyStandardWebhookSignature(signature, expected) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error {
 	executorJob, err := GetJobByLabel(ctx, r.client, JobSelector{
 		JobType:         ExecutorJobType,
@@ -482,4 +695,65 @@ func computeHMAC256(message []byte, secret string) string {
 	mac.Write(message)
 	expectedMAC := mac.Sum(nil)
 	return "sha256=" + fmt.Sprintf("%x", expectedMAC)
+}
+
+// standardWebhookTimestampTolerance bounds how far a webhook-timestamp may drift from the current
+// time before the request is rejected as a potential replay. Matches the Standard Webhooks default.
+const standardWebhookTimestampTolerance = 5 * time.Minute
+
+// decodeStandardWebhookSigningKey returns the raw HMAC key for a Standard Webhooks signing secret. The
+// canonical form is "whsec_" + base64(key), as issued by Standard Webhooks senders (GitLab among them).
+// A bare value is base64-decoded when possible, otherwise used verbatim as the key.
+func decodeStandardWebhookSigningKey(secret string) ([]byte, bool) {
+	if secret == "" {
+		return nil, false
+	}
+	if rest, found := strings.CutPrefix(secret, "whsec_"); found {
+		decoded, err := base64.StdEncoding.DecodeString(rest)
+		if err != nil {
+			return nil, false
+		}
+		return decoded, true
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil {
+		return decoded, true
+	}
+	return []byte(secret), true
+}
+
+// computeStandardWebhookSignature returns the base64 HMAC-SHA256 of signedContent, without the
+// "v1," version prefix.
+func computeStandardWebhookSignature(key []byte, signedContent string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(signedContent))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// matchesAnyStandardWebhookSignature reports whether expected (raw base64) matches any "v1" entry
+// in a space-separated webhook-signature header value. Comparison is constant-time.
+func matchesAnyStandardWebhookSignature(header, expected string) bool {
+	for part := range strings.FieldsSeq(header) {
+		version, sig, found := strings.Cut(part, ",")
+		if !found || version != "v1" {
+			continue
+		}
+		if hmac.Equal([]byte(sig), []byte(expected)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isStandardWebhookTimestampFresh reports whether a unix-seconds timestamp is within the replay
+// tolerance of now.
+func isStandardWebhookTimestampFresh(timestamp string, now time.Time) bool {
+	secs, err := strconv.ParseInt(strings.TrimSpace(timestamp), 10, 64)
+	if err != nil {
+		return false
+	}
+	delta := now.Sub(time.Unix(secs, 0))
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= standardWebhookTimestampTolerance
 }

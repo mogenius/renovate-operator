@@ -22,6 +22,7 @@ auth:
     secretKey: "client-secret"                 # Key inside the secret
     sessionSecretKey: ""                       # Optional: key for session encryption secret
     redirectUrl: ""                            # Optional: auto-detected from ingress
+    redirectScheme: ""                         # Optional: http or https, overrides the auto-detected scheme
     insecureSkipVerify: false                  # Do not use in production
     logoutUrl: ""                              # Optional: auto-discovered via OIDC metadata
     allowedGroupPrefix: ""                     # Optional: only accept groups with this prefix
@@ -29,6 +30,8 @@ auth:
     additionalScopes: []                        # Optional: extra OIDC scopes (e.g., ["groups"])
     fetchUserInfoGroups: false                   # Optional: fetch groups from userinfo endpoint
 ```
+
+The redirect URL is auto-detected from the chart's `route.hostnames[0]` or `ingress.host`, using `https` only when `ingress.tls` is set. When TLS terminates outside the cluster (external load balancer, Gateway API listener), set `redirectScheme: https` to correct the scheme — or set `redirectUrl` to a full URL, which takes precedence.
 
 ### Secret
 
@@ -95,7 +98,10 @@ auth:
     secretKey: "client-secret"                # Key inside the secret
     sessionSecretKey: ""                      # Optional session encryption key
     redirectUrl: ""                           # Optional: auto-detected from ingress
+    redirectScheme: ""                        # Optional: http or https, overrides the auto-detected scheme
 ```
+
+Redirect URL auto-detection and `redirectScheme` behave exactly as described for [OIDC](#helm-configuration) above.
 
 ### Secret
 

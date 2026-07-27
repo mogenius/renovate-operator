@@ -15,7 +15,9 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
@@ -77,11 +79,19 @@ func (m *mockRenovateJobManager) GetRenovateJob(ctx context.Context, name, names
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) error {
-	if m.reconcileProjectsFunc != nil {
-		return m.reconcileProjectsFunc(ctx, jobId, projects)
-	}
+func (m *mockRenovateJobManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {
 	return nil
+}
+
+func (m *mockRenovateJobManager) CleanupWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier) error {
+	return nil
+}
+
+func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) ([]string, error) {
+	if m.reconcileProjectsFunc != nil {
+		return nil, m.reconcileProjectsFunc(ctx, jobId, projects)
+	}
+	return nil, nil
 }
 
 // Implement remaining interface methods as no-ops
@@ -109,6 +119,9 @@ func (m *mockRenovateJobManager) IsWebhookTokenValid(ctx context.Context, job cr
 	return true, nil
 }
 func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+	return true, nil
+}
+func (r *mockRenovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	return true, nil
 }
 
@@ -217,7 +230,7 @@ func TestGetRenovateJobLogs_NonJSONLines(t *testing.T) {
 	body := w.Body.String()
 	// Count data events that are not the terminal "done" event
 	dataCount := 0
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(line, "data: ") && line != "data: {}" {
 			dataCount++
 		}
@@ -461,14 +474,14 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 // Additional mock types needed for authorization tests
 type mockScheduler struct{}
 
-func (m *mockScheduler) Start()                                                {}
-func (m *mockScheduler) Stop()                                                 {}
-func (m *mockScheduler) AddSchedule(expr string, name string, fn func()) error { return nil }
-func (m *mockScheduler) AddScheduleReplaceExisting(expr string, name string, fn func()) error {
+func (m *mockScheduler) Start()                                                          {}
+func (m *mockScheduler) Stop()                                                           {}
+func (m *mockScheduler) AddSchedule(expr string, namespace, job string, fn func()) error { return nil }
+func (m *mockScheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fn func()) error {
 	return nil
 }
-func (m *mockScheduler) RemoveSchedule(name string) {}
-func (m *mockScheduler) GetNextRunOnSchedule(schedule string) time.Time {
+func (m *mockScheduler) RemoveSchedule(namespace, job string) {}
+func (m *mockScheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
 	return time.Now().Add(24 * time.Hour)
 }
 
@@ -803,6 +816,64 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 				t.Errorf("Expected %d jobs, got %d", tt.wantCount, len(result))
 			}
 		})
+	}
+}
+
+func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+
+	const jobCount = 5
+	jobs := make([]api.RenovateJob, 0, jobCount)
+	for i := range jobCount {
+		jobs = append(jobs, api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job-" + string(rune('a'+i)),
+				Namespace: "default",
+			},
+			Spec: api.RenovateJobSpec{Schedule: "0 0 * * *"},
+		})
+	}
+
+	mockManager := &mockRenovateJobManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return jobs, nil
+		},
+	}
+
+	server := &Server{
+		manager:   mockManager,
+		logger:    logr.Discard(),
+		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil),
+		scheduler: &mockScheduler{},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/renovatejobs", nil)
+	w := httptest.NewRecorder()
+
+	start := time.Now()
+	server.getRenovateJobs(w, req)
+	elapsed := time.Since(start)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var result []RenovateJobInfo
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(result) != jobCount {
+		t.Fatalf("Expected %d jobs, got %d", jobCount, len(result))
+	}
+	if elapsed > 750*time.Millisecond {
+		t.Fatalf("getRenovateJobs took %s for %d jobs without discovery jobs, expected it to return without per-job polling", elapsed, jobCount)
 	}
 }
 

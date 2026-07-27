@@ -24,6 +24,11 @@ type GitProviderClientFactory interface {
 	// NewClient creates a GitProviderClient for the given RenovateJob by reading
 	// platform credentials from the referenced Kubernetes secret.
 	NewClient(ctx context.Context, job *api.RenovateJob) (gitProviderClients.GitProviderClient, error)
+	// NewClientWithTokenRef creates a GitProviderClient authenticated with the
+	// token stored at the given secret key reference instead of the job's
+	// platform credentials. If the reference's key is empty, the common
+	// Renovate token key names are tried.
+	NewClientWithTokenRef(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (gitProviderClients.GitProviderClient, error)
 }
 
 type gitProviderClientFactory struct {
@@ -48,6 +53,48 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 	if err != nil {
 		return nil, fmt.Errorf("failed to read platform token for fork filtering: %w", err)
 	}
+
+	return buildClient(platform, endpoint, token)
+}
+
+func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (gitProviderClients.GitProviderClient, error) {
+
+	platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
+	if platform == "" {
+		return nil, fmt.Errorf("a provider must be configured")
+	}
+
+	if ref == nil || ref.Name == "" {
+		return nil, fmt.Errorf("secret reference must have a name")
+	}
+
+	secret := &corev1.Secret{}
+	err := f.client.Get(ctx, client.ObjectKey{
+		Name:      ref.Name,
+		Namespace: job.Namespace,
+	}, secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret %s: %w", ref.Name, err)
+	}
+
+	var token string
+	if ref.Key != "" {
+		val, ok := secret.Data[ref.Key]
+		if !ok || len(val) == 0 {
+			return nil, fmt.Errorf("secret key %s not found in secret %s", ref.Key, ref.Name)
+		}
+		token = string(val)
+	} else {
+		token, err = tokenFromSecret(secret, ref.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return buildClient(platform, endpoint, token)
+}
+
+func buildClient(platform, endpoint, token string) (gitProviderClients.GitProviderClient, error) {
 
 	httpClient := &http.Client{
 		Timeout:   10 * time.Second,
@@ -94,12 +141,17 @@ func readToken(ctx context.Context, c client.Client, job *api.RenovateJob, platf
 		return "", fmt.Errorf("failed to get secret %s: %w", secretName, err)
 	}
 
-	// Try common token key names in order of preference
+	return tokenFromSecret(secret, secretName)
+}
+
+// tokenFromSecret extracts a platform token from a secret by trying the common
+// token key names used by Renovate, in order of preference.
+func tokenFromSecret(secret *corev1.Secret, secretName string) (string, error) {
 	for _, key := range []string{"RENOVATE_TOKEN", "GITHUB_COM_TOKEN", "GITLAB_TOKEN", "BITBUCKET_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"} {
 		if val, ok := secret.Data[key]; ok && len(val) > 0 {
 			return string(val), nil
 		}
 	}
 
-	return "", fmt.Errorf("no platform token found in secret %s (expected one of: RENOVATE_TOKEN, GITHUB_COM_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN, GITEA_TOKEN, FORGEJO_TOKEN)", job.Spec.SecretRef)
+	return "", fmt.Errorf("no platform token found in secret %s (expected one of: RENOVATE_TOKEN, GITHUB_COM_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN, GITEA_TOKEN, FORGEJO_TOKEN)", secretName)
 }

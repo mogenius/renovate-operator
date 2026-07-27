@@ -8,6 +8,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"strings"
@@ -21,10 +22,12 @@ import (
 type UIProjectStatus struct {
 	Name                 string                    `json:"name"`
 	Status               api.RenovateProjectStatus `json:"status"`
-	LastRun              time.Time                 `json:"lastRun,omitempty"`
+	LastTransition       *time.Time                `json:"lastTransition,omitempty"`
 	Priority             int32                     `json:"priority,omitempty"`
 	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
 	Duration             *string                   `json:"duration,omitempty"`
+	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
+	LogIssues            *api.LogIssues            `json:"logIssues,omitempty"`
 	CanWrite             *bool                     `json:"canWrite,omitempty"`
 }
 
@@ -218,6 +221,7 @@ func (s *Server) authorizeJobAccess(r *http.Request, namespace, jobName string) 
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
+	apiV1.Use(telemetry.MuxMiddleware("renovate-operator-ui-api-v1"))
 	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
@@ -264,7 +268,8 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		platform, platformEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+		platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+		platformEndpoint := utils.GetPublicEndpoint(renovateJob.Spec.Provider)
 
 		// Resolve user's repo permissions for this job's platform
 		userRepos := getUserRepos(r.Context(), session, platform, platformEndpoint, s.repoCache, s.logger)
@@ -274,7 +279,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			crdProjects = append(crdProjects, crdmanager.RenovateProjectStatus{
 				Name:                 p.Name,
 				Status:               p.Status,
-				LastRun:              p.LastRun.Time,
+				LastTransition:       crdmanager.NonZeroTime(p.LastTransition.Time),
 				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
@@ -292,10 +297,12 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			proj := UIProjectStatus{
 				Name:                 p.Name,
 				Status:               p.Status,
-				LastRun:              p.LastRun,
+				LastTransition:       p.LastTransition,
 				Priority:             p.Priority,
 				RenovateResultStatus: p.RenovateResultStatus,
 				Duration:             p.Duration,
+				PRActivity:           p.PRActivity,
+				LogIssues:            p.LogIssues,
 			}
 			if userRepos != nil {
 				if perm, ok := userRepos[p.Name]; ok {
@@ -309,7 +316,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		result = append(result, RenovateJobInfo{
 			Name:             renovateJob.Name,
 			Namespace:        renovateJob.Namespace,
-			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule),
+			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname()),
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
 			DiscoveryStatus:  discoveryStatus,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"strconv"
@@ -24,10 +25,10 @@ import (
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
+	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
-	"renovate-operator/internal/webhookSync"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -92,7 +93,9 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 
 	// Initialize KV store (Valkey if configured, otherwise nil)
 	kvStore, kvErr := kvstore.NewKVStore(valkeyConf, kvstore.UsageSessionStore)
-	assert.Assert(kvErr == nil || kvErr == kvstore.ErrValkeyNotConfigured, "failed to initialize KV store")
+	if kvErr != nil && kvErr != kvstore.ErrValkeyNotConfigured {
+		assert.NoError(kvErr, "failed to initialize KV store")
+	}
 
 	// Wrap KV store with session-specific encryption and key prefix
 	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
@@ -132,6 +135,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			AdditionalScopes:    splitAndTrim(config.GetValue("OIDC_ADDITIONAL_SCOPES"), ","),
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
 			PKCEEnabled:         config.GetValue("OIDC_PKCE_ENABLED") != "false",
+			GroupsClaim:         config.GetValue("OIDC_GROUPS_CLAIM"),
 		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
@@ -216,6 +220,26 @@ func main() {
 			Key:      "WEBHOOK_SERVER_ENABLED",
 			Optional: true,
 			Default:  "false",
+		},
+		{
+			Key:      "BASE_PATH",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "WEBHOOK_BASE_URL",
+			Optional: true,
+		},
+		{
+			Key:      "WEBHOOK_SERVER_UNIFIED_HOST",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'WEBHOOK_SERVER_UNIFIED_HOST' must be 'true' or 'false'")
+				}
+				return nil
+			},
 		},
 		{
 			Key:      "DELETE_SUCCESSFUL_JOBS",
@@ -358,6 +382,11 @@ func main() {
 			Default:  "true",
 		},
 		{
+			Key:      "OIDC_GROUPS_CLAIM",
+			Optional: true,
+			Default:  "groups",
+		},
+		{
 			Key:      "VALKEY_URL",
 			Optional: true,
 			Default:  "",
@@ -373,9 +402,19 @@ func main() {
 			Default:  "6379",
 		},
 		{
+			Key:      "VALKEY_USERNAME",
+			Optional: true,
+			Default:  "",
+		},
+		{
 			Key:      "VALKEY_PASSWORD",
 			Optional: true,
 			Default:  "",
+		},
+		{
+			Key:      "VALKEY_TLS",
+			Optional: true,
+			Default:  "false",
 		},
 		{
 			Key:      "VALKEY_FORWARD_CACHE_TO_JOBS",
@@ -388,11 +427,61 @@ func main() {
 			Default:  "disabled",
 			Validate: func(value string) error {
 				switch value {
-				case "disabled", "memory", "valkey":
+				case "disabled", "memory", "valkey", "s3":
 					return nil
 				}
-				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory, valkey")
+				return fmt.Errorf("'LOG_STORE_MODE' must be one of: disabled, memory, valkey, s3")
 			},
+		},
+		{
+			Key:      "S3_BUCKET",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_REGION",
+			Optional: true,
+			Default:  "us-east-1",
+		},
+		{
+			Key:      "S3_ENDPOINT",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_ACCESS_KEY_ID",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_SECRET_ACCESS_KEY",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "S3_LOG_PREFIX",
+			Optional: true,
+			Default:  "renovate-logs",
+		},
+		{
+			Key:      "S3_CACHE_PREFIX",
+			Optional: true,
+			Default:  "renovate-cache",
+		},
+		{
+			Key:      "S3_FORWARD_CACHE_TO_JOBS",
+			Optional: true,
+			Default:  "true",
+		},
+		{
+			Key:      "S3_FORCE_PATH_STYLE",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			Key:      "S3_CREDENTIALS_SECRET_NAME",
+			Optional: true,
+			Default:  "",
 		},
 		{
 			Key:      "GLOBAL_PARALLELISM_LIMIT",
@@ -405,6 +494,18 @@ func main() {
 				}
 				if parsed < 0 {
 					return fmt.Errorf("'GLOBAL_PARALLELISM_LIMIT' must be 0 (unlimited) or a positive integer")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POD_LABEL_TEMPLATES",
+			Optional: true,
+			Default:  "{}",
+			Validate: func(value string) error {
+				var templates map[string]string
+				if err := json.Unmarshal([]byte(value), &templates); err != nil {
+					return fmt.Errorf("'POD_LABEL_TEMPLATES' must be a JSON object of label-key to template string: %w", err)
 				}
 				return nil
 			},
@@ -448,14 +549,18 @@ func main() {
 
 	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
 
-	valkeyConf := kvstore.ValkeyConfig{
-		URL:      config.GetValue("VALKEY_URL"),
-		Host:     config.GetValue("VALKEY_HOST"),
-		Port:     config.GetValue("VALKEY_PORT"),
-		Password: config.GetValue("VALKEY_PASSWORD"),
+	valkeyConf := kvstore.ConfigFromEnv(config.GetValue)
+
+	s3Cfg := objectstore.S3Config{
+		Bucket:          config.GetValue("S3_BUCKET"),
+		Region:          config.GetValue("S3_REGION"),
+		Endpoint:        config.GetValue("S3_ENDPOINT"),
+		ForcePathStyle:  config.GetValue("S3_FORCE_PATH_STYLE") == "true",
+		AccessKeyID:     config.GetValue("S3_ACCESS_KEY_ID"),
+		SecretAccessKey: config.GetValue("S3_SECRET_ACCESS_KEY"),
 	}
 
-	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf)
+	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf, s3Cfg, config.GetValue("S3_LOG_PREFIX"))
 	assert.NoError(err, "failed to initialize logStore")
 
 	cp := clientProvider.StaticClientProvider()
@@ -481,12 +586,17 @@ func main() {
 	// UI and webhook servers run on all replicas
 	repoCache := ui.NewMemoryRepoCache()
 	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups, repoCache)
-	uiServer.Run()
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
-		webhookServer.Run()
+
+		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
+			webhookServer.Run()
+		} else {
+			webhook.RegisterWebhookRoutes(uiServer.Router, webhookServer)
+		}
 	}
+	uiServer.Run()
 
 	executor := renovate.NewRenovateExecutor(
 		mgr.GetScheme(),
@@ -499,7 +609,6 @@ func main() {
 	)
 
 	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
-	webhookSyncMgr := webhookSync.NewWebhookSyncManager(mgr.GetClient(), jobMgr)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
@@ -513,20 +622,18 @@ func main() {
 	}()
 
 	err = (&controllers.JobReconciler{
-		Executor:    executor,
-		Discovery:   discovery,
-		WebhookSync: webhookSyncMgr,
-		K8sClient:   mgr.GetClient(),
+		Executor:  executor,
+		Discovery: discovery,
+		K8sClient: mgr.GetClient(),
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup job manager")
 
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler:   cronManager,
-		Manager:     jobMgr,
-		Discovery:   discovery,
-		K8sClient:   mgr.GetClient(),
-		GithubApp:   githubAppToken,
-		WebhookSync: webhookSyncMgr,
+		Scheduler: cronManager,
+		Manager:   jobMgr,
+		Discovery: discovery,
+		K8sClient: mgr.GetClient(),
+		GithubApp: githubAppToken,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

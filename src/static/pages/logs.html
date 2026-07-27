@@ -5,10 +5,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Logs - Renovate Operator</title>
-  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-small.png" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-small.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
 
-  <script src="/js/tailwind.min.js"></script>
+  <script src="js/tailwind.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -25,20 +25,20 @@
       },
     };
   </script>
-  <script src="/js/theme-utils.js"></script>
-  <script src="/js/babel.min.js"></script>
-  <script src="/js/babel-config.js"></script>
+  <script src="js/theme-utils.js"></script>
+  <script src="js/babel.min.js"></script>
+  <script src="js/babel-config.js"></script>
   <script type="module">
-    import { React, createRoot } from '/js/react-bundle.esm.js';
+    import { React, createRoot } from './js/react-bundle.esm.js';
     window.React = React;
     window.createRoot = createRoot;
   </script>
-  <script type="text/babel" src="/components/ThemeToggle.js"></script>
-  <script type="text/babel" src="/components/SiteHeader.js"></script>
-  <script type="text/babel" src="/components/StatBadge.js"></script>
-  <script type="text/babel" src="/components/Footer.js"></script>
+  <script type="text/babel" src="components/ThemeToggle.js"></script>
+  <script type="text/babel" src="components/SiteHeader.js"></script>
+  <script type="text/babel" src="components/StatBadge.js"></script>
+  <script type="text/babel" src="components/Footer.js"></script>
 
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 
 <body class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100 transition-colors duration-200">
@@ -84,6 +84,7 @@
       const expanded = manuallySet ? manualExpanded : autoExpand;
 
       const handleClick = () => {
+        if (window.getSelection && window.getSelection().toString()) return;
         setManuallySet(true);
         setManualExpanded(!expanded);
       };
@@ -143,22 +144,25 @@
       const [copied, setCopied] = useState(false);
       const [searchQuery, setSearchQuery] = useState("");
 
+      const BASE = window.__BASE_PATH__ || "";
+      const withBase = (url) => (url.startsWith("/") ? BASE + url : url);
+
       const authFetch = async (url, options = {}) => {
-        const response = await fetch(url, options);
+        const response = await fetch(withBase(url), options);
         if (response.status === 401) {
-          window.location.href = "/auth/login";
+          window.location.href = BASE + "/auth/login";
           throw new Error("Unauthorized");
         }
         return response;
       };
 
       useEffect(() => {
-        fetch("/api/v1/version")
+        fetch(BASE + "/api/v1/version")
           .then(r => r.ok ? r.json() : null)
           .then(d => d && setVersion(d.version))
           .catch(() => { });
 
-        fetch("/api/v1/auth/status")
+        fetch(BASE + "/api/v1/auth/status")
           .then(r => r.ok ? r.json() : null)
           .then(d => d && setAuthInfo(d))
           .catch(() => { });
@@ -172,7 +176,7 @@
         }
 
         const entries = [];
-        const url = `/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
+        const url = `${BASE}/api/v1/logs?namespace=${encodeURIComponent(namespace)}&renovate=${encodeURIComponent(renovate)}&project=${encodeURIComponent(project)}`;
         const es = new EventSource(url);
 
         es.onmessage = (event) => {
@@ -216,13 +220,22 @@
         DEBUG: "text-gray-400 dark:text-slate-500",
       };
 
+      const LEVELS_STORAGE_KEY = "logs.selectedLevels";
+
       const initialLevels = useMemo(() => {
-        const raw = params.get("levels");
+        // Explicit URL param wins over the persisted preference.
+        const raw = params.get("levels") ?? (() => {
+          try { return localStorage.getItem(LEVELS_STORAGE_KEY); } catch { return null; }
+        })();
         if (!raw) return new Set(ALL_LEVELS);
         const requested = raw.split(",").map(s => s.trim().toUpperCase()).filter(s => ALL_LEVELS.includes(s));
         return requested.length > 0 ? new Set(requested) : new Set(ALL_LEVELS);
       }, []);
       const [selectedLevels, setSelectedLevels] = useState(initialLevels);
+
+      useEffect(() => {
+        try { localStorage.setItem(LEVELS_STORAGE_KEY, ALL_LEVELS.filter(l => selectedLevels.has(l)).join(",")); } catch {}
+      }, [selectedLevels]);
       const [filterOpen, setFilterOpen] = useState(false);
       const filterRef = useRef(null);
 
@@ -265,6 +278,19 @@
           setTimeout(() => setCopied(false), 2000);
         });
       }, [filteredLogs]);
+
+      const handleDownload = useCallback(() => {
+        if (!filteredLogs) return;
+        const text = filteredLogs.map(e => JSON.stringify(e)).join("\n");
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const safeName = (project || "renovate").replace(/[^a-zA-Z0-9._-]/g, "_");
+        a.href = url;
+        a.download = `${safeName}.log`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, [filteredLogs, project]);
 
       return (
         <div className="min-h-screen flex flex-col">
@@ -375,6 +401,16 @@
                         Copy logs
                       </>
                     )}
+                  </button>
+                  {/* Download button */}
+                  <button
+                    onClick={handleDownload}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                    </svg>
+                    Download
                   </button>
                 </div>
                 </>

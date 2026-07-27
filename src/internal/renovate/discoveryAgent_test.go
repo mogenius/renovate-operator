@@ -34,10 +34,17 @@ func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace str
 	}
 	return &api.RenovateJob{}, nil
 }
-func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) error {
+func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
 	if f.reconcileProjectsFn != nil {
-		return f.reconcileProjectsFn(ctx, job, projects)
+		return nil, f.reconcileProjectsFn(ctx, job, projects)
 	}
+	return nil, nil
+}
+func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+	return nil
+}
+
+func (f *fakeJobManager) CleanupWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
 func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -68,6 +75,9 @@ func (f *fakeJobManager) IsWebhookTokenValid(ctx context.Context, job crdManager
 	return true, nil
 }
 func (f *fakeJobManager) IsWebhookSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+	return true, nil
+}
+func (f *fakeJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	return true, nil
 }
 func (f *fakeJobManager) UpdateExecutionOptions(ctx context.Context, job crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {

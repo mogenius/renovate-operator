@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"testing"
+
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
-	"testing"
 
 	"github.com/go-logr/logr"
 )
@@ -156,6 +157,9 @@ func TestForgejoWebhook_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			updateCalled := false
 			mockManager := &mockWebhookManager{
+				listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+					return []api.RenovateJob{makeTestRenovateJob(tt.namespace, tt.job, tt.payload.Repository.FullName)}, nil
+				},
 				updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 					updateCalled = true
 					if project != tt.payload.Repository.FullName {
@@ -256,7 +260,7 @@ func TestForgejoWebhook_MissingEventHeader(t *testing.T) {
 	}
 }
 
-func TestForgejoWebhook_MissingQueryParams(t *testing.T) {
+func TestForgejoWebhook_NoMatchingJob(t *testing.T) {
 	tests := []struct {
 		name           string
 		namespace      string
@@ -265,25 +269,25 @@ func TestForgejoWebhook_MissingQueryParams(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name:           "missing namespace",
-			namespace:      "",
-			job:            "test-job",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
-		},
-		{
-			name:           "missing job",
-			namespace:      "default",
-			job:            "",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
-		},
-		{
-			name:           "missing both parameters",
+			name:           "no namespace or job provided",
 			namespace:      "",
 			job:            "",
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "missing namespace or job query parameter",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
+		},
+		{
+			name:           "namespace filter matches no job",
+			namespace:      "nonexistent",
+			job:            "",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
+		},
+		{
+			name:           "job name filter matches no job",
+			namespace:      "",
+			job:            "nonexistent",
+			expectedStatus: http.StatusNotFound,
+			expectedError:  "not found",
 		},
 	}
 
@@ -294,7 +298,6 @@ func TestForgejoWebhook_MissingQueryParams(t *testing.T) {
 				logger:  logr.Discard(),
 			}
 
-			// Use an issues event with valid checkbox so we get past validation
 			payload := ForgejoEvent{
 				Action: "edited",
 				Issue: &ForgejoIssue{
@@ -384,6 +387,9 @@ func TestForgejoWebhook_RealWorldDependencyDashboard(t *testing.T) {
 
 	updateCalled := false
 	mockManager := &mockWebhookManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return []api.RenovateJob{makeTestRenovateJob("renovate-operator", "codefloe", payload.Repository.FullName)}, nil
+		},
 		updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 			updateCalled = true
 			if project != "example/renovate-config" {

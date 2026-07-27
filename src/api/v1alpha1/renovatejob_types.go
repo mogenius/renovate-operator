@@ -11,8 +11,6 @@ import (
 )
 
 // RenovateJobSpec defines the desired state of RenovateJob
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 type RenovateJobSpec struct {
 	// Cron schedule in standard cron format
 	Schedule string `json:"schedule"`
@@ -117,24 +115,22 @@ type RenovateJobSecurityContext struct {
 
 // configuration for webhooks that can be used to trigger renovate runs
 type RenovateWebhook struct {
-	Enabled        bool                    `json:"enabled"`
-	Authentication *RenovateWebhookAuth    `json:"authentication,omitempty"`
-	Forgejo        *RenovateWebhookForgejo `json:"forgejo,omitempty"`
+	Enabled        bool                 `json:"enabled"`
+	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
+	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
 }
 
-// Forgejo-specific webhook configuration
-type RenovateWebhookForgejo struct {
-	Sync *RenovateWebhookForgejoSync `json:"sync,omitempty"`
-}
-
-// configuration for syncing webhooks to Forgejo repos by topic
-type RenovateWebhookForgejoSync struct {
-	Enabled            bool                        `json:"enabled"`
-	WebhookURL         string                      `json:"webhookURL"`
-	Topic              string                      `json:"topic,omitempty"`
-	Events             []string                    `json:"events,omitempty"`
-	TokenSecretRef     *RenovateSecretKeyReference `json:"tokenSecretRef,omitempty"`
-	AuthTokenSecretRef *RenovateSecretKeyReference `json:"authTokenSecretRef,omitempty"`
+// configuration for syncing webhooks onto the repositories discovered for this
+// job.
+type RenovateWebhookSync struct {
+	// Flag to enable the automatic repo webhook sync
+	Enabled bool `json:"enabled"`
+	// Optional reference to a secret key holding the platform token used for
+	// webhook management. When not set, the job's platform token
+	// (spec.secretRef or spec.githubAppReference) is used. If key is empty,
+	// the common Renovate token key names are tried.
+	// +optional
+	SecretRef *RenovateSecretKeyReference `json:"secretRef,omitempty"`
 }
 
 // authentication configuration for webhooks
@@ -162,6 +158,10 @@ This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environmen
 type RenovateProvider struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint,omitempty"`
+	// PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
+	// When set, this overrides Endpoint for dashboard links while Endpoint continues to be
+	// used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+	PublicEndpoint string `json:"publicEndpoint,omitempty"`
 }
 
 // PRAction represents what happened to a PR in a Renovate run.
@@ -212,8 +212,9 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name                 string                `json:"name"`
-	LastRun              metav1.Time           `json:"lastRun"`
+	Name string `json:"name"`
+	// LastTransition records when the project most recently changed state.
+	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
 	Duration             *string               `json:"duration,omitempty"`
 	Status               RenovateProjectStatus `json:"status"`
 	Priority             int32                 `json:"priority,omitempty"`
@@ -246,6 +247,8 @@ type RenovateExecutionOptions struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.spec.schedule`
+// +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.provider.name`
 type RenovateJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

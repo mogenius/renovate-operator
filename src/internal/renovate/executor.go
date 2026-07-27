@@ -25,7 +25,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -133,6 +133,8 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 	span.SetAttributes(attribute.Int("renovate_operator.jobs.count", len(renovateJobs)))
 	log.FromContext(ctx).V(2).Info("Executing renovate executor loop for jobs", "count", len(renovateJobs))
 
+	metricStore.SetGlobalParallelismLimit(options.globalParallelism)
+
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
 	globalRunning, perJobRunning := e.countRunningProjects(renovateJobs)
@@ -148,10 +150,14 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 }
 
 // countRunningProjects returns the number of still-running projects globally and per job
-// (keyed by job fullname).
+// (keyed by job fullname). It also emits per-tick saturation gauges (running/scheduled
+// per job, global running) and the repositories-by-status gauge aggregated per job.
 func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
+
+	// Clear stale repositories_by_status series before repopulating for every job this tick.
+	metricStore.ResetRepositoriesByStatus()
 
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
@@ -159,15 +165,33 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 		key := jobId.Fullname()
 		perJobRunning[key] = 0
 
+		scheduled := 0
+		byResultStatus := make(map[string]int)
 		for j := range renovateJob.Status.Projects {
 			project := &renovateJob.Status.Projects[j]
-			if project.Status != api.JobStatusRunning {
-				continue
+			if project.RenovateResultStatus != nil {
+				byResultStatus[metricStore.NormalizeRepositoryStatus(*project.RenovateResultStatus)]++
 			}
-			globalRunning++
-			perJobRunning[key]++
+			switch project.Status {
+			case api.JobStatusRunning:
+				globalRunning++
+				perJobRunning[key]++
+			case api.JobStatusScheduled:
+				scheduled++
+			}
+		}
+
+		// Saturation gauges (set 0 when none so stale values are cleared).
+		metricStore.SetProjectsRunning(renovateJob.Namespace, renovateJob.Name, perJobRunning[key])
+		metricStore.SetProjectsScheduled(renovateJob.Namespace, renovateJob.Name, scheduled)
+
+		// repositories_by_status aggregated at the job level by persisted Renovate result.
+		for status, count := range byResultStatus {
+			metricStore.SetRepositoriesByStatus(renovateJob.Namespace, renovateJob.Name, status, count)
 		}
 	}
+
+	metricStore.SetGlobalRunningProjects(globalRunning)
 
 	return globalRunning, perJobRunning
 }
@@ -178,11 +202,12 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *batchv1.Job, project string, jobId crdManager.RenovateJobIdentifier) error {
 	var newStatus api.RenovateProjectStatus
 	var durationStr string
+	var duration time.Duration
 	if k8sJob == nil {
 		newStatus = api.JobStatusFailed
 	} else {
 		var err error
-		newStatus, durationStr, err = getJobStatus(k8sJob)
+		newStatus, durationStr, duration, err = getJobStatus(k8sJob)
 		if err != nil {
 			return err
 		}
@@ -238,6 +263,35 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 	metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, approvalsNeeded)
 	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
 
+	// Execution duration (Group A/E). Only emit when the k8s Job reported a StartTime.
+	if k8sJob != nil && k8sJob.Status.StartTime != nil {
+		seconds := duration.Seconds()
+		metricStore.ObserveJobDuration(ctx, jobId.Namespace, jobId.Name, "executor", newStatus, seconds)
+		metricStore.SetLastExecutionDuration(jobId.Namespace, jobId.Name, project, seconds)
+	}
+
+	// Failure breakdown by reason (Group A).
+	if newStatus == api.JobStatusFailed {
+		metricStore.IncJobFailure(ctx, jobId.Namespace, jobId.Name, "executor", jobFailureReason(k8sJob))
+	}
+
+	// Log issue counts (Group L).
+	if newProjectStatus.LogIssues != nil {
+		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "warn", newProjectStatus.LogIssues.WarnCount)
+		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "error", newProjectStatus.LogIssues.ErrorCount)
+	}
+
+	// Pull request activity (Group E/L).
+	if pr := newProjectStatus.PRActivity; pr != nil {
+		metricStore.AddPullRequestsCreated(ctx, jobId.Namespace, jobId.Name, pr.Created)
+		metricStore.AddPullRequestsMerged(ctx, jobId.Namespace, jobId.Name, pr.Automerged)
+		metricStore.AddPullRequestsUpdated(ctx, jobId.Namespace, jobId.Name, pr.Updated)
+		// Open managed PRs: automerged ones are closed, so exclude them.
+		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, pr.Created+pr.Updated+pr.NeedsApproval+pr.Unchanged)
+	} else {
+		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, 0)
+	}
+
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.AddEvent("project.completed", trace.WithAttributes(
 			semconv.K8SNamespaceName(jobId.Namespace),
@@ -269,8 +323,8 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 type scheduledCandidate struct {
 	project     api.ProjectStatus
 	renovateJob *api.RenovateJob
-	// jobOldestWait is the smallest LastRun time among all Scheduled projects in the same
-	// RenovateJob. Used as the fairness key: jobs whose projects have been waiting the longest
+	// jobOldestWait is the smallest LastTransition time among all Scheduled projects in the same
+	// RenovateJob. Used as the fairness key: jobs whose projects have been queued longest
 	// are dispatched first to prevent starvation.
 	jobOldestWait time.Time
 }
@@ -294,8 +348,8 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			if p.Status != api.JobStatusScheduled {
 				continue
 			}
-			if p.LastRun.Time.Before(oldestWait) {
-				oldestWait = p.LastRun.Time
+			if p.LastTransition.Time.Before(oldestWait) {
+				oldestWait = p.LastTransition.Time
 			}
 			candidates = append(candidates, scheduledCandidate{
 				project:     p,
@@ -362,6 +416,13 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
+		}
+
+		metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "executor")
+
+		// Queue wait: time the project spent in Scheduled before this dispatch.
+		if !project.LastTransition.IsZero() {
+			metricStore.ObserveQueueWait(ctx, renovateJob.Namespace, renovateJob.Name, time.Since(project.LastTransition.Time).Seconds())
 		}
 
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {

@@ -87,6 +87,10 @@ test-unit: generate
 test-helm:
     helm unittest ./charts/renovate-operator/ --file "unittests/**/*.yaml"
 
+# Execute the over-the-wire webhook signing-token integration test (see src/integration/README.md)
+test-integration:
+    cd src && go test -tags integration -count=1 -v ./integration/...
+
 # Execute golangci-lint
 golangci-lint: generate
     cd src && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run --config=.golangci.yml '--timeout=1h' ./...
@@ -103,7 +107,7 @@ jsInstall:
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js"
     echo "Bundling React 19..."
     BUNDLE_DIR=$(mktemp -d)
-    npm install --prefix "$BUNDLE_DIR" "react@19.2.7" "react-dom@19.2.7" esbuild --save=false --silent
+    npm install --prefix "$BUNDLE_DIR" "react@19.2.8" "react-dom@19.2.8" esbuild --save=false --silent
     echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" > "$BUNDLE_DIR/entry.mjs"
     "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/entry.mjs" \
         --bundle --format=esm --log-level=silent \

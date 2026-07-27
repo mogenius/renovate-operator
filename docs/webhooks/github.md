@@ -2,6 +2,8 @@
 
 The GitHub webhook integration allows the Renovate Operator to automatically trigger Renovate runs when specific actions occur on GitHub pull requests or issues. This is particularly useful for responding to Renovate's "rebase" checkbox interactions.
 
+Webhooks can be added to each repository automatically by the operator — see [Automatic Webhook Sync](./sync.md). The rest of this page covers the GitHub-specific receiver and manual setup.
+
 ## Configuration
 
 Configure the GitHub webhook in your RenovateJob:
@@ -27,7 +29,7 @@ spec:
 
 1. Go to your GitHub repository or organization settings
 2. Navigate to **Webhooks** → **Add webhook**
-3. Set the **Payload URL** to: `https://your-webhook-host/webhook/v1/github?namespace=renovate-operator&job=my-renovate-job`
+3. Set the **Payload URL** to: `https://your-webhook-host/webhook/v1/github`
 4. Set **Content type** to `application/json`
 5. Add your webhook secret as the bearer token
 6. Select individual events:
@@ -35,7 +37,15 @@ spec:
    - **Issues** (for Dependency Dashboard interactions)
 7. Ensure **Active** is checked
 
+The operator automatically finds the RenovateJob that owns the repository by matching the incoming repository name against discovered projects. If you have multiple RenovateJobs and want to target a specific one, append `namespace` and/or `job` as query parameters:
+
+```
+https://your-webhook-host/webhook/v1/github?namespace=renovate-operator&job=my-renovate-job
+```
+
 ### Query parameters
 
-- `namespace`: The Kubernetes namespace of your RenovateJob
-- `job`: The name of your RenovateJob resource
+| Parameter   | Required | Description                                                                 |
+| :---------- | :------: | :-------------------------------------------------------------------------- |
+| `namespace` |    no    | Kubernetes namespace to restrict the job search to.                         |
+| `job`       |    no    | Name of the RenovateJob to restrict the job search to.                      |
