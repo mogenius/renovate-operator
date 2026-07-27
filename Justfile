@@ -93,8 +93,9 @@ test-integration:
 
 # Serve the frontend with mock data for manual UI work, no cluster needed.
 # Override the fixture size with MOCK_JOB_COUNT / MOCK_PROJECTS_PER_JOB.
+# Runs on its own port so a dev server left running never collides with test-ui.
 ui-dev: jsInstall
-    cd tests/ui && MOCK_API=1 node staticFrontendServer.mjs
+    cd tests/ui && MOCK_API=1 STATIC_FRONTEND_PORT=8098 node staticFrontendServer.mjs
 
 # Execute the browser tests for the static frontend (see tests/ui/README.md)
 test-ui *args: jsInstall

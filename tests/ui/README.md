@@ -19,10 +19,13 @@ zero job cards. `just ui-dev` serves the real `src/static` with a mocked API
 instead, no cluster and no Go build:
 
 ```sh
-just ui-dev                                     # http://127.0.0.1:8099
+just ui-dev                                     # http://127.0.0.1:8098
 MOCK_JOB_COUNT=12 MOCK_PROJECTS_PER_JOB=40 just ui-dev   # a heavier dashboard
 BASE_PATH=/renovate just ui-dev                 # exercise the sub-path
 ```
+
+It listens on 8098, not the 8099 the specs use, so a dev server left running in
+another terminal cannot collide with `just test-ui`.
 
 Edit `src/static/index.html` and reload the browser; there is no build step.
 
