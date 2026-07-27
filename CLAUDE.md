@@ -36,6 +36,7 @@ src/
 └── webhook/               # HTTP webhook server (GitHub, GitLab, Forgejo triggers)
 charts/                    # Helm chart
 docs/                      # Documentation
+tests/ui/                  # Playwright browser tests for src/static (see tests/ui/README.md)
 ```
 
 ## Coding Conventions
@@ -115,6 +116,26 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 - Platform API base URLs are resolved in `internal/utils/platformEndpoints.go`
 - Labels follow the pattern `renovate-operator.mogenius.com/<key>`
 
+### 11. Frontend
+
+The UI in `src/static` is a client-side React app with no build step: `index.html`
+carries the whole dashboard as JSX and Babel transpiles it in the browser. There is
+no server-side rendering anywhere in the codebase — the only thing the Go server
+does to the markup is `serveHTML` (`ui/ui.go`) splicing in `<base href>` and
+`window.__BASE_PATH__`. Everything else arrives as JSON from `/api/v1/*`.
+
+- Never add files to `src/static` that are not meant to be served: the Dockerfile
+  copies the whole tree into the image
+- `just ui-dev` serves the frontend with a mocked `/api/v1` for manual UI work — no
+  cluster, no Go build, reload the browser after each edit
+- Browser tests live in `tests/ui` and drive the real `index.html` against a stubbed
+  API — run them with `just test-ui`, and prove a new spec catches the behaviour it
+  covers with `just test-ui-baseline HEAD`
+- `tests/ui/staticFrontendServer.mjs` mirrors `serveHTML`/`registerUiRoutes`; update
+  it when those handlers change
+- Prefer stable hooks (`aria-label`, `title`, a `data-testid`) over Tailwind class
+  selectors when new markup needs to be reachable from a test
+
 ## Technology Stack
 
 | Concern | Library |
@@ -144,6 +165,7 @@ Use the following commands to validate the code:
 - `just build`
 - `just test-unit`
 - `just generate`
+- `just test-ui` — only when `src/static` changed
 
 # Important
 
