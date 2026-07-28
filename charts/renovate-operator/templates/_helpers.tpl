@@ -92,7 +92,19 @@ not exposed.
 {{- end -}}
 {{- $url := "" -}}
 {{- if and $v.route.enabled $v.route.hostnames -}}
-{{- $url = printf "%s://%s" (default "https" $override) (index $v.route.hostnames 0) -}}
+{{- $lsScheme := "https" -}}
+{{- if and $v.route.listenerset.enabled $v.route.listenerset.protocol -}}
+{{- if eq $v.route.listenerset.protocol "HTTP" -}}
+{{- $lsScheme = "http" -}}
+{{- end -}}
+{{- end -}}
+{{- $url = printf "%s://%s" (default $lsScheme $override) (index $v.route.hostnames 0) -}}
+{{- else if and $v.route.listenerset.enabled $v.route.listenerset.hostname -}}
+{{- $lsScheme := "https" -}}
+{{- if and $v.route.listenerset.protocol (eq $v.route.listenerset.protocol "HTTP") -}}
+{{- $lsScheme = "http" -}}
+{{- end -}}
+{{- $url = printf "%s://%s" (default $lsScheme $override) $v.route.listenerset.hostname -}}
 {{- else if and $v.ingress.enabled $v.ingress.host -}}
 {{- $scheme := "http" -}}
 {{- if $v.ingress.tls -}}

@@ -128,6 +128,37 @@ route:
     # - timeouts:
     #     request: 30s
     #     backendRequest: 30s
+  # -- ListenerSet for the operator web UI (Gateway API v1.3+)
+  listenerset:
+    # -- whether to enable the ListenerSet
+    enabled: false
+    # -- labels to place on the ListenerSet
+    labels: {}
+    # -- annotations to place on the ListenerSet
+    annotations: {}
+    # -- parentRef pointing to the parent Gateway (required when enabled)
+    parentRef: {}
+    # -- name of the listener entry
+    listenerName: https
+    # -- port the listener should bind to
+    port: 443
+    # -- protocol for the listener (HTTP, HTTPS, TLS); used to derive the auth-redirect URL scheme
+    protocol: HTTPS
+    # -- hostname for the listener; defaults to the first entry in route.hostnames
+    hostname: ""
+    tls:
+      # -- whether to configure TLS on the listener
+      enabled: false
+      # -- TLS termination mode (Terminate or Passthrough)
+      mode: Terminate
+      # -- name of the TLS secret; defaults to <fullname>-tls
+      secretName: ""
+    # -- allowedRoutes configuration for the listener
+    allowedRoutes:
+      namespaces:
+        from: Same
+    # -- optional: fully custom listeners list; overrides all listener defaults above
+    listeners: []
 
 webhook:
   enabled: false
@@ -177,6 +208,37 @@ webhook:
       # - timeouts:
       #     request: 30s
       #     backendRequest: 30s
+    # -- ListenerSet for the webhook server (Gateway API v1.3+)
+    listenerset:
+      # -- whether to enable the ListenerSet
+      enabled: false
+      # -- labels to place on the ListenerSet
+      labels: {}
+      # -- annotations to place on the ListenerSet
+      annotations: {}
+      # -- parentRef pointing to the parent Gateway (required when enabled)
+      parentRef: {}
+      # -- name of the listener entry
+      listenerName: https
+      # -- port the listener should bind to
+      port: 443
+      # -- protocol for the listener (HTTP, HTTPS, TLS)
+      protocol: HTTPS
+      # -- hostname for the listener; defaults to the first entry in webhook.route.hostnames
+      hostname: ""
+      tls:
+        # -- whether to configure TLS on the listener
+        enabled: false
+        # -- TLS termination mode (Terminate or Passthrough)
+        mode: Terminate
+        # -- name of the TLS secret; defaults to <fullname>-webhook-tls
+        secretName: ""
+      # -- allowedRoutes configuration for the listener
+      allowedRoutes:
+        namespaces:
+          from: Same
+      # -- optional: fully custom listeners list; overrides all listener defaults above
+      listeners: []
 
 auth:
   # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)

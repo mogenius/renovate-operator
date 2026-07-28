@@ -101,7 +101,32 @@
         "group": { "type": "string" },
         "kind": { "type": "string" },
         "weight": { "type": "integer" },
-        "additionalRules": { "$ref": "#/$defs/objectList" }
+        "additionalRules": { "$ref": "#/$defs/objectList" },
+        "listenerset": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "labels": { "$ref": "#/$defs/stringMap" },
+            "annotations": { "$ref": "#/$defs/stringMap" },
+            "parentRef": { "type": "object" },
+            "listenerName": { "type": "string" },
+            "port": { "type": "integer" },
+            "protocol": { "type": "string", "enum": ["HTTP", "HTTPS", "TLS"] },
+            "hostname": { "type": "string" },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "mode": { "type": "string", "enum": ["Terminate", "Passthrough"] },
+                "secretName": { "type": "string" }
+              }
+            },
+            "allowedRoutes": { "type": "object" },
+            "listeners": { "$ref": "#/$defs/objectList" }
+          }
+        }
       }
     }
   },
