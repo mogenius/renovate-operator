@@ -1,0 +1,37 @@
+{{- if and .Values.webhook.route.listenerset.enabled .Values.webhook.enabled }}
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: ListenerSet
+metadata:
+  name: {{ include "renovate-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  {{- with .Values.webhook.route.listenerset.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.webhook.route.listenerset.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRef:
+    {{- toYaml .Values.webhook.route.listenerset.parentRef | nindent 4 }}
+  listeners:
+    {{- if .Values.webhook.route.listenerset.listeners }}
+    {{- toYaml .Values.webhook.route.listenerset.listeners | nindent 4 }}
+    {{- else }}
+    - name: {{ .Values.webhook.route.listenerset.listenerName }}
+      port: {{ .Values.webhook.route.listenerset.port }}
+      protocol: {{ .Values.webhook.route.listenerset.protocol }}
+      hostname: {{ tpl (.Values.webhook.route.listenerset.hostname | default (index .Values.webhook.route.hostnames 0 | default "")) $ }}
+      {{- if .Values.webhook.route.listenerset.tls.enabled }}
+      tls:
+        mode: {{ .Values.webhook.route.listenerset.tls.mode }}
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: {{ .Values.webhook.route.listenerset.tls.secretName | default (printf "%s-webhook-tls" (include "renovate-operator.fullname" .)) }}
+      {{- end }}
+      allowedRoutes:
+        {{- toYaml .Values.webhook.route.listenerset.allowedRoutes | nindent 8 }}
+    {{- end }}
+{{- end }}

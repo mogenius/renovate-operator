@@ -13,10 +13,16 @@ metadata:
     {{- toYaml .Values.webhook.route.annotations | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.webhook.route.parentRefs }}
   parentRefs:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- if .Values.webhook.route.parentRefs }}
+    {{- toYaml .Values.webhook.route.parentRefs | nindent 4 }}
+    {{- else if .Values.webhook.route.listenerset.enabled }}
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: {{ include "renovate-operator.fullname" . }}-webhook
+      namespace: {{ .Release.Namespace }}
+      sectionName: {{ .Values.webhook.route.listenerset.listenerName }}
+    {{- end }}
   {{- with .Values.webhook.route.hostnames }}
   hostnames:
     {{- toYaml . | nindent 4 }}
