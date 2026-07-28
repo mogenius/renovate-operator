@@ -94,6 +94,8 @@ spec:
 
 Jobs that leave `baseUrl` unset keep using `WEBHOOK_BASE_URL`, so mixing internal and public jobs in one operator needs the override only on the jobs that differ from the deployment-wide default. Sync fails for a job only when both `spec.webhook.baseUrl` and `WEBHOOK_BASE_URL` are empty.
 
+Changing `baseUrl` on a job that already has synced webhooks rewrites those hooks in place on the next discovery cycle — the host is not part of how the operator recognises its own hooks, so no duplicates are left behind.
+
 ## How sync works
 
 Webhook sync runs automatically at the end of each autodiscovery cycle (controlled by `spec.schedule`).

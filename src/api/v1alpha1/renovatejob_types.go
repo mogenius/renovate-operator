@@ -126,6 +126,7 @@ type RenovateWebhook struct {
 	// Set it when a platform needs a different hostname to reach the operator
 	// than the operator-wide default provides.
 	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
 	BaseURL        string               `json:"baseUrl,omitempty"`
 	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
 	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
