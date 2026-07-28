@@ -25,10 +25,12 @@ rules:
     resources: ["pods/log"]
     verbs: ["get", "list"]
 
-  # Allow reading secrets for webhook token and github app integration
+  # Read platform/webhook tokens by name; create and update the github app token
+  # and valkey url secrets. No list/watch: Secrets bypass the informer cache, so a
+  # single grant here would otherwise expose every secret value in the namespace.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "get", "list", "watch", "update", "delete"]
+    verbs: ["get", "create", "update"]
 
   {{- if gt (int .Values.replicaCount) 1 }}
   # Allow leader election via coordination leases

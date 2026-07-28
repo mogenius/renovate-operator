@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	api "renovate-operator/api/v1alpha1"
@@ -532,6 +534,14 @@ func main() {
 		LeaderElectionNamespace:       config.GetValue("POD_NAMESPACE"),
 		LeaderElectionReleaseOnCancel: true,
 		Cache:                         cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
+		// Secrets bypass the informer cache: a cached read needs list+watch on every
+		// Secret in the watched scope and keeps all of their values in memory, while
+		// the operator only ever reads a handful by name.
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&corev1.Secret{}},
+			},
+		},
 	}
 
 	mgr, err := ctrl.NewManager(cfg, mgrOptions)
