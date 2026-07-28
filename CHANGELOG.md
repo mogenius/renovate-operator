@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.5.0](https://github.com/mogenius/renovate-operator/compare/5.4.0...5.5.0) (2026-07-28)
+
+
+### Features
+
+* add priority class attribute support for pods ([1fc932a](https://github.com/mogenius/renovate-operator/commit/1fc932ab6b103808a2930f431a5740a1ee9971b0))
+* **helm:** add values schema ([28d8f88](https://github.com/mogenius/renovate-operator/commit/28d8f881234515dc2ae88a851bb4c249394b2a40))
+* **operator:** allow a per-job webhook base URL ([907bbcf](https://github.com/mogenius/renovate-operator/commit/907bbcf85be360ba1e4bcb94e0f6b073917b519f))
+* **operator:** validate the format of spec.webhook.baseUrl ([4d11cdd](https://github.com/mogenius/renovate-operator/commit/4d11cdd99833608286f5ae3755012eb13fe951f5))
+* **ui:** adding client side project search bar ([7602e4c](https://github.com/mogenius/renovate-operator/commit/7602e4c5798f2132ce582a999f399dd9bf967470)), closes [#537](https://github.com/mogenius/renovate-operator/issues/537)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.36.3 ([46acd8f](https://github.com/mogenius/renovate-operator/commit/46acd8f1f153f8815682fbb9a95d76f867f451ad))
+* **deps:** update module github.com/prometheus/client_golang to v1.24.1 ([0386cef](https://github.com/mogenius/renovate-operator/commit/0386cef00e197dcd9fc469fa481bc71b0a788d3d))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.3 ([0762855](https://github.com/mogenius/renovate-operator/commit/07628553761c4c96d847815d2442555594581b0b))
+* **operator:** match synced webhooks on job identity, not full URL ([adf5bf5](https://github.com/mogenius/renovate-operator/commit/adf5bf598244d9420cd0820d774851c5a8498dd7))
+* ran go fix against the codebase ([7b7fea9](https://github.com/mogenius/renovate-operator/commit/7b7fea9646377bd2096e5410c3b85d66faf31e53))
+* **s3:** add missing trailing slash to pathname [#542](https://github.com/mogenius/renovate-operator/issues/542) ([fe99fe3](https://github.com/mogenius/renovate-operator/commit/fe99fe3cd8281549244e782c01a680e2ea100a9e))
+
 ## [5.4.0](https://github.com/mogenius/renovate-operator/compare/5.3.0...5.4.0) (2026-07-23)
 
 
