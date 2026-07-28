@@ -4261,6 +4261,7 @@ spec:
                       WEBHOOK_BASE_URL environment variable, which is used when this is empty.
                       Set it when a platform needs a different hostname to reach the operator
                       than the operator-wide default provides.
+                    pattern: ^https?://[^?#]+$
                     type: string
                   enabled:
                     type: boolean
