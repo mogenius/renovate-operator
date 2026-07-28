@@ -3,14 +3,22 @@ Package webhookSync keeps repository webhooks on the Git platform in sync with
 the projects of a RenovateJob. It is provider-agnostic: all platform access
 goes through the gitProviderClients.GitProviderClient interface.
 
-Sync is stateless — the operator's hooks are identified by their delivery URL
-(which carries the job's namespace/name), so no bookkeeping is persisted
-between runs. The platform is the source of truth.
+Sync is stateless — the operator's hooks are identified by the platform
+endpoint path and the namespace/job parameters of their delivery URL, so no
+bookkeeping is persisted between runs. The platform is the source of truth.
+
+The host is deliberately excluded from that identity: it is configuration, not
+identity. A hook whose identity matches but whose delivery URL differs is one
+of ours that was written under a different base URL, and is reconciled in place
+rather than duplicated.
 */
 package webhookSync
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 
 	"renovate-operator/gitProviderClients"
@@ -67,10 +75,35 @@ func Sync(ctx context.Context, logger logr.Logger, client gitProviderClients.Git
 	wg.Wait()
 }
 
+// hookIdentity is the host-independent part of a delivery URL that marks a hook
+// as belonging to one RenovateJob: the platform endpoint path plus the
+// namespace/job parameters the webhook server routes on.
+type hookIdentity struct {
+	path      string
+	job       string
+	namespace string
+}
+
+// identityOf extracts the identity from a delivery URL. Values are compared
+// parsed rather than as raw strings, because query parameter ordering is only
+// guaranteed for URLs the operator built itself.
+func identityOf(rawURL string) (hookIdentity, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return hookIdentity{}, err
+	}
+	query := parsed.Query()
+	return hookIdentity{
+		path:      strings.TrimSuffix(parsed.Path, "/"),
+		job:       query.Get("job"),
+		namespace: query.Get("namespace"),
+	}, nil
+}
+
 // ensureWebhook makes sure the operator's hook exists on the project with the
-// desired configuration. An existing hook whose event subscription or active
-// state drifted is updated in place. The auth token is write-only on every
-// platform and cannot be drift-checked.
+// desired configuration. An existing hook of ours whose delivery URL, event
+// subscription or active state drifted is updated in place. The auth token is
+// write-only on every platform and cannot be drift-checked.
 func ensureWebhook(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, opts Options, project string) error {
 	desired := gitProviderClients.CreateWebhookOptions{
 		URL:       opts.WebhookURL,
@@ -78,21 +111,30 @@ func ensureWebhook(ctx context.Context, logger logr.Logger, client gitProviderCl
 		Active:    true,
 	}
 
+	wanted, err := identityOf(opts.WebhookURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse webhook URL: %w", err)
+	}
+
 	hooks, err := client.ListRepoWebhooks(ctx, project)
 	if err != nil {
 		return err
 	}
 	for _, hook := range hooks {
-		if hook.URL != opts.WebhookURL {
+		if found, err := identityOf(hook.URL); err != nil || found != wanted {
 			continue
 		}
-		if hook.Active && hook.EventsUpToDate {
+		if hook.URL == opts.WebhookURL && hook.Active && hook.EventsUpToDate {
 			return nil
 		}
 		if _, err := client.UpdateRepoWebhook(ctx, project, hook.ID, desired); err != nil {
 			return err
 		}
-		logger.Info("updated webhook whose configuration drifted", "repo", project, "hookID", hook.ID)
+		if hook.URL != opts.WebhookURL {
+			logger.Info("updated webhook whose delivery URL changed", "repo", project, "hookID", hook.ID, "from", hook.URL, "to", opts.WebhookURL)
+		} else {
+			logger.Info("updated webhook whose configuration drifted", "repo", project, "hookID", hook.ID)
+		}
 		return nil
 	}
 
@@ -104,9 +146,16 @@ func ensureWebhook(ctx context.Context, logger logr.Logger, client gitProviderCl
 	return nil
 }
 
-// removeWebhook deletes the operator's hook (identified by its delivery URL)
-// from the project, if present.
+// removeWebhook deletes the operator's hook from the project, if present. It
+// matches the same identity as ensureWebhook, so a hook left behind under an
+// earlier base URL is cleaned up rather than orphaned.
 func removeWebhook(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, webhookURL, project string) {
+	wanted, err := identityOf(webhookURL)
+	if err != nil {
+		logger.Error(err, "failed to parse webhook URL, skipping removal", "repo", project)
+		return
+	}
+
 	hooks, err := client.ListRepoWebhooks(ctx, project)
 	if err != nil {
 		// The repo may already be gone together with its hooks; anything else
@@ -116,7 +165,7 @@ func removeWebhook(ctx context.Context, logger logr.Logger, client gitProviderCl
 	}
 
 	for _, hook := range hooks {
-		if hook.URL != webhookURL {
+		if found, err := identityOf(hook.URL); err != nil || found != wanted {
 			continue
 		}
 		if err := client.DeleteRepoWebhook(ctx, project, hook.ID); err != nil {
