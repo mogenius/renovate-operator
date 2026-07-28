@@ -452,9 +452,15 @@ func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *ap
 }
 
 func webhookURLForJob(renovateJob *api.RenovateJob) (string, error) {
-	baseURL := config.GetValue("WEBHOOK_BASE_URL")
+	baseURL := ""
+	if renovateJob.Spec.Webhook != nil {
+		baseURL = renovateJob.Spec.Webhook.BaseURL
+	}
 	if baseURL == "" {
-		return "", fmt.Errorf("webhook delivery URL is unknown: expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
+		baseURL = config.GetValue("WEBHOOK_BASE_URL")
+	}
+	if baseURL == "" {
+		return "", fmt.Errorf("webhook delivery URL is unknown: set spec.webhook.baseUrl on the RenovateJob, or expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
 	}
 	platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 	path, err := utils.WebhookEndpointPath(platform)

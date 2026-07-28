@@ -44,6 +44,9 @@ type RenovateJobSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// Topology spread constraints for scheduling the resulting pod
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	// PriorityClassName for the resulting pod, used to set the pod's scheduling priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 	// Settings for the serviceaccount the renovate pod should use
 	ServiceAccount *RenovateJobServiceAccount `json:"serviceAccount,omitempty"`
 	// Metadata that shall be applied to the resulting pod
@@ -115,7 +118,16 @@ type RenovateJobSecurityContext struct {
 
 // configuration for webhooks that can be used to trigger renovate runs
 type RenovateWebhook struct {
-	Enabled        bool                 `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Externally reachable base URL of the operator's webhook server for this
+	// job, e.g. https://renovate.example.com. The platform-specific path is
+	// appended to it. Takes precedence over the operator-wide
+	// WEBHOOK_BASE_URL environment variable, which is used when this is empty.
+	// Set it when a platform needs a different hostname to reach the operator
+	// than the operator-wide default provides.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
+	BaseURL        string               `json:"baseUrl,omitempty"`
 	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
 	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
 }
@@ -212,7 +224,7 @@ type LogIssues struct {
 Status of a single project within a RenovateJob
 */
 type ProjectStatus struct {
-	Name     string                `json:"name"`
+	Name string `json:"name"`
 	// LastTransition records when the project most recently changed state.
 	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
 	Duration             *string               `json:"duration,omitempty"`

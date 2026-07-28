@@ -76,13 +76,33 @@ The Helm chart derives `WEBHOOK_BASE_URL` at deploy time from the webhook exposu
 
 Set `webhook.baseUrlScheme` to `http` or `https` to override the detected scheme, e.g. when TLS terminates at an external load balancer the chart cannot see.
 
+### Per-job base URL
+
+`WEBHOOK_BASE_URL` is operator-wide, but one operator instance commonly serves several platforms — one RenovateJob per platform — and those platforms do not always reach the operator on the same hostname. A platform running inside the same cluster can deliver to an internal-only address, while a hosted platform must reach a public one.
+
+Set the optional `spec.webhook.baseUrl` on a RenovateJob to give that job its own externally reachable base URL. It takes precedence over `WEBHOOK_BASE_URL`; the platform-specific path and the `?namespace=...&job=...` query parameters are appended to it as usual.
+
+```yaml
+spec:
+  webhook:
+    enabled: true
+    # this job's platform reaches the operator on an internal hostname
+    baseUrl: https://renovate-operator.renovate-operator.svc.cluster.local
+    sync:
+      enabled: true
+```
+
+Jobs that leave `baseUrl` unset keep using `WEBHOOK_BASE_URL`, so mixing internal and public jobs in one operator needs the override only on the jobs that differ from the deployment-wide default. Sync fails for a job only when both `spec.webhook.baseUrl` and `WEBHOOK_BASE_URL` are empty.
+
+Changing `baseUrl` on a job that already has synced webhooks rewrites those hooks in place on the next discovery cycle — the host is not part of how the operator recognises its own hooks, so no duplicates are left behind.
+
 ## How sync works
 
 Webhook sync runs automatically at the end of each autodiscovery cycle (controlled by `spec.schedule`).
 
 1. The operator takes the projects discovered for the RenovateJob as the desired repo list.
-2. For each repo, it checks for an existing webhook matching the delivery URL. If missing, it creates one; if the existing hook's events or active state drifted from the desired configuration (e.g. the hook subscribes to more events than the operator needs), it is updated in place. The auth token is write-only on every platform and cannot be drift-checked — it is only (re)applied when a hook is created or updated for another reason.
-3. Repos that dropped out of the project list since the previous discovery are cleaned up — the operator deletes its webhook (again identified by the delivery URL) on each of them. Disabling sync removes the operator's webhook from all of the job's repos on the next discovery cycle.
+2. For each repo, it looks for an existing hook belonging to this RenovateJob. A hook is recognised by the platform endpoint path plus the `namespace`/`job` parameters of its delivery URL; the host is deliberately not part of that identity. If no such hook exists, it creates one; if the hook's delivery URL, events or active state drifted from the desired configuration (e.g. the base URL changed, or the hook subscribes to more events than the operator needs), it is updated in place. The auth token is write-only on every platform and cannot be drift-checked — it is only (re)applied when a hook is created or updated for another reason.
+3. Repos that dropped out of the project list since the previous discovery are cleaned up — the operator deletes its webhook (matched on the same identity) on each of them. Disabling sync removes the operator's webhook from all of the job's repos on the next discovery cycle.
 4. Deleting the RenovateJob triggers the `renovate-operator.mogenius.com/webhook-cleanup` finalizer, which removes the operator's webhooks from all of the job's repos. Cleanup is best effort and never blocks deletion (e.g. when the platform secret is already gone).
 5. Ensure failures (e.g. missing permission to manage webhooks) are logged and retried on the next cycle; they never block discovery. A **removal** that fails is not retried — the orphaned hook is logged and must be removed manually (harmless otherwise: its deliveries are rejected by the operator).
 

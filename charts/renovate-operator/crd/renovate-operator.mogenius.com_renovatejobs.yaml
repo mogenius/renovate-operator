@@ -3212,6 +3212,10 @@ spec:
                 description: Maximum number of projects to process in parallel
                 format: int32
                 type: integer
+              priorityClassName:
+                description: PriorityClassName for the resulting pod, used to set
+                  the pod's scheduling priority.
+                type: string
               provider:
                 description: Renovate Provider Information to fill "RENOVATE_ENDPOINT"
                   and "RENOVATE_PLATFORM" environment variables in the renovate container
@@ -4253,6 +4257,16 @@ spec:
                     required:
                     - enabled
                     type: object
+                  baseUrl:
+                    description: |-
+                      Externally reachable base URL of the operator's webhook server for this
+                      job, e.g. https://renovate.example.com. The platform-specific path is
+                      appended to it. Takes precedence over the operator-wide
+                      WEBHOOK_BASE_URL environment variable, which is used when this is empty.
+                      Set it when a platform needs a different hostname to reach the operator
+                      than the operator-wide default provides.
+                    pattern: ^https?://[^?#]+$
+                    type: string
                   enabled:
                     type: boolean
                   sync:

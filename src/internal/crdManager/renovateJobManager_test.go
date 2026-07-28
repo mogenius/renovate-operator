@@ -298,12 +298,60 @@ func TestWebhookURLForJobUsesBaseURLAndPlatformPath(t *testing.T) {
 	}
 }
 
+func TestWebhookURLForJobPrefersSpecBaseURL(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = "https://renovate.internal.example/"
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://renovate.internal.example/webhook/v1/forgejo" {
+		t.Errorf("expected spec base URL to take precedence, got %s", url)
+	}
+}
+
+func TestWebhookURLForJobFallsBackToEnvBaseURL(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = ""
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://hooks.example.com/webhook/v1/forgejo" {
+		t.Errorf("expected fallback to WEBHOOK_BASE_URL, got %s", url)
+	}
+}
+
+func TestWebhookURLForJobUsesSpecBaseURLWithoutEnv(t *testing.T) {
+	setBaseURL(t, "")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = "https://renovate.internal.example"
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://renovate.internal.example/webhook/v1/forgejo" {
+		t.Errorf("expected spec base URL to be sufficient on its own, got %s", url)
+	}
+}
+
 func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
 	setBaseURL(t, "")
 
 	_, err := webhookURLForJob(syncJob("forgejo"))
 	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_BASE_URL") {
 		t.Fatalf("expected actionable error without base URL, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "spec.webhook.baseUrl") {
+		t.Errorf("expected error to mention the per-job override, got %v", err)
 	}
 }
 
