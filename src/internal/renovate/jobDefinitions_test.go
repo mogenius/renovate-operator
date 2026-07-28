@@ -2,6 +2,7 @@ package renovate
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -342,6 +343,63 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectTolerations(t, rj, nil)
 	expectTopologySpreadConstraints(t, rj, nil)
 	expectPriorityClassName(t, rj, "")
+}
+
+func TestNewJobs_Autodiscovery(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+	})
+
+	t.Run("executor disables autodiscovery without mutating extra env", func(t *testing.T) {
+		extraEnv := []v1.EnvVar{
+			{Name: "RENOVATE_AUTODISCOVER", Value: "true"},
+			{Name: "RENOVATE_REQUIRE_CONFIG", Value: "required"},
+		}
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec: api.RenovateJobSpec{
+				Image:    "img",
+				ExtraEnv: extraEnv,
+			},
+		}
+
+		djContainer := expectContainer(t, newDiscoveryJob(job, ""))
+		rjContainer := expectContainer(t, newRenovateJob(job, "org/configured-repository", ""))
+
+		if !reflect.DeepEqual(djContainer.Command, []string{"/bin/sh", "-c"}) {
+			t.Fatalf("expected discovery command to use the shell, got %v", djContainer.Command)
+		}
+		if len(djContainer.Args) != 1 || !strings.Contains(djContainer.Args[0], "renovate --autodiscover ") {
+			t.Fatalf("expected discovery job to run Renovate with autodiscovery, got %v", djContainer.Args)
+		}
+		if !reflect.DeepEqual(rjContainer.Command, []string{"renovate"}) {
+			t.Fatalf("expected executor command to run Renovate, got %v", rjContainer.Command)
+		}
+		expectedArgs := []string{"--autodiscover=false", "org/configured-repository"}
+		if !reflect.DeepEqual(rjContainer.Args, expectedArgs) {
+			t.Fatalf("expected executor args %v, got %v", expectedArgs, rjContainer.Args)
+		}
+
+		expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER", "true")
+		expectEnvVar(t, rjContainer, "RENOVATE_AUTODISCOVER", "true")
+		expectEnvVar(t, rjContainer, "RENOVATE_REQUIRE_CONFIG", "required")
+		if !reflect.DeepEqual(job.Spec.ExtraEnv, extraEnv) {
+			t.Fatalf("expected extra env to remain unchanged, got %v", job.Spec.ExtraEnv)
+		}
+	})
+
+	t.Run("executor disables autodiscovery when extra env omits it", func(t *testing.T) {
+		job := &api.RenovateJob{
+			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Spec:       api.RenovateJobSpec{Image: "img"},
+		}
+
+		container := expectContainer(t, newRenovateJob(job, "org/repository", ""))
+		expectedArgs := []string{"--autodiscover=false", "org/repository"}
+		if !reflect.DeepEqual(container.Args, expectedArgs) {
+			t.Fatalf("expected executor args %v, got %v", expectedArgs, container.Args)
+		}
+	})
 }
 
 func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {

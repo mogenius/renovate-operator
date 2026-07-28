@@ -148,7 +148,7 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
 	command := []string{"renovate"}
-	args := []string{project}
+	args := []string{"--autodiscover=false", project}
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
