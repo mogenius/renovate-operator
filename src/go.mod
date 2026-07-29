@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.30
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.0
 	github.com/coreos/go-oidc/v3 v3.20.0
-	github.com/netresearch/go-cron v0.15.0
+	github.com/netresearch/go-cron v0.15.1
 	github.com/valkey-io/valkey-go v1.0.76
 	go.opentelemetry.io/contrib/bridges/otellogr v0.19.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.69.0
