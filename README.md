@@ -118,29 +118,14 @@ Prerequisites: [`just`](https://github.com/casey/just) must be installed.
    just run
    ```
 
-**Working on the web UI**
-
-The UI is a client-side React app served from `src/static` with no build step, so
-it can be developed without a cluster:
-
-```sh
-just ui-dev
-```
-
-This serves the frontend with a mocked API on <http://127.0.0.1:8098>. Edit
-`src/static/index.html` and reload the browser. See
-[`tests/ui/README.md`](./tests/ui/README.md) for details.
-
 **Running Tests**
 
-| Command                 | Description                                          |
-|-------------------------|------------------------------------------------------|
-| `just test-unit`        | Run the unit test suite                              |
-| `just test-ui`          | Run the browser tests for the web UI                 |
-| `just test-ui-baseline` | Run the browser tests against another revision's UI  |
-| `just golangci-lint`    | Run the linter                                       |
-| `just check`            | Run all checks (tests + linters)                     |
-| `just generate`         | Regenerate CRDs                                      |
+| Command              | Description                      |
+|----------------------|----------------------------------|
+| `just test-unit`     | Run the unit test suite          |
+| `just golangci-lint` | Run the linter                   |
+| `just check`         | Run all checks (tests + linters) |
+| `just generate`      | Regenerate CRDs                  |
 
 [1]: https://github.com/renovatebot/renovate
 [2]: https://docs.mend.io/renovate/latest/
