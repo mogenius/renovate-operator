@@ -133,6 +133,24 @@
         );
       };
 
+      // Expansion state a job card opens in before the user has touched it.
+      // This is the single switch for the dashboard default.
+      const JOB_CARDS_EXPANDED_BY_DEFAULT = true;
+
+      // The jobs whose expansion the user changed away from the constant above --
+      // the only thing persisted. Storing the deviations instead of the expanded
+      // jobs is what keeps that constant meaningful: flipping it re-applies to
+      // every card nobody has touched, while explicit choices still survive.
+      const TOGGLED_JOB_CARDS_STORAGE_KEY = "toggledJobCards";
+
+      const jobStorageKey = (job) => `${job.namespace}/${job.name}`;
+
+      const isJobCardExpanded = (toggledJobCardKeys, jobKey) => (
+        toggledJobCardKeys.has(jobKey)
+          ? !JOB_CARDS_EXPANDED_BY_DEFAULT
+          : JOB_CARDS_EXPANDED_BY_DEFAULT
+      );
+
       const projectMatchesStatFilter = (project, filterKey) => {
         if (!filterKey) {
           return true;
@@ -558,6 +576,36 @@
           persistStatFilter(null);
         }, []);
 
+        // Job cards open according to JOB_CARDS_EXPANDED_BY_DEFAULT. This Set holds
+        // the jobs the user toggled *away* from that default -- not the expanded
+        // ones -- so a card the user collapsed stays collapsed across the 30s
+        // auto-refresh while untouched cards keep following the constant.
+        const [toggledJobCardKeys, setToggledJobCardKeys] = useState(() => {
+          try {
+            const stored = JSON.parse(localStorage.getItem(TOGGLED_JOB_CARDS_STORAGE_KEY) || '[]');
+            return new Set(Array.isArray(stored) ? stored : []);
+          } catch {
+            return new Set();
+          }
+        });
+
+        const persistToggledJobCardKeys = (keys) => {
+          try { localStorage.setItem(TOGGLED_JOB_CARDS_STORAGE_KEY, JSON.stringify([...keys])); } catch {}
+        };
+
+        const toggleJobCardExpansion = useCallback((jobKey) => {
+          setToggledJobCardKeys((current) => {
+            const next = new Set(current);
+            if (next.has(jobKey)) {
+              next.delete(jobKey);
+            } else {
+              next.add(jobKey);
+            }
+            persistToggledJobCardKeys(next);
+            return next;
+          });
+        }, []);
+
         const filteredJobs = useMemo(() => {
           if (!selectedStatFilter) {
             return jobs;
@@ -625,6 +673,42 @@
             0
           );
         }, [searchFilteredJobs]);
+
+        // Expand/collapse all only act on the jobs currently rendered, so neither
+        // the stat filter nor the search box silently changes the state of a job
+        // it hides.
+        const expandedVisibleJobCount = useMemo(
+          () => searchFilteredJobs.filter((job) => isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))).length,
+          [searchFilteredJobs, toggledJobCardKeys]
+        );
+
+        // Whether a bulk action has to add or remove keys depends on the default,
+        // so both buttons go through one helper stating the state they want.
+        const setExpansionForVisibleJobs = useCallback((expanded) => {
+          setToggledJobCardKeys((current) => {
+            const next = new Set(current);
+            searchFilteredJobs.forEach((job) => {
+              const jobKey = jobStorageKey(job);
+              if (expanded === JOB_CARDS_EXPANDED_BY_DEFAULT) {
+                next.delete(jobKey);
+              } else {
+                next.add(jobKey);
+              }
+            });
+            persistToggledJobCardKeys(next);
+            return next;
+          });
+        }, [searchFilteredJobs]);
+
+        const expandAllJobs = useCallback(
+          () => setExpansionForVisibleJobs(true),
+          [setExpansionForVisibleJobs]
+        );
+
+        const collapseAllJobs = useCallback(
+          () => setExpansionForVisibleJobs(false),
+          [setExpansionForVisibleJobs]
+        );
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -1141,10 +1225,35 @@
                     </div>
                   )}
 
+                  {searchFilteredJobs.length > 1 && (
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={expandAllJobs}
+                        disabled={expandedVisibleJobCount === searchFilteredJobs.length}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                        aria-label="Expand all job cards"
+                      >
+                        Expand all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={collapseAllJobs}
+                        disabled={expandedVisibleJobCount === 0}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                        aria-label="Collapse all job cards"
+                      >
+                        Collapse all
+                      </button>
+                    </div>
+                  )}
+
                   {searchFilteredJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
+                      expanded={isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))}
+                      onToggleExpanded={toggleJobCardExpansion}
                       onRunDiscovery={runDiscovery}
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
@@ -1564,14 +1673,16 @@
         );
       }
 
-      function JobCard({ job, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, onSaveExecutionOptions }) {
-        const [open, setOpen] = useState(true);
+      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, onSaveExecutionOptions }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
         });
         const STATUS_FILTERS = ["Onboarding Closed", "Disabled", "No Config"];
-        const jobKey = `${job.namespace}/${job.name}`;
+        const jobKey = jobStorageKey(job);
+        // Expansion is owned by App so the expand/collapse-all controls can drive it.
+        const open = expanded;
+        const toggleOpen = () => onToggleExpanded(jobKey);
         const [hiddenStatuses, setHiddenStatuses] = useState(() => {
           try {
             const stored = JSON.parse(localStorage.getItem(`hiddenStatuses:${jobKey}`) || '[]');
@@ -1737,7 +1848,7 @@
           <div className="relative bg-white dark:bg-slate-800 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200">
             <div
               className="flex flex-col gap-3 sm:gap-4 p-3 sm:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
-              onClick={() => setOpen(!open)}
+              onClick={toggleOpen}
             >
               {/* Title Section */}
               <div className="flex items-center gap-3 min-w-0">
