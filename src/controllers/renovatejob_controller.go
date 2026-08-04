@@ -2,6 +2,8 @@ package controllers
 
 import (
 	context "context"
+	stderrors "errors"
+	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
 	"renovate-operator/internal/renovate"
@@ -68,8 +70,14 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
 		r.resetOrphanedRunning(ctx, renovateJob)
 		createScheduler(logger, renovateJob, r)
-		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
-			logger.Error(err, "failed to ensure github app token")
+		if renovateJob.Spec.GithubAppReference != nil {
+			if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
+				logger.Error(err, "failed to ensure github app token")
+			}
+		} else if renovateJob.Spec.GithubEnterpriseAppReference != nil {
+			if _, err := r.GithubApp.EnsureTokensForEnterpriseApp(ctx, renovateJob); err != nil {
+				logger.Error(err, "failed to ensure enterprise github app tokens")
+			}
 		}
 		r.handleAnnotationTriggers(ctx, logger, renovateJob)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
@@ -148,14 +156,13 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 			return
 		}
 
-		_, err = reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, renovate.DiscoveryJobOptions{TriggerAllProjects: true})
-		if err != nil {
+		if err := dispatchDiscovery(ctx, logger, reconciler, currentJob, true); err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			logger.Error(err, "Failed to create discovery job for RenovateJob")
 			return
 		}
-		logger.V(2).Info("Discovery job created, completion handled by job controller")
+		logger.V(2).Info("Discovery job(s) created, completion handled by job controller")
 	}
 
 	// adding the schedule if it does not exist
@@ -166,6 +173,32 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		return
 	}
 	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
+}
+
+// dispatchDiscovery creates one discovery Job per GitHub Enterprise App installation
+// (minting/refreshing each installation's token first via EnsureTokensForEnterpriseApp),
+// or a single job for plain (non-enterprise) providers. triggerAllProjects is forwarded
+// to DiscoveryJobOptions unchanged, so callers keep their existing schedule-all semantics.
+func dispatchDiscovery(ctx context.Context, logger logr.Logger, reconciler *RenovateJobReconciler, job *api.RenovateJob, triggerAllProjects bool) error {
+	if job.Spec.GithubEnterpriseAppReference != nil {
+		secretNames, err := reconciler.GithubApp.EnsureTokensForEnterpriseApp(ctx, job)
+		if err != nil {
+			return fmt.Errorf("failed to ensure enterprise github app tokens: %w", err)
+		}
+		var errs []error
+		for _, secretName := range secretNames {
+			if _, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{
+				TriggerAllProjects: triggerAllProjects,
+				TokenSecretName:    secretName,
+			}); err != nil {
+				logger.Error(err, "Failed to create discovery job for installation", "secretName", secretName)
+				errs = append(errs, err)
+			}
+		}
+		return stderrors.Join(errs...)
+	}
+	_, err := reconciler.Discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: triggerAllProjects})
+	return err
 }
 
 // resetOrphanedRunning resets Running projects whose k8s Job no longer exists (e.g. deleted
@@ -232,7 +265,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 
 	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY] == "true" {
-		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *renovateJob, renovate.DiscoveryJobOptions{}); err != nil {
+		if err := dispatchDiscovery(ctx, logger, r, renovateJob, false); err != nil {
 			logger.Error(err, "failed to trigger discovery")
 		} else {
 			logger.V(1).Info("discovery triggered via annotation")

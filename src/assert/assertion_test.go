@@ -6,17 +6,14 @@ import (
 )
 
 func TestAssertT_PassingCondition(t *testing.T) {
-	// This should not fail
 	AssertT(t, true, "This should pass")
 }
 
 func TestAssertT_WithNoMessages(t *testing.T) {
-	// This should not fail
 	AssertT(t, true)
 }
 
 func TestAssertT_WithMultipleMessages(t *testing.T) {
-	// This should not fail
 	AssertT(t, true, "message 1", "message 2", 42)
 }
 
@@ -47,7 +44,6 @@ func TestTryStringify_Other(t *testing.T) {
 	}
 }
 
-// Test stringer implementation
 type testStringer struct {
 	value string
 }

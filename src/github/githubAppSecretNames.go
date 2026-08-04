@@ -10,15 +10,32 @@ import (
 func GetNameForGithubAppSecret(job *api.RenovateJob) string {
 	return GetNameForGithubAppSecretFromJobName(job.Name)
 }
-func GetNameForGithubAppSecretFromJobName(name string) string {
 
-	name = utils.KubernetesCompatibleName(name)
-	hash := sha256.Sum256([]byte(name))
+func GetNameForGithubAppSecretFromJobName(name string) string {
+	return githubAppSecretName(name, "")
+}
+
+func GetNameForGithubAppInstallationSecret(job *api.RenovateJob, installationID string) string {
+	return githubAppSecretName(job.Name, installationID)
+}
+
+// githubAppSecretName builds a Kubernetes-safe secret name of the form
+// {name}-github-app-{suffix}-{sha256[:4]} (or without -{suffix} when empty).
+// Total length is guaranteed ≤ 63 characters.
+func githubAppSecretName(rawName, suffix string) string {
+	name := utils.KubernetesCompatibleName(rawName)
+	hash := sha256.Sum256([]byte(name + suffix))
 	hashStr := fmt.Sprintf("%x", hash[:4])
 
-	if len(name) > 43 {
-		name = name[:43]
+	sep := ""
+	if suffix != "" {
+		sep = "-"
 	}
 
-	return fmt.Sprintf("%s-github-app-%s", name, hashStr)
+	maxLen := max(43-len(suffix)-len(sep), 1)
+	if len(name) > maxLen {
+		name = name[:maxLen]
+	}
+
+	return name + "-github-app-" + suffix + sep + hashStr
 }

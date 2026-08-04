@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	JOB_LABEL_TYPE        = "renovate-operator.mogenius.com/type"
-	JOB_LABEL_RENOVATEJOB = "renovate-operator.mogenius.com/renovatejob"
-	JOB_LABEL_PROJECT     = "renovate-operator.mogenius.com/project"
-	JOB_LABEL_GENERATION  = "renovate-operator.mogenius.com/generation"
+	JOB_LABEL_TYPE         = "renovate-operator.mogenius.com/type"
+	JOB_LABEL_RENOVATEJOB  = "renovate-operator.mogenius.com/renovatejob"
+	JOB_LABEL_PROJECT      = "renovate-operator.mogenius.com/project"
+	JOB_LABEL_GENERATION   = "renovate-operator.mogenius.com/generation"
+	JOB_LABEL_TOKEN_SECRET = "renovate-operator.mogenius.com/token-secret"
 	// JOB_ANNOTATION_PROJECT stores the original project name (may contain slashes etc.)
 	// Use this instead of JOB_LABEL_PROJECT when you need the exact CRD status key.
 	JOB_ANNOTATION_PROJECT = "renovate-operator.mogenius.com/project"
@@ -32,6 +33,9 @@ const (
 	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
 	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
 	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
+	// JOB_ANNOTATION_TOKEN_SECRET_NAME stores the per-installation token secret name used by a
+	// discovery Job, so ProcessDiscoveryJobResult can stamp it onto reconciled projects.
+	JOB_ANNOTATION_TOKEN_SECRET_NAME = "renovate-operator.mogenius.com/token-secret-name"
 
 	// RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY triggers a discovery run when set to "true".
 	// Removed from the RenovateJob once the discovery job is created.
@@ -56,6 +60,12 @@ type JobSelector struct {
 	Project         string
 	JobType         JobType
 	Namespace       string
+	// TokenSecretName scopes discovery job lookups/labels to one GitHub Enterprise
+	// App installation, so concurrent per-installation discovery jobs for the same
+	// RenovateJob don't shadow each other in the "already running" dedup check.
+	// Only applied when JobType == DiscoveryJobType. Empty = non-enterprise path,
+	// behaves exactly as before.
+	TokenSecretName string
 	// optional generation to filter by - if not provided, the most recent job will be returned
 	Generation *string
 }
@@ -102,6 +112,10 @@ func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSel
 	}
 	if selector.JobType == ExecutorJobType && selector.Project != "" {
 		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleProjectName(selector.Project)
+	}
+
+	if selector.JobType == DiscoveryJobType && selector.TokenSecretName != "" {
+		matcher[JOB_LABEL_TOKEN_SECRET] = utils.KubernetesCompatibleProjectName(selector.TokenSecretName)
 	}
 
 	if selector.Generation != nil && *selector.Generation != "" {
@@ -155,6 +169,10 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 			job.Annotations = make(map[string]string)
 		}
 		job.Annotations[JOB_ANNOTATION_PROJECT] = selector.Project
+	}
+
+	if selector.JobType == DiscoveryJobType && selector.TokenSecretName != "" {
+		job.Labels[JOB_LABEL_TOKEN_SECRET] = utils.KubernetesCompatibleProjectName(selector.TokenSecretName)
 	}
 
 	maps.Copy(job.Labels, utils.ConfiguredPodLabels(selector.RenovateJobName, selector.Project, string(selector.JobType), selector.Namespace))

@@ -94,7 +94,6 @@ func TestRenovateJob_DeepCopyObject(t *testing.T) {
 }
 
 func TestRenovateProjectStatus_Constants(t *testing.T) {
-	// Verify that the constants have the expected values
 	tests := []struct {
 		status RenovateProjectStatus
 		want   string

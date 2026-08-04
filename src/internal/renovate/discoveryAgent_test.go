@@ -24,7 +24,7 @@ import (
 // fakeJobManager is a minimal RenovateJobManager for discoveryAgent tests.
 type fakeJobManager struct {
 	getJobFn                     func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
+	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
@@ -34,13 +34,13 @@ func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace str
 	}
 	return &api.RenovateJob{}, nil
 }
-func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
+func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	if f.reconcileProjectsFn != nil {
-		return nil, f.reconcileProjectsFn(ctx, job, projects)
+		return nil, f.reconcileProjectsFn(ctx, job, projects, tokenSecretName)
 	}
 	return nil, nil
 }
-func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 
@@ -336,7 +336,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 		getJobFn: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
 		},
-		reconcileProjectsFn: func(ctx context.Context, job *api.RenovateJob, projects []string) error {
+		reconcileProjectsFn: func(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) error {
 			capturedProjects = projects
 			return nil
 		},

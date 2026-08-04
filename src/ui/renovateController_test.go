@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/github"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
@@ -79,7 +80,7 @@ func (m *mockRenovateJobManager) GetRenovateJob(ctx context.Context, name, names
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {
+func (m *mockRenovateJobManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 
@@ -87,7 +88,7 @@ func (m *mockRenovateJobManager) CleanupWebhooks(ctx context.Context, job crdman
 	return nil
 }
 
-func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) ([]string, error) {
+func (m *mockRenovateJobManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	if m.reconcileProjectsFunc != nil {
 		return nil, m.reconcileProjectsFunc(ctx, jobId, projects)
 	}
@@ -159,6 +160,32 @@ func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob
 func (m *mockDiscoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdmanager.RenovateJobIdentifier) error {
 	return nil
 }
+
+// Mock GithubAppToken
+type mockGithubAppToken struct {
+	ensureTokensForEnterpriseAppFunc func(ctx context.Context, job *api.RenovateJob) ([]string, error)
+}
+
+func (m *mockGithubAppToken) EnsureToken(ctx context.Context, job *api.RenovateJob) error {
+	return nil
+}
+
+func (m *mockGithubAppToken) CreateGithubAppTokenFromJob(job *api.RenovateJob) (string, error) {
+	return "", nil
+}
+
+func (m *mockGithubAppToken) CreateGithubAppToken(appID, installationID, pem, githubApi string) (string, error) {
+	return "", nil
+}
+
+func (m *mockGithubAppToken) EnsureTokensForEnterpriseApp(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	if m.ensureTokensForEnterpriseAppFunc != nil {
+		return m.ensureTokensForEnterpriseAppFunc(ctx, job)
+	}
+	return nil, nil
+}
+
+var _ github.GithubAppToken = (*mockGithubAppToken)(nil)
 
 func TestGetRenovateJobs_Success(t *testing.T) {
 	t.Skip("Skipping - needs getRenovateJobs handler to be updated to work with RenovateJobIdentifier interface")
@@ -469,6 +496,68 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
+}
+
+func TestRunDiscoveryForProject_EnterpriseApp(t *testing.T) {
+	const secretName = "job1-github-app-123-abcd"
+
+	var capturedOptions []renovate.DiscoveryJobOptions
+	mockManager := &mockRenovateJobManager{
+		getRenovateJobFunc: func(_ context.Context, _, _ string) (*api.RenovateJob, error) {
+			return &api.RenovateJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
+				Spec: api.RenovateJobSpec{
+					GithubEnterpriseAppReference: &api.GithubEnterpriseAppReference{},
+				},
+			}, nil
+		},
+	}
+
+	server := &Server{
+		manager:   mockManager,
+		discovery: &capturingDiscoveryAgent{capturedOptions: &capturedOptions},
+		githubApp: &mockGithubAppToken{
+			ensureTokensForEnterpriseAppFunc: func(_ context.Context, _ *api.RenovateJob) ([]string, error) {
+				return []string{secretName}, nil
+			},
+		},
+		logger: logr.Discard(),
+	}
+
+	body := map[string]string{"renovateJob": "job1", "namespace": "default"}
+	jsonBody, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/discovery/start", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.runDiscoveryForProject(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+	if len(capturedOptions) != 1 {
+		t.Fatalf("Expected 1 CreateDiscoveryJob call, got %d", len(capturedOptions))
+	}
+	if capturedOptions[0].TokenSecretName != secretName {
+		t.Errorf("Expected TokenSecretName %q, got %q", secretName, capturedOptions[0].TokenSecretName)
+	}
+}
+
+type capturingDiscoveryAgent struct {
+	capturedOptions *[]renovate.DiscoveryJobOptions
+}
+
+func (c *capturingDiscoveryAgent) GetDiscoveryJobStatus(_ context.Context, _ *api.RenovateJob) (api.RenovateProjectStatus, error) {
+	return api.JobStatusScheduled, nil
+}
+
+func (c *capturingDiscoveryAgent) CreateDiscoveryJob(_ context.Context, _ api.RenovateJob, opts renovate.DiscoveryJobOptions) (string, error) {
+	*c.capturedOptions = append(*c.capturedOptions, opts)
+	return "", nil
+}
+
+func (c *capturingDiscoveryAgent) ProcessDiscoveryJobResult(_ context.Context, _ *batchv1.Job, _ crdmanager.RenovateJobIdentifier) error {
+	return nil
 }
 
 // Additional mock types needed for authorization tests

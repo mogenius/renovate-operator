@@ -79,7 +79,7 @@ func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace
 	return nil, nil
 }
 
-func (m *mockWebhookManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {
+func (m *mockWebhookManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	return nil
 }
 
@@ -87,7 +87,7 @@ func (m *mockWebhookManager) CleanupWebhooks(ctx context.Context, job crdmanager
 	return nil
 }
 
-func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string) ([]string, error) {
+func (m *mockWebhookManager) ReconcileProjects(ctx context.Context, jobId *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
 	return nil, nil
 }
 

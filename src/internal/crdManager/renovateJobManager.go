@@ -55,14 +55,15 @@ type RenovateJobManager interface {
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD
-	// with the provided list. It returns the names of the projects that were
-	// removed (present before, absent now).
-	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error)
+	// with the provided list. It returns the projects that were removed
+	// (present before, absent now), including their last-known TokenSecretName
+	// so webhook cleanup can still resolve the right installation's client.
+	ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error)
 	// SyncWebhooks ensures the operator's webhook exists on every project of
 	// the RenovateJob and removes it from the given removed projects (the diff
 	// reported by ReconcileProjects). Stateless: hooks are identified by their
 	// delivery URL on the platform.
-	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error
+	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []api.ProjectStatus) error
 	// CleanupWebhooks removes the operator's webhook from every project of the
 	// RenovateJob. Called by the deletion finalizer.
 	CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error
@@ -284,77 +285,116 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 	})
 }
 
-func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
-
-	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
-		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
-		if err != nil {
-			r.logger.Error(err, "Failed to create git provider client for project filtering")
-		} else {
-			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
-			if err != nil {
-				r.logger.Error(err, "Failed to filter discovered repositories")
-			} else {
-				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
-				projects = newProjects
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
-			}
-		}
-	}
+func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string, tokenSecretName string) ([]api.ProjectStatus, error) {
+	projects = r.filterDiscoveredProjects(ctx, renovateJob, tokenSecretName, projects)
 
 	defer r.globalManagerLock(false)()
 
-	var removed []string
+	var removed []api.ProjectStatus
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
+		liveJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
 		if err != nil {
 			return err
 		}
-		// Build a set of current CRD projects
-		crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
-		for i, crdProject := range renovateJob.Status.Projects {
-			crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
+
+		liveJob.Status.Projects, removed = diffProjects(liveJob.Status.Projects, projects, tokenSecretName)
+		for _, p := range removed {
+			metricStore.DeleteProjectMetrics(liveJob.Namespace, liveJob.Name, p.Name)
 		}
 
-		// Build a set of new projects for quick lookup
-		newProjectSet := make(map[string]struct{}, len(projects))
-		for _, project := range projects {
-			newProjectSet[project] = struct{}{}
-		}
-
-		// Collect removed projects (for webhook cleanup) and drop their metrics
-		removed = removed[:0]
-		for projectName := range crdProjectSet {
-			if _, exists := newProjectSet[projectName]; !exists {
-				removed = append(removed, projectName)
-				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
-			}
-		}
-
-		newProjects := make([]api.ProjectStatus, 0, len(projects))
-		for _, project := range projects {
-			if crdProject, exists := crdProjectSet[project]; exists {
-				// add project that exist in the new project list
-				newProjects = append(newProjects, crdProject)
-			} else {
-				// add new project to the list
-				now := v1.Now()
-				newProjects = append(newProjects, api.ProjectStatus{
-					Name:           project,
-					Status:         api.JobStatusScheduled,
-					LastTransition: now,
-				})
-			}
-		}
-		renovateJob.Status.Projects = newProjects
-
-		return r.client.Status().Update(ctx, renovateJob)
+		return r.client.Status().Update(ctx, liveJob)
 	})
 	return removed, err
 }
 
-func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
+// filterDiscoveredProjects applies skipForks/skipPendingDeletion filtering to a
+// freshly discovered project list, if configured. Fails open: any error is
+// logged and the original, unfiltered list is returned — filtering must never
+// block discovery.
+func (r *renovateJobManager) filterDiscoveredProjects(ctx context.Context, renovateJob *api.RenovateJob, tokenSecretName string, projects []string) []string {
+	if !(renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) || r.gitProviderClientFactory == nil {
+		return projects
+	}
+
+	providerClient, err := r.filterClient(ctx, renovateJob, tokenSecretName)
+	if err != nil {
+		r.logger.Error(err, "Failed to create git provider client for project filtering")
+		return projects
+	}
+
+	filtered, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
+	if err != nil {
+		r.logger.Error(err, "Failed to filter discovered repositories")
+		return projects
+	}
+
+	r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(filtered))
+	metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
+	metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
+	return filtered
+}
+
+// inScope reports whether an existing CRD project is owned by the installation
+// identified by tokenSecretName. An empty tokenSecretName (legacy,
+// non-enterprise-app jobs run a single installation) is in scope for every
+// project, preserving the original full-overwrite behavior.
+func inScope(p api.ProjectStatus, tokenSecretName string) bool {
+	return tokenSecretName == "" || p.TokenSecretName == tokenSecretName
+}
+
+// diffProjects reconciles one installation's freshly discovered project names
+// against the CRD's current project list. It is pure — no I/O, no locking — so
+// the per-installation ownership rules below can be unit tested directly.
+//
+// Any project named in incoming is claimed by tokenSecretName going forward
+// (existing status is preserved; new projects start Scheduled). This is what
+// lets a rotated secret name take over a carried-over project, regardless of
+// which installation last owned it. Everything else in current is either
+// passed through untouched in all (it belongs to a different installation, so
+// this reconcile has no opinion on it) or reported in removed (it belonged to
+// this installation but was not rediscovered).
+func diffProjects(current []api.ProjectStatus, incoming []string, tokenSecretName string) (all, removed []api.ProjectStatus) {
+	currentByName := make(map[string]api.ProjectStatus, len(current))
+	for _, p := range current {
+		currentByName[p.Name] = p
+	}
+	incomingSet := make(map[string]struct{}, len(incoming))
+	for _, name := range incoming {
+		incomingSet[name] = struct{}{}
+	}
+
+	all = make([]api.ProjectStatus, 0, len(current)+len(incoming))
+	for _, name := range incoming {
+		if p, exists := currentByName[name]; exists {
+			if tokenSecretName != "" {
+				p.TokenSecretName = tokenSecretName
+			}
+			all = append(all, p)
+		} else {
+			all = append(all, api.ProjectStatus{
+				Name:            name,
+				Status:          api.JobStatusScheduled,
+				LastTransition:  v1.Now(),
+				TokenSecretName: tokenSecretName,
+			})
+		}
+	}
+
+	for name, p := range currentByName {
+		if _, stillIncoming := incomingSet[name]; stillIncoming {
+			continue
+		}
+		if inScope(p, tokenSecretName) {
+			removed = append(removed, p)
+		} else {
+			all = append(all, p)
+		}
+	}
+
+	return all, removed
+}
+
+func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []api.ProjectStatus) error {
 	unlock := r.globalManagerLock(true)
 	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
 	unlock()
@@ -371,16 +411,13 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 	// Reconcile toward the desired state: with sync enabled, hooks exist on all
 	// current projects and are removed from projects that dropped out; with
 	// sync disabled, hooks are removed from every project.
-	current := make([]string, 0, len(renovateJob.Status.Projects))
-	for _, project := range renovateJob.Status.Projects {
-		current = append(current, project.Name)
-	}
-	var desired, removed []string
+	current := renovateJob.Status.Projects
+	var desired, removed []api.ProjectStatus
 	if syncEnabled {
 		desired = current
 		removed = removedProjects
 	} else {
-		removed = append(current, removedProjects...)
+		removed = append(append([]api.ProjectStatus{}, current...), removedProjects...)
 	}
 	if len(desired) == 0 && len(removed) == 0 {
 		return nil
@@ -397,31 +434,27 @@ func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJo
 		return fmt.Errorf("failed to load renovate job: %w", err)
 	}
 
-	removed := make([]string, 0, len(renovateJob.Status.Projects))
-	for _, project := range renovateJob.Status.Projects {
-		removed = append(removed, project.Name)
-	}
+	removed := renovateJob.Status.Projects
 	if len(removed) == 0 {
 		return nil
 	}
 	return r.runWebhookSync(ctx, renovateJob, job, nil, removed)
 }
 
-// runWebhookSync builds the provider client and delivery URL, then runs one
-// webhook sync cycle over the given project sets.
-func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []string) error {
-	webhook := renovateJob.Spec.Webhook
+// webhookSyncGroup is one batch of projects that share the same effective
+// GitProviderClient (same installation token, or the job-level default).
+type webhookSyncGroup struct {
+	tokenSecretName string
+	desired         []string
+	removed         []string
+}
 
-	var gitProvider gitProviderClients.GitProviderClient
-	var err error
-	if webhook != nil && webhook.Sync != nil && webhook.Sync.SecretRef != nil {
-		gitProvider, err = r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, webhook.Sync.SecretRef)
-	} else {
-		gitProvider, err = r.gitProviderClientFactory.NewClient(ctx, renovateJob)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to create git provider client: %w", err)
-	}
+// runWebhookSync builds the provider client(s) and delivery URL, then runs one
+// webhook sync cycle per distinct installation token found across desired/removed.
+// Projects with an empty TokenSecretName (non-enterprise jobs) share a single
+// group using the existing webhook.sync.secretRef / job-default resolution.
+func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []api.ProjectStatus) error {
+	webhook := renovateJob.Spec.Webhook
 
 	rawURL, err := webhookURLForJob(renovateJob)
 	if err != nil {
@@ -447,8 +480,62 @@ func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *ap
 		WebhookURL: webhookURL,
 		AuthToken:  authToken,
 	}
-	webhookSync.Sync(ctx, r.logger.WithName("webhook-sync"), gitProvider, opts, desired, removed)
-	return nil
+
+	groups := make(map[string]*webhookSyncGroup)
+	groupFor := func(tokenSecretName string) *webhookSyncGroup {
+		g, exists := groups[tokenSecretName]
+		if !exists {
+			g = &webhookSyncGroup{tokenSecretName: tokenSecretName}
+			groups[tokenSecretName] = g
+		}
+		return g
+	}
+	for _, project := range desired {
+		g := groupFor(project.TokenSecretName)
+		g.desired = append(g.desired, project.Name)
+	}
+	for _, project := range removed {
+		g := groupFor(project.TokenSecretName)
+		g.removed = append(g.removed, project.Name)
+	}
+
+	var errs []error
+	for _, g := range groups {
+		gitProvider, err := r.webhookSyncClient(ctx, renovateJob, g.tokenSecretName)
+		if err != nil {
+			r.logger.Error(err, "failed to create git provider client for webhook sync group", "tokenSecretName", g.tokenSecretName)
+			errs = append(errs, err)
+			continue
+		}
+		webhookSync.Sync(ctx, r.logger.WithName("webhook-sync"), gitProvider, opts, g.desired, g.removed)
+	}
+	return errors.Join(errs...)
+}
+
+// webhookSyncClient resolves the GitProviderClient for one webhook sync group.
+// A non-empty tokenSecretName (per-installation project) always wins; otherwise
+// falls back to webhook.sync.secretRef or the job-level default, as before.
+func (r *renovateJobManager) webhookSyncClient(ctx context.Context, renovateJob *api.RenovateJob, tokenSecretName string) (gitProviderClients.GitProviderClient, error) {
+	if tokenSecretName != "" {
+		return r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, &api.RenovateSecretKeyReference{Name: tokenSecretName})
+	}
+	webhook := renovateJob.Spec.Webhook
+	if webhook != nil && webhook.Sync != nil && webhook.Sync.SecretRef != nil {
+		return r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, webhook.Sync.SecretRef)
+	}
+	return r.gitProviderClientFactory.NewClient(ctx, renovateJob)
+}
+
+// filterClient resolves the GitProviderClient used for skipForks/skipPendingDeletion
+// filtering during discovery reconciliation. A non-empty tokenSecretName (the
+// per-installation secret for this discovery batch) always wins over the job-level
+// default, so enterprise-app jobs filter each installation's repos with that
+// installation's token.
+func (r *renovateJobManager) filterClient(ctx context.Context, renovateJob *api.RenovateJob, tokenSecretName string) (gitProviderClients.GitProviderClient, error) {
+	if tokenSecretName != "" {
+		return r.gitProviderClientFactory.NewClientWithTokenRef(ctx, renovateJob, &api.RenovateSecretKeyReference{Name: tokenSecretName})
+	}
+	return r.gitProviderClientFactory.NewClient(ctx, renovateJob)
 }
 
 func webhookURLForJob(renovateJob *api.RenovateJob) (string, error) {

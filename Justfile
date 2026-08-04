@@ -2,6 +2,11 @@ export CGO_ENABLED := "0"
 
 set dotenv-load
 
+container_tool  := `command -v docker >/dev/null 2>&1 && echo docker || echo podman`
+container_build := if container_tool == "podman" { "build" } else { "buildx build" }
+image           := "ghcr.io/mogenius/renovate-operator-dev"
+tag             := `git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "dev"`
+
 [private]
 default:
     just --list --unsorted
@@ -25,14 +30,11 @@ build-linux-amd64: generate
 
 # Build docker image for target linux-amd64
 build-docker-linux-amd64:
-    #!/usr/bin/env sh
-    VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-    set -x
-    docker buildx build --platform=linux/amd64 -f Dockerfile \
+    {{container_tool}} {{container_build}} --platform=linux/amd64 -f Dockerfile \
         --build-arg GOOS=linux \
         --build-arg GOARCH=amd64 \
-        -t ghcr.io/mogenius/renovate-operator-dev:$VERSION-amd64 \
-        -t ghcr.io/mogenius/renovate-operator-dev:latest-amd64 \
+        -t {{image}}:{{tag}}-amd64 \
+        -t {{image}}:latest-amd64 \
         .
 
 # Build binary for target linux-arm64
@@ -41,14 +43,11 @@ build-linux-arm64: generate
 
 # Build docker image for target linux-arm64
 build-docker-linux-arm64:
-    #!/usr/bin/env sh
-    VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-    set -x
-    docker buildx build --platform=linux/arm64 -f Dockerfile \
+    {{container_tool}} {{container_build}} --platform=linux/arm64 -f Dockerfile \
         --build-arg GOOS=linux \
         --build-arg GOARCH=arm64 \
-        -t ghcr.io/mogenius/renovate-operator-dev:$VERSION-arm64 \
-        -t ghcr.io/mogenius/renovate-operator-dev:latest-arm64 \
+        -t {{image}}:{{tag}}-arm64 \
+        -t {{image}}:latest-arm64 \
         .
 
 # Build binary for target linux-armv7
@@ -57,15 +56,12 @@ build-linux-armv7: generate
 
 # Build docker image for target linux-armv7
 build-docker-linux-armv7:
-    #!/usr/bin/env sh
-    VERSION=$(git describe --tags $(git rev-list --tags --max-count=1))
-    set -x
-    docker buildx build --platform=linux/arm/v7 -f Dockerfile \
+    {{container_tool}} {{container_build}} --platform=linux/arm/v7 -f Dockerfile \
         --build-arg GOOS=linux \
         --build-arg GOARCH=arm \
         --build-arg GOARM=7 \
-        -t ghcr.io/mogenius/renovate-operator-dev:$VERSION-armv7 \
-        -t ghcr.io/mogenius/renovate-operator-dev:latest-armv7 \
+        -t {{image}}:{{tag}}-armv7 \
+        -t {{image}}:latest-armv7 \
         .
 
 # Install tools used by go generate
