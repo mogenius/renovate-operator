@@ -103,6 +103,39 @@ class DashboardPage {
     return this.page.getByLabel("Search projects by name");
   }
 
+  /** The bar holding the stat badges, the search box and the bulk controls. */
+  get toolbar() {
+    return this.page.getByTestId("dashboard-toolbar");
+  }
+
+  /** The logo link in the brand strip, which the toolbar is meant to outlive. */
+  get brandLogo() {
+    return this.page.getByAltText("Renovate Operator Logo");
+  }
+
+  async scrollToBottom() {
+    await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // The toolbar's shadow follows a scroll listener, so wait for it to catch up
+    // rather than asserting against the pre-scroll frame.
+    await expect(this.toolbar).toHaveAttribute("data-stuck", "true");
+  }
+
+  /** How far the element's top edge sits below the top of the viewport. */
+  async distanceFromViewportTop(locator) {
+    const box = await locator.boundingBox();
+    return box === null ? null : box.y;
+  }
+
+  /**
+   * A raw mouse click at the centre of where an element sits, delivered to whatever
+   * is topmost at that point. `locator.click()` would refuse the shot when something
+   * covers the element, which is exactly the case these assertions are about.
+   */
+  async clickTopmostElementAt(locator) {
+    const box = await locator.boundingBox();
+    await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
+
   /** One of the counters in the page header, e.g. "Open PRs" or "With Issues". */
   statBadge(label) {
     return this.page.getByRole("button", { name: new RegExp(`^${label}\\b`) });
@@ -155,11 +188,14 @@ class DashboardPage {
     return this.jobHeading(jobName).locator("xpath=../following-sibling::div[1]");
   }
 
+  /** The heading that is only on screen while the popover is open. */
+  executionOptionsPopover(jobName) {
+    return this.executionOptionsMenu(jobName).getByRole("heading", { name: "Hide Projects" });
+  }
+
   async openExecutionOptions(jobName) {
     await this.executionOptionsButton(jobName).click();
-    await expect(
-      this.executionOptionsMenu(jobName).getByRole("heading", { name: "Hide Projects" }),
-    ).toBeVisible();
+    await expect(this.executionOptionsPopover(jobName)).toBeVisible();
   }
 
   /**
@@ -188,9 +224,7 @@ class DashboardPage {
    */
   async closeExecutionOptions(jobName) {
     await this.page.mouse.click(5, 5);
-    await expect(
-      this.executionOptionsMenu(jobName).getByRole("heading", { name: "Hide Projects" }),
-    ).toBeHidden();
+    await expect(this.executionOptionsPopover(jobName)).toBeHidden();
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */

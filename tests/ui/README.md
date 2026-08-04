@@ -63,7 +63,8 @@ tests/ui/
 │   ├── dashboardFixture.mjs     # API stubs + dashboard page object
 │   └── renovateJobsFixture.mjs  # /api/v1/renovatejobs payload builders
 └── specs/
-    └── jobCardExpansion.spec.mjs
+    ├── jobCardExpansion.spec.mjs
+    └── stickyToolbar.spec.mjs
 ```
 
 `staticFrontendServer.mjs` mirrors `serveHTML` and `registerUiRoutes` in
