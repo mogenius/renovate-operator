@@ -679,6 +679,18 @@
 
         const clearSearch = useCallback(() => setSearchTerm(""), []);
 
+        // The toolbar is sticky at every scroll position; this only tells it when it
+        // has left the brand strip behind, so it can lift itself off the cards with a
+        // shadow instead of carrying one while it sits in place.
+        const [isToolbarStuck, setIsToolbarStuck] = useState(false);
+
+        useEffect(() => {
+          const updateToolbarStuckState = () => setIsToolbarStuck(window.scrollY > 0);
+          updateToolbarStuckState();
+          window.addEventListener("scroll", updateToolbarStuckState, { passive: true });
+          return () => window.removeEventListener("scroll", updateToolbarStuckState);
+        }, []);
+
         const searchFilteredJobs = useMemo(() => {
           const term = searchTerm.trim().toLowerCase();
           if (!term) return filteredJobs;
@@ -1058,76 +1070,154 @@
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-            <SiteHeader version={version} authInfo={authInfo}>
-              <StatBadge
-                label="All"
-                value={loading ? "—" : stats.total}
-                onClick={clearStatFilter}
-                selected={!selectedStatFilter}
-                title="Show all projects"
-              />
-              <StatBadge
-                label="Failed"
-                value={loading ? "—" : stats.failed}
-                valueClass="text-error"
-                onClick={() => toggleStatFilter("failed")}
-                selected={selectedStatFilter === "failed"}
-                title="Show only jobs with failed projects"
-              />
-              <StatBadge
-                label="Scheduled"
-                value={loading ? "—" : stats.scheduled}
-                valueClass="text-warning"
-                onClick={() => toggleStatFilter("scheduled")}
-                selected={selectedStatFilter === "scheduled"}
-                title="Show only jobs with scheduled projects"
-              />
-              <StatBadge
-                label="Running"
-                value={loading ? "—" : stats.running}
-                valueClass="text-primary"
-                onClick={() => toggleStatFilter("running")}
-                selected={selectedStatFilter === "running"}
-                title="Show only jobs with running projects"
-              />
-              <StatBadge
-                label="Completed"
-                value={loading ? "—" : stats.completed}
-                valueClass="text-success"
-                onClick={() => toggleStatFilter("completed")}
-                selected={selectedStatFilter === "completed"}
-                title="Show only jobs with completed projects"
-              />
-              <StatBadge
-                label="Open PRs"
-                value={loading ? "—" : stats.openPRs}
-                valueClass="text-blue-500"
-                borderClass="border-blue-200 dark:border-blue-700"
-                onClick={() => toggleStatFilter("openPRs")}
-                selected={selectedStatFilter === "openPRs"}
-                title="Show only jobs with open pull requests or merge requests"
-              />
-              <StatBadge
-                label="Pending"
-                value={loading ? "—" : stats.pending}
-                valueClass="text-orange-500"
-                borderClass="border-orange-200 dark:border-orange-700"
-                onClick={() => toggleStatFilter("pending")}
-                selected={selectedStatFilter === "pending"}
-                title="Show only jobs with updates awaiting approval"
-              />
-              <StatBadge
-                label="With Issues"
-                value={loading ? "—" : stats.withIssues}
-                valueClass="text-amber-500"
-                borderClass="border-amber-300 dark:border-amber-600"
-                onClick={() => toggleStatFilter("withIssues")}
-                selected={selectedStatFilter === "withIssues"}
-                title="Show only jobs with warnings or errors"
-              />
-            </SiteHeader>
+            {/* Brand strip only — everything the user filters and searches with
+                lives in the sticky toolbar below, so it stays reachable while
+                scrolling through the job cards. */}
+            <SiteHeader version={version} authInfo={authInfo} hasBottomMargin={false} />
 
-            <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
+            <div
+              data-testid="dashboard-toolbar"
+              data-stuck={isToolbarStuck ? "true" : "false"}
+              className={`sticky top-0 z-30 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 transition-shadow duration-200 ${
+                isToolbarStuck ? "shadow-md" : ""
+              }`}
+            >
+              <div className="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-2 sm:py-3 flex flex-col gap-2">
+                {/* One scrollable row rather than a wrapping grid: the toolbar has to
+                    stay short enough that it does not eat the viewport it is pinned to. */}
+                <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-0.5">
+                  <StatBadge
+                    label="All"
+                    value={loading ? "—" : stats.total}
+                    onClick={clearStatFilter}
+                    selected={!selectedStatFilter}
+                    title="Show all projects"
+                  />
+                  <StatBadge
+                    label="Failed"
+                    value={loading ? "—" : stats.failed}
+                    valueClass="text-error"
+                    onClick={() => toggleStatFilter("failed")}
+                    selected={selectedStatFilter === "failed"}
+                    title="Show only jobs with failed projects"
+                  />
+                  <StatBadge
+                    label="Scheduled"
+                    value={loading ? "—" : stats.scheduled}
+                    valueClass="text-warning"
+                    onClick={() => toggleStatFilter("scheduled")}
+                    selected={selectedStatFilter === "scheduled"}
+                    title="Show only jobs with scheduled projects"
+                  />
+                  <StatBadge
+                    label="Running"
+                    value={loading ? "—" : stats.running}
+                    valueClass="text-primary"
+                    onClick={() => toggleStatFilter("running")}
+                    selected={selectedStatFilter === "running"}
+                    title="Show only jobs with running projects"
+                  />
+                  <StatBadge
+                    label="Completed"
+                    value={loading ? "—" : stats.completed}
+                    valueClass="text-success"
+                    onClick={() => toggleStatFilter("completed")}
+                    selected={selectedStatFilter === "completed"}
+                    title="Show only jobs with completed projects"
+                  />
+                  <StatBadge
+                    label="Open PRs"
+                    value={loading ? "—" : stats.openPRs}
+                    valueClass="text-blue-500"
+                    borderClass="border-blue-200 dark:border-blue-700"
+                    onClick={() => toggleStatFilter("openPRs")}
+                    selected={selectedStatFilter === "openPRs"}
+                    title="Show only jobs with open pull requests or merge requests"
+                  />
+                  <StatBadge
+                    label="Pending"
+                    value={loading ? "—" : stats.pending}
+                    valueClass="text-orange-500"
+                    borderClass="border-orange-200 dark:border-orange-700"
+                    onClick={() => toggleStatFilter("pending")}
+                    selected={selectedStatFilter === "pending"}
+                    title="Show only jobs with updates awaiting approval"
+                  />
+                  <StatBadge
+                    label="With Issues"
+                    value={loading ? "—" : stats.withIssues}
+                    valueClass="text-amber-500"
+                    borderClass="border-amber-300 dark:border-amber-600"
+                    onClick={() => toggleStatFilter("withIssues")}
+                    selected={selectedStatFilter === "withIssues"}
+                    title="Show only jobs with warnings or errors"
+                  />
+                </div>
+
+                {(!loading || jobs.length > 0) && (
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="project-search" className="sr-only">Search projects</label>
+                    <div className="relative flex-1 min-w-0">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <svg className="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <input
+                        id="project-search"
+                        type="search"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
+                        placeholder="Search projects…"
+                        className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        aria-label="Search projects by name"
+                      />
+                      {searchTerm && (
+                        <button
+                          type="button"
+                          onClick={clearSearch}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+                          aria-label="Clear search"
+                        >
+                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    {searchFilteredJobs.length > 1 && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={expandAllJobs}
+                          disabled={expandedVisibleJobCount === searchFilteredJobs.length}
+                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                          aria-label="Expand all job cards"
+                        >
+                          {/* The short label keeps the search box usable on a phone,
+                              where this row has to share one line with it. */}
+                          <span className="sm:hidden">Expand</span>
+                          <span className="hidden sm:inline">Expand all</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={collapseAllJobs}
+                          disabled={expandedVisibleJobCount === 0}
+                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                          aria-label="Collapse all job cards"
+                        >
+                          <span className="sm:hidden">Collapse</span>
+                          <span className="hidden sm:inline">Collapse all</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8">
               {loading && jobs.length === 0 && (
                 <div className="space-y-6">
                   <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-gray-200 dark:border-slate-700 shadow-sm animate-pulse">
@@ -1178,61 +1268,6 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <div className="flex-1 min-w-0">
-                      <label htmlFor="project-search" className="sr-only">Search projects</label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                          <svg className="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input
-                          id="project-search"
-                          type="search"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
-                          placeholder="Search projects…"
-                          className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                          aria-label="Search projects by name"
-                        />
-                        {searchTerm && (
-                          <button
-                            type="button"
-                            onClick={clearSearch}
-                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
-                            aria-label="Clear search"
-                          >
-                            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                      <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={expandAllJobs}
-                          disabled={expandedVisibleJobCount === searchFilteredJobs.length}
-                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                          aria-label="Expand all job cards"
-                        >
-                          Expand all
-                        </button>
-                        <button
-                          type="button"
-                          onClick={collapseAllJobs}
-                          disabled={expandedVisibleJobCount === 0}
-                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                          aria-label="Collapse all job cards"
-                        >
-                          Collapse all
-                        </button>
-                      </div>
-                  </div>
-
                   {(selectedStatFilter || searchTerm.trim()) && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
                       <p className="text-sm text-gray-700 dark:text-slate-300">
@@ -1268,29 +1303,6 @@
                           </button>
                         )}
                       </div>
-                    </div>
-                  )}
-
-                  {searchFilteredJobs.length > 1 && (
-                    <div className="flex sm:hidden items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={expandAllJobs}
-                        disabled={expandedVisibleJobCount === searchFilteredJobs.length}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                        aria-label="Expand all job cards"
-                      >
-                        Expand all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={collapseAllJobs}
-                        disabled={expandedVisibleJobCount === 0}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                        aria-label="Collapse all job cards"
-                      >
-                        Collapse all
-                      </button>
                     </div>
                   )}
 
@@ -1951,7 +1963,10 @@
                   </button>
                   {showOptions && (
                     <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowOptions(false)} />
+                      {/* Above the sticky toolbar (z-30) so an open popover is
+                          dismissed by a click anywhere outside it, the filters
+                          included — the layering is cards < toolbar < this < menu. */}
+                      <div className="fixed inset-0 z-40" onClick={() => setShowOptions(false)} />
                       <div style={{ top: optionsPos.top, right: optionsPos.right }} className="fixed z-50 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Execution Options</h3>
                         <label className="flex items-center gap-2 mb-3 cursor-pointer">
