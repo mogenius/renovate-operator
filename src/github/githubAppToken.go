@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/utils"
+	"renovate-operator/metricStore"
 	"strings"
 	"time"
 
@@ -38,6 +40,7 @@ type githubappToken struct {
 	client     client.Client
 	httpClient *http.Client
 	logger     logr.Logger
+	policy     policy.Policy
 }
 
 func NewGitHubAppTokenCreator(client client.Client) *githubappToken {
@@ -52,11 +55,12 @@ func NewGitHubAppTokenCreatorWithHTTPClient(client client.Client, httpClient *ht
 	}
 }
 
-func NewGitHubAppTokenCreatorWithLogger(client client.Client, logger logr.Logger) *githubappToken {
+func NewGitHubAppTokenCreatorWithLogger(client client.Client, logger logr.Logger, p policy.Policy) *githubappToken {
 	return &githubappToken{
 		client:     client,
 		httpClient: http.DefaultClient,
 		logger:     logger,
+		policy:     p,
 	}
 }
 
@@ -119,6 +123,11 @@ func (g *githubappToken) readJobCredentials(ctx context.Context, job *api.Renova
 	secret := &corev1.Secret{}
 	if err = g.client.Get(ctx, types.NamespacedName{Name: ref.SecretName, Namespace: job.Namespace}, secret); err != nil {
 		return "", "", "", "", fmt.Errorf("failed to get github app secret %s: %w", ref.SecretName, err)
+	}
+
+	if err = g.policy.ValidateReferencedSecret(secret); err != nil {
+		metricStore.IncPolicyDenial(ctx, "secret_ref")
+		return "", "", "", "", err
 	}
 
 	pemBytes, exists := secret.Data[ref.PemSecretKey]

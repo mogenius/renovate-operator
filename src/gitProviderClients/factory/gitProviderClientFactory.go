@@ -12,8 +12,10 @@ import (
 	"renovate-operator/gitProviderClients/githubProvider"
 	"renovate-operator/gitProviderClients/gitlabProvider"
 	"renovate-operator/github"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
+	"renovate-operator/metricStore"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,10 +35,11 @@ type GitProviderClientFactory interface {
 
 type gitProviderClientFactory struct {
 	client client.Client
+	policy policy.Policy
 }
 
-func NewGitProviderClientFactory(c client.Client) GitProviderClientFactory {
-	return &gitProviderClientFactory{client: c}
+func NewGitProviderClientFactory(c client.Client, p policy.Policy) GitProviderClientFactory {
+	return &gitProviderClientFactory{client: c, policy: p}
 }
 
 // NewClientFactory creates a ClientFactory that reads platform credentials from
@@ -47,6 +50,12 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 	platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
 	if platform == "" {
 		return nil, fmt.Errorf("skipForks requires a provider to be configured")
+	}
+
+	// Checked before the token is read, so a denied endpoint never causes a
+	// credential to be loaded into memory.
+	if err := f.validateEndpoint(ctx, endpoint); err != nil {
+		return nil, err
 	}
 
 	token, err := readToken(ctx, f.client, job, platform)
@@ -68,6 +77,10 @@ func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, jo
 		return nil, fmt.Errorf("secret reference must have a name")
 	}
 
+	if err := f.validateEndpoint(ctx, endpoint); err != nil {
+		return nil, err
+	}
+
 	secret := &corev1.Secret{}
 	err := f.client.Get(ctx, client.ObjectKey{
 		Name:      ref.Name,
@@ -75,6 +88,11 @@ func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, jo
 	}, secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret %s: %w", ref.Name, err)
+	}
+
+	if err := f.policy.ValidateReferencedSecret(secret); err != nil {
+		metricStore.IncPolicyDenial(ctx, "secret_ref")
+		return nil, err
 	}
 
 	var token string
@@ -92,6 +110,19 @@ func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, jo
 	}
 
 	return buildClient(platform, endpoint, token)
+}
+
+// validateEndpoint bounds the host the platform client will authenticate to. An
+// empty endpoint is left to the platform client, which supplies its own default.
+func (f *gitProviderClientFactory) validateEndpoint(ctx context.Context, endpoint string) error {
+	if endpoint == "" {
+		return nil
+	}
+	if err := f.policy.ValidateDestination(endpoint, "spec.provider.endpoint"); err != nil {
+		metricStore.IncPolicyDenial(ctx, "destination")
+		return err
+	}
+	return nil
 }
 
 func buildClient(platform, endpoint, token string) (gitProviderClients.GitProviderClient, error) {

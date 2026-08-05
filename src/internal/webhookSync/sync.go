@@ -3,7 +3,7 @@ Package webhookSync keeps repository webhooks on the Git platform in sync with
 the projects of a RenovateJob. It is provider-agnostic: all platform access
 goes through the gitProviderClients.GitProviderClient interface.
 
-Sync is stateless — the operator's hooks are identified by the platform
+Sync is stateless: the operator's hooks are identified by the platform
 endpoint path and the namespace/job parameters of their delivery URL, so no
 bookkeeping is persisted between runs. The platform is the source of truth.
 
@@ -30,7 +30,7 @@ import (
 const maxConcurrentRequests = 10
 
 // Options configures a webhook sync run. The events a hook subscribes to are
-// not configurable — each provider applies its own fixed, minimal set.
+// not configurable: each provider applies its own fixed, minimal set.
 type Options struct {
 	// WebhookURL is the full delivery URL (including namespace/job query
 	// parameters). It identifies hooks managed by the operator.
@@ -42,7 +42,7 @@ type Options struct {
 // Sync ensures the operator's webhook exists on every project in desired and
 // removes the operator's webhook from the removed projects. Failures are
 // logged and skipped (fail open): a failed ensure is corrected on the next
-// cycle, a removal that fails is not retried — the orphaned hook is logged and
+// cycle, a removal that fails is not retried: the orphaned hook is logged and
 // must be cleaned up manually (its deliveries are rejected by the operator).
 func Sync(ctx context.Context, logger logr.Logger, client gitProviderClients.GitProviderClient, opts Options, desired []string, removed []string) {
 	var wg sync.WaitGroup

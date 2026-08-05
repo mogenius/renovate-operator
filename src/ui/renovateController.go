@@ -16,6 +16,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type RenovateJobInfo struct {
@@ -28,6 +30,11 @@ type RenovateJobInfo struct {
 	Platform         string                             `json:"platform,omitempty"`
 	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
 	ExecutionOptions *ExecutionOptions                  `json:"executionOptions,omitempty"`
+	// Accepted is false when the operator's policy refuses this job, in which case
+	// nothing runs for it and AcceptedMessage says what to fix. Jobs reconciled by an
+	// older operator have no condition yet and are reported as accepted.
+	Accepted        bool   `json:"accepted"`
+	AcceptedMessage string `json:"acceptedMessage,omitempty"`
 }
 
 type ExecutionOptions struct {
@@ -272,9 +279,13 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
+		accepted, acceptedMessage := acceptedState(renovateJob)
+
 		result = append(result, RenovateJobInfo{
 			Name:             renovateJob.Name,
 			Namespace:        renovateJob.Namespace,
+			Accepted:         accepted,
+			AcceptedMessage:  acceptedMessage,
 			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname()),
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
@@ -289,6 +300,15 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
+}
+
+// acceptedState reads the Accepted condition.
+func acceptedState(job *api.RenovateJob) (bool, string) {
+	condition := meta.FindStatusCondition(job.Status.Conditions, api.ConditionAccepted)
+	if condition == nil {
+		return true, ""
+	}
+	return condition.Status != metav1.ConditionFalse, condition.Message
 }
 
 func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {

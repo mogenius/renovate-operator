@@ -220,7 +220,9 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
 	expectServiceAccountSettings(t, dj, "test", new(true))
-	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	// The fixture overrides runAsUser only, so the expectation is the merge: the spec's
+	// uid wins and every other hardened default is still in place.
+	expectSecurityContext(t, dj, djContainer, mergedPodSecurityContext(15000), mergedContainerSecurityContext(16000))
 	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
 	expectAffinity(t, dj, job.Spec.Affinity)
@@ -250,7 +252,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
 	expectServiceAccountSettings(t, rj, "test", new(true))
-	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectSecurityContext(t, rj, rjContainer, mergedPodSecurityContext(15000), mergedContainerSecurityContext(16000))
 	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
 	expectAffinity(t, rj, job.Spec.Affinity)

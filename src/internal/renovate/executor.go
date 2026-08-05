@@ -16,6 +16,7 @@ import (
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/parser"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
@@ -57,13 +58,14 @@ type renovateExecutor struct {
 	manager   crdManager.RenovateJobManager
 	logStore  logStore.LogStore
 	logReader podLogs.PodLogReader
+	policy    policy.Policy
 }
 
 type executionOptions struct {
 	globalParallelism int
 }
 
-func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore, lr podLogs.PodLogReader) RenovateExecutor {
+func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobManager, client client.Client, logger logr.Logger, health health.HealthCheck, ls logStore.LogStore, lr podLogs.PodLogReader, p policy.Policy) RenovateExecutor {
 	return &renovateExecutor{
 		client:    client,
 		scheme:    scheme,
@@ -72,6 +74,7 @@ func NewRenovateExecutor(scheme *runtime.Scheme, manager crdManager.RenovateJobM
 		health:    health,
 		logStore:  ls,
 		logReader: lr,
+		policy:    p,
 	}
 }
 
@@ -329,18 +332,23 @@ type scheduledCandidate struct {
 	jobOldestWait time.Time
 }
 
-// dispatchScheduled collects all Scheduled projects across all RenovateJobs, sorts them for
-// fairness, and launches Kubernetes Jobs until the global or per-job parallelism limits are reached.
-func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs []api.RenovateJob, globalRunning int, perJobRunning map[string]int, options executionOptions) error {
-	if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
-		log.FromContext(ctx).V(2).Info("global parallelism limit reached, skipping dispatch", "limit", options.globalParallelism)
-		return nil
-	}
-
+// acceptedCandidates flattens the Scheduled projects of every RenovateJob that passes
+// the operator's policy into one candidate list, recording per-job oldest wait for the
+// fairness sort. A job the policy refuses is skipped on its own; its siblings still
+// dispatch.
+func (e *renovateExecutor) acceptedCandidates(ctx context.Context, renovateJobs []api.RenovateJob) []scheduledCandidate {
 	var candidates []scheduledCandidate
 
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
+
+		if err := e.policy.ValidateJob(renovateJob); err != nil {
+			metricStore.IncPolicyDenial(ctx, "destination")
+			log.FromContext(ctx).Error(err, "skipping RenovateJob refused by policy",
+				"renovateJob", renovateJob.Name, "namespace", renovateJob.Namespace)
+			continue
+		}
+
 		oldestWait := time.Now()
 		startIdx := len(candidates)
 
@@ -362,6 +370,19 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			candidates[k].jobOldestWait = oldestWait
 		}
 	}
+
+	return candidates
+}
+
+// dispatchScheduled collects all Scheduled projects across all RenovateJobs, sorts them for
+// fairness, and launches Kubernetes Jobs until the global or per-job parallelism limits are reached.
+func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs []api.RenovateJob, globalRunning int, perJobRunning map[string]int, options executionOptions) error {
+	if options.globalParallelism > 0 && globalRunning >= options.globalParallelism {
+		log.FromContext(ctx).V(2).Info("global parallelism limit reached, skipping dispatch", "limit", options.globalParallelism)
+		return nil
+	}
+
+	candidates := e.acceptedCandidates(ctx, renovateJobs)
 
 	// Primary sort: higher priority projects go first.
 	// Secondary sort: among equal-priority candidates, the RenovateJob that has been waiting longest goes first.

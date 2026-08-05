@@ -4,6 +4,7 @@ import (
 	context "context"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
@@ -44,6 +45,7 @@ type RenovateJobReconciler struct {
 	Scheduler scheduler.Scheduler
 	K8sClient client.Client
 	GithubApp github.GithubAppToken
+	Policy    policy.Policy
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -66,6 +68,12 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
 		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
+
+		// Gate before anything is scheduled or created.
+		if !r.acceptJob(ctx, logger, renovateJob) {
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		r.resetOrphanedRunning(ctx, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
@@ -84,6 +92,40 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Error(err, "Failed to get RenovateJob")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
+}
+
+// acceptJob validates the RenovateJob against the operator's policy and records the
+// outcome as the Accepted condition. It returns false when the job must not run.
+func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) bool {
+	jobID := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	err := r.Policy.ValidateJob(renovateJob)
+	if err == nil {
+		message := "RenovateJob satisfies the operator's policy"
+		if r.Policy.Disabled {
+			message = "the policy engine is disabled, so this RenovateJob was not checked"
+		}
+		if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, true, r.Policy.AcceptedReason(), message); condErr != nil {
+			logger.Error(condErr, "failed to record the Accepted condition")
+		}
+		return true
+	}
+
+	reason := policy.ReasonFor(err)
+	if reason == "" {
+		reason = policy.ReasonDestinationNotAllowed
+	}
+
+	metricStore.IncPolicyDenial(ctx, "destination")
+	logger.Error(err, "RenovateJob refused by policy, nothing will run for it until this is fixed",
+		"renovateJob", renovateJob.Name, "namespace", renovateJob.Namespace, "reason", reason)
+
+	r.Scheduler.RemoveSchedule(renovateJob.Namespace, renovateJob.Name)
+
+	if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, false, reason, err.Error()); condErr != nil {
+		logger.Error(condErr, "failed to record the Accepted condition")
+	}
+	return false
 }
 
 func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {

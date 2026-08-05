@@ -274,6 +274,18 @@ spec:
             - name: DEFAULT_ALLOWED_GROUPS
               value: {{ .Values.auth.defaultAllowedGroups | quote }}
             {{- end }}
+            - name: POLICY_ENABLED
+              value: {{ .Values.policy.enabled | quote }}
+            - name: POLICY_ALLOWED_HOSTS
+              value: {{ include "renovate-operator.policyAllowedHosts" . | quote }}
+            - name: POLICY_REQUIRE_SECRET_REF_OPT_IN
+              value: {{ .Values.policy.requireSecretRefOptIn | quote }}
+            - name: POLICY_ALLOWED_SERVICE_ACCOUNTS
+              value: {{ join "," .Values.policy.allowedServiceAccounts | quote }}
+            - name: POLICY_ALLOW_ROOT_USER
+              value: {{ .Values.policy.allowRootUser | quote }}
+            - name: POLICY_ALLOWED_IMAGES
+              value: {{ join "," .Values.policy.allowedImages | quote }}
             - name: GLOBAL_PARALLELISM_LIMIT
               value: {{ .Values.config.globalParallelismLimit | quote }}
             - name: POD_LABEL_TEMPLATES

@@ -56,6 +56,10 @@ func (m *mockWebhookManager) IsWebhookStandardSignatureValid(ctx context.Context
 	return true, nil
 }
 
+func (m *mockWebhookManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+	return nil
+}
+
 func (m *mockWebhookManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil
 }

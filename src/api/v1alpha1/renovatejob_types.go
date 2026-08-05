@@ -55,16 +55,28 @@ type RenovateJobSpec struct {
 	SecurityContext *RenovateJobSecurityContext `json:"securityContext,omitempty"`
 	// Configuration for webhooks to trigger renovate runs
 	Webhook *RenovateWebhook `json:"webhook,omitempty"`
-	// Additional volumes to mount in the renovate pods
+	// Additional volumes to mount in the renovate pods.
+	// hostPath is rejected: it would give the pod the node's filesystem
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:XValidation:rule="self.all(v, !has(v.hostPath))",message="hostPath volumes are not allowed on RenovateJob pods"
 	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
 	// Additional volume mounts for the renovate pods
+	// +kubebuilder:validation:MaxItems=64
 	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 	// Image pull secrets for the renovate pods
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// DNS Policy for the renovate pods
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
-	// Groups allowed to view this RenovateJob when authentication is enabled.
-	// If empty or not set, the job is hidden from all users.
+	// Groups allowed to view this RenovateJob in the UI, compared case-insensitively
+	// against the groups on the user's session. Only consulted when authentication is
+	// enabled; with authentication off, every job is visible to everyone.
+	//
+	// When this is empty the operator-wide DEFAULT_ALLOWED_GROUPS applies instead, and
+	// when that is empty too the job is visible to every authenticated user. Leaving
+	// both empty does not hide anything: restricting a job means setting one of them.
+	//
+	// A job that does list groups is hidden from everyone if the configured auth
+	// provider supplies no group claims, because no session can then match.
 	// +optional
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
 	// Configuration for the scratch volume
@@ -110,10 +122,18 @@ type GithubAppReference struct {
 	PemSecretKey            string `json:"pemSecretKey"`
 }
 
-// security context for either the pod or the container
+// security context for either the pod or the container.
+// Fields left unset keep the operator's hardened defaults; setting one field does not
+// discard the others.
 type RenovateJobSecurityContext struct {
-	Pod       *corev1.PodSecurityContext `json:"pod,omitempty"`
-	Container *corev1.SecurityContext    `json:"container,omitempty"`
+	Pod *corev1.PodSecurityContext `json:"pod,omitempty"`
+	// Container security context. privileged and allowPrivilegeEscalation are rejected
+	// outright: both hand the pod a route off the node, which no Renovate use case
+	// needs. Running as root is governed by the operator's policy.allowRootUser
+	// instead, since a custom image may legitimately need it.
+	// +kubebuilder:validation:XValidation:rule="!has(self.privileged) || !self.privileged",message="privileged containers are not allowed on RenovateJob pods"
+	// +kubebuilder:validation:XValidation:rule="!has(self.allowPrivilegeEscalation) || !self.allowPrivilegeEscalation",message="allowPrivilegeEscalation is not allowed on RenovateJob pods"
+	Container *corev1.SecurityContext `json:"container,omitempty"`
 }
 
 // configuration for webhooks that can be used to trigger renovate runs
@@ -168,11 +188,16 @@ Renovate Provider Information
 This will be used to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
 */
 type RenovateProvider struct {
-	Name     string `json:"name"`
+	Name string `json:"name"`
+	// Endpoint is the platform API base URL. Its host must be listed in the
+	// operator's policy.allowedHosts, otherwise the job is refused.
+	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
 	Endpoint string `json:"endpoint,omitempty"`
 	// PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
 	// When set, this overrides Endpoint for dashboard links while Endpoint continues to be
 	// used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+	// Its host must be listed in the operator's policy.allowedHosts.
+	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
 	PublicEndpoint string `json:"publicEndpoint,omitempty"`
 }
 
@@ -250,7 +275,19 @@ const (
 type RenovateJobStatus struct {
 	Projects         []ProjectStatus           `json:"projects,omitempty"`
 	ExecutionOptions *RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	// Conditions holds the observed state of the RenovateJob. The operator sets the
+	// "Accepted" condition to False when the job violates the operator's policy, with
+	// a reason and a message naming the value to fix; nothing runs while it is False.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
+
+// ConditionAccepted reports whether the RenovateJob passes the operator's policy.
+const ConditionAccepted = "Accepted"
 
 type RenovateExecutionOptions struct {
 	// If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
@@ -261,6 +298,8 @@ type RenovateExecutionOptions struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.spec.schedule`
 // +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.provider.name`
+// +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
+// +kubebuilder:printcolumn:name="Reason",type=string,priority=1,JSONPath=`.status.conditions[?(@.type=="Accepted")].reason`
 type RenovateJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -300,6 +339,10 @@ func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 		for i := range in.Status.Projects {
 			in.Status.Projects[i].DeepCopyInto(&out.Status.Projects[i])
 		}
+	}
+	if in.Status.Conditions != nil {
+		out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))
+		copy(out.Status.Conditions, in.Status.Conditions)
 	}
 }
 

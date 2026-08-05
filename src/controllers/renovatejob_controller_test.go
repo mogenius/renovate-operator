@@ -31,6 +31,7 @@ import (
 // fakeManager implements the full RenovateJobManager interface but only the
 // methods used by the reconciler are given meaningful behaviour in tests.
 type fakeManager struct {
+	acceptedCalls                []acceptedCall
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
@@ -61,6 +62,18 @@ func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p 
 	}
 	return nil
 }
+
+type acceptedCall struct {
+	accepted bool
+	reason   string
+	message  string
+}
+
+func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+	m.acceptedCalls = append(m.acceptedCalls, acceptedCall{accepted: accepted, reason: reason, message: message})
+	return nil
+}
+
 func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil
 }

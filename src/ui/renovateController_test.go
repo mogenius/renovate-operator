@@ -21,6 +21,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
 )
@@ -123,6 +124,10 @@ func (r *mockRenovateJobManager) IsWebhookSignatureValid(ctx context.Context, jo
 }
 func (r *mockRenovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	return true, nil
+}
+
+func (m *mockRenovateJobManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+	return nil
 }
 
 func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
@@ -647,6 +652,10 @@ func TestFilterRenovateJobsByGroups_WithDefaults(t *testing.T) {
 			wantJobs:             []string{},
 		},
 		{
+			// Group restrictions are opt-in: with nothing configured there is nothing to
+			// filter on, so the job stays visible. This is intended, not an oversight —
+			// making it fail closed would hide every job on any installation that has
+			// never set groups, so change it only deliberately.
 			name: "job without allowedGroups and no defaults - visible to all authenticated users",
 			jobs: []api.RenovateJob{
 				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
@@ -849,7 +858,7 @@ func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
 	server := &Server{
 		manager:   mockManager,
 		logger:    logr.Discard(),
-		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil),
+		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil, policy.Policy{}),
 		scheduler: &mockScheduler{},
 	}
 
