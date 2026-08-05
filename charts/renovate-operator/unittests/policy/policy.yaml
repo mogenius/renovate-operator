@@ -1,0 +1,227 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Policy guard rails
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+# Off by default so a fresh install works out of the box; enforcement is opt-in.
+- it: Leaves the policy engine off by default
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ENABLED
+        value: "false"
+
+- it: Can enable the policy engine
+  set:
+    policy.enabled: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ENABLED
+        value: "true"
+
+- it: Ships the public platform hosts by default, so SaaS installs need no action
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "api.github.com,github.com,gitlab.com,api.bitbucket.org,bitbucket.org,gitea.com,codeberg.org"
+
+- it: Joins a custom list into the comma-separated env value
+  set:
+    policy.allowedHosts:
+    - gitlab.example.com
+    - renovate.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "gitlab.example.com,renovate.example.com"
+
+- it: An empty list renders an empty value, which the operator treats as deny-all
+  set:
+    policy.allowedHosts: []
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: ""
+
+- it: Appends the derived webhook host, so webhook sync works on a complete install
+  set:
+    policy.allowedHosts:
+    - gitlab.example.com
+    webhook.enabled: true
+    webhook.ingress.enabled: true
+    webhook.ingress.host: webhook.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "gitlab.example.com,webhook.example.com"
+
+- it: Appends the explicitly configured webhook base URL host, without scheme or port
+  set:
+    policy.allowedHosts:
+    - gitlab.example.com
+    webhook.enabled: true
+    webhook.baseUrl: "https://hooks.example.com:8443/prefix"
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "gitlab.example.com,hooks.example.com"
+
+- it: Does not duplicate a webhook host that is already listed
+  set:
+    policy.allowedHosts:
+    - webhook.example.com
+    webhook.enabled: true
+    webhook.baseUrl: "https://webhook.example.com"
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "webhook.example.com"
+
+- it: Ignores the webhook base URL while the webhook server is disabled
+  set:
+    policy.allowedHosts:
+    - gitlab.example.com
+    webhook.enabled: false
+    webhook.baseUrl: "https://webhook.example.com"
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "gitlab.example.com"
+
+- it: Leaves out a schemeless base URL, which the operator could not resolve either
+  set:
+    policy.allowedHosts:
+    - gitlab.example.com
+    webhook.enabled: true
+    webhook.baseUrl: "webhook.example.com"
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_HOSTS
+        value: "gitlab.example.com"
+
+- it: Requires secret reference opt-in by default
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_REQUIRE_SECRET_REF_OPT_IN
+        value: "true"
+
+- it: Can disable the secret reference opt-in requirement
+  set:
+    policy.requireSecretRefOptIn: false
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_REQUIRE_SECRET_REF_OPT_IN
+        value: "false"
+
+- it: Allows only the namespace default service account by default
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_SERVICE_ACCOUNTS
+        value: ""
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOW_ROOT_USER
+        value: "false"
+
+- it: Joins the allowed service accounts into the env value
+  set:
+    policy.allowedServiceAccounts:
+    - renovate-workload-identity
+    - renovate-ci
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_SERVICE_ACCOUNTS
+        value: "renovate-workload-identity,renovate-ci"
+
+- it: Can permit running as root
+  set:
+    policy.allowRootUser: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOW_ROOT_USER
+        value: "true"
+
+- it: Ships both Docker Hub spellings and GHCR by default, since matching is literal
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_IMAGES
+        value: "renovate/renovate,docker.io/renovate/renovate,ghcr.io/renovatebot/renovate"
+
+- it: Joins a custom image allowlist, e.g. an internal mirror
+  set:
+    policy.allowedImages:
+    - registry.internal/mirror/renovate
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_IMAGES
+        value: "registry.internal/mirror/renovate"
+
+- it: An empty image allowlist renders empty, which the operator treats as deny-all
+  set:
+    policy.allowedImages: []
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: POLICY_ALLOWED_IMAGES
+        value: ""
+
+- it: Rejects a subtree entry at install time
+  set:
+    policy.allowedHosts:
+    - .example.com
+  asserts:
+  - failedTemplate: {}
+
+- it: Rejects a wildcard entry at install time
+  set:
+    policy.allowedHosts:
+    - "*.example.com"
+  asserts:
+  - failedTemplate: {}
+
+- it: Rejects an entry carrying a scheme or port
+  set:
+    policy.allowedHosts:
+    - https://gitlab.example.com
+  asserts:
+  - failedTemplate: {}

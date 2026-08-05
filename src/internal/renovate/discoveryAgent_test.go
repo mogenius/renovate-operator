@@ -10,6 +10,7 @@ import (
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -80,6 +81,10 @@ func (f *fakeJobManager) IsWebhookSignatureValid(ctx context.Context, job crdMan
 func (f *fakeJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	return true, nil
 }
+func (f *fakeJobManager) SetAcceptedCondition(ctx context.Context, job crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+	return nil
+}
+
 func (f *fakeJobManager) UpdateExecutionOptions(ctx context.Context, job crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
 	return nil
 }
@@ -149,7 +154,7 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
 
-	daIface := NewDiscoveryAgent(scheme, c, testLogger, nil, nil)
+	daIface := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{})
 	da := daIface.(*discoveryAgent)
 
 	tests := []struct {
@@ -195,7 +200,7 @@ func TestCreateDiscoveryJob(t *testing.T) {
 	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&batchv1.Job{}).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -247,7 +252,7 @@ func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -298,7 +303,7 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(runningJob).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	rj := &api.RenovateJob{}
 	rj.Name = "job1"
@@ -347,7 +352,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 			return `["a","b"]`, nil
 		},
 	}
-	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, lr).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, lr, policy.Policy{}).(*discoveryAgent)
 
 	// succeeded k8s Job (getJobStatus checks Conditions, not Succeeded counter)
 	k8sJob := &batchv1.Job{
@@ -373,7 +378,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 func TestProcessDiscoveryJobResult_NilJob(t *testing.T) {
 	scheme := runtime.NewScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	if err := da.ProcessDiscoveryJobResult(context.Background(), nil, crdManager.RenovateJobIdentifier{
 		Namespace: "ns",
@@ -389,7 +394,7 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 		t.Fatalf("failed to add batch scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil).(*discoveryAgent)
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	runningJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},

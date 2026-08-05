@@ -7,6 +7,7 @@ import (
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 	"renovate-operator/metricStore"
 	"sync"
@@ -51,9 +52,10 @@ type discoveryAgent struct {
 	manager   crdManager.RenovateJobManager
 	syncer    map[string]*sync.RWMutex
 	logReader podLogs.PodLogReader
+	policy    policy.Policy
 }
 
-func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader) DiscoveryAgent {
+func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader, p policy.Policy) DiscoveryAgent {
 	return &discoveryAgent{
 		client:    client,
 		logger:    logger,
@@ -61,6 +63,7 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		manager:   manager,
 		syncer:    make(map[string]*sync.RWMutex),
 		logReader: lr,
+		policy:    p,
 	}
 }
 
@@ -178,6 +181,13 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 }
 
 func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error) {
+	// Defence in depth: the reconciler refuses such a job up front, but discovery is
+	// also reachable from the UI and from an annotation trigger.
+	if err := e.policy.ValidateJob(&renovateJob); err != nil {
+		metricStore.IncPolicyDenial(ctx, "destination")
+		return "", fmt.Errorf("refusing to run discovery: %w", err)
+	}
+
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {

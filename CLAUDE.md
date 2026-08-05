@@ -25,7 +25,8 @@ src/
 ├── internal/
 │   ├── crdManager/        # CRUD on RenovateJob CRDs and Kubernetes Jobs
 │   ├── webhookSync/       # Provider-agnostic repo webhook sync (via GitProviderClient)
-│   ├── parser/            # Parses Renovate NDJSON logs: PR activity, config status, warnings/errors
+│   ├── policy/            # Install-wide guard rails on RenovateJob specs (allowed destinations)
+│   ├── parser/            # Extracts discovered repos and dependency issues from Renovate logs
 │   ├── renovate/          # Core engine: discovery, executor, job definitions
 │   ├── types/             # Shared internal types
 │   └── utils/             # Platform endpoints, job naming helpers
@@ -65,6 +66,7 @@ Never instantiate a provider client directly outside the factory.
 ### 3. Kubernetes Job–Based Execution
 
 Renovate runs are launched as Kubernetes Jobs (not bare Pods). This ensures:
+
 - TTL-based cleanup via `ttlSecondsAfterFinished`
 - Restart policies and retry semantics
 - Label-based selection (`renovate-operator.mogenius.com/job-type`, `job-name`, `generation`)
@@ -74,6 +76,7 @@ Job templates are built in `internal/renovate/jobDefinitions.go`. Extend templat
 ### 4. Configuration
 
 All configuration is environment-variable driven via the singleton in `config/`. Rules:
+
 - Declare new config values in the config schema (with `Optional`/`Required` and defaults)
 - Access config values via `config.GetValue()` — never read `os.Getenv` directly elsewhere
 - Keep the config schema the single source of truth for what the operator accepts
@@ -93,6 +96,7 @@ All configuration is environment-variable driven via the singleton in `config/`.
 ### 7. Logging
 
 Use the `logr.Logger` interface throughout (injected, never obtained globally). Follow these conventions:
+
 - `logger.Info(...)` for normal operational events
 - `logger.V(1).Info(...)` for verbose/debug output
 - `logger.Error(err, ...)` for errors with context
@@ -101,6 +105,7 @@ Use the `logr.Logger` interface throughout (injected, never obtained globally). 
 ### 8. Kubernetes Reconciler Pattern
 
 Controllers use `controller-runtime` reconciliation. In reconcilers:
+
 - Return `ctrl.Result{RequeueAfter: ...}` for scheduled requeues
 - Return `ctrl.Result{}, err` to trigger immediate retry on error
 - Keep reconcilers idempotent — rerunning the same reconcile must be safe
@@ -117,14 +122,14 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 
 ## Technology Stack
 
-| Concern | Library |
-|---|---|
-| Operator framework | `sigs.k8s.io/controller-runtime` |
-| Scheduling | `github.com/netresearch/go-cron` |
-| HTTP routing | `github.com/gorilla/mux` |
-| Metrics | `github.com/prometheus/client_golang` |
-| Logging | `github.com/go-logr/logr` + `go.uber.org/zap` |
-| OIDC auth | `github.com/coreos/go-oidc` + `golang.org/x/oauth2` |
+| Concern            | Library                                             |
+| ------------------ | --------------------------------------------------- |
+| Operator framework | `sigs.k8s.io/controller-runtime`                    |
+| Scheduling         | `github.com/netresearch/go-cron`                    |
+| HTTP routing       | `github.com/gorilla/mux`                            |
+| Metrics            | `github.com/prometheus/client_golang`               |
+| Logging            | `github.com/go-logr/logr` + `go.uber.org/zap`       |
+| OIDC auth          | `github.com/coreos/go-oidc` + `golang.org/x/oauth2` |
 
 ## Key Architectural Decisions
 
@@ -138,11 +143,19 @@ Health state is managed centrally in the `health/` package with thread-safe sett
 - **Global parallelism limit** — `GLOBAL_PARALLELISM_LIMIT` env var (Helm: `config.globalParallelismLimit`, default `0` = unlimited) caps total concurrent executor jobs across all RenovateJobs. Per-job `Spec.Parallelism` is still enforced as an additional gate.
 - **Anti-starvation via priority-then-oldest-wait sort** — in Pass 2, candidates are sorted first by `Priority` descending, then by the oldest `LastRun` time among Scheduled projects in their RenovateJob. Among equal-priority candidates, the job that has been waiting longest dispatches first, preventing starvation.
 - **UI sub-path (`BASE_PATH`)** — the UI, API, auth and health routes can be served under a sub-path so the operator can be co-hosted with other apps on one hostname. `BASE_PATH` env (Helm: top-level `basePath`, default `""` = root) is normalized in `ui.BasePath()` (leading slash, no trailing slash). `server.go` mounts all routes on a `PathPrefix(basePath)` subrouter and redirects `/` → base path; `ui.go` strips the prefix for static files and injects `<base href>` + `window.__BASE_PATH__` into `index.html`/`logs.html`; the frontend builds all runtime URLs from `BASE`; auth redirects use `withBase()` and cookies are scoped via `cookiePath()`. The Helm `basePath` also drives the Ingress/HTTPRoute path and is appended to auto-detected OAuth/OIDC redirect URLs (`renovate-operator.basePath` helper). OAuth/OIDC redirect URLs registered with the identity provider must include the sub-path.
+- **Policy engine master switch** — `policy.enabled` (env `POLICY_ENABLED`) turns every operator-side check into a no-op. It **defaults to off** so a fresh install works immediately — the onboarding and homelab case: get Renovate running first, secure the operator afterwards. Enforcement is opt-in and the operator logs a multi-line warning on every start while it is off. Note the asymmetry this creates: the `Policy` struct's zero value enforces (see below) while `FromConfig` returns a disabled policy, so tests are strict by default and production is not. The `Policy` field is spelled **`Disabled`**, not `Enabled`, so the zero value enforces — tests construct `Policy{}` everywhere and a permissive zero value would silently void enforcement. Short-circuits live in the three leaf checks (`ValidateDestination`, `ValidateReferencedSecret`, `ValidateJobSpec`); anything new that enforces must add one. When off, the reconciler records `Accepted=True` with reason `policy.ReasonPolicyDisabled` via `Policy.AcceptedReason()`, so the unsecured state is visible on every RenovateJob, and `main.go` logs a multi-line startup warning. It deliberately does **not** relax the CRD's CEL invariants (hostPath, privileged, allowPrivilegeEscalation) — those are API-server enforced — nor the config validation, so a malformed value still fails at startup.
+- **Destination policy (`internal/policy`)** — the operator acts on a RenovateJob with its own cluster credentials, so every URL taken from a spec (`spec.provider.endpoint`, `spec.provider.publicEndpoint`, `spec.webhook.baseUrl`, plus the `WEBHOOK_BASE_URL` fallback) is checked against `policy.allowedHosts` (env `POLICY_ALLOWED_HOSTS`) before use. Matching is on `url.Hostname()` and is **exact** — no subtree or wildcard form, since that would trust every name anyone can stand up under an internal domain; ports and paths are ignored. Malformed entries (leading dot, wildcard, scheme, port, path) are rejected by `policy.ValidateAllowedHosts` at startup and by the chart's values schema at install time, so a mistyped entry never degrades into silently matching nothing. An empty list denies everything — the chart ships the public platform hosts as its default, so a raw-manifest deployment fails closed while a stock chart install does not. The chart also derives one entry: `renovate-operator.policyAllowedHosts` appends the hostname of the operator's own webhook base URL (`webhook.baseUrl`, or the value `renovate-operator.webhookBaseUrl` derives from `webhook.ingress`/`webhook.route`) whenever `webhook.enabled` is set, deduplicated, because that URL is chart configuration and therefore already admin-approved — requiring it twice only made webhook sync fail on an otherwise complete install. A schemeless override contributes nothing, matching what `url.Hostname()` would resolve. A per-job `spec.webhook.baseUrl` on a different host still needs an explicit entry. `Policy` is resolved once in `main.go` and injected (factory, manager); checks never read the config singleton themselves. New URL-valued spec fields belong in `Policy.ValidateJobDestinations`. Denials increment `renovate_operator_policy_denials_total{check}` (`check="destination"`/`"secret_ref"`; the label never carries the offending value).
+- **Policy refusals are visible on the resource** — `Policy.ValidateDestination`/`ValidateReferencedSecret` return a `*policy.Violation` carrying a CamelCase `Reason` (`policy.ReasonFor(err)` extracts it through wrapping), so callers report a reason without parsing messages. The reconciler gates every RenovateJob in `acceptJob` before scheduling anything and records the outcome as the `Accepted` status condition (`api.ConditionAccepted`) via `RenovateJobManager.SetAcceptedCondition` — which **skips the API write when `meta.SetStatusCondition` reports no change**, otherwise the 1-minute requeue churns `resourceVersion` forever. A job that becomes refused also has its schedule removed, or the previously registered cron entry keeps firing. The reconciler is the only condition writer; `CreateDiscoveryJob` and the executor's `acceptedCandidates` refuse independently as defence in depth (the executor skips only the offending job) but never touch status. The UI reads the condition in `ui.acceptedState` — **absent condition means accepted**, so an un-reconciled job is not shown as halted — and `static/index.html` renders a halted banner plus disabled run controls.
+- **Secret-reference opt-in (`internal/policy`)** — any secret the operator reads at a _caller-chosen_ key must carry `renovate-operator.mogenius.com/allow-ref: "true"` (`policy.AllowRefLabel`), enforced by `Policy.ValidateReferencedSecret` after the Get and before any key is read, at all three such sites: `NewClientWithTokenRef` (`spec.webhook.sync.secretRef`), `getRenovateJobTokens` (`spec.webhook.authentication.secretRef`) and `readJobCredentials` (`spec.githubAppReference`, three keys). `spec.secretRef` is exempt — it is only read at Renovate's well-known token key names, so it is not an arbitrary-key reference. Toggle via `policy.requireSecretRefOptIn` (env `POLICY_REQUIRE_SECRET_REF_OPT_IN`, default true); the `Policy` field is spelled `AllowUnlabeledSecretRefs` so the zero value is the strict one. Any new code that reads a secret at a key taken from the spec must call `ValidateReferencedSecret` first. Two asymmetries: webhook _removal_ is never gated (the delivery URL is matching input, and a hook written under a hostile base URL must stay deletable), and webhook sync fails open (a denial logs and skips, never blocking discovery).
+- **Pod privilege containment** — split by whether a rule needs an opt-out. Absolute invariants live in the CRD as CEL (`+kubebuilder:validation:XValidation`) so the API server rejects them at apply time and no install can switch them off: `hostPath` in `spec.extraVolumes`, plus `privileged` and `allowPrivilegeEscalation` on `spec.securityContext.container`. `MaxItems=64` on both volume lists bounds the CEL cost estimate. Because CEL is GA from 1.29, `Chart.yaml` declares `kubeVersion: ">=1.29.0-0"` — on an older API server the rules would be silently ignored. Tunable rules live in `Policy.ValidateJobSpec`: `policy.allowedServiceAccounts` (empty = namespace default only, which is what closes operator-SA impersonation) and `policy.allowRootUser`. `Policy.ValidateJob` is the single gate combining destinations and spec — new whole-spec checks belong there so every gate site picks them up at once.
+- **Image allowlist** — `spec.image` must match a `policy.allowedImages` entry (env `POLICY_ALLOWED_IMAGES`), checked in `Policy.validateImage`. Matching is **exact on the repository**: no prefix or subpath form, so an entry never authorises a repository nobody listed (`ghcr.io/renovatebot` does not imply `ghcr.io/renovatebot/renovate`). `parseImageRef` only strips the tag and digest — the tag colon is the one after the last `/`, so a registry port is not mistaken for a tag — and deliberately does **not** resolve implicit registries: every normalization rule is a chance to map an unexpected input onto an entry. The consequence is that each spelling in use must be listed, which is why the chart ships both `renovate/renovate` and `docker.io/renovate/renovate`. Unparseable references are refused, so the failure direction is always "denied". `TestParseImageRef` is the contract for that parser; keep the table green. Empty denies everything; the chart ships the two official repositories. An empty `spec.image` is left to Kubernetes rather than refused. This is the weakest of the pod controls on its own — the official image is a Node runtime whose config `spec.extraEnv` controls — so treat it as raising cost, not closing a hole.
+- **Hardened securityContext is merged, not replaced** — `getPodSecurityContext`/`getContainerSecurityContext` (`internal/renovate/jobDefinitions.go`) deep-copy the spec and fill in only the fields it left unset from `hardenedPodSecurityContext`/`hardenedContainerSecurityContext`. Overriding one field must not silently drop `runAsNonRoot`, the seccomp profile or `drop: ALL`. The deep copy matters: the spec comes from the informer cache, so returning it directly would alias — and filling defaults would mutate — the shared object.
 - **Chart values are schema-validated** — `charts/renovate-operator/values.schema.json` (JSON Schema draft 2020-12, requires Helm v4+) is the contract for chart values. The root object and every operator-owned block are `additionalProperties: false`, so typos fail at install time; enums mirror what the operator accepts (`crd.mode`, `image.pullPolicy`, `config.logStorage.mode`, `logging.*`, `telemetry.protocol`, the `*Scheme` values). Pass-through blocks stay permissive (`valkey` for the subchart, `resources`/`affinity`/`securityContext.pod|container`, `metrics.dashboard.grafanaDashboard`). Every new value added to `values.yaml` must be declared here as well, otherwise the chart rejects it.
 
 # Verification
 
 Use the following commands to validate the code:
+
 - `just build`
 - `just test-unit`
 - `just test-helm`

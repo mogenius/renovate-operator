@@ -34,7 +34,7 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *"
-  discoveryFilters: 
+  discoveryFilters:
     - "Group1/*"
   image: renovate/renovate:43.104.1
   secretRef: "renovate-secret"
@@ -80,7 +80,7 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *"
-  discoveryFilters: 
+  discoveryFilters:
     - "Group1/*"
   image: renovate/renovate:43.104.1
   secretRef: "renovate-secret"
@@ -92,6 +92,16 @@ spec:
       secretRef:
         name: renovate-api
         key: token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: renovate-api
+  namespace: renovate-operator
+  labels:
+    renovate-operator.mogenius.com/allow-ref: "true"
+stringData:
+  token: your-webhook-token
 ```
 
 Call the webhook passing the token in the Authorization header:

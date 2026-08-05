@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/internal/policy"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -287,6 +289,49 @@ func TestCreateGithubAppTokenFromJob_SecretNotFound(t *testing.T) {
 	}
 }
 
+// spec.githubAppReference names three caller-chosen keys in an arbitrary secret,
+// so it is the same class of reference as the webhook secretRefs and needs the
+// same opt-in.
+func TestCreateGithubAppTokenFromJob_RefusesUnlabeledSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Failed to add corev1 to scheme: %v", err)
+	}
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("Failed to add api to scheme: %v", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "db-credentials", Namespace: "default"},
+		Data:       map[string][]byte{"password": []byte("s3cret")},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
+
+	job := &api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-job", Namespace: "default"},
+		Spec: api.RenovateJobSpec{
+			GithubAppReference: &api.GithubAppReference{
+				SecretName:              "db-credentials",
+				AppIdSecretKey:          "password",
+				InstallationIdSecretKey: "password",
+				PemSecretKey:            "password",
+			},
+		},
+	}
+
+	_, err := tokenCreator.CreateGithubAppTokenFromJob(job)
+	if err == nil {
+		t.Fatal("Expected an unlabeled secret to be refused")
+	}
+	if !strings.Contains(err.Error(), policy.AllowRefLabel) {
+		t.Errorf("Expected the error to name the label to add, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "s3cret") {
+		t.Error("the error must not contain the secret value")
+	}
+}
+
 func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 	scheme := runtime.NewScheme()
 	err := corev1.AddToScheme(scheme)
@@ -335,6 +380,7 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "github-app-secret",
 					Namespace: "default",
+					Labels:    map[string]string{policy.AllowRefLabel: "true"},
 				},
 				Data: tt.secretData,
 			}
@@ -392,6 +438,7 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "github-app-secret",
 			Namespace: "default",
+			Labels:    map[string]string{policy.AllowRefLabel: "true"},
 		},
 		Data: map[string][]byte{
 			"app-id":          []byte("123456"),

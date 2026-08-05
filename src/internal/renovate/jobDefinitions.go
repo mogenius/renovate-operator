@@ -303,11 +303,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 	return predefinedEnvVars
 }
 
-func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
-	if spec.SecurityContext != nil && spec.SecurityContext.Pod != nil {
-		return spec.SecurityContext.Pod
-	}
-
+func hardenedPodSecurityContext() *v1.PodSecurityContext {
 	return &v1.PodSecurityContext{
 		RunAsUser:    new(int64(12021)),
 		RunAsGroup:   new(int64(12021)),
@@ -318,11 +314,8 @@ func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
 		},
 	}
 }
-func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
-	if spec.SecurityContext != nil && spec.SecurityContext.Container != nil {
-		return spec.SecurityContext.Container
-	}
 
+func hardenedContainerSecurityContext() *v1.SecurityContext {
 	return &v1.SecurityContext{
 		RunAsUser:    new(int64(12021)),
 		RunAsGroup:   new(int64(12021)),
@@ -337,6 +330,70 @@ func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
 			Drop: []v1.Capability{"ALL"},
 		},
 	}
+}
+
+// getPodSecurityContext merges the spec over the hardened defaults rather than
+// replacing them: overriding one field (fsGroup, say) must not silently drop
+// runAsNonRoot and the seccomp profile with it.
+func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
+	defaults := hardenedPodSecurityContext()
+	if spec.SecurityContext == nil || spec.SecurityContext.Pod == nil {
+		return defaults
+	}
+
+	merged := spec.SecurityContext.Pod.DeepCopy()
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.RunAsGroup == nil {
+		merged.RunAsGroup = defaults.RunAsGroup
+	}
+	if merged.FSGroup == nil {
+		merged.FSGroup = defaults.FSGroup
+	}
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.SeccompProfile == nil {
+		merged.SeccompProfile = defaults.SeccompProfile
+	}
+	return merged
+}
+
+// getContainerSecurityContext merges the spec over the hardened defaults; see
+// getPodSecurityContext.
+func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
+	defaults := hardenedContainerSecurityContext()
+	if spec.SecurityContext == nil || spec.SecurityContext.Container == nil {
+		return defaults
+	}
+
+	merged := spec.SecurityContext.Container.DeepCopy()
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.RunAsGroup == nil {
+		merged.RunAsGroup = defaults.RunAsGroup
+	}
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.SeccompProfile == nil {
+		merged.SeccompProfile = defaults.SeccompProfile
+	}
+	if merged.ReadOnlyRootFilesystem == nil {
+		merged.ReadOnlyRootFilesystem = defaults.ReadOnlyRootFilesystem
+	}
+	if merged.Privileged == nil {
+		merged.Privileged = defaults.Privileged
+	}
+	if merged.AllowPrivilegeEscalation == nil {
+		merged.AllowPrivilegeEscalation = defaults.AllowPrivilegeEscalation
+	}
+	if merged.Capabilities == nil {
+		merged.Capabilities = defaults.Capabilities
+	}
+	return merged
 }
 
 func getAutoMountServiceAccountToken(spec api.RenovateJobSpec) *bool {
