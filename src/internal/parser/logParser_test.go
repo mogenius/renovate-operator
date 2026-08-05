@@ -1032,3 +1032,160 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 		})
 	}
 }
+
+func TestParseRenovateLogsPrintingReport(t *testing.T) {
+	// reportLine constructs a minimal "Printing report" NDJSON line.
+	reportLine := func(branches string) string {
+		return `{"level":30,"msg":"Printing report","report":{"repositories":{"org/repo":{"branches":[` + branches + `]}}}}`
+	}
+
+	t.Run("pure report - done branches become unchanged", func(t *testing.T) {
+		logs := strings.Join([]string{
+			reportLine(
+				`{"branchName":"renovate/vstest","prNo":50,"prTitle":"feat: update sdk","result":"done"},` +
+					`{"branchName":"renovate/xunit","prNo":51,"prTitle":"feat: update xunit","result":"done"},` +
+					`{"branchName":"renovate/lock-file","prNo":null,"prTitle":"chore: lock file","result":"not-scheduled"}`,
+			),
+		}, "\n")
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil {
+			t.Fatal("PRActivity = nil, want non-nil")
+		}
+		pa := result.PRActivity
+
+		if pa.Unchanged != 2 {
+			t.Errorf("Unchanged = %d, want 2 (done branches)", pa.Unchanged)
+		}
+		if pa.Created != 0 || pa.Updated != 0 || pa.Automerged != 0 || pa.NeedsApproval != 0 {
+			t.Errorf("unexpected counts: created=%d updated=%d automerged=%d needsApproval=%d", pa.Created, pa.Updated, pa.Automerged, pa.NeedsApproval)
+		}
+		if len(pa.PRs) != 2 {
+			t.Fatalf("len(PRs) = %d, want 2 (not-scheduled excluded)", len(pa.PRs))
+		}
+
+		prsByBranch := make(map[string]api.PRDetail)
+		for _, pr := range pa.PRs {
+			prsByBranch[pr.Branch] = pr
+		}
+
+		vstest := prsByBranch["renovate/vstest"]
+		if vstest.Action != api.PRActionUnchanged {
+			t.Errorf("vstest action = %q, want unchanged", vstest.Action)
+		}
+		if vstest.Number != 50 {
+			t.Errorf("vstest number = %d, want 50", vstest.Number)
+		}
+		if vstest.Title != "feat: update sdk" {
+			t.Errorf("vstest title = %q, want 'feat: update sdk'", vstest.Title)
+		}
+	})
+
+	t.Run("pure report - all result types", func(t *testing.T) {
+		logs := strings.Join([]string{
+			reportLine(
+				`{"branchName":"renovate/auto","prNo":10,"prTitle":"auto PR","result":"automerged"},` +
+					`{"branchName":"renovate/approval","prNo":null,"prTitle":"needs approval PR","result":"needs-approval"},` +
+					`{"branchName":"renovate/new-pr","prNo":20,"prTitle":"new PR","result":"pr-created"},` +
+					`{"branchName":"renovate/edited-pr","prNo":21,"prTitle":"edited PR","result":"pr-edited"},` +
+					`{"branchName":"renovate/skipped","prNo":null,"prTitle":"skipped","result":"not-scheduled"}`,
+			),
+		}, "\n")
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil {
+			t.Fatal("PRActivity = nil, want non-nil")
+		}
+		pa := result.PRActivity
+
+		if pa.Automerged != 1 {
+			t.Errorf("Automerged = %d, want 1", pa.Automerged)
+		}
+		if pa.NeedsApproval != 1 {
+			t.Errorf("NeedsApproval = %d, want 1", pa.NeedsApproval)
+		}
+		if pa.Created != 1 {
+			t.Errorf("Created = %d, want 1 (pr-created)", pa.Created)
+		}
+		if pa.Updated != 1 {
+			t.Errorf("Updated = %d, want 1 (pr-edited)", pa.Updated)
+		}
+		if len(pa.PRs) != 4 {
+			t.Errorf("len(PRs) = %d, want 4 (not-scheduled excluded)", len(pa.PRs))
+		}
+
+		prsByBranch := make(map[string]api.PRDetail)
+		for _, pr := range pa.PRs {
+			prsByBranch[pr.Branch] = pr
+		}
+		if prsByBranch["renovate/auto"].Action != api.PRActionAutomerged {
+			t.Errorf("auto action = %q, want automerged", prsByBranch["renovate/auto"].Action)
+		}
+		if prsByBranch["renovate/approval"].Action != api.PRActionNeedsApproval {
+			t.Errorf("approval action = %q, want needs-approval", prsByBranch["renovate/approval"].Action)
+		}
+		if prsByBranch["renovate/new-pr"].Action != api.PRActionCreated {
+			t.Errorf("new-pr action = %q, want created", prsByBranch["renovate/new-pr"].Action)
+		}
+		if prsByBranch["renovate/new-pr"].Number != 20 {
+			t.Errorf("new-pr number = %d, want 20", prsByBranch["renovate/new-pr"].Number)
+		}
+		if prsByBranch["renovate/edited-pr"].Action != api.PRActionUpdated {
+			t.Errorf("edited-pr action = %q, want updated", prsByBranch["renovate/edited-pr"].Action)
+		}
+		if _, exists := prsByBranch["renovate/skipped"]; exists {
+			t.Error("not-scheduled branch should not appear in PRs")
+		}
+	})
+
+	t.Run("per-message parsing wins for action type when both present", func(t *testing.T) {
+		// Per-message says "Creating PR"; report says "done" — created wins.
+		// Report still backfills the PR number.
+		logs := strings.Join([]string{
+			`{"level":30,"msg":"Creating PR","branch":"renovate/golang-1.x","title":"Update golang to v1.22"}`,
+			reportLine(`{"branchName":"renovate/golang-1.x","prNo":900,"prTitle":"Update golang to v1.22","result":"done"}`),
+		}, "\n")
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil {
+			t.Fatal("PRActivity = nil, want non-nil")
+		}
+		pa := result.PRActivity
+
+		if pa.Created != 1 {
+			t.Errorf("Created = %d, want 1 (per-message parsing wins)", pa.Created)
+		}
+		if pa.Unchanged != 0 {
+			t.Errorf("Unchanged = %d, want 0 (report must not override action)", pa.Unchanged)
+		}
+		if len(pa.PRs) != 1 {
+			t.Fatalf("len(PRs) = %d, want 1", len(pa.PRs))
+		}
+		pr := pa.PRs[0]
+		if pr.Action != api.PRActionCreated {
+			t.Errorf("action = %q, want created", pr.Action)
+		}
+		if pr.Number != 900 {
+			t.Errorf("number = %d, want 900 (backfilled from report)", pr.Number)
+		}
+		if pr.Title != "Update golang to v1.22" {
+			t.Errorf("title = %q, want 'Update golang to v1.22'", pr.Title)
+		}
+	})
+
+	t.Run("null prNo is not set on detail", func(t *testing.T) {
+		logs := reportLine(`{"branchName":"renovate/branch","prNo":null,"prTitle":"PR title","result":"done"}`)
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil || len(result.PRActivity.PRs) != 1 {
+			t.Fatal("expected 1 PR")
+		}
+		if result.PRActivity.PRs[0].Number != 0 {
+			t.Errorf("number = %d, want 0 for null prNo", result.PRActivity.PRs[0].Number)
+		}
+	})
+}

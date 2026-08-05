@@ -209,6 +209,10 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 			Value: "json",
 		},
 		{
+			Name:  "RENOVATE_REPORT_TYPE",
+			Value: "logging",
+		},
+		{
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
 		},
