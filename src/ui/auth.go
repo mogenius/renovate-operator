@@ -163,6 +163,25 @@ func isPublicPath(path string) bool {
 	return false
 }
 
+// isAnonymousReadPath reports whether a path may be served without a session so
+// that jobs with anonymous read enabled are reachable. Reaching the handler is
+// not authorization: the handler still resolves access per job and hides every
+// job that does not allow anonymous read.
+//
+// Routes not listed here stay behind the session check, so a new endpoint is
+// protected until it is deliberately added.
+func isAnonymousReadPath(path string) bool {
+	switch path {
+	case "/", "/index.html", "/logs",
+		"/api/v1/version",
+		"/api/v1/renovatejobs",
+		"/api/v1/logs",
+		"/api/v1/discovery/status":
+		return true
+	}
+	return false
+}
+
 func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Strip the configured base path so route matching below operates on
@@ -210,6 +229,15 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				}
 				return
 			}
+
+			// Anonymous-capable read routes are served without a session. The
+			// handler decides per job whether anonymous read is configured, so
+			// an unconfigured deployment still shows nothing.
+			if isAnonymousReadPath(path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Audit log failed authentication attempt
 			b.logger.V(1).Info("Unauthenticated request rejected",
 				"path", path,

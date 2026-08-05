@@ -522,6 +522,18 @@
         return response;
       };
 
+      // The server ships the permitted actions per job, so the frontend never
+      // maps roles to actions itself: two readers can differ on log access.
+      const can = (job, permission) =>
+        Array.isArray(job?.permissions) && job.permissions.includes(permission);
+
+      // Explains a disabled control. Anonymous visitors get a route to access,
+      // signed-in users get the reason they lack it.
+      const permissionHint = (authInfo) =>
+        authInfo && authInfo.enabled && !authInfo.authenticated
+          ? "Sign in with an admin group to use this"
+          : "Requires an admin group";
+
       function App() {
         const [jobs, setJobs] = useState([]);
         const [loading, setLoading] = useState(true);
@@ -1149,6 +1161,27 @@
                 </div>
               )}
 
+              {!loading && !error && jobs.length === 0 && (
+                <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 text-center">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
+                    No RenovateJobs visible
+                  </h3>
+                  <p className="text-gray-600 dark:text-slate-400 mb-4">
+                    {authInfo && authInfo.enabled && !authInfo.authenticated
+                      ? "Sign in to see the jobs your groups grant access to."
+                      : "Either no RenovateJob exists yet, or none of them grant your groups access."}
+                  </p>
+                  {authInfo && authInfo.enabled && !authInfo.authenticated && (
+                    <a
+                      href={`${BASE}/auth/login`}
+                      className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                    >
+                      Sign in
+                    </a>
+                  )}
+                </div>
+              )}
+
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -1277,6 +1310,7 @@
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
+                      authInfo={authInfo}
                     />
                   ))}
 
@@ -1644,7 +1678,7 @@
         );
       }
 
-      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted }) {
+      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
         const isRunning = project.status === "running";
         const isScheduled = project.status === "scheduled";
         const isPrioritized = isScheduled && (project.priority || 0) > 0;
@@ -1656,7 +1690,8 @@
           return (
             <button
               onClick={onCancel}
-              disabled={isCancelling}
+              disabled={isCancelling || !canCancel}
+              title={canCancel ? undefined : hint}
               className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
               aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
             >
@@ -1673,16 +1708,24 @@
           ? "Prioritize"
           : "Trigger";
 
+        // Why the controls are dead, if they are: a policy halt outranks a
+        // missing permission, since fixing the policy is the prerequisite.
+        const blocked = !jobAccepted
+          ? "Halted by the operator's policy"
+          : !canTrigger
+          ? hint
+          : undefined;
+
         return (
           <div className={`flex items-stretch shadow-sm rounded-lg overflow-hidden ${width || ""}`}>
             <button
               onClick={onTrigger}
-              disabled={isTriggering || isPrioritized || !jobAccepted}
-              title={!jobAccepted ? "Halted by the operator's policy" : undefined}
+              disabled={isTriggering || isPrioritized || !!blocked}
+              title={blocked}
               className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all"
               aria-label={
-                !jobAccepted
-                  ? "Halted by the operator's policy"
+                blocked
+                  ? blocked
                   : isTriggering
                   ? "Triggering renovate"
                   : isPrioritized
@@ -1696,10 +1739,10 @@
             </button>
             <button
               onClick={onTriggerDebug}
-              disabled={isTriggering || !jobAccepted}
-              title={!jobAccepted ? "Halted by the operator's policy" : "Trigger in debug mode"}
+              disabled={isTriggering || !!blocked}
+              title={blocked || "Trigger in debug mode"}
               className={`${isDebugScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
-              aria-label={!jobAccepted ? "Halted by the operator's policy" : `Trigger ${project.name} in debug mode`}
+              aria-label={blocked || `Trigger ${project.name} in debug mode`}
             >
               <BugIcon className="w-3.5 h-3.5" />
             </button>
@@ -1707,11 +1750,23 @@
         );
       }
 
-      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate }) {
+      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
         });
+        const actionHint = permissionHint(authInfo);
+        const canTrigger = can(job, "trigger");
+        const canTriggerAll = can(job, "triggerAll");
+        const canCancel = can(job, "cancel");
+        const canDiscovery = can(job, "discovery");
+        const canViewLogs = can(job, "logs");
+        const readOnly = job.role === "reader";
+        // A policy halt outranks a missing permission: it blocks everyone, so
+        // reporting the permission first would send the user down a dead end.
+        const haltedHint = job.accepted === false ? "Halted by the operator's policy" : undefined;
+        const discoveryBlocked = haltedHint || (canDiscovery ? undefined : actionHint);
+        const triggerAllBlocked = haltedHint || (canTriggerAll ? undefined : actionHint);
         const STATUS_FILTERS = ["Onboarding Closed", "Disabled", "No Config"];
         const jobKey = jobStorageKey(job);
         // Expansion is owned by App so the expand/collapse-all controls can drive it.
@@ -1910,9 +1965,19 @@
                   </svg>
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-slate-100 truncate">
-                    {job.name}
-                  </h2>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h2 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-slate-100 truncate">
+                      {job.name}
+                    </h2>
+                    {readOnly && (
+                      <span
+                        className="flex-shrink-0 px-2 py-0.5 rounded-full border border-gray-300 dark:border-slate-600 text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400"
+                        title={actionHint}
+                      >
+                        Read-only
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">
                     Namespace:{" "}
                     <span className="font-mono">{job.namespace}</span>
@@ -2065,16 +2130,12 @@
                       e.stopPropagation();
                       onRunDiscovery(job);
                     }}
-                    disabled={job.discoveryRunning || job.accepted === false}
-                    title={
-                      job.accepted === false
-                        ? "Halted by the operator's policy"
-                        : undefined
-                    }
+                    disabled={job.discoveryRunning || !!discoveryBlocked}
+                    title={discoveryBlocked}
                     className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
                     aria-label={
-                      job.accepted === false
-                        ? "Halted by the operator's policy"
+                      discoveryBlocked
+                        ? discoveryBlocked
                         : job.discoveryRunning
                           ? "Discovery running"
                           : `Run discovery for ${job.name}`
@@ -2104,16 +2165,12 @@
                         e.stopPropagation();
                         onTriggerAllRenovate(job);
                       }}
-                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || job.accepted === false}
-                      title={
-                        job.accepted === false
-                          ? "Halted by the operator's policy"
-                          : undefined
-                      }
+                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
+                      title={triggerAllBlocked}
                       className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-2 sm:px-4 sm:py-2 font-semibold text-xs sm:text-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
                       aria-label={
-                        job.accepted === false
-                          ? "Halted by the operator's policy"
+                        triggerAllBlocked
+                          ? triggerAllBlocked
                           : job.triggeringAll
                             ? "Triggering all projects"
                             : `Trigger all projects for ${job.name}`
@@ -2141,10 +2198,10 @@
                         e.stopPropagation();
                         onTriggerAllRenovate(job, { debug: true });
                       }}
-                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || job.accepted === false}
-                      title={job.accepted === false ? "Halted by the operator's policy" : "Trigger all in debug mode"}
+                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
+                      title={triggerAllBlocked || "Trigger all in debug mode"}
                       className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2.5 py-2 text-xs sm:text-sm transition-all border-l border-white/10 flex items-center"
-                      aria-label={job.accepted === false ? "Halted by the operator's policy" : `Trigger all projects in debug mode for ${job.name}`}
+                      aria-label={triggerAllBlocked || `Trigger all projects in debug mode for ${job.name}`}
                     >
                       <BugIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
@@ -2307,17 +2364,22 @@
                                   onCancel={() => onCancelRenovate(job, project)}
                                   width="w-[130px]"
                                   jobAccepted={job.accepted !== false}
+                                  canTrigger={canTrigger}
+                                  canCancel={canCancel}
+                                  hint={actionHint}
                                 />
                                 <a
-                                  href={`${BASE}/logs?renovate=${encodeURIComponent(
+                                  href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
                                     job.name
                                   )}&namespace=${encodeURIComponent(
                                     job.namespace
                                   )}&project=${encodeURIComponent(
                                     project.name
-                                  )}`}
+                                  )}` : undefined}
                                   target="_blank"
-                                  className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block min-w-[60px] text-center"
+                                  title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                                  aria-disabled={canViewLogs ? undefined : "true"}
+                                  className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
                                   aria-label={`View logs for ${project.name}`}
                                 >
                                   Logs
@@ -2478,15 +2540,20 @@
                             onCancel={() => onCancelRenovate(job, project)}
                             width="w-[140px]"
                             jobAccepted={job.accepted !== false}
+                            canTrigger={canTrigger}
+                            canCancel={canCancel}
+                            hint={actionHint}
                           />
                           <a
-                            href={`${BASE}/logs?renovate=${encodeURIComponent(
+                            href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
                               job.name
                             )}&namespace=${encodeURIComponent(
                               job.namespace
-                            )}&project=${encodeURIComponent(project.name)}`}
+                            )}&project=${encodeURIComponent(project.name)}` : undefined}
                             target="_blank"
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block w-[70px] text-center"
+                            title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                            aria-disabled={canViewLogs ? undefined : "true"}
+                            className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
                             aria-label={`View logs for ${project.name}`}
                           >
                             Logs

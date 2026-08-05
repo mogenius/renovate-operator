@@ -1,8 +1,9 @@
 function SiteHeader({ version, authInfo, children }) {
-  const showAuth = authInfo && authInfo.enabled && authInfo.authenticated;
+  const authEnabled = authInfo && authInfo.enabled;
+  const showAuth = authEnabled && authInfo.authenticated;
   const base = window.__BASE_PATH__ || "";
 
-  const authBlock = showAuth && (
+  const authBlock = showAuth ? (
     <div className="flex items-center gap-2">
       <span
         className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[120px] sm:max-w-[150px]"
@@ -17,6 +18,17 @@ function SiteHeader({ version, authInfo, children }) {
         Logout
       </a>
     </div>
+  ) : (
+    // Reachable without a session only when a job allows anonymous read, so the
+    // page renders and offers the way to gain more than read access.
+    authEnabled && (
+      <a
+        href={`${base}/auth/login`}
+        className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+      >
+        Sign in
+      </a>
+    )
   );
 
   return (

@@ -226,8 +226,25 @@
       "additionalProperties": false,
       "properties": {
         "defaultAllowedGroups": {
-          "description": "comma-separated list of default groups for RenovateJobs without explicit allowedGroups",
+          "description": "DEPRECATED: use auth.defaultAccess.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
           "type": "string"
+        },
+        "defaultAccess": {
+          "description": "default access rules for RenovateJobs that leave the matching field in spec.access unset",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "readerGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "adminGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "anonymousRead": { "type": "boolean" },
+            "anonymousReadLogs": { "type": "boolean" }
+          }
         },
         "oidc": {
           "type": "object",
@@ -276,7 +293,8 @@
             "secretKey": { "type": "string" },
             "sessionSecretKey": { "type": "string" },
             "redirectUrl": { "type": "string" },
-            "redirectScheme": { "$ref": "#/$defs/scheme" }
+            "redirectScheme": { "$ref": "#/$defs/scheme" },
+            "orgGroups": { "type": "boolean" }
           }
         }
       }

@@ -99,6 +99,7 @@ auth:
     sessionSecretKey: ""                      # Optional session encryption key
     redirectUrl: ""                           # Optional: auto-detected from ingress
     redirectScheme: ""                        # Optional: http or https, overrides the auto-detected scheme
+    orgGroups: false                          # Optional: map org and team membership to groups (needs read:org)
 ```
 
 Redirect URL auto-detection and `redirectScheme` behave exactly as described for [OIDC](#helm-configuration) above.
@@ -122,7 +123,8 @@ Create an OAuth App at **GitHub → Settings → Developer settings → OAuth Ap
 https://<your-operator-host>/auth/callback
 ```
 
-The operator requests the `read:user` and `user:email` scopes. On logout, the OAuth token is automatically revoked.
+The operator requests the `read:user` and `user:email` scopes, plus `read:org` when
+`auth.github.orgGroups` is enabled. On logout, the OAuth token is automatically revoked.
 
 ---
 
@@ -167,40 +169,39 @@ For TLS connections, use the `rediss://` scheme in the secret value.
 
 ---
 
-## Group-Based Authorization
+## Access Control
 
-When authentication is enabled, you can control which users can view and manage specific RenovateJobs based on their group membership.
+When authentication is enabled, access to each RenovateJob is resolved from the
+user's group membership. There are two roles:
 
-### How It Works
+| Role | May do |
+|---|---|
+| `reader` | view the job, its projects, statuses, PR activity and dependency issues; stream Renovate logs |
+| `admin` | everything a reader may do, plus trigger a project, trigger all projects, cancel a run, start discovery and change execution options |
 
-- **Auth disabled**: All RenovateJobs are visible to everyone
-- **Auth enabled**: Jobs are filtered based on user groups
-  - Jobs without `allowedGroups` use the global `defaultAllowedGroups`
-  - **If neither is set, the job is visible to every authenticated user.** Group restrictions are
-    opt-in: leaving both empty does not hide a job, it only means there is nothing to filter on
-  - Where a restriction does apply, users see a job only if they have at least one matching group
-  - Group names are matched case-insensitively, with surrounding whitespace ignored
+A job the request holds no role on is not listed and answers `404`, so its
+existence is not disclosed. A reader attempting a write gets `403`.
 
-> [!IMPORTANT]
-> A job that lists `allowedGroups` is hidden from **everyone** if your auth provider supplies no
-> group claims, because no session can match. The operator logs an error at startup when
-> `defaultAllowedGroups` is configured against such a provider. See
-> [OIDC Group Filtering](#oidc-group-filtering) for getting groups into the session.
+### How it works
 
-### Configuration
+1. **No authentication provider configured**: there is no identity to evaluate,
+   so every request is an admin and `spec.access` is ignored.
+2. **Authentication enabled**: the session's groups are matched against the
+   job's effective access configuration.
+   - a match in `adminGroups` grants `admin`
+   - otherwise a match in `readerGroups` grants `reader`
+   - otherwise `anonymousRead` grants `reader`
+   - otherwise the job is hidden (**fail closed**)
 
-#### Default Allowed Groups
+Anonymous read is a floor, not a sessionless special case: when it is enabled
+everyone gets read access, and group matches only ever add to it. Signing in can
+never take access away.
 
-Set default groups for all RenovateJobs without explicit `allowedGroups`:
+> **Fail closed**: a job with no access configuration anywhere is hidden from
+> everyone once authentication is enabled. Set `auth.defaultAccess.adminGroups`
+> (or `spec.access` per job) or the dashboard will look empty.
 
-```yaml
-auth:
-  defaultAllowedGroups: "team-platform,team-infra"
-```
-
-#### Per-Job Authorization
-
-Add `allowedGroups` to individual RenovateJob resources:
+### Per-job configuration
 
 ```yaml
 apiVersion: renovate-operator.mogenius.com/v1alpha1
@@ -209,13 +210,71 @@ metadata:
   name: my-renovate-job
 spec:
   schedule: "0 2 * * *"
-  allowedGroups:
-    - team-platform
-    - team-devops
+  access:
+    readerGroups:
+      - team-platform
+    adminGroups:
+      - team-devops
+    anonymousRead: false      # readable without a session
+    anonymousReadLogs: false  # anonymous readers may stream Renovate logs
   # ... other fields
 ```
 
-#### OIDC Group Filtering
+Every field falls back to the operator-wide default when unset, so a job can add
+to the defaults but cannot remove them. `anonymousRead` and `anonymousReadLogs`
+are three-state: unset inherits, `false` opts out of an enabled default.
+
+### Operator-wide defaults
+
+These apply to every job that leaves the matching field unset:
+
+```yaml
+auth:
+  defaultAccess:
+    readerGroups:
+      - team-platform
+    adminGroups:
+      - team-devops
+    anonymousRead: false
+    anonymousReadLogs: false
+```
+
+### Public dashboards
+
+To publish a read-only dashboard for public repositories while keeping actions
+restricted to maintainers:
+
+```yaml
+spec:
+  access:
+    anonymousRead: true
+    adminGroups:
+      - my-org/maintainers
+```
+
+Anonymous visitors see the dashboard; the action controls render disabled with a
+hint to sign in. Renovate logs stay closed unless `anonymousReadLogs` is also
+enabled, because log output is not redacted by the operator and can expose
+private registry URLs, internal dependency names and branch names.
+
+### GitHub org and team groups
+
+GitHub OAuth has no group concept on its own. Enable `auth.github.orgGroups` to
+map membership into session groups as `org` and `org/team`:
+
+```yaml
+auth:
+  github:
+    enabled: true
+    orgGroups: true   # requires the read:org scope
+```
+
+Group membership is captured at login, so changes on GitHub take effect the next
+time the user signs in. With `orgGroups` disabled the operator cannot evaluate
+any group and **refuses to start** if access groups are configured, rather than
+silently hiding every job.
+
+### OIDC group filtering
 
 Filter which groups from your OIDC provider are accepted:
 
@@ -227,13 +286,37 @@ auth:
     allowedGroupPattern: "^(team-|platform-).*"  # Only accept groups matching regex
 ```
 
-This is useful when your identity provider returns many groups but you only want to use certain ones for authorization.
+This is useful when your identity provider returns many groups but you only want
+to use certain ones for authorization. An OIDC provider that emits no groups at
+all leaves every job hidden.
 
-### Security Considerations
+### Deprecated: allowedGroups
 
-- **Secure by default**: Jobs without any groups configured (neither explicit nor default) are hidden when auth is enabled
-- **Group validation**: Groups are normalized (lowercased, trimmed) and validated for security
-- **Audit logging**: All authorization decisions are logged for security auditing
+`spec.allowedGroups` and `auth.defaultAllowedGroups` still work and are treated
+as admin groups. They are mutually exclusive with `spec.access`: setting both on
+one RenovateJob is rejected by the API server, and if an older CRD without that
+validation accepts it, the operator treats the job as inaccessible rather than
+guessing.
+
+```yaml
+# before
+spec:
+  allowedGroups:
+    - team-devops
+
+# after
+spec:
+  access:
+    adminGroups:
+      - team-devops
+```
+
+### Security considerations
+
+- **Fail closed**: jobs without any access configuration are hidden when auth is enabled
+- **Group validation**: groups are normalized (lowercased, trimmed) and validated
+- **Audit logging**: access decisions and denials are logged for security auditing
+- **Route allowlist**: only a fixed set of read routes can be served without a session; every other route requires one, so a new endpoint is protected by default
 
 ---
 

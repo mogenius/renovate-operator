@@ -218,6 +218,81 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_SessionlessRequests(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
+	if err != nil {
+		t.Fatalf("Failed to create baseAuth: %v", err)
+	}
+	auth := &base
+
+	tests := []struct {
+		name         string
+		path         string
+		wantHandler  bool
+		wantStatus   int
+		wantLocation string
+	}{
+		{
+			name:        "anonymous-capable read route reaches the handler",
+			path:        "/api/v1/renovatejobs",
+			wantHandler: true,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "dashboard reaches the handler",
+			path:        "/",
+			wantHandler: true,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:       "mutating route is rejected",
+			path:       "/api/v1/renovate",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "unlisted page redirects to login",
+			path:         "/some-page",
+			wantStatus:   http.StatusFound,
+			wantLocation: "/auth/login",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reached := false
+			middleware := auth.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached = true
+				if getSessionFromContext(r) != nil {
+					t.Error("expected no session in context for a sessionless request")
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
+			middleware.ServeHTTP(w, req)
+
+			if reached != tt.wantHandler {
+				t.Errorf("handler reached = %v, want %v", reached, tt.wantHandler)
+			}
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if tt.wantLocation != "" && w.Header().Get("Location") != tt.wantLocation {
+				t.Errorf("Location = %q, want %q", w.Header().Get("Location"), tt.wantLocation)
+			}
+		})
+	}
+}
+
 func TestIsPublicPath(t *testing.T) {
 	defs := []config.ConfigItemDescription{
 		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},

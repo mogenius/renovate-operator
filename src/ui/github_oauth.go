@@ -16,21 +16,31 @@ type GitHubOAuthConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	// OrgGroups maps GitHub org and team membership to session groups so access
+	// rules can be expressed against them. Requires the read:org scope, which
+	// forces every user to re-consent, hence opt-in.
+	OrgGroups bool
 }
 
 type GitHubOAuth struct {
 	baseAuth
 	oauth2Config oauth2.Config
 	httpClient   *http.Client
+	orgGroups    bool
 }
 
 func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*GitHubOAuth, error) {
+	scopes := []string{"read:user", "user:email"}
+	if cfg.OrgGroups {
+		scopes = append(scopes, "read:org")
+	}
+
 	oauth2Cfg := oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  cfg.RedirectURL,
 		Endpoint:     github.Endpoint,
-		Scopes:       []string{"read:user", "user:email"},
+		Scopes:       scopes,
 	}
 
 	base, err := newBaseAuth(encryptionKey, logger, sessionStore)
@@ -42,6 +52,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.L
 		baseAuth:     base,
 		oauth2Config: oauth2Cfg,
 		httpClient:   &http.Client{Transport: telemetry.WrapTransport(http.DefaultTransport)},
+		orgGroups:    cfg.OrgGroups,
 	}, nil
 }
 
@@ -92,11 +103,20 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	g.logger.Info("user info fetched", "email", email, "name", name)
 
+	// Group membership is captured here, at login, so changes on GitHub take
+	// effect the next time the user logs in rather than mid-session.
+	var groups []string
+	if g.orgGroups {
+		groups = ValidateAndNormalizeGroups(g.fetchGitHubGroups(oauth2Token.AccessToken), GroupFilterConfig{}, g.logger)
+		g.logger.V(1).Info("GitHub groups fetched", "email", email, "groups", groups)
+	}
+
 	// Redirect to /auth/complete with the encrypted session token.
 	// The cookie is set there, not here, because some reverse proxies strip
 	// Set-Cookie headers from OAuth callback responses.
 	completeURL, err := g.buildCompleteURL(r.Context(), email, name, func(s *sessionData) {
 		s.AccessToken = oauth2Token.AccessToken
+		s.Groups = groups
 	})
 	if err != nil {
 		g.logger.Error(err, "failed to build complete URL")
@@ -154,7 +174,69 @@ func (g *GitHubOAuth) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *GitHubOAuth) SupportsGroups() bool {
-	return false
+	return g.orgGroups
+}
+
+// fetchGitHubGroups returns the user's org logins plus their teams as
+// "org/team". Failures are logged and yield the groups gathered so far: an
+// incomplete group list can only ever reduce access, never widen it.
+func (g *GitHubOAuth) fetchGitHubGroups(accessToken string) []string {
+	groups := make([]string, 0, 8)
+
+	var orgs []struct {
+		Login string `json:"login"`
+	}
+	if err := g.getJSON(accessToken, "https://api.github.com/user/orgs?per_page=100", &orgs); err != nil {
+		g.logger.Error(err, "failed to fetch GitHub organizations, org groups will be missing from the session")
+	}
+	for _, org := range orgs {
+		groups = append(groups, org.Login)
+	}
+
+	var teams []struct {
+		Slug         string `json:"slug"`
+		Organization struct {
+			Login string `json:"login"`
+		} `json:"organization"`
+	}
+	if err := g.getJSON(accessToken, "https://api.github.com/user/teams?per_page=100", &teams); err != nil {
+		g.logger.Error(err, "failed to fetch GitHub teams, team groups will be missing from the session")
+	}
+	for _, team := range teams {
+		if team.Organization.Login == "" || team.Slug == "" {
+			continue
+		}
+		groups = append(groups, team.Organization.Login+"/"+team.Slug)
+	}
+
+	return groups
+}
+
+// getJSON performs an authenticated GET against the GitHub API and decodes the
+// response body into target.
+func (g *GitHubOAuth) getJSON(accessToken, url string, target any) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			g.logger.Error(err, "failed to close response body")
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub API %s returned status %d", url, resp.StatusCode)
+	}
+
+	return json.NewDecoder(resp.Body).Decode(target)
 }
 
 func (g *GitHubOAuth) fetchGitHubUser(accessToken string) (email, name string, err error) {
