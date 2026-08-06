@@ -11,4 +11,5 @@ type RenovateStatusUpdate struct {
 	PRActivity           *api.PRActivity
 	LogIssues            *api.LogIssues
 	Duration             *string
+	ExecutionOptions     *api.RenovateExecutionOptions
 }

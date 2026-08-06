@@ -251,13 +251,14 @@ Status of a single project within a RenovateJob
 type ProjectStatus struct {
 	Name string `json:"name"`
 	// LastTransition records when the project most recently changed state.
-	LastTransition       metav1.Time           `json:"lastTransition,omitempty"`
-	Duration             *string               `json:"duration,omitempty"`
-	Status               RenovateProjectStatus `json:"status"`
-	Priority             int32                 `json:"priority,omitempty"`
-	RenovateResultStatus *string               `json:"renovateResultStatus,omitempty"`
-	PRActivity           *PRActivity           `json:"prActivity,omitempty"`
-	LogIssues            *LogIssues            `json:"logIssues,omitempty"`
+	LastTransition       metav1.Time               `json:"lastTransition,omitempty"`
+	Duration             *string                   `json:"duration,omitempty"`
+	Status               RenovateProjectStatus     `json:"status"`
+	Priority             int32                     `json:"priority,omitempty"`
+	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
+	PRActivity           *PRActivity               `json:"prActivity,omitempty"`
+	LogIssues            *LogIssues                `json:"logIssues,omitempty"`
+	ExecutionOptions     *RenovateExecutionOptions `json:"executionOptions,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -273,8 +274,7 @@ const (
 // RenovateJobStatus defines the observed state of RenovateJob
 // +kubebuilder:object:root=true
 type RenovateJobStatus struct {
-	Projects         []ProjectStatus           `json:"projects,omitempty"`
-	ExecutionOptions *RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	Projects []ProjectStatus `json:"projects,omitempty"`
 	// Conditions holds the observed state of the RenovateJob. The operator sets the
 	// "Accepted" condition to False when the job violates the operator's policy, with
 	// a reason and a message naming the value to fix; nothing runs while it is False.
@@ -381,6 +381,10 @@ func (in *ProjectStatus) DeepCopyInto(out *ProjectStatus) {
 			out.LogIssues.Issues = make([]LogIssue, len(in.LogIssues.Issues))
 			copy(out.LogIssues.Issues, in.LogIssues.Issues)
 		}
+	}
+	if in.ExecutionOptions != nil {
+		out.ExecutionOptions = new(RenovateExecutionOptions)
+		*out.ExecutionOptions = *in.ExecutionOptions
 	}
 }
 

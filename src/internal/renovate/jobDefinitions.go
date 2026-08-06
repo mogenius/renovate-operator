@@ -116,10 +116,17 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 }
 
 // create a Job spec for renovate run on project...
-func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *batchv1.Job {
+func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.RenovateExecutionOptions, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
+
+	if executionOptions != nil && executionOptions.Debug {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_LOG_LEVEL",
+			Value: "debug",
+		})
+	}
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -235,13 +242,6 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		}, v1.EnvVar{
 			Name:  "RENOVATE_PLATFORM",
 			Value: platform,
-		})
-	}
-
-	if job.Status.ExecutionOptions != nil && job.Status.ExecutionOptions.Debug {
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_LOG_LEVEL",
-			Value: "debug",
 		})
 	}
 

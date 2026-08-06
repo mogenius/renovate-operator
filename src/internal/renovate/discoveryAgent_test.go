@@ -84,10 +84,6 @@ func (f *fakeJobManager) IsWebhookStandardSignatureValid(ctx context.Context, jo
 func (f *fakeJobManager) SetAcceptedCondition(ctx context.Context, job crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
 	return nil
 }
-
-func (f *fakeJobManager) UpdateExecutionOptions(ctx context.Context, job crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
-	return nil
-}
 func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }

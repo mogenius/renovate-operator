@@ -1268,7 +1268,7 @@ spec:
               extraVolumes:
                 description: |-
                   Additional volumes to mount in the renovate pods.
-                  hostPath is rejected: it would give the pod the node's filesystem, and with it
+                  hostPath is rejected: it would give the pod the node's filesystem
                 items:
                   description: Volume represents a named volume in a pod that may
                     be accessed by any container in the pod.
@@ -4403,18 +4403,19 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              executionOptions:
-                properties:
-                  debug:
-                    description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
-                    type: boolean
-                type: object
               projects:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
                     duration:
                       type: string
+                    executionOptions:
+                      properties:
+                        debug:
+                          description: If true, the renovate job will be executed
+                            with RENOVATE_LOG_LEVEL=debug
+                          type: boolean
+                      type: object
                     lastTransition:
                       description: LastTransition records when the project most recently
                         changed state.

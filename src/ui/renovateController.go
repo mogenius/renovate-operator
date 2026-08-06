@@ -29,16 +29,11 @@ type RenovateJobInfo struct {
 	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
 	Platform         string                             `json:"platform,omitempty"`
 	PlatformEndpoint string                             `json:"platformEndpoint,omitempty"`
-	ExecutionOptions *ExecutionOptions                  `json:"executionOptions,omitempty"`
 	// Accepted is false when the operator's policy refuses this job, in which case
 	// nothing runs for it and AcceptedMessage says what to fix. Jobs reconciled by an
 	// older operator have no condition yet and are reported as accepted.
 	Accepted        bool   `json:"accepted"`
 	AcceptedMessage string `json:"acceptedMessage,omitempty"`
-}
-
-type ExecutionOptions struct {
-	Debug bool `json:"debug,omitempty"`
 }
 
 // filterRenovateJobsByGroups filters jobs based on user groups and job's allowedGroups.
@@ -224,7 +219,6 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
-	apiV1.HandleFunc("/executionOptions", s.updateExecutionOptions).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +270,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Duration:             p.Duration,
 				PRActivity:           p.PRActivity,
 				LogIssues:            p.LogIssues,
+				ExecutionOptions:     p.ExecutionOptions,
 			})
 		}
 
@@ -292,9 +287,6 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			DiscoveryStatus:  discoveryStatus,
 			Platform:         platform,
 			PlatformEndpoint: platformEndpoint,
-			ExecutionOptions: &ExecutionOptions{
-				Debug: renovateJob.Status.ExecutionOptions != nil && renovateJob.Status.ExecutionOptions.Debug,
-			},
 		})
 	}
 
@@ -409,44 +401,48 @@ func getRenovateJsonBody(r *http.Request) (*struct {
 }
 
 func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
-	// Expect application/json or form values
-	params, err := getRenovateJsonBody(r)
-	if err != nil {
+	var body struct {
+		RenovateJob      string                        `json:"renovateJob"`
+		Namespace        string                        `json:"namespace"`
+		Project          string                        `json:"project"`
+		ExecutionOptions *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
-	if params.name == "" || params.namespace == "" || params.project == "" {
-		badRequestError(w, err, "Missing parameters")
+	if body.RenovateJob == "" || body.Namespace == "" || body.Project == "" {
+		badRequestError(w, nil, "Missing parameters")
 		return
 	}
 
-	// Authorization check
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+	if !s.authorizeJobAccess(r, body.Namespace, body.RenovateJob) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	err = s.manager.UpdateProjectStatus(
+	err := s.manager.UpdateProjectStatus(
 		r.Context(),
-		params.project,
+		body.Project,
 		crdmanager.RenovateJobIdentifier{
-			Name:      params.name,
-			Namespace: params.namespace,
+			Name:      body.RenovateJob,
+			Namespace: body.Namespace,
 		},
 		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 2,
+			Status:           api.JobStatusScheduled,
+			Priority:         2,
+			ExecutionOptions: body.ExecutionOptions,
 		},
 	)
 	if err != nil {
-		s.logger.Error(err, "Failed to run Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+		s.logger.Error(err, "Failed to run Renovate for project", "project", body.Project, "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 		internalServerError(w, err, "failed to run Renovate for project")
 		return
 	}
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", body.Project, "renovateJob", body.RenovateJob, "namespace", body.Namespace, "priority", 2)
 }
 
 func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request) {
@@ -485,46 +481,51 @@ func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
-	params, err := getRenovateJsonBody(r)
-	if err != nil {
+	var body struct {
+		RenovateJob      string                        `json:"renovateJob"`
+		Namespace        string                        `json:"namespace"`
+		ExecutionOptions *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
-	if params.name == "" || params.namespace == "" {
-		badRequestError(w, err, "Missing parameters")
+	if body.RenovateJob == "" || body.Namespace == "" {
+		badRequestError(w, nil, "Missing parameters")
 		return
 	}
 
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
+	if !s.authorizeJobAccess(r, body.Namespace, body.RenovateJob) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	jobIdentifier := crdmanager.RenovateJobIdentifier{
-		Name:      params.name,
-		Namespace: params.namespace,
+		Name:      body.RenovateJob,
+		Namespace: body.Namespace,
 	}
 
-	err = s.manager.UpdateProjectStatusBatched(
+	err := s.manager.UpdateProjectStatusBatched(
 		r.Context(),
 		func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
 		},
 		jobIdentifier,
 		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 2,
+			Status:           api.JobStatusScheduled,
+			Priority:         2,
+			ExecutionOptions: body.ExecutionOptions,
 		},
 	)
 	if err != nil {
-		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", params.name, "namespace", params.namespace)
+		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 		internalServerError(w, err, "failed to trigger all projects")
 		return
 	}
 
 	writeSuccess(w, SuccessResult{Message: "All projects triggered"})
-	s.logger.V(2).Info("Successfully triggered all projects", "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully triggered all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {
@@ -567,45 +568,6 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
-}
-
-func (s *Server) updateExecutionOptions(w http.ResponseWriter, r *http.Request) {
-	var params struct {
-		RenovateJob string `json:"renovateJob"`
-		Namespace   string `json:"namespace"`
-		Debug       bool   `json:"debug"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		badRequestError(w, err, "failed to parse request body")
-		return
-	}
-	if params.RenovateJob == "" || params.Namespace == "" {
-		badRequestError(w, nil, "missing parameters")
-		return
-	}
-
-	if !s.authorizeJobAccess(r, params.Namespace, params.RenovateJob) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
-	err := s.manager.UpdateExecutionOptions(
-		r.Context(),
-		crdmanager.RenovateJobIdentifier{
-			Name:      params.RenovateJob,
-			Namespace: params.Namespace,
-		},
-		&api.RenovateExecutionOptions{
-			Debug: params.Debug,
-		},
-	)
-	if err != nil {
-		s.logger.Error(err, "Failed to update execution options", "renovateJob", params.RenovateJob, "namespace", params.Namespace)
-		internalServerError(w, err, "failed to update execution options")
-		return
-	}
-
-	writeSuccess(w, SuccessResult{Message: "execution options updated"})
 }
 
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {
