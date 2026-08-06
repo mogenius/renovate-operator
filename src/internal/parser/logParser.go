@@ -88,6 +88,28 @@ type branchesInfoEntry struct {
 	BranchesInfo []branchInfoItem `json:"branchesInformation"`
 }
 
+// reportBranchItem represents a single branch in the "Printing report" final report.
+type reportBranchItem struct {
+	BranchName string `json:"branchName"`
+	PRNo       *int   `json:"prNo"`
+	PRTitle    string `json:"prTitle"`
+	Result     string `json:"result"`
+}
+
+// reportRepositoryItem represents a single repository in the "Printing report" final report.
+type reportRepositoryItem struct {
+	Branches []reportBranchItem `json:"branches"`
+}
+
+// reportEntry is a targeted partial-unmarshal struct for "Printing report" messages
+// produced when RENOVATE_REPORT_TYPE=logging is set.
+type reportEntry struct {
+	Msg    string `json:"msg"`
+	Report struct {
+		Repositories map[string]reportRepositoryItem `json:"repositories"`
+	} `json:"report"`
+}
+
 var (
 	// prURLRegex matches PR/MR URLs from GitHub (/pull/N), Forgejo (/pulls/N), and GitLab (/merge_requests/N).
 	prURLRegex = regexp.MustCompile(`https?://[^\s"]+/(?:pulls|pull|merge_requests)/(\d+)`)
@@ -232,6 +254,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" && pc.PR > 0 {
 				detail := getOrCreateDetail(branchMap, pc.Branch)
 				detail.Number = pc.PR
+				detail.Action = api.PRActionCreated
 				if detail.Title == "" && pc.PRTitle != "" {
 					detail.Title = pc.PRTitle
 				}
@@ -282,6 +305,55 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 					detail.Title = b.PRTitle
 					if b.PRNo != nil {
 						detail.Number = *b.PRNo
+					}
+				}
+			}
+
+		case entry.Msg == "Printing report":
+			// Final structured report emitted when RENOVATE_REPORT_TYPE=logging is set.
+			// Mirrors the branchesInfoEntry backfill strategy: per-message parsing takes
+			// priority for action type (created/updated), this fills in everything else.
+			var rpt reportEntry
+			if err := json.Unmarshal([]byte(line), &rpt); err == nil {
+				for _, repo := range rpt.Report.Repositories {
+					for _, b := range repo.Branches {
+						if b.BranchName == "" {
+							continue
+						}
+						// Skip branches not actively processed in this run.
+						switch b.Result {
+						case "needs-approval", "done", "automerged", "pr-created", "pr-edited", "":
+						default:
+							continue
+						}
+						if existing, ok := branchMap[b.BranchName]; ok {
+							// Backfill title and PR number for branches already captured by per-message parsing.
+							if existing.Title == "" && b.PRTitle != "" {
+								existing.Title = b.PRTitle
+							}
+							if existing.Number == 0 && b.PRNo != nil && *b.PRNo > 0 {
+								existing.Number = *b.PRNo
+							}
+							continue
+						}
+						// New branch not captured by per-message parsing.
+						detail := getOrCreateDetail(branchMap, b.BranchName)
+						switch b.Result {
+						case "needs-approval":
+							detail.Action = api.PRActionNeedsApproval
+						case "automerged":
+							detail.Action = api.PRActionAutomerged
+						case "pr-created":
+							detail.Action = api.PRActionCreated
+						case "pr-edited":
+							detail.Action = api.PRActionUpdated
+						default:
+							detail.Action = api.PRActionUnchanged
+						}
+						detail.Title = b.PRTitle
+						if b.PRNo != nil && *b.PRNo > 0 {
+							detail.Number = *b.PRNo
+						}
 					}
 				}
 			}

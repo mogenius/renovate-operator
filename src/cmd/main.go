@@ -29,6 +29,7 @@ import (
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/metricStore"
@@ -512,6 +513,66 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Key:      "POLICY_ENABLED",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_ENABLED' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_HOSTS",
+			Optional: true,
+			Default:  "",
+			Validate: func(value string) error {
+				if err := policy.ValidateAllowedHosts(value); err != nil {
+					return fmt.Errorf("'POLICY_ALLOWED_HOSTS' %w", err)
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_REQUIRE_SECRET_REF_OPT_IN",
+			Optional: true,
+			Default:  "true",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_REQUIRE_SECRET_REF_OPT_IN' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_SERVICE_ACCOUNTS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "POLICY_ALLOW_ROOT_USER",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_ALLOW_ROOT_USER' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_IMAGES",
+			Optional: true,
+			Default:  "",
+			Validate: func(value string) error {
+				if err := policy.ValidateAllowedImages(value); err != nil {
+					return fmt.Errorf("'POLICY_ALLOWED_IMAGES' %w", err)
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -557,7 +618,39 @@ func main() {
 	health := health.NewHealthCheck()
 	ctx := ctrl.SetupSignalHandler()
 
-	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
+	guardRails := policy.FromConfig()
+	policyLog := ctrl.Log.WithName("policy")
+	metricStore.SetPolicyEnabled(!guardRails.Disabled)
+	if guardRails.Disabled {
+		// Loud on purpose, and on every start: this is the default, so most operators
+		// see it without having chosen it. Anyone able to write a RenovateJob can have
+		// the operator read any secret in its namespace and send it, or the job's
+		// platform token, to a host of their choosing.
+		policyLog.Info("WARNING: ############################################################")
+		policyLog.Info("WARNING: the policy engine is NOT ENABLED -- this operator is running in an UNSECURED mode.")
+		policyLog.Info("WARNING: any principal that can create or edit a RenovateJob in any watched namespace can:")
+		policyLog.Info("WARNING:   * have the operator read any secret in that namespace, at any key, and send it to a host they choose")
+		policyLog.Info("WARNING:   * redirect this job's Renovate platform token to a host they choose")
+		policyLog.Info("WARNING:   * point your repositories' webhooks at a host they choose, persistently")
+		policyLog.Info("WARNING:   * run the Renovate pod as another ServiceAccount, as root, or from any image")
+		policyLog.Info("WARNING: enforcement is off by default so a new install works out of the box -- it is meant to be turned on.")
+		policyLog.Info("WARNING: turn it on with policy.enabled=true (POLICY_ENABLED) -- configure policy.allowedHosts first.")
+		policyLog.Info("WARNING: see docs/migration-v5-to-v6.md")
+		policyLog.Info("WARNING: ############################################################")
+	} else {
+		if len(guardRails.AllowedHosts) == 0 {
+			policyLog.Error(nil,
+				"no allowed destination hosts configured -- every RenovateJob will be refused, no Renovate run will start and no webhook will be synced. Set policy.allowedHosts (POLICY_ALLOWED_HOSTS) to the platform hosts this operator may talk to, or set policy.enabled=false to turn the policy engine off entirely")
+		} else {
+			policyLog.Info("Destination policy active", "allowedHosts", guardRails.AllowedHosts)
+		}
+		if guardRails.AllowUnlabeledSecretRefs {
+			policyLog.Info("WARNING: secret reference opt-in is disabled. A RenovateJob may have the operator read any secret key in its namespace. " +
+				"Prefer leaving policy.requireSecretRefOptIn enabled and labelling the secrets you intend to reference.")
+		}
+	}
+
+	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient(), guardRails)
 
 	valkeyConf := kvstore.ConfigFromEnv(config.GetValue)
 
@@ -578,7 +671,7 @@ func main() {
 	assert.NoError(err, "failed to get Kubernetes clientset for pod log reader")
 	podLogReader := podLogs.New(clientset)
 
-	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader)
+	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader, guardRails)
 
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
@@ -586,6 +679,7 @@ func main() {
 		ctrl.Log.WithName("renovate-discovery"),
 		jobMgr,
 		podLogReader,
+		guardRails,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
@@ -615,9 +709,10 @@ func main() {
 		health,
 		ls,
 		podLogReader,
+		guardRails,
 	)
 
-	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"), guardRails)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
@@ -643,6 +738,7 @@ func main() {
 		Discovery: discovery,
 		K8sClient: mgr.GetClient(),
 		GithubApp: githubAppToken,
+		Policy:    guardRails,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

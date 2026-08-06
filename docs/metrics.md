@@ -91,6 +91,8 @@ metrics for free (`controller_runtime_reconcile_*`, workqueue depth/latency,
 | Name                                             | Type    | Description                                                                 | Labels       |
 |--------------------------------------------------|---------|-----------------------------------------------------------------------------|--------------|
 | renovate_operator_secret_resolution_errors_total | Counter | Kubernetes Secret resolution errors (`not_found`/`key_missing`/`api_error`) | `error_type` |
+| renovate_operator_policy_denials_total           | Counter | RenovateJob actions refused by a policy check (`destination`/`secret_ref`)   | `check`      |
+| renovate_operator_policy_enabled                 | Gauge   | Whether the policy engine is enforcing (1) or off (0)                        | —            |
 
 Security metric labels are deliberately bounded enums; user identifiers, IP addresses,
 and raw request paths are never used as label values.
@@ -173,4 +175,30 @@ groups:
         annotations:
           summary: "Renovate webhook signature failures from {{ $labels.provider }}"
           description: "HMAC signature verification is failing; investigate forged or misconfigured webhooks."
+
+      # SecOps: the policy engine is not enforcing. Worth alerting on for a shared cluster,
+      # since it is off by default - see docs/security.md.
+      - alert: RenovateOperatorPolicyNotEnforcing
+        expr: max(renovate_operator_policy_enabled) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Renovate operator is not enforcing its policy"
+          description: >-
+            Anyone who can write a RenovateJob can have the operator read secrets in that
+            namespace and redirect its credentials. Set policy.enabled=true.
+
+      # SecOps: jobs are being refused. Usually a value missing from policy.allowedHosts,
+      # an unlabelled secret, or an unlisted image - the Accepted condition names which.
+      - alert: RenovateOperatorPolicyDenials
+        expr: sum(rate(renovate_operator_policy_denials_total[15m])) by (check) > 0
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Renovate operator is refusing jobs ({{ $labels.check }})"
+          description: >-
+            Run `kubectl get renovatejobs -A -o wide` and check the Accepted condition
+            for the value that needs allowlisting.
 ```

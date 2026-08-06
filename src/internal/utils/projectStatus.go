@@ -30,6 +30,7 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
 		projectStatus.LastTransition = v1.Now()
+		projectStatus.ExecutionOptions = desiredStatus.ExecutionOptions
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
 		}
@@ -46,6 +47,7 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 		projectStatus.Status = api.JobStatusRunning
 		projectStatus.LastTransition = v1.Now()
 		projectStatus.Priority = 0
+		projectStatus.ExecutionOptions = nil
 	}
 	projectStatus.Duration = nil
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)

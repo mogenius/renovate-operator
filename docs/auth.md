@@ -176,8 +176,16 @@ When authentication is enabled, you can control which users can view and manage 
 - **Auth disabled**: All RenovateJobs are visible to everyone
 - **Auth enabled**: Jobs are filtered based on user groups
   - Jobs without `allowedGroups` use the global `defaultAllowedGroups`
-  - If neither are set, the job is hidden (secure by default)
-  - Users can only see jobs where they have at least one matching group
+  - **If neither is set, the job is visible to every authenticated user.** Group restrictions are
+    opt-in: leaving both empty does not hide a job, it only means there is nothing to filter on
+  - Where a restriction does apply, users see a job only if they have at least one matching group
+  - Group names are matched case-insensitively, with surrounding whitespace ignored
+
+> [!IMPORTANT]
+> A job that lists `allowedGroups` is hidden from **everyone** if your auth provider supplies no
+> group claims, because no session can match. The operator logs an error at startup when
+> `defaultAllowedGroups` is configured against such a provider. See
+> [OIDC Group Filtering](#oidc-group-filtering) for getting groups into the session.
 
 ### Configuration
 

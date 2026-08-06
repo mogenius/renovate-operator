@@ -7,6 +7,7 @@ import (
 	"renovate-operator/config"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 	"renovate-operator/metricStore"
 	"sync"
@@ -51,9 +52,10 @@ type discoveryAgent struct {
 	manager   crdManager.RenovateJobManager
 	syncer    map[string]*sync.RWMutex
 	logReader podLogs.PodLogReader
+	policy    policy.Policy
 }
 
-func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader) DiscoveryAgent {
+func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader, p policy.Policy) DiscoveryAgent {
 	return &discoveryAgent{
 		client:    client,
 		logger:    logger,
@@ -61,6 +63,7 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		manager:   manager,
 		syncer:    make(map[string]*sync.RWMutex),
 		logReader: lr,
+		policy:    p,
 	}
 }
 
@@ -97,7 +100,7 @@ func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.Ren
 
 // ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered
 // projects from its logs, reconciles them into the RenovateJob CRD, and optionally schedules
-// all non-running projects (controlled by the JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY annotation).
+// all non-running projects (controlled by the api.ScheduleAfterDiscoveryAnnotationKey annotation).
 // A nil k8sJob or a still-running job is a no-op.
 func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdManager.RenovateJobIdentifier) error {
 	if k8sJob == nil {
@@ -152,7 +155,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		log.FromContext(ctx).Error(err, "failed to sync webhooks", "renovateJob", jobId.Name)
 	}
 
-	if k8sJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] == "true" {
+	if k8sJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] == "true" {
 		isNotRunning := func(p api.ProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
@@ -178,6 +181,13 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 }
 
 func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error) {
+	// Defence in depth: the reconciler refuses such a job up front, but discovery is
+	// also reachable from the UI and from an annotation trigger.
+	if err := e.policy.ValidateJob(&renovateJob); err != nil {
+		metricStore.IncPolicyDenial(ctx, "destination")
+		return "", fmt.Errorf("refusing to run discovery: %w", err)
+	}
+
 	name := renovateJob.Fullname()
 	lock := e.syncer[name]
 	if lock == nil {
@@ -197,12 +207,12 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	}
 	if existingJob != nil && existingJob.Status.Succeeded == 0 && existingJob.Status.Failed == 0 {
 		log.FromContext(ctx).V(1).Info("discovery job already running, skipping", "renovateJob", renovateJob.Fullname())
-		if options.TriggerAllProjects && existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
+		if options.TriggerAllProjects && existingJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] != "true" {
 			patch := client.MergeFrom(existingJob.DeepCopy())
 			if existingJob.Annotations == nil {
 				existingJob.Annotations = make(map[string]string)
 			}
-			existingJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] = "true"
+			existingJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] = "true"
 			if err := e.client.Patch(ctx, existingJob, patch); err != nil {
 				return "", fmt.Errorf("failed to set schedule-after-discovery annotation on running job: %w", err)
 			}
@@ -221,7 +231,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)
 		}
-		discoveryJob.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] = "true"
+		discoveryJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] = "true"
 	}
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)
