@@ -37,6 +37,7 @@ src/
 └── webhook/               # HTTP webhook server (GitHub, GitLab, Forgejo triggers)
 charts/                    # Helm chart
 docs/                      # Documentation
+tests/ui/                  # Playwright browser tests for src/static (see its README)
 ```
 
 ## Coding Conventions
@@ -169,6 +170,7 @@ Use the following commands to validate the code:
 - `just test-unit`
 - `just test-helm`
 - `just generate`
+- `just test-ui` (only when `src/static` changed — browser tests, needs Chromium)
 
 # Important
 
