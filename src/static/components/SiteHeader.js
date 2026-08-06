@@ -14,7 +14,7 @@ function SiteHeader({ version, authInfo, children, hasBottomMargin = true }) {
       </span>
       <a
         href={`${base}/auth/logout`}
-        className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+        className="px-2 sm:px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
       >
         Logout
       </a>
