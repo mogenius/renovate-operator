@@ -171,28 +171,5 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 		}
 	}
 
-	// TODO: Remove this cleanup logic after we have confidence that the new labels have propagated
-	stub := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
-	name := ""
-	if selector.JobType == DiscoveryJobType {
-		name = utils.DiscoveryJobName(stub)
-	} else {
-		name = utils.ExecutorJobName(stub, selector.Project)
-	}
-
-	matcher := crclient.MatchingLabels{
-		api.LabelLegacyJobType: string(selector.JobType),
-		api.LabelLegacyJobName: name,
-	}
-
-	jobList := &batchv1.JobList{}
-	err = client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
-	if err != nil {
-		return fmt.Errorf("listing jobs for cleanup with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
-	}
-
-	for _, job := range jobList.Items {
-		_ = DeleteJob(ctx, client, &job)
-	}
 	return nil
 }
