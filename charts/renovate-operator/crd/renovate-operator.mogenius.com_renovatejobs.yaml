@@ -21,6 +21,13 @@ spec:
     - jsonPath: .spec.provider.name
       name: Provider
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].reason
+      name: Reason
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -959,8 +966,16 @@ spec:
                 type: object
               allowedGroups:
                 description: |-
-                  Groups allowed to view this RenovateJob when authentication is enabled.
-                  If empty or not set, the job is hidden from all users.
+                  Groups allowed to view this RenovateJob in the UI, compared case-insensitively
+                  against the groups on the user's session. Only consulted when authentication is
+                  enabled; with authentication off, every job is visible to everyone.
+
+                  When this is empty the operator-wide DEFAULT_ALLOWED_GROUPS applies instead, and
+                  when that is empty too the job is visible to every authenticated user. Leaving
+                  both empty does not hide anything: restricting a job means setting one of them.
+
+                  A job that does list groups is hidden from everyone if the configured auth
+                  provider supplies no group claims, because no session can then match.
                 items:
                   type: string
                 type: array
@@ -1248,9 +1263,12 @@ spec:
                   - mountPath
                   - name
                   type: object
+                maxItems: 64
                 type: array
               extraVolumes:
-                description: Additional volumes to mount in the renovate pods
+                description: |-
+                  Additional volumes to mount in the renovate pods.
+                  hostPath is rejected: it would give the pod the node's filesystem
                 items:
                   description: Volume represents a named volume in a pod that may
                     be accessed by any container in the pod.
@@ -3149,7 +3167,11 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 64
                 type: array
+                x-kubernetes-validations:
+                - message: hostPath volumes are not allowed on RenovateJob pods
+                  rule: self.all(v, !has(v.hostPath))
               githubAppReference:
                 description: |-
                   Reference to a Github App for authentication, this will automatically mount a secret with
@@ -3221,6 +3243,10 @@ spec:
                   and "RENOVATE_PLATFORM" environment variables in the renovate container
                 properties:
                   endpoint:
+                    description: |-
+                      Endpoint is the platform API base URL. Its host must be listed in the
+                      operator's policy.allowedHosts, otherwise the job is refused.
+                    pattern: ^https?://[^?#]+$
                     type: string
                   name:
                     type: string
@@ -3229,6 +3255,8 @@ spec:
                       PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
                       When set, this overrides Endpoint for dashboard links while Endpoint continues to be
                       used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+                      Its host must be listed in the operator's policy.allowedHosts.
+                    pattern: ^https?://[^?#]+$
                     type: string
                 required:
                 - name
@@ -3577,9 +3605,10 @@ spec:
                 properties:
                   container:
                     description: |-
-                      SecurityContext holds security configuration that will be applied to a container.
-                      Some fields are present in both SecurityContext and PodSecurityContext.  When both
-                      are set, the values in SecurityContext take precedence.
+                      Container security context. privileged and allowPrivilegeEscalation are rejected
+                      outright: both hand the pod a route off the node, which no Renovate use case
+                      needs. Running as root is governed by the operator's policy.allowRootUser
+                      instead, since a custom image may legitimately need it.
                     properties:
                       allowPrivilegeEscalation:
                         description: |-
@@ -3769,6 +3798,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: privileged containers are not allowed on RenovateJob
+                        pods
+                      rule: '!has(self.privileged) || !self.privileged'
+                    - message: allowPrivilegeEscalation is not allowed on RenovateJob
+                        pods
+                      rule: '!has(self.allowPrivilegeEscalation) || !self.allowPrivilegeEscalation'
                   pod:
                     description: |-
                       PodSecurityContext holds pod-level security attributes and common container settings.
@@ -4304,18 +4340,82 @@ spec:
           status:
             description: RenovateJobStatus defines the observed state of RenovateJob
             properties:
-              executionOptions:
-                properties:
-                  debug:
-                    description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
-                    type: boolean
-                type: object
+              conditions:
+                description: |-
+                  Conditions holds the observed state of the RenovateJob. The operator sets the
+                  "Accepted" condition to False when the job violates the operator's policy, with
+                  a reason and a message naming the value to fix; nothing runs while it is False.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               projects:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
                     duration:
                       type: string
+                    executionOptions:
+                      properties:
+                        debug:
+                          description: If true, the renovate job will be executed
+                            with RENOVATE_LOG_LEVEL=debug
+                          type: boolean
+                      type: object
                     lastTransition:
                       description: LastTransition records when the project most recently
                         changed state.

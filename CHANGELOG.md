@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.6.0](https://github.com/mogenius/renovate-operator/compare/5.5.0...5.6.0) (2026-08-06)
+
+
+### Features
+
+* **chart:** add optional ListenerSet support to Helm chart ([50a8481](https://github.com/mogenius/renovate-operator/commit/50a84813d145fcbf0996215e2eb70562e64fb173))
+* **parser:** enable report type logging by default and add parsing capabilities ([db56188](https://github.com/mogenius/renovate-operator/commit/db56188de993bd01e3a794393427b4b54cf9026a)), closes [#571](https://github.com/mogenius/renovate-operator/issues/571)
+* **ui:** remember expansion of job cards([#547](https://github.com/mogenius/renovate-operator/issues/547)) ([2c72d82](https://github.com/mogenius/renovate-operator/commit/2c72d82738e312aa79f435f2f201688fedaba1d1))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([c2ca29e](https://github.com/mogenius/renovate-operator/commit/c2ca29ea7114006c633b122eed43541d2ccc0342))
+* **deps:** update aws-sdk-go-v2 monorepo ([a9eeffd](https://github.com/mogenius/renovate-operator/commit/a9eeffd5b2fa17f4f530bf9ec240ae93b191b4d4))
+* **deps:** update aws-sdk-go-v2 monorepo ([c1da762](https://github.com/mogenius/renovate-operator/commit/c1da7626ac3e43511ec3400856ec93d02e56dc8c))
+* **deps:** update aws-sdk-go-v2 monorepo ([1df1927](https://github.com/mogenius/renovate-operator/commit/1df1927273e2ccbea3f2d31dfeb708cbfcaee6e8))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.106.4 ([b7fbe44](https://github.com/mogenius/renovate-operator/commit/b7fbe449e6b24b04eb92c33055591915f5087958))
+* **deps:** update module github.com/netresearch/go-cron to v0.15.1 ([10275a9](https://github.com/mogenius/renovate-operator/commit/10275a9cecab4b3b7826a17740f6af9ee71eb3f9))
+* **deps:** update node.js to v24.18.1 ([504be2e](https://github.com/mogenius/renovate-operator/commit/504be2e181cbd0fa38782d41a701eeb843c67418))
+* **deps:** update node.js to v24.19.0 ([8611259](https://github.com/mogenius/renovate-operator/commit/86112596ab252a00ea34c7f02df5312a54defd08))
+* isolate executor jobs from autodiscovery ([cec8f37](https://github.com/mogenius/renovate-operator/commit/cec8f37e09fa1f7261e474e8f09d122cb3ce7775)), closes [#498](https://github.com/mogenius/renovate-operator/issues/498)
+* **rbac:** narrow down secrets access ([d426bc8](https://github.com/mogenius/renovate-operator/commit/d426bc824ddf12a90068a413f1a2af01fe116a6f))
+* **ui:** add Bitbucket Server pull request links ([ff7f745](https://github.com/mogenius/renovate-operator/commit/ff7f74580576e4c8c426522382cd557cb1909910))
+* **ui:** move expand and collapse buttons on the same line as the search bar ([3c18b75](https://github.com/mogenius/renovate-operator/commit/3c18b75f3b962e80bb47fe42e33c77366c6f98f7))
+
 ## [5.5.0](https://github.com/mogenius/renovate-operator/compare/5.4.0...5.5.0) (2026-07-28)
 
 

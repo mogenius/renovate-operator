@@ -4,6 +4,7 @@ import (
 	context "context"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
@@ -30,10 +31,6 @@ import (
 
 var reconcilerTracer = otel.Tracer("renovate-operator/reconciler")
 
-// webhookCleanupFinalizer marks RenovateJobs whose synced webhooks must be
-// removed from the Git platform before the resource is deleted.
-const webhookCleanupFinalizer = "renovate-operator.mogenius.com/webhook-cleanup"
-
 /*
 Reconciler for RenovateJob resources
 Watching for create/update/delete events and managing the schedules accordingly
@@ -44,6 +41,7 @@ type RenovateJobReconciler struct {
 	Scheduler scheduler.Scheduler
 	K8sClient client.Client
 	GithubApp github.GithubAppToken
+	Policy    policy.Policy
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -66,6 +64,12 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
 		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
+
+		// Gate before anything is scheduled or created.
+		if !r.acceptJob(ctx, logger, renovateJob) {
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		r.resetOrphanedRunning(ctx, renovateJob)
 		createScheduler(logger, renovateJob, r)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
@@ -86,17 +90,51 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 }
 
+// acceptJob validates the RenovateJob against the operator's policy and records the
+// outcome as the Accepted condition. It returns false when the job must not run.
+func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) bool {
+	jobID := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	err := r.Policy.ValidateJob(renovateJob)
+	if err == nil {
+		message := "RenovateJob satisfies the operator's policy"
+		if r.Policy.Disabled {
+			message = "the policy engine is disabled, so this RenovateJob was not checked"
+		}
+		if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, true, r.Policy.AcceptedReason(), message); condErr != nil {
+			logger.Error(condErr, "failed to record the Accepted condition")
+		}
+		return true
+	}
+
+	reason := policy.ReasonFor(err)
+	if reason == "" {
+		reason = policy.ReasonDestinationNotAllowed
+	}
+
+	metricStore.IncPolicyDenial(ctx, "destination")
+	logger.Error(err, "RenovateJob refused by policy, nothing will run for it until this is fixed",
+		"renovateJob", renovateJob.Name, "namespace", renovateJob.Namespace, "reason", reason)
+
+	r.Scheduler.RemoveSchedule(renovateJob.Namespace, renovateJob.Name)
+
+	if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, false, reason, err.Error()); condErr != nil {
+		logger.Error(condErr, "failed to record the Accepted condition")
+	}
+	return false
+}
+
 func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
 	webhook := renovateJob.Spec.Webhook
 	syncEnabled := webhook != nil && webhook.Enabled && webhook.Sync != nil && webhook.Sync.Enabled
 
-	if syncEnabled == controllerutil.ContainsFinalizer(renovateJob, webhookCleanupFinalizer) {
+	if syncEnabled == controllerutil.ContainsFinalizer(renovateJob, api.FinalizerWebhookCleanup) {
 		return
 	}
 	if syncEnabled {
-		controllerutil.AddFinalizer(renovateJob, webhookCleanupFinalizer)
+		controllerutil.AddFinalizer(renovateJob, api.FinalizerWebhookCleanup)
 	} else {
-		controllerutil.RemoveFinalizer(renovateJob, webhookCleanupFinalizer)
+		controllerutil.RemoveFinalizer(renovateJob, api.FinalizerWebhookCleanup)
 	}
 	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
 		logger.Error(err, "failed to update webhook cleanup finalizer")
@@ -104,7 +142,7 @@ func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Contex
 }
 
 func (r *RenovateJobReconciler) handleDeletion(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) (ctrl.Result, error) {
-	if !controllerutil.ContainsFinalizer(renovateJob, webhookCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(renovateJob, api.FinalizerWebhookCleanup) {
 		return ctrl.Result{}, nil
 	}
 
@@ -113,7 +151,7 @@ func (r *RenovateJobReconciler) handleDeletion(ctx context.Context, logger logr.
 		logger.Error(err, "failed to clean up webhooks during deletion, hooks may remain on the platform")
 	}
 
-	controllerutil.RemoveFinalizer(renovateJob, webhookCleanupFinalizer)
+	controllerutil.RemoveFinalizer(renovateJob, api.FinalizerWebhookCleanup)
 	if err := r.K8sClient.Update(ctx, renovateJob); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -197,7 +235,7 @@ func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renova
 
 	activeProjects := make(map[string]struct{}, len(existingJobs))
 	for _, j := range existingJobs {
-		if name := j.Annotations[crdManager.JOB_ANNOTATION_PROJECT]; name != "" {
+		if name := j.Annotations[api.ProjectAnnotationKey]; name != "" {
 			activeProjects[name] = struct{}{}
 		}
 	}
@@ -231,26 +269,26 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	toRemove := make([]string, 0, 3)
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 
-	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY] == "true" {
+	if annotations[api.TriggerDiscoveryAnnotationKey] == "true" {
 		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *renovateJob, renovate.DiscoveryJobOptions{}); err != nil {
 			logger.Error(err, "failed to trigger discovery")
 		} else {
 			logger.V(1).Info("discovery triggered via annotation")
-			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY)
+			toRemove = append(toRemove, api.TriggerDiscoveryAnnotationKey)
 		}
 	}
 
-	if annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL] == "true" {
+	if annotations[api.TriggerScheduleAllAnnotationKey] == "true" {
 		isNotRunning := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
 		if err := r.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled}); err != nil {
 			logger.Error(err, "failed to schedule all projects")
 		} else {
 			logger.V(1).Info("all projects scheduled via annotation")
-			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL)
+			toRemove = append(toRemove, api.TriggerScheduleAllAnnotationKey)
 		}
 	}
 
-	if projectsStr := annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; projectsStr != "" {
+	if projectsStr := annotations[api.TriggerScheduleAnnotationKey]; projectsStr != "" {
 		projectSet := parseAnnotationProjectList(projectsStr)
 		isTargeted := func(p api.ProjectStatus) bool {
 			_, ok := projectSet[p.Name]
@@ -260,7 +298,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 			logger.Error(err, "failed to schedule projects from annotation")
 		} else {
 			logger.V(1).Info("projects scheduled via annotation", "projects", projectsStr)
-			toRemove = append(toRemove, crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE)
+			toRemove = append(toRemove, api.TriggerScheduleAnnotationKey)
 		}
 	}
 

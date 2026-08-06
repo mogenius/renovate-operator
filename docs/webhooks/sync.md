@@ -11,12 +11,12 @@ Sync runs as part of the regular discovery schedule — there is no separate sch
 
 Below is the list of providers that support webhook sync. By default the platform API token is read from the job's provider secret (`spec.secretRef`) — the same token Renovate itself uses. Optionally, a dedicated token for webhook management can be configured via `sync.secretRef` (see [Permissions](#permissions)).
 
-| Provider  | Supported | Webhook endpoint      |
-| :-------- | :-------: | :-------------------- |
-| Forgejo   |    yes    | `/webhook/v1/forgejo` |
-| Gitea     |    yes    | `/webhook/v1/gitea`   |
-| GitHub    |    yes    | `/webhook/v1/github`  |
-| GitLab    |    yes    | `/webhook/v1/gitlab`  |
+| Provider  | Supported | Webhook endpoint        |
+| :-------- | :-------: | :---------------------- |
+| Forgejo   |    yes    | `/webhook/v1/forgejo`   |
+| Gitea     |    yes    | `/webhook/v1/gitea`     |
+| GitHub    |    yes    | `/webhook/v1/github`    |
+| GitLab    |    yes    | `/webhook/v1/gitlab`    |
 | Bitbucket |    yes    | `/webhook/v1/bitbucket` |
 
 ## Configuration
@@ -45,25 +45,49 @@ spec:
       secretRef:
         name: webhook-admin-token
         key: token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webhook-admin-token
+  namespace: renovate-operator
+  labels:
+    renovate-operator.mogenius.com/allow-ref: "true"
+stringData:
+  token: ...
 ```
+
+### Referenced secrets must be labelled
+
+`authentication.secretRef` and `sync.secretRef` both name a secret _and_ the key to read from it, and
+the operator does that read with its own cluster credentials. Each target secret therefore needs:
+
+```yaml
+metadata:
+  labels:
+    renovate-operator.mogenius.com/allow-ref: "true"
+```
+
+Without it the reference is refused: sync writes nothing, and incoming webhook deliveries fail
+authentication.
 
 ### Sync fields
 
-| Field       | Required | Description                               |
-| :---------- | :------: | :----------------------------------------- |
-| `enabled`   |   yes    | Enable or disable automatic webhook sync. |
+| Field       | Required | Description                                                                                                                                                                                                                                                                                                                            |
+| :---------- | :------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`   |   yes    | Enable or disable automatic webhook sync.                                                                                                                                                                                                                                                                                              |
 | `secretRef` |    no    | Reference (`name`, `key`) to a secret in the job's namespace holding a platform token used only for webhook management. When omitted, the job's platform token (`spec.secretRef` / `spec.githubAppReference`) is used. When `key` is omitted, the common Renovate token key names (`RENOVATE_TOKEN`, `GITHUB_COM_TOKEN`, …) are tried. |
 
 ### Delivery authentication
 
 If `webhook.authentication` is enabled, the first token from its `secretRef` is attached to each created webhook in the platform's native way, so deliveries authenticate back to the operator automatically:
 
-| Provider        | Mechanism                                        |
-| :-------------- | :----------------------------------------------- |
-| Forgejo / Gitea | Authorization header (`Bearer <token>`)          |
-| GitHub          | Hook secret → `X-Hub-Signature-256` HMAC header  |
-| GitLab          | Hook token → `X-Gitlab-Token` header             |
-| Bitbucket       | Hook secret → `X-Hub-Signature` HMAC header      |
+| Provider        | Mechanism                                       |
+| :-------------- | :---------------------------------------------- |
+| Forgejo / Gitea | Authorization header (`Bearer <token>`)         |
+| GitHub          | Hook secret → `X-Hub-Signature-256` HMAC header |
+| GitLab          | Hook token → `X-Gitlab-Token` header            |
+| Bitbucket       | Hook secret → `X-Hub-Signature` HMAC header     |
 
 ## Webhook URL
 
@@ -95,6 +119,23 @@ spec:
 Jobs that leave `baseUrl` unset keep using `WEBHOOK_BASE_URL`, so mixing internal and public jobs in one operator needs the override only on the jobs that differ from the deployment-wide default. Sync fails for a job only when both `spec.webhook.baseUrl` and `WEBHOOK_BASE_URL` are empty.
 
 Changing `baseUrl` on a job that already has synced webhooks rewrites those hooks in place on the next discovery cycle — the host is not part of how the operator recognises its own hooks, so no duplicates are left behind.
+
+### The delivery host must be allowlisted
+
+Whatever base URL a job ends up with — `spec.webhook.baseUrl` or `WEBHOOK_BASE_URL` — its host has to appear in `policy.allowedHosts`, otherwise the operator refuses to write hooks. Sync fails open, so the denial is logged and discovery continues; no hooks are created or updated.
+
+The chart adds the operator's own webhook host for you: with `webhook.enabled`, the host of `webhook.baseUrl` — or of `webhook.ingress`/`webhook.route` when it is derived — is appended to `policy.allowedHosts`. That URL is chart configuration, so it is an approved destination already. A job that overrides `spec.webhook.baseUrl` with a *different* host still needs it listed:
+
+```yaml
+policy:
+  allowedHosts:
+    - gitlab.example.com # the platform
+    - renovate-operator.renovate-operator.svc.cluster.local # only needed for a per-job override
+```
+
+This exists because the delivery URL is written onto your repositories and persists there: an unbounded `baseUrl` would keep receiving every repository event — and, on GitLab, Gitea and Forgejo, the webhook authentication token — long after the RenovateJob was corrected. See [security.md](../security.md).
+
+Removal is deliberately not gated: the operator will still delete a hook whose delivery host is not allowlisted, so a hook left behind by an earlier misconfiguration can be cleaned up.
 
 ## How sync works
 

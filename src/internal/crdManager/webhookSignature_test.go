@@ -7,7 +7,7 @@ import (
 
 // canonicalSigningSecret is the public Standard Webhooks / svix example signing secret (published in
 // the spec). The "whsec_" prefix is kept separate from the body so secret scanners don't flag this
-// public test vector as a live credential — the prefix collides with Stripe's webhook-secret format.
+// public test vector as a live credential: the prefix collides with Stripe's webhook-secret format.
 const canonicalSigningSecret = "whsec_" + "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
 
 // TestStandardWebhookSignatureKnownAnswer pins the GitLab signing-token (Standard Webhooks)

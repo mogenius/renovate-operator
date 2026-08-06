@@ -174,11 +174,6 @@ func TestNewJobs_WithSettings(t *testing.T) {
 				},
 			},
 		},
-		Status: api.RenovateJobStatus{
-			ExecutionOptions: &api.RenovateExecutionOptions{
-				Debug: true,
-			},
-		},
 	}
 	err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
@@ -211,7 +206,6 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectEnvVar(t, djContainer, "RENOVATE_AUTODISCOVER_TOPICS", "renovate,!skipRenovate")
 	expectEnvVar(t, djContainer, "RENOVATE_ENDPOINT", "gitlab.example.com")
 	expectEnvVar(t, djContainer, "RENOVATE_PLATFORM", "gitlab")
-	expectEnvVar(t, djContainer, "RENOVATE_LOG_LEVEL", "debug")
 	expectEnvFromSecret(t, djContainer, "sref")
 	expectEnvVarFromSecretKey(t, djContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 
@@ -220,7 +214,9 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumes(t, dj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
 	expectServiceAccountSettings(t, dj, "test", new(true))
-	expectSecurityContext(t, dj, djContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	// The fixture overrides runAsUser only, so the expectation is the merge: the spec's
+	// uid wins and every other hardened default is still in place.
+	expectSecurityContext(t, dj, djContainer, mergedPodSecurityContext(15000), mergedContainerSecurityContext(16000))
 	expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
 	expectAffinity(t, dj, job.Spec.Affinity)
@@ -230,7 +226,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectPriorityClassName(t, dj, "renovate-low-priority")
 
 	// test renovate job
-	rj := newRenovateJob(job, "proj", "")
+	rj := newRenovateJob(job, "proj", &api.RenovateExecutionOptions{Debug: true}, "")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
 	expectJobName(t, rj, "rj-proj-701b9b0a")
@@ -243,6 +239,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 	// env vars
 	expectEnvVar(t, rjContainer, "RENOVATE_LOG_FORMAT", "console")
+	expectEnvVar(t, rjContainer, "RENOVATE_LOG_LEVEL", "debug")
 	expectEnvVarFromSecretKey(t, rjContainer, "RENOVATE_REDIS_URL", redisURLSecretName, "redis-url")
 	expectEnvFromSecret(t, rjContainer, "sref")
 	// volumes
@@ -250,7 +247,7 @@ func TestNewJobs_WithSettings(t *testing.T) {
 	expectVolumes(t, rj, []v1.Volume{{Name: "tmp"}, {Name: "extra-vol"}})
 	// other
 	expectServiceAccountSettings(t, rj, "test", new(true))
-	expectSecurityContext(t, rj, rjContainer, job.Spec.SecurityContext.Pod, job.Spec.SecurityContext.Container)
+	expectSecurityContext(t, rj, rjContainer, mergedPodSecurityContext(15000), mergedContainerSecurityContext(16000))
 	expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "my-pull-secret"}})
 	// scheduling
 	expectAffinity(t, rj, job.Spec.Affinity)
@@ -315,7 +312,7 @@ func TestNewJob_WithoutSettings(t *testing.T) {
 	expectPriorityClassName(t, dj, "")
 
 	// test renovate job
-	rj := newRenovateJob(job, "myproj", "")
+	rj := newRenovateJob(job, "myproj", nil, "")
 	rjContainer := expectContainer(t, rj)
 	// basic fields
 	expectJobName(t, rj, "nofilter-myproj-496e220d")
@@ -364,7 +361,7 @@ func TestNewJobs_Autodiscovery(t *testing.T) {
 		}
 
 		djContainer := expectContainer(t, newDiscoveryJob(job, ""))
-		rjContainer := expectContainer(t, newRenovateJob(job, "org/configured-repository", ""))
+		rjContainer := expectContainer(t, newRenovateJob(job, "org/configured-repository", nil, ""))
 
 		if !reflect.DeepEqual(djContainer.Command, []string{"/bin/sh", "-c"}) {
 			t.Fatalf("expected discovery command to use the shell, got %v", djContainer.Command)
@@ -394,7 +391,7 @@ func TestNewJobs_Autodiscovery(t *testing.T) {
 			Spec:       api.RenovateJobSpec{Image: "img"},
 		}
 
-		container := expectContainer(t, newRenovateJob(job, "org/repository", ""))
+		container := expectContainer(t, newRenovateJob(job, "org/repository", nil, ""))
 		expectedArgs := []string{"--autodiscover=false", "org/repository"}
 		if !reflect.DeepEqual(container.Args, expectedArgs) {
 			t.Fatalf("expected executor args %v, got %v", expectedArgs, container.Args)
@@ -419,7 +416,7 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 		dj := newDiscoveryJob(job, "")
 		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj", "")
+		rj := newRenovateJob(job, "proj", nil, "")
 		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "default-secret"}})
 	})
 
@@ -434,7 +431,7 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 		dj := newDiscoveryJob(job, "")
 		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 
-		rj := newRenovateJob(job, "proj", "")
+		rj := newRenovateJob(job, "proj", nil, "")
 		expectImagePullSecrets(t, rj, []v1.LocalObjectReference{{Name: "spec-secret"}, {Name: "default-secret"}})
 	})
 }
@@ -453,7 +450,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("nil scratchVolume creates default emptyDir at /tmp", func(t *testing.T) {
 		job := baseJob(nil)
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			c := expectContainer(t, bj)
 			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
@@ -467,7 +464,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("enabled=true explicitly creates scratch volume", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			c := expectContainer(t, bj)
 			expectVolumes(t, bj, []v1.Volume{{Name: "tmp"}})
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/tmp"}})
@@ -477,7 +474,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("enabled=false disables scratch volume and RENOVATE_BASE_DIR", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: false})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			c := expectContainer(t, bj)
 			if len(bj.Spec.Template.Spec.Volumes) != 0 {
 				t.Fatalf("expected no volumes, got %v", bj.Spec.Template.Spec.Volumes)
@@ -495,7 +492,7 @@ func TestScratchVolume(t *testing.T) {
 
 	t.Run("custom path sets mount and RENOVATE_BASE_DIR", func(t *testing.T) {
 		job := baseJob(&api.RenovateJobScratchVolume{Enabled: true, Path: "/workspace"})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			c := expectContainer(t, bj)
 			expectVolumeMounts(t, c, []v1.VolumeMount{{Name: "tmp", MountPath: "/workspace"}})
 			expectEnvVar(t, c, "RENOVATE_BASE_DIR", "/workspace")
@@ -509,7 +506,7 @@ func TestScratchVolume(t *testing.T) {
 			Medium:    v1.StorageMediumMemory,
 			SizeLimit: &sl,
 		})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			vol := bj.Spec.Template.Spec.Volumes[0]
 			if vol.EmptyDir == nil {
 				t.Fatalf("expected emptyDir volume source")
@@ -535,7 +532,7 @@ func TestScratchVolume(t *testing.T) {
 				},
 			},
 		})
-		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", "")} {
+		for _, bj := range []*batchv1.Job{newDiscoveryJob(job, ""), newRenovateJob(job, "proj", nil, "")} {
 			vol := bj.Spec.Template.Spec.Volumes[0]
 			if vol.Ephemeral == nil {
 				t.Fatalf("expected ephemeral volume source")

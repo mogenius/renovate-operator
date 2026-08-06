@@ -21,6 +21,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/types"
 )
@@ -125,10 +126,9 @@ func (r *mockRenovateJobManager) IsWebhookStandardSignatureValid(ctx context.Con
 	return true, nil
 }
 
-func (m *mockRenovateJobManager) UpdateExecutionOptions(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+func (m *mockRenovateJobManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
 	return nil
 }
-
 func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
 	if m.cancelProjectJobFunc != nil {
 		return m.cancelProjectJobFunc(ctx, project, jobId)
@@ -647,6 +647,10 @@ func TestFilterRenovateJobsByGroups_WithDefaults(t *testing.T) {
 			wantJobs:             []string{},
 		},
 		{
+			// Group restrictions are opt-in: with nothing configured there is nothing to
+			// filter on, so the job stays visible. This is intended, not an oversight —
+			// making it fail closed would hide every job on any installation that has
+			// never set groups, so change it only deliberately.
 			name: "job without allowedGroups and no defaults - visible to all authenticated users",
 			jobs: []api.RenovateJob{
 				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
@@ -849,7 +853,7 @@ func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
 	server := &Server{
 		manager:   mockManager,
 		logger:    logr.Discard(),
-		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil),
+		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil, policy.Policy{}),
 		scheduler: &mockScheduler{},
 	}
 
@@ -1112,88 +1116,3 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 	}
 }
 
-func TestUpdateExecutionOptions_Authorization(t *testing.T) {
-	tests := []struct {
-		name           string
-		job            *api.RenovateJob
-		userGroups     []string
-		authEnabled    bool
-		wantStatusCode int
-	}{
-		{
-			name: "authorized user can update execution options",
-			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
-			},
-			userGroups:     []string{"team-a"},
-			authEnabled:    true,
-			wantStatusCode: http.StatusOK,
-		},
-		{
-			name: "unauthorized user gets 403",
-			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
-			},
-			userGroups:     []string{"team-b"},
-			authEnabled:    true,
-			wantStatusCode: http.StatusForbidden,
-		},
-		{
-			name: "auth disabled - all users can update",
-			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
-			},
-			userGroups:     []string{"team-b"},
-			authEnabled:    false,
-			wantStatusCode: http.StatusOK,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockManager := &mockRenovateJobManager{
-				getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-					return tt.job, nil
-				},
-			}
-
-			server := &Server{
-				manager: mockManager,
-				logger:  logr.Discard(),
-			}
-
-			if tt.authEnabled {
-				server.auth = &OIDCAuth{}
-			}
-
-			body := map[string]any{
-				"renovateJob": "job1",
-				"namespace":   "default",
-				"debug":       true,
-			}
-			jsonBody, _ := json.Marshal(body)
-
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/executionOptions", bytes.NewReader(jsonBody))
-			req.Header.Set("Content-Type", "application/json")
-
-			if tt.authEnabled {
-				session := &sessionData{
-					Email:  "test@example.com",
-					Groups: tt.userGroups,
-				}
-				ctx := context.WithValue(req.Context(), sessionContextKey, session)
-				req = req.WithContext(ctx)
-			}
-
-			w := httptest.NewRecorder()
-			server.updateExecutionOptions(w, req)
-
-			if w.Code != tt.wantStatusCode {
-				t.Errorf("Expected status %d, got %d", tt.wantStatusCode, w.Code)
-			}
-		})
-	}
-}

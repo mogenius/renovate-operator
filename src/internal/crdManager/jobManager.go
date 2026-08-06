@@ -16,34 +16,6 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	JOB_LABEL_TYPE        = "renovate-operator.mogenius.com/type"
-	JOB_LABEL_RENOVATEJOB = "renovate-operator.mogenius.com/renovatejob"
-	JOB_LABEL_PROJECT     = "renovate-operator.mogenius.com/project"
-	JOB_LABEL_GENERATION  = "renovate-operator.mogenius.com/generation"
-	// JOB_ANNOTATION_PROJECT stores the original project name (may contain slashes etc.)
-	// Use this instead of JOB_LABEL_PROJECT when you need the exact CRD status key.
-	JOB_ANNOTATION_PROJECT = "renovate-operator.mogenius.com/project"
-	// JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY indicates that ProcessDiscoveryJobResult should
-	// schedule all non-running projects after reconciling. Set to "true" for cron-triggered
-	// discovery; omit or "false" for UI-triggered discovery (project list refresh only).
-	JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY = "renovate-operator.mogenius.com/schedule-after-discovery"
-	// JOB_ANNOTATION_PROCESSED is stamped on a Job after its result has been fully processed.
-	// The JobReconciler checks this annotation to skip already-processed jobs on informer resyncs,
-	// preventing completed discovery jobs from re-scheduling all projects every ~10h.
-	JOB_ANNOTATION_PROCESSED = "renovate-operator.mogenius.com/processed"
-
-	// RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY triggers a discovery run when set to "true".
-	// Removed from the RenovateJob once the discovery job is created.
-	RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY = "renovate-operator.mogenius.com/discovery"
-	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL schedules all non-running projects when set to "true".
-	// Removed from the RenovateJob after the status update succeeds.
-	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL = "renovate-operator.mogenius.com/schedule-all"
-	// RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE schedules specific projects when set to a comma-separated list of project names.
-	// Removed from the RenovateJob after the status update succeeds.
-	RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE = "renovate-operator.mogenius.com/schedule"
-)
-
 type JobType string
 
 const (
@@ -76,7 +48,7 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 	var maxGen int64 = -1
 
 	for i := range allJobs {
-		genStr, exists := allJobs[i].Labels[JOB_LABEL_GENERATION]
+		genStr, exists := allJobs[i].Labels[api.LabelGeneration]
 		var gen int64 = 0 // Default to 0 for missing/invalid labels
 		if exists {
 			parsedGen, err := strconv.ParseInt(genStr, 10, 64)
@@ -97,15 +69,15 @@ func GetJobByLabel(ctx context.Context, client crclient.Client, selector JobSele
 func GetJobsByLabel(ctx context.Context, client crclient.Client, selector JobSelector) ([]batchv1.Job, error) {
 
 	matcher := crclient.MatchingLabels{
-		JOB_LABEL_TYPE:        string(selector.JobType),
-		JOB_LABEL_RENOVATEJOB: selector.RenovateJobName,
+		api.LabelJobType:     string(selector.JobType),
+		api.LabelRenovateJob: selector.RenovateJobName,
 	}
 	if selector.JobType == ExecutorJobType && selector.Project != "" {
-		matcher[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleProjectName(selector.Project)
+		matcher[api.LabelProject] = utils.KubernetesCompatibleProjectName(selector.Project)
 	}
 
 	if selector.Generation != nil && *selector.Generation != "" {
-		matcher[JOB_LABEL_GENERATION] = *selector.Generation
+		matcher[api.LabelGeneration] = *selector.Generation
 	}
 	jobList := &batchv1.JobList{}
 	err := client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
@@ -125,14 +97,14 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 	return nil
 }
 
-// MarkJobProcessed stamps JOB_ANNOTATION_PROCESSED on the Job so the JobReconciler
+// MarkJobProcessed stamps api.ProcessedAnnotationKey on the Job so the JobReconciler
 // can skip it on subsequent informer resyncs without re-processing its result.
 func MarkJobProcessed(ctx context.Context, c crclient.Client, job *batchv1.Job) error {
 	patch := crclient.MergeFrom(job.DeepCopy())
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
-	job.Annotations[JOB_ANNOTATION_PROCESSED] = "true"
+	job.Annotations[api.ProcessedAnnotationKey] = "true"
 	return c.Patch(ctx, job, patch)
 }
 func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
@@ -145,16 +117,16 @@ func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *b
 		job.Labels = make(map[string]string)
 	}
 
-	job.Labels[JOB_LABEL_GENERATION] = generation
-	job.Labels[JOB_LABEL_TYPE] = string(selector.JobType)
-	job.Labels[JOB_LABEL_RENOVATEJOB] = selector.RenovateJobName
+	job.Labels[api.LabelGeneration] = generation
+	job.Labels[api.LabelJobType] = string(selector.JobType)
+	job.Labels[api.LabelRenovateJob] = selector.RenovateJobName
 
 	if selector.JobType == ExecutorJobType {
-		job.Labels[JOB_LABEL_PROJECT] = utils.KubernetesCompatibleProjectName(selector.Project)
+		job.Labels[api.LabelProject] = utils.KubernetesCompatibleProjectName(selector.Project)
 		if job.Annotations == nil {
 			job.Annotations = make(map[string]string)
 		}
-		job.Annotations[JOB_ANNOTATION_PROJECT] = selector.Project
+		job.Annotations[api.ProjectAnnotationKey] = selector.Project
 	}
 
 	maps.Copy(job.Labels, utils.ConfiguredPodLabels(selector.RenovateJobName, selector.Project, string(selector.JobType), selector.Namespace))
@@ -191,7 +163,7 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 	}
 
 	for _, job := range allJobs {
-		gen, exists := job.Labels[JOB_LABEL_GENERATION]
+		gen, exists := job.Labels[api.LabelGeneration]
 
 		if !exists || gen != currentGen {
 			// This is an old generation - safe to delete
@@ -199,28 +171,5 @@ func cleanupOldGenerations(ctx context.Context, client crclient.Client, selector
 		}
 	}
 
-	// TODO: Remove this cleanup logic after we have confidence that the new labels have propagated
-	stub := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: selector.RenovateJobName, Namespace: selector.Namespace}}
-	name := ""
-	if selector.JobType == DiscoveryJobType {
-		name = utils.DiscoveryJobName(stub)
-	} else {
-		name = utils.ExecutorJobName(stub, selector.Project)
-	}
-
-	matcher := crclient.MatchingLabels{
-		"renovate-operator.mogenius.com/job-type": string(selector.JobType),
-		"renovate-operator.mogenius.com/job-name": name,
-	}
-
-	jobList := &batchv1.JobList{}
-	err = client.List(ctx, jobList, crclient.InNamespace(selector.Namespace), crclient.MatchingLabels(matcher))
-	if err != nil {
-		return fmt.Errorf("listing jobs for cleanup with label RenvateJob: %s Project: %s Error: %w", selector.RenovateJobName, selector.Project, err)
-	}
-
-	for _, job := range jobList.Items {
-		_ = DeleteJob(ctx, client, &job)
-	}
 	return nil
 }

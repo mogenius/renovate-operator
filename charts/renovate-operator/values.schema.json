@@ -289,6 +289,36 @@
         "watchNamespace": { "type": "string" }
       }
     },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "master switch for the policy engine; false runs the operator unsecured",
+          "type": "boolean"
+        },
+        "allowedHosts": {
+          "description": "exact bare hostnames the operator may send to; no scheme, port, path or wildcard",
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$"
+          }
+        },
+        "requireSecretRefOptIn": { "type": "boolean" },
+        "allowedServiceAccounts": {
+          "description": "ServiceAccount names a RenovateJob may run as; empty allows only the namespace default",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "allowRootUser": { "type": "boolean" },
+        "allowedImages": {
+          "description": "image repository prefixes a RenovateJob may run; empty denies every image",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      }
+    },
     "securityContext": { "$ref": "#/$defs/securityContext" },
     "resources": { "type": ["object", "null"] },
     "extraEnv": {
