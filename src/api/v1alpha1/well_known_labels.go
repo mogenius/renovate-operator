@@ -17,14 +17,6 @@ const (
 	LabelGeneration = GroupName + "/generation"
 )
 
-const (
-	// LabelLegacyJobType and LabelLegacyJobName were written by operator versions
-	// before the current label scheme. They are only read, to clean up Jobs those
-	// versions left behind.
-	LabelLegacyJobType = GroupName + "/job-type"
-	LabelLegacyJobName = GroupName + "/job-name"
-)
-
 // LabelAllowRef opts a Secret in to being dereferenced by a RenovateJob at a
 // caller-chosen key. Enforced by internal/policy.
 const LabelAllowRef = GroupName + "/allow-ref"

@@ -14,8 +14,6 @@ var ownedKeys = map[string]string{
 	"LabelRenovateJob":                    LabelRenovateJob,
 	"LabelProject":                        LabelProject,
 	"LabelGeneration":                     LabelGeneration,
-	"LabelLegacyJobType":                  LabelLegacyJobType,
-	"LabelLegacyJobName":                  LabelLegacyJobName,
 	"LabelAllowRef":                       LabelAllowRef,
 	"ProjectAnnotationKey":                ProjectAnnotationKey,
 	"ScheduleAfterDiscoveryAnnotationKey": ScheduleAfterDiscoveryAnnotationKey,
