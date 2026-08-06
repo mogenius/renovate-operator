@@ -1,5 +1,29 @@
 # Changelog
 
+## [6.0.0](https://github.com/mogenius/renovate-operator/compare/5.6.0...6.0.0) (2026-08-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* The deprecated job identifiers are now removed. The renovate-operator actively migrated them since quite a few versions so you shouldn't be affected but we still marked it as breaking change.
+* **security:** RenovateJobs may no longer declare hostPath volumes, privileged containers or allowPrivilegeEscalation. The API server rejects them, and existing objects using them become unapplyable. The rest of the added policy engine is purely optional and disabled by default. Look at the migration guide docs/migration-v5-to-v6.md for further explanations.
+
+### Features
+
+* replace persistent debug with single push debug ([225d516](https://github.com/mogenius/renovate-operator/commit/225d5161418d80b119fbfc058ef15a86ed3ae5cc)), closes [#561](https://github.com/mogenius/renovate-operator/issues/561)
+* **security:** add optional policy engine to harden renovate runs ([1f0caf2](https://github.com/mogenius/renovate-operator/commit/1f0caf2d34a46deb8dfc1faa17cec4d9a25c9421))
+* **ui:** pin toolbar and search to the top ([#572](https://github.com/mogenius/renovate-operator/issues/572)) ([9e894f1](https://github.com/mogenius/renovate-operator/commit/9e894f15b821b5f511f00525e9701c83463575c0))
+
+
+### Bug Fixes
+
+* deacviate all trigger buttons if job hasnt been accepted by policy ([4d40c07](https://github.com/mogenius/renovate-operator/commit/4d40c07f03c07c3d6e34db8c00f35f3d9980c088))
+
+
+### Code Refactoring
+
+* drop legacy job labels ([619e474](https://github.com/mogenius/renovate-operator/commit/619e474bd9603cc92dbbaa4533e7214486dd0b37))
+
 ## [5.6.0](https://github.com/mogenius/renovate-operator/compare/5.5.0...5.6.0) (2026-08-06)
 
 
