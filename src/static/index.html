@@ -1644,7 +1644,7 @@
         );
       }
 
-      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width }) {
+      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted }) {
         const isRunning = project.status === "running";
         const isScheduled = project.status === "scheduled";
         const isPrioritized = isScheduled && (project.priority || 0) > 0;
@@ -1677,10 +1677,13 @@
           <div className={`flex items-stretch shadow-sm rounded-lg overflow-hidden ${width || ""}`}>
             <button
               onClick={onTrigger}
-              disabled={isTriggering || isPrioritized}
+              disabled={isTriggering || isPrioritized || !jobAccepted}
+              title={!jobAccepted ? "Halted by the operator's policy" : undefined}
               className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all"
               aria-label={
-                isTriggering
+                !jobAccepted
+                  ? "Halted by the operator's policy"
+                  : isTriggering
                   ? "Triggering renovate"
                   : isPrioritized
                   ? `Renovate already prioritized for ${project.name}`
@@ -1693,10 +1696,10 @@
             </button>
             <button
               onClick={onTriggerDebug}
-              disabled={isTriggering}
-              title="Trigger in debug mode"
+              disabled={isTriggering || !jobAccepted}
+              title={!jobAccepted ? "Halted by the operator's policy" : "Trigger in debug mode"}
               className={`${isDebugScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
-              aria-label={`Trigger ${project.name} in debug mode`}
+              aria-label={!jobAccepted ? "Halted by the operator's policy" : `Trigger ${project.name} in debug mode`}
             >
               <BugIcon className="w-3.5 h-3.5" />
             </button>
@@ -2138,10 +2141,10 @@
                         e.stopPropagation();
                         onTriggerAllRenovate(job, { debug: true });
                       }}
-                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0}
-                      title="Trigger all in debug mode"
+                      disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || job.accepted === false}
+                      title={job.accepted === false ? "Halted by the operator's policy" : "Trigger all in debug mode"}
                       className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2.5 py-2 text-xs sm:text-sm transition-all border-l border-white/10 flex items-center"
-                      aria-label={`Trigger all projects in debug mode for ${job.name}`}
+                      aria-label={job.accepted === false ? "Halted by the operator's policy" : `Trigger all projects in debug mode for ${job.name}`}
                     >
                       <BugIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
@@ -2303,6 +2306,7 @@
                                   onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
                                   onCancel={() => onCancelRenovate(job, project)}
                                   width="w-[130px]"
+                                  jobAccepted={job.accepted !== false}
                                 />
                                 <a
                                   href={`${BASE}/logs?renovate=${encodeURIComponent(
@@ -2473,6 +2477,7 @@
                             onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
                             onCancel={() => onCancelRenovate(job, project)}
                             width="w-[140px]"
+                            jobAccepted={job.accepted !== false}
                           />
                           <a
                             href={`${BASE}/logs?renovate=${encodeURIComponent(
