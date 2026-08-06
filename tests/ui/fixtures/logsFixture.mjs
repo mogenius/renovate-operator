@@ -141,6 +141,29 @@ class LogsPage {
     return Number(await badge.locator("span").last().textContent());
   }
 
+  /** The bar holding the counters, the search box and the log controls. */
+  get toolbar() {
+    return this.page.getByTestId("logs-toolbar");
+  }
+
+  /** The logo link in the brand strip, which the toolbar is meant to outlive. */
+  get brandLogo() {
+    return this.page.getByAltText("Renovate Operator Logo");
+  }
+
+  async scrollToBottom() {
+    await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // The toolbar's shadow follows a scroll listener, so wait for it to catch up
+    // rather than asserting against the pre-scroll frame.
+    await expect(this.toolbar).toHaveAttribute("data-stuck", "true");
+  }
+
+  /** How far the element's top edge sits below the top of the viewport. */
+  async distanceFromViewportTop(locator) {
+    const box = await locator.boundingBox();
+    return box === null ? null : box.y;
+  }
+
   /** The level selection the page persisted for the next visit. */
   async readStoredLevels() {
     return this.page.evaluate(() => localStorage.getItem("logs.selectedLevels"));
