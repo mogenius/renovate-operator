@@ -2,6 +2,7 @@ package crdmanager
 
 import (
 	"context"
+	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"testing"
 
@@ -24,9 +25,9 @@ func TestGetJob(t *testing.T) {
 			Name:      "test-job",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				JOB_LABEL_RENOVATEJOB: "test-job",
-				JOB_LABEL_PROJECT:     "test-project",
-				JOB_LABEL_TYPE:        string(ExecutorJobType),
+				api.LabelRenovateJob: "test-job",
+				api.LabelProject:     "test-project",
+				api.LabelJobType:     string(ExecutorJobType),
 			},
 		},
 	}
@@ -80,8 +81,8 @@ func TestCreateJob(t *testing.T) {
 			Name:      "new-job",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				JOB_LABEL_RENOVATEJOB: "new-job",
-				JOB_LABEL_TYPE:        string(ExecutorJobType),
+				api.LabelRenovateJob: "new-job",
+				api.LabelJobType:     string(ExecutorJobType),
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -122,7 +123,7 @@ func TestCreateJob(t *testing.T) {
 	}
 
 	// Verify operator labels were propagated to pod template
-	for _, labelKey := range []string{JOB_LABEL_TYPE, JOB_LABEL_RENOVATEJOB, JOB_LABEL_GENERATION} {
+	for _, labelKey := range []string{api.LabelJobType, api.LabelRenovateJob, api.LabelGeneration} {
 		jobVal, jobOk := got.Labels[labelKey]
 		tmplVal, tmplOk := got.Spec.Template.Labels[labelKey]
 		if !jobOk {
@@ -193,11 +194,11 @@ func TestCreateJobWithGeneration_PreservesExistingTemplateLabels(t *testing.T) {
 		t.Errorf("expected custom-label to be preserved, got %q", got.Spec.Template.Labels["custom-label"])
 	}
 	// Operator labels must also be present on the pod template
-	if got.Spec.Template.Labels[JOB_LABEL_TYPE] != string(DiscoveryJobType) {
-		t.Errorf("expected pod template to have %s=%s", JOB_LABEL_TYPE, string(DiscoveryJobType))
+	if got.Spec.Template.Labels[api.LabelJobType] != string(DiscoveryJobType) {
+		t.Errorf("expected pod template to have %s=%s", api.LabelJobType, string(DiscoveryJobType))
 	}
-	if got.Spec.Template.Labels[JOB_LABEL_RENOVATEJOB] != "labeled-job" {
-		t.Errorf("expected pod template to have %s=labeled-job", JOB_LABEL_RENOVATEJOB)
+	if got.Spec.Template.Labels[api.LabelRenovateJob] != "labeled-job" {
+		t.Errorf("expected pod template to have %s=labeled-job", api.LabelRenovateJob)
 	}
 }
 
@@ -223,8 +224,8 @@ func TestDeleteJob(t *testing.T) {
 			Name:      "test-pod",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				JOB_LABEL_RENOVATEJOB: "test-job",
-				JOB_LABEL_TYPE:        string(ExecutorJobType),
+				api.LabelRenovateJob: "test-job",
+				api.LabelJobType:     string(ExecutorJobType),
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -277,8 +278,8 @@ func TestDeleteJobWithWait(t *testing.T) {
 			Name:      "test-pod",
 			Namespace: "test-ns",
 			Labels: map[string]string{
-				JOB_LABEL_RENOVATEJOB: "test-job",
-				JOB_LABEL_TYPE:        string(ExecutorJobType),
+				api.LabelRenovateJob: "test-job",
+				api.LabelJobType:     string(ExecutorJobType),
 			},
 		},
 		Spec: corev1.PodSpec{

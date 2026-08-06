@@ -25,8 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-const tokenExpiresAtAnnotation = "renovate-operator.mogenius.com/token-expires-at"
-
 type GithubAppToken interface {
 	// EnsureToken creates or renews the GitHub App token secret for the job when
 	// the existing token has less than 30 minutes remaining. The secret is owned
@@ -73,7 +71,7 @@ func (g *githubappToken) EnsureToken(ctx context.Context, job *api.RenovateJob) 
 	existing := &corev1.Secret{}
 	err := g.client.Get(ctx, client.ObjectKey{Name: secretName, Namespace: job.Namespace}, existing)
 	if err == nil {
-		if expiresAtStr, ok := existing.Annotations[tokenExpiresAtAnnotation]; ok {
+		if expiresAtStr, ok := existing.Annotations[api.TokenExpiresAtAnnotationKey]; ok {
 			if expiresAt, parseErr := time.Parse(time.RFC3339, expiresAtStr); parseErr == nil {
 				if time.Until(expiresAt) > 30*time.Minute {
 					return nil
@@ -107,7 +105,7 @@ func (g *githubappToken) EnsureToken(ctx context.Context, job *api.RenovateJob) 
 		if secret.Annotations == nil {
 			secret.Annotations = make(map[string]string)
 		}
-		secret.Annotations[tokenExpiresAtAnnotation] = expiresAt.Format(time.RFC3339)
+		secret.Annotations[api.TokenExpiresAtAnnotationKey] = expiresAt.Format(time.RFC3339)
 		return controllerutil.SetControllerReference(job, secret, g.client.Scheme())
 	})
 

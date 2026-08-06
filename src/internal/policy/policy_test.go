@@ -214,7 +214,7 @@ func TestValidateReferencedSecret(t *testing.T) {
 	}{
 		{
 			name:    "opted in",
-			secret:  labeledSecret("webhook-token", map[string]string{AllowRefLabel: "true"}),
+			secret:  labeledSecret("webhook-token", map[string]string{api.LabelAllowRef: "true"}),
 			allowed: true,
 		},
 		{
@@ -231,12 +231,12 @@ func TestValidateReferencedSecret(t *testing.T) {
 			// Only the exact string "true" opts in: "yes"/"1"/"" must not, or the
 			// label becomes a guess about truthiness.
 			name:    "label present but not true",
-			secret:  labeledSecret("db-credentials", map[string]string{AllowRefLabel: "yes"}),
+			secret:  labeledSecret("db-credentials", map[string]string{api.LabelAllowRef: "yes"}),
 			allowed: false,
 		},
 		{
 			name:    "label explicitly false",
-			secret:  labeledSecret("db-credentials", map[string]string{AllowRefLabel: "false"}),
+			secret:  labeledSecret("db-credentials", map[string]string{api.LabelAllowRef: "false"}),
 			allowed: false,
 		},
 		{
@@ -276,7 +276,7 @@ func TestValidateReferencedSecretNamesLabelAndSecret(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected refusal")
 	}
-	for _, want := range []string{"db-credentials", AllowRefLabel, "requireSecretRefOptIn"} {
+	for _, want := range []string{"db-credentials", api.LabelAllowRef, "requireSecretRefOptIn"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected the error to mention %q, got: %v", want, err)
 		}

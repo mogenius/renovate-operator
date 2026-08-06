@@ -22,9 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// AllowRefLabel opts a Secret in to being dereferenced by a RenovateJob.
-const AllowRefLabel = "renovate-operator.mogenius.com/allow-ref"
-
 // Refusal reasons. These are surfaced verbatim as the reason of the RenovateJob's
 // Accepted status condition, so they follow Kubernetes' CamelCase convention and
 // are part of the resource's observable API.
@@ -76,7 +73,7 @@ type Policy struct {
 	Disabled bool
 	// AllowedHosts bounds every destination the operator may use.
 	AllowedHosts []string
-	// AllowUnlabeledSecretRefs drops the AllowRefLabel requirement.
+	// AllowUnlabeledSecretRefs drops the api.LabelAllowRef requirement.
 	AllowUnlabeledSecretRefs bool
 	// AllowedServiceAccounts are the ServiceAccount names a RenovateJob may run its
 	// pods as. Empty allows only the namespace default
@@ -282,10 +279,10 @@ func (p Policy) ValidateReferencedSecret(secret *corev1.Secret) error {
 	if secret == nil {
 		return violationf(ReasonSecretRefNotOptedIn, "no secret to check")
 	}
-	if secret.Labels[AllowRefLabel] == "true" {
+	if secret.Labels[api.LabelAllowRef] == "true" {
 		return nil
 	}
-	return violationf(ReasonSecretRefNotOptedIn, "secret %q is not opted in to being referenced by a RenovateJob; label it %s=%q, or set policy.requireSecretRefOptIn=false to disable this check", secret.Name, AllowRefLabel, "true")
+	return violationf(ReasonSecretRefNotOptedIn, "secret %q is not opted in to being referenced by a RenovateJob; label it %s=%q, or set policy.requireSecretRefOptIn=false to disable this check", secret.Name, api.LabelAllowRef, "true")
 }
 
 // ValidateDestination reports whether the operator may direct traffic at rawURL.

@@ -45,7 +45,7 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 // newUnlabeledSecret to exercise a secret that has not.
 func newSecret(name string, data map[string][]byte) *corev1.Secret {
 	secret := newUnlabeledSecret(name, data)
-	secret.Labels = map[string]string{policy.AllowRefLabel: "true"}
+	secret.Labels = map[string]string{api.LabelAllowRef: "true"}
 	return secret
 }
 
@@ -116,7 +116,7 @@ func TestNewClientWithTokenRef_DeniesUnlabeledSecret(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an arbitrary secret key to be refused without the opt-in label")
 	}
-	if !strings.Contains(err.Error(), policy.AllowRefLabel) {
+	if !strings.Contains(err.Error(), api.LabelAllowRef) {
 		t.Errorf("expected the error to name the label to add, got: %v", err)
 	}
 	// The refusal must not echo what it protected.

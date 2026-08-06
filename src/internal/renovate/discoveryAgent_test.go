@@ -125,8 +125,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	running.Name = "job1-discovery-b6caabe5"
 	running.Namespace = "ns"
 	running.Labels = map[string]string{
-		crdManager.JOB_LABEL_RENOVATEJOB: "job1",
-		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+		api.LabelRenovateJob: "job1",
+		api.LabelJobType:     string(crdManager.DiscoveryJobType),
 	}
 
 	// failed job
@@ -135,8 +135,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	failed.Namespace = "ns"
 	failed.Status.Failed = 1
 	failed.Labels = map[string]string{
-		crdManager.JOB_LABEL_RENOVATEJOB: "job2",
-		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+		api.LabelRenovateJob: "job2",
+		api.LabelJobType:     string(crdManager.DiscoveryJobType),
 	}
 	// succeeded job
 	succeeded := &batchv1.Job{}
@@ -144,8 +144,8 @@ func TestGetDiscoveryJobStatus(t *testing.T) {
 	succeeded.Namespace = "ns"
 	succeeded.Status.Succeeded = 1
 	succeeded.Labels = map[string]string{
-		crdManager.JOB_LABEL_RENOVATEJOB: "job3",
-		crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+		api.LabelRenovateJob: "job3",
+		api.LabelJobType:     string(crdManager.DiscoveryJobType),
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(running, failed, succeeded).Build()
@@ -241,8 +241,8 @@ func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
 			Name:      "job1-discovery-existing",
 			Namespace: "ns",
 			Labels: map[string]string{
-				crdManager.JOB_LABEL_RENOVATEJOB: "job1",
-				crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+				api.LabelRenovateJob: "job1",
+				api.LabelJobType:     string(crdManager.DiscoveryJobType),
 			},
 		},
 	}
@@ -292,8 +292,8 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 			Name:      "job1-discovery-existing",
 			Namespace: "ns",
 			Labels: map[string]string{
-				crdManager.JOB_LABEL_RENOVATEJOB: "job1",
-				crdManager.JOB_LABEL_TYPE:        string(crdManager.DiscoveryJobType),
+				api.LabelRenovateJob: "job1",
+				api.LabelJobType:     string(crdManager.DiscoveryJobType),
 			},
 		},
 	}
@@ -313,7 +313,7 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 	if err := c.Get(context.Background(), client.ObjectKey{Name: runningJob.Name, Namespace: runningJob.Namespace}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if updated.Annotations[crdManager.JOB_ANNOTATION_SCHEDULE_AFTER_DISCOVERY] != "true" {
+	if updated.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] != "true" {
 		t.Fatalf("expected schedule-after-discovery annotation to be set on running job")
 	}
 }

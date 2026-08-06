@@ -112,7 +112,7 @@ func validEvent(project, extra string) []byte {
 
 func renovateJob(name, project string, authEnabled bool) *api.RenovateJob {
 	job := &api.RenovateJob{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Spec:       api.RenovateJobSpec{Webhook: &api.RenovateWebhook{Enabled: true}},
 		Status:     api.RenovateJobStatus{Projects: []api.ProjectStatus{{Name: project}}},
