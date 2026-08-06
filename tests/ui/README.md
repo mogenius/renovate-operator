@@ -25,6 +25,10 @@ The mock supports the dashboard's API endpoints, but POST requests return `200`
 without changing fixture state. It is intended for layout and client-side
 behavior, not the operator's job lifecycle. Unhandled routes return a JSON 404.
 
+The log links on a project row work as well: `/api/v1/logs` is mocked as a real
+event stream whose entries arrive on a timer, so the page streams them in rather
+than showing a finished list.
+
 ## Running
 
 ```sh
@@ -40,17 +44,17 @@ the Chromium build on first run.
 
 ## Confirming a spec has teeth
 
-`test-ui-baseline` serves `index.html` from another git revision while keeping the
-current specs. Use it to verify that a new spec fails without its corresponding
-change:
+`test-ui-baseline` serves `index.html` and `pages/logs.html` from another git
+revision while keeping the current specs. Use it to verify that a new spec fails
+without its corresponding change:
 
 ```sh
 just test-ui-baseline HEAD                        # before the working-tree change
 just test-ui-baseline v5.4.0 --grep "expansion"   # before a release
 ```
 
-Only `index.html` is swapped; `components/`, `css/` and `js/` still come from the
-working tree.
+Only those two pages are swapped; `components/`, `css/` and `js/` still come from
+the working tree.
 
 ## Layout
 
@@ -61,10 +65,13 @@ tests/ui/
 ├── mockOperatorApi.mjs          # mock /api/v1 for `just ui-dev`, off by default
 ├── fixtures/
 │   ├── dashboardFixture.mjs     # API stubs + dashboard page object
-│   └── renovateJobsFixture.mjs  # /api/v1/renovatejobs payload builders
+│   ├── renovateJobsFixture.mjs  # /api/v1/renovatejobs payload builders
+│   ├── logsFixture.mjs          # log-stream stub + logs page object
+│   └── renovateLogsFixture.mjs  # /api/v1/logs event-stream builders
 └── specs/
     ├── jobCardExpansion.spec.mjs
-    └── stickyToolbar.spec.mjs
+    ├── stickyToolbar.spec.mjs
+    └── logsFiltering.spec.mjs
 ```
 
 `staticFrontendServer.mjs` mirrors `serveHTML` and `registerUiRoutes` in
@@ -89,6 +96,14 @@ from it follow along:
   `just ui-dev` use; every card leads with the states the "Hide Projects" menu can
   act on and fills the rest rotated by job index
 
+`renovateLogsFixture.mjs` does the same for the logs page. `/api/v1/logs` is an
+event stream, so the fixture builds the frames `getRenovateJobLogs` writes and the
+spec serves the whole body in one `route.fulfill` — the browser's `EventSource`
+parses it frame by frame exactly as it would a live stream.
+
 Prefer semantic locators or stable hooks (`aria-label`, `title`, or
 `data-testid`) over Tailwind classes. The job-card chevron is `aria-hidden`, so
-the page object locates it with CSS rather than `getByLabel`.
+the page object locates it with CSS rather than `getByLabel`. A log row has no
+role of its own, so `logsFixture.mjs` locates rows by their message and their
+level label — which means the level dropdown has to be closed before counting
+rows, since it repeats those same words.

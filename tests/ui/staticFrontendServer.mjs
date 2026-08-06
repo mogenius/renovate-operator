@@ -10,7 +10,7 @@
 //   STATIC_FRONTEND_PORT  port to listen on (default 8099)
 //   BASE_PATH             sub-path to serve under, same semantics as the operator
 //   INDEX_HTML_PATH       override for index.html, used to run a spec against a
-//                         different revision of the page (see the README)
+//   LOGS_HTML_PATH        different revision of the page (see the README)
 //   MOCK_API              serve mock /api/v1 data so the dashboard can be used by
 //                         hand without a cluster (`just ui-dev`)
 
@@ -99,6 +99,8 @@ export function createStaticFrontendServer({
   basePath = normalizeBasePath(process.env.BASE_PATH),
   indexHtmlPath = process.env.INDEX_HTML_PATH ||
     path.join(staticRootDirectory, "index.html"),
+  logsHtmlPath = process.env.LOGS_HTML_PATH ||
+    path.join(staticRootDirectory, "pages/logs.html"),
   // Off by default: the Playwright specs stub the API themselves via page.route.
   mockApi = process.env.MOCK_API === "1" || process.env.MOCK_API === "true",
 } = {}) {
@@ -124,11 +126,7 @@ export function createStaticFrontendServer({
     }
 
     if (relativePath === "/logs") {
-      await serveHtmlPage(
-        response,
-        path.join(staticRootDirectory, "pages/logs.html"),
-        basePath,
-      );
+      await serveHtmlPage(response, logsHtmlPath, basePath);
       return;
     }
 

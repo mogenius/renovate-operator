@@ -29,15 +29,17 @@ export default defineConfig({
   webServer: {
     command: "node staticFrontendServer.mjs",
     url: staticFrontendUrl,
-    // Never reuse a server when INDEX_HTML_PATH is set: a leftover server from a
-    // previous run would silently serve the wrong revision of the page.
-    reuseExistingServer: !process.env.CI && !process.env.INDEX_HTML_PATH,
+    // Never reuse a server when a page is overridden: a leftover server from a
+    // previous run would silently serve the wrong revision of it.
+    reuseExistingServer:
+      !process.env.CI && !process.env.INDEX_HTML_PATH && !process.env.LOGS_HTML_PATH,
     stdout: "ignore",
     stderr: "pipe",
     env: {
       STATIC_FRONTEND_PORT: String(staticFrontendPort),
       BASE_PATH: process.env.BASE_PATH || "",
       INDEX_HTML_PATH: process.env.INDEX_HTML_PATH || "",
+      LOGS_HTML_PATH: process.env.LOGS_HTML_PATH || "",
       // Specs stub the API themselves; pinned off so an exported MOCK_API from a
       // `just ui-dev` shell cannot change what the suite runs against.
       MOCK_API: "",

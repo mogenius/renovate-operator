@@ -106,18 +106,19 @@ test-ui *args: jsInstall
     npx playwright install chromium > /dev/null
     npx playwright test {{args}}
 
-# Run the browser tests against index.html from another revision, to confirm a
+# Run the browser tests against the pages from another revision, to confirm a
 # spec really fails without the change it covers (e.g. `just test-ui-baseline HEAD`)
 test-ui-baseline revision *args: jsInstall
     #!/usr/bin/env sh
     set -e
     mkdir -p tests/ui/.baseline
     git show {{revision}}:src/static/index.html > tests/ui/.baseline/index.html
+    git show {{revision}}:src/static/pages/logs.html > tests/ui/.baseline/logs.html
     cd tests/ui
     [ -d node_modules ] || npm ci
     npx playwright install chromium > /dev/null
-    INDEX_HTML_PATH="$PWD/.baseline/index.html" STATIC_FRONTEND_PORT=8100 \
-        npx playwright test {{args}}
+    INDEX_HTML_PATH="$PWD/.baseline/index.html" LOGS_HTML_PATH="$PWD/.baseline/logs.html" \
+        STATIC_FRONTEND_PORT=8100 npx playwright test {{args}}
 
 # Execute golangci-lint
 golangci-lint: generate
