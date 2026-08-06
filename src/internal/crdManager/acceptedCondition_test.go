@@ -67,7 +67,7 @@ func conditionManager(t *testing.T, job *api.RenovateJob) (*renovateJobManager, 
 
 func conditionJob() *api.RenovateJob {
 	job := &api.RenovateJob{}
-	job.TypeMeta = metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"}
+	job.TypeMeta = metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"}
 	job.ObjectMeta = metav1.ObjectMeta{Name: "job1", Namespace: "default", Generation: 3}
 	job.Spec = api.RenovateJobSpec{Schedule: "*/5 * * * *"}
 	return job

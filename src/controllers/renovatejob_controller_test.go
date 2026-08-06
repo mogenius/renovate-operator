@@ -382,7 +382,7 @@ func buildFakeK8sClient(t *testing.T, objs ...crclient.Object) crclient.Client {
 
 func makeRenovateJob(name, namespace string, annotations map[string]string) *api.RenovateJob {
 	return &api.RenovateJob{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: annotations},
 		Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
 	}
@@ -400,7 +400,7 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY: "true",
+		api.TriggerDiscoveryAnnotationKey: "true",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: disc,
@@ -413,7 +413,7 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 	if !discoveryTriggered {
 		t.Fatal("expected CreateDiscoveryJob to be called")
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerDiscoveryAnnotationKey]; ok {
 		t.Fatal("expected discovery annotation to be removed after processing")
 	}
 }
@@ -439,7 +439,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL: "true",
+		api.TriggerScheduleAllAnnotationKey: "true",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -459,7 +459,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 			t.Fatalf("expected %q to be scheduled, got %v", want, scheduled)
 		}
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerScheduleAllAnnotationKey]; ok {
 		t.Fatal("expected schedule-all annotation to be removed after processing")
 	}
 }
@@ -485,7 +485,7 @@ func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE: "org/p1, org/p2",
+		api.TriggerScheduleAnnotationKey: "org/p1, org/p2",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -498,7 +498,7 @@ func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
 	if len(scheduled) != 1 || scheduled[0] != "org/p1" {
 		t.Fatalf("expected only org/p1 to be scheduled, got %v", scheduled)
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerScheduleAnnotationKey]; ok {
 		t.Fatal("expected schedule annotation to be removed after processing")
 	}
 }
@@ -555,14 +555,14 @@ func TestReconcileAddsFinalizerWhenSyncEnabled(t *testing.T) {
 	if err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "with-sync", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if !controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected webhook cleanup finalizer to be added")
 	}
 }
 
 func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	job := makeRenovateJob("no-sync", "default", nil)
-	job.Finalizers = []string{webhookCleanupFinalizer}
+	job.Finalizers = []string{api.FinalizerWebhookCleanup}
 	cl := buildFakeK8sClient(t, job)
 
 	mgr := &fakeManager{getFn: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -582,14 +582,14 @@ func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	if err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "no-sync", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected webhook cleanup finalizer to be removed when sync is disabled")
 	}
 }
 
 func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	job := syncEnabledJob("deleting", "default")
-	job.Finalizers = []string{webhookCleanupFinalizer}
+	job.Finalizers = []string{api.FinalizerWebhookCleanup}
 	now := metav1.Now()
 	job.DeletionTimestamp = &now
 	cl := buildFakeK8sClient(t, job)
@@ -620,7 +620,7 @@ func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	// removing the last finalizer lets the fake client delete the object
 	updated := &api.RenovateJob{}
 	err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "deleting", Namespace: "default"}, updated)
-	if err == nil && controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if err == nil && controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected finalizer to be removed after cleanup")
 	}
 }

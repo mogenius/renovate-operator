@@ -177,7 +177,7 @@ func TestGetRenovateJobTokensRefusesUnlabeledSecret(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an arbitrary secret key to be refused without the opt-in label")
 	}
-	if !strings.Contains(err.Error(), policy.AllowRefLabel) {
+	if !strings.Contains(err.Error(), api.LabelAllowRef) {
 		t.Errorf("expected the error to name the label to add, got: %v", err)
 	}
 	if strings.Contains(err.Error(), "s3cret") {
@@ -190,7 +190,7 @@ func TestGetRenovateJobTokensReadsLabeledSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "webhook-auth",
 			Namespace: "default",
-			Labels:    map[string]string{policy.AllowRefLabel: "true"},
+			Labels:    map[string]string{api.LabelAllowRef: "true"},
 		},
 		Data: map[string][]byte{"token": []byte("first,second")},
 	}

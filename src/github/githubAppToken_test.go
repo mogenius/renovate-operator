@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
-	"renovate-operator/internal/policy"
 	"strings"
 	"testing"
 
@@ -324,7 +323,7 @@ func TestCreateGithubAppTokenFromJob_RefusesUnlabeledSecret(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an unlabeled secret to be refused")
 	}
-	if !strings.Contains(err.Error(), policy.AllowRefLabel) {
+	if !strings.Contains(err.Error(), api.LabelAllowRef) {
 		t.Errorf("Expected the error to name the label to add, got: %v", err)
 	}
 	if strings.Contains(err.Error(), "s3cret") {
@@ -380,7 +379,7 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "github-app-secret",
 					Namespace: "default",
-					Labels:    map[string]string{policy.AllowRefLabel: "true"},
+					Labels:    map[string]string{api.LabelAllowRef: "true"},
 				},
 				Data: tt.secretData,
 			}
@@ -438,7 +437,7 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "github-app-secret",
 			Namespace: "default",
-			Labels:    map[string]string{policy.AllowRefLabel: "true"},
+			Labels:    map[string]string{api.LabelAllowRef: "true"},
 		},
 		Data: map[string][]byte{
 			"app-id":          []byte("123456"),

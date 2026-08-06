@@ -30,7 +30,7 @@ func makeJob(name, namespace string, projects []api.ProjectStatus) *api.Renovate
 	j := &api.RenovateJob{}
 	j.Name = name
 	j.Namespace = namespace
-	j.TypeMeta = metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"}
+	j.TypeMeta = metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"}
 	j.ObjectMeta = metav1.ObjectMeta{Name: name, Namespace: namespace}
 	j.Spec = api.RenovateJobSpec{Schedule: "*/5 * * * *"}
 	j.Status = api.RenovateJobStatus{Projects: projects}
