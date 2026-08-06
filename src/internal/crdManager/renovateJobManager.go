@@ -81,8 +81,6 @@ type RenovateJobManager interface {
 	// against the webhook signing keys configured for the specified RenovateJob CRD. Standard Webhooks is a
 	// vendor-neutral signing scheme; GitLab "signing tokens" are one implementation of it, not the only one.
 	IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
-	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
-	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
 	// SetAcceptedCondition records whether the RenovateJob satisfies the operator's
 	// policy, so a refusal is visible on the resource rather than only in the log.
 	SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) error
@@ -120,14 +118,15 @@ func NonZeroTime(t time.Time) *time.Time {
 }
 
 type RenovateProjectStatus struct {
-	Name                 string                    `json:"name"`
-	Status               api.RenovateProjectStatus `json:"status"`
-	LastTransition       *time.Time                `json:"lastTransition,omitempty"`
-	Priority             int32                     `json:"priority,omitempty"`
-	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
-	Duration             *string                   `json:"duration,omitempty"`
-	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
-	LogIssues            *api.LogIssues            `json:"logIssues,omitempty"`
+	Name                 string                        `json:"name"`
+	Status               api.RenovateProjectStatus     `json:"status"`
+	LastTransition       *time.Time                    `json:"lastTransition,omitempty"`
+	Priority             int32                         `json:"priority,omitempty"`
+	RenovateResultStatus *string                       `json:"renovateResultStatus,omitempty"`
+	Duration             *string                       `json:"duration,omitempty"`
+	PRActivity           *api.PRActivity               `json:"prActivity,omitempty"`
+	LogIssues            *api.LogIssues                `json:"logIssues,omitempty"`
+	ExecutionOptions     *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
 }
 
 func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore, lr podLogs.PodLogReader, p policy.Policy) RenovateJobManager {
@@ -182,6 +181,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Duration:             project.Duration,
 				PRActivity:           project.PRActivity,
 				LogIssues:            project.LogIssues,
+				ExecutionOptions:     project.ExecutionOptions,
 			})
 		}
 	}
@@ -206,6 +206,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Duration:             project.Duration,
 			PRActivity:           project.PRActivity,
 			LogIssues:            project.LogIssues,
+			ExecutionOptions:     project.ExecutionOptions,
 		})
 	}
 	return result, nil
@@ -731,20 +732,6 @@ func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job Renov
 		if !meta.SetStatusCondition(&renovateJob.Status.Conditions, condition) {
 			return nil
 		}
-		return r.client.Status().Update(ctx, renovateJob)
-	})
-}
-
-func (r *renovateJobManager) UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
-	defer r.globalManagerLock(false)()
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-		if err != nil {
-			return err
-		}
-		renovateJob.Status.ExecutionOptions = options
-
 		return r.client.Status().Update(ctx, renovateJob)
 	})
 }

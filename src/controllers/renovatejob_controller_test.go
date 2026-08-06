@@ -73,10 +73,6 @@ func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager
 	m.acceptedCalls = append(m.acceptedCalls, acceptedCall{accepted: accepted, reason: reason, message: message})
 	return nil
 }
-
-func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
-	return nil
-}
 func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
