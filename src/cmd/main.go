@@ -595,12 +595,12 @@ func main() {
 		LeaderElectionNamespace:       config.GetValue("POD_NAMESPACE"),
 		LeaderElectionReleaseOnCancel: true,
 		Cache:                         cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
-		// Secrets bypass the informer cache: a cached read needs list+watch on every
-		// Secret in the watched scope and keeps all of their values in memory, while
-		// the operator only ever reads a handful by name.
+		// Secrets and ConfigMaps bypass the informer cache: a cached read needs
+		// list+watch on every one in the watched scope and keeps all of their
+		// values in memory, while the operator only ever reads a handful by name.
 		Client: client.Options{
 			Cache: &client.CacheOptions{
-				DisableFor: []client.Object{&corev1.Secret{}},
+				DisableFor: []client.Object{&corev1.Secret{}, &corev1.ConfigMap{}},
 			},
 		},
 	}

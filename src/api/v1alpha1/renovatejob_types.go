@@ -28,6 +28,9 @@ type RenovateJobSpec struct {
 	SkipPendingDeletion bool `json:"skipPendingDeletion,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
+	// Renovate configuration file for the job pods
+	// +optional
+	RenovateConfig *RenovateJobConfig `json:"renovateConfig,omitempty"`
 	// Additional environment variables to set in the renovate container
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
 	// Additional environment variable sources to set in the renovate container
@@ -88,6 +91,35 @@ type RenovateJobSpec struct {
 	// RuntimeClassName for the resulting pod, used to select a non-default container runtime
 	// +optional
 	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
+}
+
+// Renovate configuration file source for the job pods
+// +kubebuilder:validation:XValidation:rule="has(self.inline) != has(self.configMapRef)",message="exactly one of inline and configMapRef must be set"
+type RenovateJobConfig struct {
+	// Inline Renovate configuration, written to a ConfigMap owned by the RenovateJob
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=262144
+	Inline string `json:"inline,omitempty"`
+	// File name the inline configuration is mounted as; the extension tells Renovate the format. Ignored with configMapRef.
+	// +optional
+	// +kubebuilder:default="config.js"
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$`
+	FileName string `json:"fileName,omitempty"`
+	// Reference to a key in an existing ConfigMap holding the configuration file
+	// +optional
+	ConfigMapRef *RenovateConfigMapKeyReference `json:"configMapRef,omitempty"`
+}
+
+// reference to a ConfigMap and key holding a Renovate configuration file
+type RenovateConfigMapKeyReference struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Key holding the configuration file, also used as the mounted file name
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$`
+	Key string `json:"key"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -332,6 +364,14 @@ func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 	if in.Spec.RuntimeClassName != nil {
 		out.Spec.RuntimeClassName = new(string)
 		*out.Spec.RuntimeClassName = *in.Spec.RuntimeClassName
+	}
+	if in.Spec.RenovateConfig != nil {
+		out.Spec.RenovateConfig = new(RenovateJobConfig)
+		*out.Spec.RenovateConfig = *in.Spec.RenovateConfig
+		if in.Spec.RenovateConfig.ConfigMapRef != nil {
+			out.Spec.RenovateConfig.ConfigMapRef = new(RenovateConfigMapKeyReference)
+			*out.Spec.RenovateConfig.ConfigMapRef = *in.Spec.RenovateConfig.ConfigMapRef
+		}
 	}
 	// Deep copy Status.Projects (contains pointer and slice fields)
 	if in.Status.Projects != nil {

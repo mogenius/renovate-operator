@@ -1115,4 +1115,3 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 		})
 	}
 }
-
