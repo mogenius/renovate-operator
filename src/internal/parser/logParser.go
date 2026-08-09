@@ -297,11 +297,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 						continue
 					}
 					detail := getOrCreateDetail(branchMap, b.BranchName)
-					if b.Result == "needs-approval" {
-						detail.Action = api.PRActionNeedsApproval
-					} else {
-						detail.Action = api.PRActionUnchanged
-					}
+					detail.Action = branchResultToAction(b.Result)
 					detail.Title = b.PRTitle
 					if b.PRNo != nil {
 						detail.Number = *b.PRNo
@@ -338,18 +334,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 						}
 						// New branch not captured by per-message parsing.
 						detail := getOrCreateDetail(branchMap, b.BranchName)
-						switch b.Result {
-						case "needs-approval":
-							detail.Action = api.PRActionNeedsApproval
-						case "automerged":
-							detail.Action = api.PRActionAutomerged
-						case "pr-created":
-							detail.Action = api.PRActionCreated
-						case "pr-edited":
-							detail.Action = api.PRActionUpdated
-						default:
-							detail.Action = api.PRActionUnchanged
-						}
+						detail.Action = branchResultToAction(b.Result)
 						detail.Title = b.PRTitle
 						if b.PRNo != nil && *b.PRNo > 0 {
 							detail.Number = *b.PRNo
@@ -372,6 +357,23 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	}
 
 	return result
+}
+
+// branchResultToAction maps a Renovate branch result string to a PRAction.
+// Unknown or empty results default to PRActionUnchanged.
+func branchResultToAction(result string) api.PRAction {
+	switch result {
+	case "needs-approval":
+		return api.PRActionNeedsApproval
+	case "automerged":
+		return api.PRActionAutomerged
+	case "pr-created":
+		return api.PRActionCreated
+	case "pr-edited":
+		return api.PRActionUpdated
+	default:
+		return api.PRActionUnchanged
+	}
 }
 
 // getOrCreateDetail returns the PRDetail for a branch, creating it if needed.

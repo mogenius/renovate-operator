@@ -536,6 +536,28 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
+			name: "branches info extended: automerged branch gets correct action (not counted as open)",
+			logs: `{"level":20,"msg":"branches info extended","branchesInformation":[` +
+				`{"branchName":"renovate/stale-automerged","prNo":42,"prTitle":"Old automerged PR","result":"automerged"},` +
+				`{"branchName":"renovate/open-pr","prNo":43,"prTitle":"Open PR","result":"done"}` +
+				`]}`,
+			wantAutomerged: 1,
+			wantUnchanged:  1,
+			wantPRCount:    2,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				prsByBranch := make(map[string]api.PRDetail)
+				for _, pr := range prs {
+					prsByBranch[pr.Branch] = pr
+				}
+				if prsByBranch["renovate/stale-automerged"].Action != api.PRActionAutomerged {
+					t.Errorf("stale-automerged action = %q, want automerged", prsByBranch["renovate/stale-automerged"].Action)
+				}
+				if prsByBranch["renovate/open-pr"].Action != api.PRActionUnchanged {
+					t.Errorf("open-pr action = %q, want unchanged", prsByBranch["renovate/open-pr"].Action)
+				}
+			},
+		},
+		{
 			name: "branches info extended: needs-approval branch gets correct action",
 			logs: `{"level":20,"msg":"branches info extended","branchesInformation":[` +
 				`{"branchName":"renovate/minor-update","prNo":null,"prTitle":"Update dep to v2.0","result":"needs-approval"}` +

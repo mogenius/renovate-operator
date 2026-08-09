@@ -694,7 +694,7 @@ func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
 
 		if p.PRActivity != nil {
 			SetApprovalsNeeded(namespace, job, p.Name, p.PRActivity.NeedsApproval)
-			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.NeedsApproval+p.PRActivity.Unchanged)
+			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.Unchanged)
 		}
 
 		if p.Duration != nil {
