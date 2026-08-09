@@ -73,8 +73,9 @@ type prCreatedEntry struct {
 	PRTitle string `json:"prTitle"`
 }
 
-// branchInfoItem represents a single branch in the "branches info extended" summary.
-type branchInfoItem struct {
+// branchSummaryItem represents a single branch in either "branches info extended" or
+// "Printing report" — both message types use identical fields.
+type branchSummaryItem struct {
 	BranchName string `json:"branchName"`
 	PRNo       *int   `json:"prNo"` // pointer because null means no PR
 	PRTitle    string `json:"prTitle"`
@@ -84,21 +85,13 @@ type branchInfoItem struct {
 // branchesInfoEntry is a targeted partial-unmarshal struct for "branches info extended" (level 20)
 // which contains a complete list of all branches Renovate knows about, including skipped ones.
 type branchesInfoEntry struct {
-	Msg          string           `json:"msg"`
-	BranchesInfo []branchInfoItem `json:"branchesInformation"`
-}
-
-// reportBranchItem represents a single branch in the "Printing report" final report.
-type reportBranchItem struct {
-	BranchName string `json:"branchName"`
-	PRNo       *int   `json:"prNo"`
-	PRTitle    string `json:"prTitle"`
-	Result     string `json:"result"`
+	Msg          string              `json:"msg"`
+	BranchesInfo []branchSummaryItem `json:"branchesInformation"`
 }
 
 // reportRepositoryItem represents a single repository in the "Printing report" final report.
 type reportRepositoryItem struct {
-	Branches []reportBranchItem `json:"branches"`
+	Branches []branchSummaryItem `json:"branches"`
 }
 
 // reportEntry is a targeted partial-unmarshal struct for "Printing report" messages
@@ -274,83 +267,19 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 
 		case entry.Msg == "branches info extended":
-			// Complete list of all branches, including those skipped in this run.
-			// Backfills branches not seen in per-message parsing.
-			// Skip branches with result="already-existed" (stale branches with closed/merged PRs).
 			var bi branchesInfoEntry
 			if err := json.Unmarshal([]byte(line), &bi); err == nil {
 				for _, b := range bi.BranchesInfo {
-					if b.BranchName == "" {
-						continue
-					}
-					// Always backfill title for branches already captured by per-message parsing,
-					// regardless of result value (the branch is already in our map, we just want the title).
-					if existing, exists := branchMap[b.BranchName]; exists {
-						if existing.Title == "" && b.PRTitle != "" {
-							existing.Title = b.PRTitle
-						}
-						continue
-					}
-					// For new branches not yet in the map, only include those actively processed.
-					// Skip stale (already-existed), not-scheduled, and other non-active results.
-					if b.Result != "needs-approval" && b.Result != "done" && b.Result != "automerged" && b.Result != "" {
-						continue
-					}
-					// Skip branches with no result and no PR number: these are planned but
-					// not-yet-executed updates (e.g. onboarding repos, Renovate candidates
-					// that hit a concurrency limit). No open PR exists for them.
-					if b.Result == "" && (b.PRNo == nil || *b.PRNo == 0) {
-						continue
-					}
-					detail := getOrCreateDetail(branchMap, b.BranchName)
-					detail.Action = branchResultToAction(b.Result)
-					detail.Title = b.PRTitle
-					if b.PRNo != nil {
-						detail.Number = *b.PRNo
-					}
+					applyBranchSummary(branchMap, b, isActiveBranchResult(b.Result, b.PRNo))
 				}
 			}
 
 		case entry.Msg == "Printing report":
-			// Final structured report emitted when RENOVATE_REPORT_TYPE=logging is set.
-			// Mirrors the branchesInfoEntry backfill strategy: per-message parsing takes
-			// priority for action type (created/updated), this fills in everything else.
 			var rpt reportEntry
 			if err := json.Unmarshal([]byte(line), &rpt); err == nil {
 				for _, repo := range rpt.Report.Repositories {
 					for _, b := range repo.Branches {
-						if b.BranchName == "" {
-							continue
-						}
-						// Skip branches not actively processed in this run.
-						switch b.Result {
-						case "needs-approval", "done", "automerged", "pr-created", "pr-edited", "":
-						default:
-							continue
-						}
-						// Skip branches with no result and no PR number: these are planned but
-						// not-yet-executed updates (e.g. onboarding repos, Renovate candidates
-						// that hit a concurrency limit). No open PR exists for them.
-						if b.Result == "" && (b.PRNo == nil || *b.PRNo == 0) {
-							continue
-						}
-						if existing, ok := branchMap[b.BranchName]; ok {
-							// Backfill title and PR number for branches already captured by per-message parsing.
-							if existing.Title == "" && b.PRTitle != "" {
-								existing.Title = b.PRTitle
-							}
-							if existing.Number == 0 && b.PRNo != nil && *b.PRNo > 0 {
-								existing.Number = *b.PRNo
-							}
-							continue
-						}
-						// New branch not captured by per-message parsing.
-						detail := getOrCreateDetail(branchMap, b.BranchName)
-						detail.Action = branchResultToAction(b.Result)
-						detail.Title = b.PRTitle
-						if b.PRNo != nil && *b.PRNo > 0 {
-							detail.Number = *b.PRNo
-						}
+						applyBranchSummary(branchMap, b, isActiveBranchResult(b.Result, b.PRNo))
 					}
 				}
 			}
@@ -369,6 +298,49 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	}
 
 	return result
+}
+
+// isActiveBranchResult reports whether a branch from a summary source
+// (branches info extended or Printing report) should be tracked as a PR.
+// Returns false for stale, not-scheduled, and planned-but-not-executed branches.
+func isActiveBranchResult(result string, prNo *int) bool {
+	if result == "" {
+		// Planned-but-not-executed (e.g. onboarding repos, concurrency limit):
+		// only active if a real PR number is known.
+		return prNo != nil && *prNo > 0
+	}
+	switch result {
+	case "already-existed", "not-scheduled", "error", "pending", "no-work":
+		return false
+	}
+	return true
+}
+
+// applyBranchSummary applies a branch summary item to branchMap.
+// If the branch is already in the map, it backfills title and PR number.
+// If it is new and active is true, a new entry is created with the mapped action.
+func applyBranchSummary(branchMap map[string]*api.PRDetail, b branchSummaryItem, active bool) {
+	if b.BranchName == "" {
+		return
+	}
+	if existing, ok := branchMap[b.BranchName]; ok {
+		if existing.Title == "" && b.PRTitle != "" {
+			existing.Title = b.PRTitle
+		}
+		if existing.Number == 0 && b.PRNo != nil && *b.PRNo > 0 {
+			existing.Number = *b.PRNo
+		}
+		return
+	}
+	if !active {
+		return
+	}
+	detail := getOrCreateDetail(branchMap, b.BranchName)
+	detail.Action = branchResultToAction(b.Result)
+	detail.Title = b.PRTitle
+	if b.PRNo != nil && *b.PRNo > 0 {
+		detail.Number = *b.PRNo
+	}
 }
 
 // branchResultToAction maps a Renovate branch result string to a PRAction.
