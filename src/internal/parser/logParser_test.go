@@ -588,12 +588,12 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
-			name: "branches info extended: mixed needs-approval, done, and pr-created",
+			name: "branches info extended: needs-approval and done with excluded result",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/pin-dep","title":"fix: pin dep"}` + "\n" +
 				`{"level":30,"msg":"PR created","branch":"renovate/pin-dep","pr":2}` + "\n" +
 				`{"level":20,"msg":"branches info extended","branchesInformation":[` +
 				`{"branchName":"renovate/pin-dep","prNo":2,"prTitle":"fix: pin dep","result":"done"},` +
-				`{"branchName":"renovate/patch-update","prNo":3,"prTitle":"fix: patch update","result":"pr-created"},` +
+				`{"branchName":"renovate/patch-update","prNo":3,"prTitle":"fix: patch update","result":"not-scheduled"},` +
 				`{"branchName":"renovate/minor-update","prNo":null,"prTitle":"fix: minor update","result":"needs-approval"}` +
 				`]}`,
 			wantCreated:       1,
@@ -610,9 +610,9 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				if prsByBranch["renovate/minor-update"].Action != api.PRActionNeedsApproval {
 					t.Errorf("minor-update action = %q, want needs-approval", prsByBranch["renovate/minor-update"].Action)
 				}
-				// pr-created is not in the allowed results list, so patch-update should be excluded
+				// not-scheduled is excluded
 				if _, exists := prsByBranch["renovate/patch-update"]; exists {
-					t.Error("patch-update should be excluded (result=pr-created not in allowed list)")
+					t.Error("patch-update should be excluded (result=not-scheduled)")
 				}
 			},
 		},
@@ -844,23 +844,35 @@ func TestParseRenovateLogsNeedsApprovalGolden(t *testing.T) {
 
 	pa := result.PRActivity
 
-	// "done" branch is backfilled as unchanged; "pr-created" is excluded; "needs-approval" gets its own action
+	// "done" → unchanged; "pr-created" → created (has an open PR); "needs-approval" → needs-approval
 	if pa.Unchanged != 1 {
 		t.Errorf("Unchanged = %d, want 1 (done branch)", pa.Unchanged)
 	}
 	if pa.NeedsApproval != 1 {
 		t.Errorf("NeedsApproval = %d, want 1", pa.NeedsApproval)
 	}
-	if pa.Created != 0 || pa.Updated != 0 || pa.Automerged != 0 {
-		t.Errorf("unexpected counts: created=%d updated=%d automerged=%d", pa.Created, pa.Updated, pa.Automerged)
+	if pa.Created != 1 {
+		t.Errorf("Created = %d, want 1 (pr-created branch)", pa.Created)
 	}
-	if len(pa.PRs) != 2 {
-		t.Fatalf("len(PRs) = %d, want 2", len(pa.PRs))
+	if pa.Updated != 0 || pa.Automerged != 0 {
+		t.Errorf("unexpected counts: updated=%d automerged=%d", pa.Updated, pa.Automerged)
+	}
+	if len(pa.PRs) != 3 {
+		t.Fatalf("len(PRs) = %d, want 3", len(pa.PRs))
 	}
 
 	prsByBranch := make(map[string]api.PRDetail)
 	for _, pr := range pa.PRs {
 		prsByBranch[pr.Branch] = pr
+	}
+
+	// pr-created branch: has an open PR, mapped to Created action
+	patch := prsByBranch["renovate/registry.big-osp.de-docker-aquasec-trivy-0.69.x"]
+	if patch.Action != api.PRActionCreated {
+		t.Errorf("patch action = %q, want created", patch.Action)
+	}
+	if patch.Number != 3 {
+		t.Errorf("patch number = %d, want 3", patch.Number)
 	}
 
 	// needs-approval branch: no PR number yet, correct title and action
@@ -884,9 +896,15 @@ func TestParseRenovateLogsNeedsApprovalGolden(t *testing.T) {
 		t.Errorf("pin number = %d, want 2", pin.Number)
 	}
 
-	// needs-approval should be sorted before unchanged
-	if pa.PRs[0].Action != api.PRActionNeedsApproval {
-		t.Errorf("first PR = %q, want needs-approval (sorted before unchanged)", pa.PRs[0].Action)
+	// sort order: created(1) < needs-approval(3) < unchanged(4)
+	if pa.PRs[0].Action != api.PRActionCreated {
+		t.Errorf("first PR = %q, want created", pa.PRs[0].Action)
+	}
+	if pa.PRs[1].Action != api.PRActionNeedsApproval {
+		t.Errorf("second PR = %q, want needs-approval", pa.PRs[1].Action)
+	}
+	if pa.PRs[2].Action != api.PRActionUnchanged {
+		t.Errorf("third PR = %q, want unchanged", pa.PRs[2].Action)
 	}
 }
 
