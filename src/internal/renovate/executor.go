@@ -290,7 +290,7 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		metricStore.AddPullRequestsMerged(ctx, jobId.Namespace, jobId.Name, pr.Automerged)
 		metricStore.AddPullRequestsUpdated(ctx, jobId.Namespace, jobId.Name, pr.Updated)
 		// Open managed PRs: automerged ones are closed, so exclude them.
-		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, pr.Created+pr.Updated+pr.NeedsApproval+pr.Unchanged)
+		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, pr.Created+pr.Updated+pr.Unchanged)
 	} else {
 		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, 0)
 	}
