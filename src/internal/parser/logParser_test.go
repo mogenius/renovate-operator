@@ -496,6 +496,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				`{"branchName":"renovate/skipped-dep-b","prNo":30,"prTitle":"Update skipped-dep-b"},` +
 				`{"branchName":"renovate/stale-branch","prNo":18,"prTitle":"Old closed PR","result":"already-existed"},` +
 				`{"branchName":"renovate/not-scheduled","prNo":null,"prTitle":"lock file maintenance","result":"not-scheduled"},` +
+				`{"branchName":"renovate/skipped-dep-b-with-pr","prNo":30,"prTitle":"Update skipped-dep-b"},` +
 				`{"branchName":"renovate/no-pr-branch","prNo":null,"prTitle":"Update no-pr-branch"}]}`,
 			wantCreated:   1,
 			wantUnchanged: 3,
@@ -520,6 +521,14 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				if skA.Title != "Update skipped-dep-a" {
 					t.Errorf("skipped-dep-a title = %q, want %q", skA.Title, "Update skipped-dep-a")
 				}
+				// Branch with no explicit result but a known PR number is kept (older Renovate compat)
+				skB := prsByBranch["renovate/skipped-dep-b-with-pr"]
+				if skB.Action != api.PRActionUnchanged {
+					t.Errorf("skipped-dep-b-with-pr action = %q, want unchanged", skB.Action)
+				}
+				if skB.Number != 30 {
+					t.Errorf("skipped-dep-b-with-pr number = %d, want 30", skB.Number)
+				}
 				// Stale branch (already-existed) should be excluded
 				if _, exists := prsByBranch["renovate/stale-branch"]; exists {
 					t.Error("stale-branch should be excluded (result=already-existed)")
@@ -528,10 +537,9 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 				if _, exists := prsByBranch["renovate/not-scheduled"]; exists {
 					t.Error("not-scheduled branch should be excluded")
 				}
-				// Branch with null prNo and empty result should still be included
-				noPR := prsByBranch["renovate/no-pr-branch"]
-				if noPR.Number != 0 {
-					t.Errorf("no-pr-branch number = %d, want 0", noPR.Number)
+				// Branch with null prNo and empty result is a planned-but-not-executed update: exclude
+				if _, exists := prsByBranch["renovate/no-pr-branch"]; exists {
+					t.Error("no-pr-branch should be excluded (no result, no PR number)")
 				}
 			},
 		},
@@ -1195,6 +1203,29 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 		}
 		if pr.Title != "Update golang to v1.22" {
 			t.Errorf("title = %q, want 'Update golang to v1.22'", pr.Title)
+		}
+	})
+
+	t.Run("onboarding repo: planned branches with no result and no prNo are excluded", func(t *testing.T) {
+		// Real-world case: repo in onboarding state. Renovate reports planned branches
+		// in the "Printing report" with no result field and prNo=null. These are
+		// candidates for future runs, not open PRs, and must not inflate the metric.
+		logs := reportLine(
+			`{"branchName":"renovate/all-github-actions","prNo":null,"prTitle":"build(deps): pin action"},` +
+				`{"branchName":"renovate/patch-all-github-actions","prNo":null,"prTitle":"build(deps): update action"}`,
+		)
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil {
+			t.Fatal("PRActivity = nil, want non-nil")
+		}
+		pa := result.PRActivity
+		if pa.Unchanged != 0 || pa.Created != 0 || pa.Updated != 0 || pa.NeedsApproval != 0 {
+			t.Errorf("planned onboarding branches should not count as open PRs: %+v", pa)
+		}
+		if len(pa.PRs) != 0 {
+			t.Errorf("len(PRs) = %d, want 0", len(pa.PRs))
 		}
 	})
 
