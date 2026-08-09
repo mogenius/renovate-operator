@@ -296,6 +296,12 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 					if b.Result != "needs-approval" && b.Result != "done" && b.Result != "automerged" && b.Result != "" {
 						continue
 					}
+					// Skip branches with no result and no PR number: these are planned but
+					// not-yet-executed updates (e.g. onboarding repos, Renovate candidates
+					// that hit a concurrency limit). No open PR exists for them.
+					if b.Result == "" && (b.PRNo == nil || *b.PRNo == 0) {
+						continue
+					}
 					detail := getOrCreateDetail(branchMap, b.BranchName)
 					detail.Action = branchResultToAction(b.Result)
 					detail.Title = b.PRTitle
@@ -320,6 +326,12 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 						switch b.Result {
 						case "needs-approval", "done", "automerged", "pr-created", "pr-edited", "":
 						default:
+							continue
+						}
+						// Skip branches with no result and no PR number: these are planned but
+						// not-yet-executed updates (e.g. onboarding repos, Renovate candidates
+						// that hit a concurrency limit). No open PR exists for them.
+						if b.Result == "" && (b.PRNo == nil || *b.PRNo == 0) {
 							continue
 						}
 						if existing, ok := branchMap[b.BranchName]; ok {
