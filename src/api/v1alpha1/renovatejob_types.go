@@ -115,6 +115,8 @@ type RenovateJobConfig struct {
 // reference to a ConfigMap and key holding a Renovate configuration file
 type RenovateConfigMapKeyReference struct {
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Name string `json:"name"`
 	// Key holding the configuration file, also used as the mounted file name
 	// +kubebuilder:validation:MaxLength=253

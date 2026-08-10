@@ -3275,7 +3275,9 @@ spec:
                         pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
                         type: string
                       name:
+                        maxLength: 253
                         minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                     required:
                     - key
