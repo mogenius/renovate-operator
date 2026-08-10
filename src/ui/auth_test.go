@@ -29,10 +29,11 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 
 	// Create a session with groups
 	sessionData := sessionData{
-		Email:  "test@example.com",
-		Name:   "Test User",
-		Groups: []string{"team-a"},
-		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+		Version: currentSessionVersion,
+		Email:   "test@example.com",
+		Name:    "Test User",
+		Groups:  []string{"team-a"},
+		Expiry:  time.Now().Add(1 * time.Hour).Unix(),
 	}
 
 	ctx := context.Background()
@@ -61,6 +62,38 @@ func TestGetSession_ValidWithGroups(t *testing.T) {
 	}
 }
 
+// TestGetSession_RejectsStaleLayout covers the upgrade path: a session minted by
+// an operator that predates Username and EmailVerified carries neither, so
+// resolving access against it would silently grant nothing for the rest of its
+// 24h lifetime. It has to be rejected so the user is sent back through login.
+func TestGetSession_RejectsStaleLayout(t *testing.T) {
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
+	if err != nil {
+		t.Fatalf("Failed to create baseAuth: %v", err)
+	}
+	auth := &base
+
+	stale := sessionData{
+		// No Version: what an older operator wrote.
+		Email:  "test@example.com",
+		Name:   "Test User",
+		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+	}
+
+	ctx := context.Background()
+	encrypted, err := auth.encryptSession(ctx, stale)
+	if err != nil {
+		t.Fatalf("Failed to encrypt session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: encrypted})
+
+	if _, err := auth.getSession(req); err == nil {
+		t.Fatal("getSession accepted a session with a stale layout, expected it to force re-authentication")
+	}
+}
+
 func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
 	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
 	if err != nil {
@@ -69,10 +102,11 @@ func TestEncryptDecryptSession_PreservesGroups(t *testing.T) {
 	auth := &base
 
 	originalSession := sessionData{
-		Email:  "test@example.com",
-		Name:   "Test User",
-		Groups: []string{"team-a", "team-b", "team-c"},
-		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+		Version: currentSessionVersion,
+		Email:   "test@example.com",
+		Name:    "Test User",
+		Groups:  []string{"team-a", "team-b", "team-c"},
+		Expiry:  time.Now().Add(1 * time.Hour).Unix(),
 	}
 
 	ctx := context.Background()
@@ -126,9 +160,10 @@ func TestCookieDeletionFlags(t *testing.T) {
 
 func TestGetSessionFromContext_WithSession(t *testing.T) {
 	session := &sessionData{
-		Email:  "test@example.com",
-		Name:   "Test User",
-		Groups: []string{"team-a"},
+		Version: currentSessionVersion,
+		Email:   "test@example.com",
+		Name:    "Test User",
+		Groups:  []string{"team-a"},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -174,10 +209,11 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 
 	// Create a valid session cookie
 	session := sessionData{
-		Email:  "test@example.com",
-		Name:   "Test User",
-		Groups: []string{"team-a"},
-		Expiry: time.Now().Add(1 * time.Hour).Unix(),
+		Version: currentSessionVersion,
+		Email:   "test@example.com",
+		Name:    "Test User",
+		Groups:  []string{"team-a"},
+		Expiry:  time.Now().Add(1 * time.Hour).Unix(),
 	}
 
 	ctx := context.Background()
@@ -218,6 +254,81 @@ func TestAuthMiddleware_StoresSessionInContext(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_SessionlessRequests(t *testing.T) {
+	defs := []config.ConfigItemDescription{
+		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
+	}
+
+	if err := config.InitializeConfigModule(defs); err != nil {
+		t.Fatalf("failed to initialize config module: %v", err)
+	}
+
+	base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
+	if err != nil {
+		t.Fatalf("Failed to create baseAuth: %v", err)
+	}
+	auth := &base
+
+	tests := []struct {
+		name         string
+		path         string
+		wantHandler  bool
+		wantStatus   int
+		wantLocation string
+	}{
+		{
+			name:        "anonymous-capable read route reaches the handler",
+			path:        "/api/v1/renovatejobs",
+			wantHandler: true,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "dashboard reaches the handler",
+			path:        "/",
+			wantHandler: true,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:       "mutating route is rejected",
+			path:       "/api/v1/renovate",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "unlisted page redirects to login",
+			path:         "/some-page",
+			wantStatus:   http.StatusFound,
+			wantLocation: "/auth/login",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reached := false
+			middleware := auth.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached = true
+				if getSessionFromContext(r) != nil {
+					t.Error("expected no session in context for a sessionless request")
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
+			middleware.ServeHTTP(w, req)
+
+			if reached != tt.wantHandler {
+				t.Errorf("handler reached = %v, want %v", reached, tt.wantHandler)
+			}
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if tt.wantLocation != "" && w.Header().Get("Location") != tt.wantLocation {
+				t.Errorf("Location = %q, want %q", w.Header().Get("Location"), tt.wantLocation)
+			}
+		})
+	}
+}
+
 func TestIsPublicPath(t *testing.T) {
 	defs := []config.ConfigItemDescription{
 		{Key: "WEBHOOK_SERVER_UNIFIED_HOST", Optional: true, Default: "false"},
@@ -230,6 +341,9 @@ func TestIsPublicPath(t *testing.T) {
 	public := []string{
 		"/health",
 		"/api/v1/auth/status",
+		// Has to reach a visitor who cannot sign in yet, since an unenforceable
+		// rule set hides every job from everyone.
+		"/api/v1/access/status",
 		"/auth/login",
 		"/auth/callback",
 		"/js/babel.min.js",

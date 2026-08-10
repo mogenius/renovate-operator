@@ -1,9 +1,16 @@
 # Migrating from v5 to v6
 
-v6 adds a policy engine to the operator. It exists because a RenovateJob is more powerful than it
-looks: the operator acts on one using **its own** cluster credentials, so a few spec fields let
-whoever can edit a RenovateJob read secrets they cannot otherwise read, and send them, or the job's
-platform token, to a host of their choosing. [security.md](security.md) has the full reasoning.
+v6 brings two independent changes: a policy engine, and a rewritten UI access model.
+
+The policy engine exists because a RenovateJob is more powerful than it looks: the operator acts on
+one using **its own** cluster credentials, so a few spec fields let whoever can edit a RenovateJob
+read secrets they cannot otherwise read, and send them, or the job's platform token, to a host of
+their choosing. [security.md](security.md) has the full reasoning.
+
+The access model replaces the single `spec.allowedGroups` boolean with reader and admin roles. Unlike
+the policy engine it has **no master switch**, and it changes what an existing install shows in the
+UI, so read [section 8](#8-ui-access-is-now-two-role-and-fails-closed) before upgrading if UI
+authentication is enabled. If you run no auth provider at all, it does not affect you.
 
 **The policy engine ships off.** It is opt-in so that a fresh install works straight away: you get
 Renovate running first and secure the operator afterwards. A useful side effect for you: upgrading
@@ -37,16 +44,18 @@ you take one of those routes, leave `policy.enabled: false` and skip to
 
 ## What breaks on upgrade regardless
 
-Three things are **not** governed by the switch, because they are not enforced by the operator.
-Check these before upgrading:
+These are **not** governed by the policy switch. Check them before upgrading:
 
 | Change | Symptom | Fix |
 |---|---|---|
 | the CRD rejects `hostPath`, `privileged`, `allowPrivilegeEscalation` | `kubectl apply` on such a RenovateJob is rejected | [section 6](#6-what-the-crd-rejects-outright) |
 | Kubernetes 1.29 is now the floor | `helm install`/`upgrade` refuses | [section 6](#6-what-the-crd-rejects-outright) |
 | `spec.securityContext` merges over the hardened defaults instead of replacing them | a partial override no longer drops the other defaults | [section 4](#4-running-as-root) |
+| a RenovateJob with no access configuration is hidden once UI auth is enabled | the dashboard is empty for everyone after upgrade | [section 8](#8-ui-access-is-now-two-role-and-fails-closed) |
+| `spec.allowedGroups` and `spec.access` are mutually exclusive | `kubectl apply` on a spec with both is rejected | [section 8](#8-ui-access-is-now-two-role-and-fails-closed) |
+| group rules with GitHub OAuth need `auth.github.orgGroups`, or `adminUsers` instead | the dashboard shows "Access rules cannot be enforced" | [section 8](#8-ui-access-is-now-two-role-and-fails-closed) |
 
-Everything else is opt-in.
+The last three only apply when UI authentication is enabled. Everything else is opt-in.
 
 ## Turning the policy engine on
 
@@ -220,6 +229,151 @@ blast radius of an operator compromise, and because Secrets now bypass the infor
 operator no longer holds every secret in the watched scope in memory, at the cost of one API read per
 secret access.
 
+## 8. UI access is now two-role and fails closed
+
+Unrelated to the policy engine, and **not** covered by `policy.enabled`. It only concerns the web UI,
+so nothing here affects whether Renovate runs.
+
+**If you have no auth provider configured, skip this section.** With no identity to evaluate, every
+request is treated as an admin and access rules are ignored, exactly as in v5.
+
+v5 had one control: `spec.allowedGroups`, which granted everything or nothing. v6 splits that into
+readers and admins, adds anonymous read for public dashboards, and gates the unredacted Renovate logs
+separately. [auth.md](auth.md#access-control) is the reference; this section is only what changes on
+upgrade.
+
+### The empty dashboard
+
+This is the one that bites. In v5, a job without `allowedGroups` was visible to **every authenticated
+user** whenever `auth.defaultAllowedGroups` was also empty. In v6 a job with no access configuration
+anywhere is hidden from everyone.
+
+If UI auth is enabled and you never configured groups, the dashboard goes empty on upgrade.
+
+**Single user, GitHub OAuth as a gate on a public domain?** Name yourself. This needs no org, no team
+and no extra OAuth scope:
+
+```yaml
+auth:
+  defaultAccess:
+    adminUsers:
+      - octocat         # your GitHub login
+      - me@example.com  # or your email, either matches
+```
+
+An entry matches the session's email or username, case-insensitively. Use the login if your GitHub
+email is private, because the operator then only knows a synthesized `<login>@github`.
+
+Otherwise, the closest equivalent to what v5 did is to name the groups that should hold full access:
+
+```yaml
+auth:
+  defaultAccess:
+    adminGroups:
+      - team-devops       # full access: view, trigger, cancel, discovery
+    readerGroups:
+      - team-platform     # view only, including logs
+```
+
+Or, if the dashboard was effectively public before because everyone who could sign in could see
+everything, keep it visible to everyone and restrict only the actions:
+
+```yaml
+auth:
+  defaultAccess:
+    anonymousRead: true       # anyone may view, no session needed
+    anonymousReadLogs: false  # but not stream Renovate logs
+    adminGroups:
+      - team-devops
+```
+
+Per-job `spec.access` takes the same six fields and inherits each one from the default when unset. A
+field it does set **replaces** the default for that field instead of adding to it, so a job listing
+one group drops every default group, and `anonymousRead: false` revokes an enabled default. A per-job
+`spec.access` can therefore narrow access, not only widen it.
+
+Set `anonymousReadLogs` deliberately. Renovate logs are passed through unredacted and can expose
+private registry URLs, internal dependency names and branch names, which is why it is a second opt-in
+rather than part of read access.
+
+### Everyone is signed out on upgrade
+
+v6 records the account's username and whether its email is verified on the session, and v5 sessions
+carry neither. Rather than let a still-valid v5 session resolve against fields it never had, which
+would look like an empty dashboard for up to 24 hours, the operator rejects it and the user is sent
+through login again. Nothing to configure; expect one round of sign-ins after the upgrade.
+
+### allowedGroups is deprecated
+
+`spec.allowedGroups` and `auth.defaultAllowedGroups` still work and now mean **admin** groups, so an
+install that used them keeps working with no change. Migrate at your convenience:
+
+Before:
+
+```yaml
+spec:
+  allowedGroups: [team-devops]
+```
+
+After:
+
+```yaml
+spec:
+  access:
+    adminGroups: [team-devops]
+```
+
+Setting both on one spec is rejected by a CRD validation rule. An existing object carrying both keeps
+working until something tries to update it, at which point the write fails, so drop one before you
+edit such a job. If an un-upgraded CRD lets both through, the operator hides the job rather than
+guessing which surface wins.
+
+### GitHub OAuth needs orgGroups
+
+Only needed if you want to grant access by org or team; `adminUsers` above covers naming people.
+
+GitHub OAuth supplied no groups at all in v5, so `allowedGroups` on a GitHub install could never
+match. If you use GitHub OAuth **and** configure any group, enable:
+
+```yaml
+auth:
+  github:
+    enabled: true
+    orgGroups: true
+```
+
+This maps org and team membership to `org` and `org/team` at login. It adds the `read:org` scope, so
+**every user has to re-consent** on their next sign-in, and an org that restricts OAuth apps has to
+approve yours. Membership is captured at login, so a change on GitHub takes effect the next time the
+user signs in.
+
+### When the rules cannot be enforced
+
+Group rules against a provider that supplies no groups can never match, so the operator would serve an
+empty dashboard with nothing to explain it. Instead the UI reports the state:
+
+```
+Access rules cannot be enforced
+Access rules are configured against groups, but the identity provider supplies none, ...
+```
+
+While that box is showing, **every** RenovateJob is hidden and every per-job endpoint answers `404`,
+including jobs that only use `anonymousRead`: an unenforceable rule set cannot tell an authorized
+request from an unauthorized one. The operator keeps reconciling and Renovate keeps running; only the
+UI is affected. `GET /api/v1/access/status` reports the same thing for scripting, and the operator log
+names the RenovateJobs involved.
+
+The check runs per request, so fixing the values clears it without a restart. Fix it by enabling
+`orgGroups`, or by replacing the group lists with `adminUsers` / `readerUsers`. Configuring only user
+rules never trips it.
+
+### API changes
+
+If you script against the UI API: `GET /api/v1/renovatejobs` gains `role` (display only) and
+`permissions[]` per job, holding any of `logs`, `trigger`, `triggerAll`, `cancel`, `discovery`. Gate on
+`permissions`, not on `role`, because two readers can differ on log access. Unreadable jobs answer
+`404` rather than `403`, so a job's existence is not disclosed.
+
 ## Audit an installation that ran v5
 
 The destination allowlist stops new damage; it cannot undo what an unbounded `spec.webhook.baseUrl`
@@ -244,3 +398,12 @@ and the two `spec.provider` URL patterns are additive, and v5 ignores the condit
 v5 chart leaves a stale condition on each RenovateJob, which is harmless and disappears when the
 field is dropped. The exception is section 6: a RenovateJob you edited to drop a `hostPath` volume
 stays edited.
+
+Two things to watch when downgrading with the access model in use. v5 knows nothing about
+`spec.access`, so it reads a job configured only that way as having no group restriction at all and
+shows it to **every authenticated user**: a rollback widens access rather than preserving it. You
+cannot pre-empt this by populating both fields, since v6 rejects a spec that sets `allowedGroups` and
+`access` together. Either stay on `spec.allowedGroups`, which both versions honour, or treat restoring
+it as a step of the downgrade, once the v5 CRD has replaced the v6 one and dropped that rule. Also
+drop `auth.defaultAccess` and `auth.github.orgGroups` from your values before reinstalling the v5
+chart, whose values schema rejects keys it does not know.

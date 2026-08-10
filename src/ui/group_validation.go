@@ -40,11 +40,15 @@ func validateGroupName(name string) error {
 // sanitizeGroups performs LAYER 1 validation: basic format checking and DoS prevention.
 // Filters out invalid groups and limits total count to prevent memory exhaustion.
 func sanitizeGroups(groups []string, logger logr.Logger) []string {
-	// Prevent memory DoS by limiting total groups
+	// Prevent memory DoS by limiting total groups. Logged as an error because the
+	// dropped groups are authorization input: the user silently loses whatever
+	// access those groups granted, and which ones survive is simply whichever the
+	// provider listed first.
 	if len(groups) > maxGroupsPerUser {
-		logger.Info("User has excessive groups, truncating for safety",
+		logger.Error(nil, "user has more groups than the operator accepts, the excess is DROPPED and any access it granted is lost",
 			"original_count", len(groups),
-			"limit", maxGroupsPerUser)
+			"limit", maxGroupsPerUser,
+			"dropped", groups[maxGroupsPerUser:])
 		groups = groups[:maxGroupsPerUser]
 	}
 
@@ -65,14 +69,16 @@ func sanitizeGroups(groups []string, logger logr.Logger) []string {
 	return validated
 }
 
-// normalizeGroups normalizes all groups by removing whitespace and using lowercase
+// normalizeGroups normalizes all groups by removing whitespace and using lowercase.
 func normalizeGroups(groups []string) []string {
 	if groups == nil {
 		return nil
 	}
 	normalized := make([]string, 0, len(groups))
 	for _, group := range groups {
-		normalized = append(normalized, strings.ToLower(strings.TrimSpace(group)))
+		if group = strings.ToLower(strings.TrimSpace(group)); group != "" {
+			normalized = append(normalized, group)
+		}
 	}
 	return normalized
 }

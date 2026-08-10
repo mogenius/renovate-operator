@@ -241,8 +241,22 @@ webhook:
       listeners: []
 
 auth:
-  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
+  # -- DEPRECATED: use auth.defaultAccess.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration
   defaultAllowedGroups: ""
+  # -- default access rules for RenovateJobs that leave the matching field in spec.access unset
+  defaultAccess:
+    # -- groups granted read-only access (view jobs, projects and logs, no actions)
+    readerGroups: []
+    # -- groups granted full access (view plus trigger, cancel, discovery and debug)
+    adminGroups: []
+    # -- individual accounts granted read-only access, by email or username.
+    readerUsers: []
+    # -- individual accounts granted full access, by email or username.
+    adminUsers: []
+    # -- whether RenovateJobs are readable without a session (public dashboard)
+    anonymousRead: false
+    # -- whether visitors holding only anonymous read access may stream Renovate logs (logs are unredacted)
+    anonymousReadLogs: false
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false
@@ -301,6 +315,8 @@ auth:
     redirectUrl: ""
     # -- optional: override the scheme (http or https) of the auto-detected redirect URL, e.g. when TLS terminates at an external load balancer or Gateway (ignored when redirectUrl is set)
     redirectScheme: ""
+    # -- optional: map GitHub org and team membership to session groups as "org" and "org/team". Requires the read:org scope, so every user must re-consent
+    orgGroups: false
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
