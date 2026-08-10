@@ -52,6 +52,51 @@ spec:
           spec:
             description: RenovateJobSpec defines the desired state of RenovateJob
             properties:
+              access:
+                description: |-
+                  Access control for this RenovateJob in the web UI when authentication is
+                  enabled. If empty or not set, the job is hidden from all users.
+                properties:
+                  adminGroups:
+                    description: |-
+                      Groups allowed to view this RenovateJob and to trigger, cancel and
+                      reconfigure its runs.
+                    items:
+                      type: string
+                    type: array
+                  adminUsers:
+                    description: |-
+                      Individual users allowed to view this RenovateJob and to trigger, cancel
+                      and reconfigure its runs. See ReaderUsers for how a user is matched.
+                    items:
+                      type: string
+                    type: array
+                  anonymousRead:
+                    description: |-
+                      If true, this RenovateJob is readable without a session. Grants read access
+                      to every visitor, which group matches can only extend.
+                    type: boolean
+                  anonymousReadLogs:
+                    description: |-
+                      If true, visitors that only hold anonymous read access may also stream
+                      Renovate logs. Has no effect unless AnonymousRead is in effect. Renovate
+                      logs are unredacted, so this is opt-in separately from AnonymousRead.
+                    type: boolean
+                  readerGroups:
+                    description: |-
+                      Groups allowed to view this RenovateJob without triggering, cancelling or
+                      reconfiguring anything.
+                    items:
+                      type: string
+                    type: array
+                  readerUsers:
+                    description: |-
+                      Individual users allowed to view this RenovateJob, named by the email or
+                      username their identity provider reports. Compared case-insensitively.
+                    items:
+                      type: string
+                    type: array
+                type: object
               affinity:
                 description: Affinity settings for scheduling the resulting pod
                 properties:
@@ -966,16 +1011,8 @@ spec:
                 type: object
               allowedGroups:
                 description: |-
-                  Groups allowed to view this RenovateJob in the UI, compared case-insensitively
-                  against the groups on the user's session. Only consulted when authentication is
-                  enabled; with authentication off, every job is visible to everyone.
-
-                  When this is empty the operator-wide DEFAULT_ALLOWED_GROUPS applies instead, and
-                  when that is empty too the job is visible to every authenticated user. Leaving
-                  both empty does not hide anything: restricting a job means setting one of them.
-
-                  A job that does list groups is hidden from everyone if the configured auth
-                  provider supplies no group claims, because no session can then match.
+                  Deprecated: use Access.AdminGroups. Groups granted full access to this
+                  RenovateJob when authentication is enabled. Mutually exclusive with Access.
                 items:
                   type: string
                 type: array
@@ -4337,6 +4374,10 @@ spec:
             - provider
             - schedule
             type: object
+            x-kubernetes-validations:
+            - message: allowedGroups and access are mutually exclusive; migrate allowedGroups
+                to access.adminGroups
+              rule: '!(has(self.allowedGroups) && has(self.access))'
           status:
             description: RenovateJobStatus defines the observed state of RenovateJob
             properties:

@@ -197,6 +197,8 @@ spec:
             - name: GITHUB_REDIRECT_URL
               value: {{ $githubRedirectUrl | quote }}
             {{- end }}
+            - name: GITHUB_ORG_GROUPS
+              value: {{ .Values.auth.github.orgGroups | default false | quote }}
             {{- end }}
             {{- $ekv := .Values.externalKeyValueStore }}
             {{- if or $ekv.host $ekv.existingSecret.name }}
@@ -286,6 +288,28 @@ spec:
               value: {{ .Values.policy.allowRootUser | quote }}
             - name: POLICY_ALLOWED_IMAGES
               value: {{ join "," .Values.policy.allowedImages | quote }}
+            {{- with .Values.auth.defaultAccess }}
+            {{- with .readerGroups }}
+            - name: DEFAULT_READER_GROUPS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .adminGroups }}
+            - name: DEFAULT_ADMIN_GROUPS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .readerUsers }}
+            - name: DEFAULT_READER_USERS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .adminUsers }}
+            - name: DEFAULT_ADMIN_USERS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: DEFAULT_ANONYMOUS_READ
+              value: {{ .anonymousRead | default false | quote }}
+            - name: DEFAULT_ANONYMOUS_READ_LOGS
+              value: {{ .anonymousReadLogs | default false | quote }}
+            {{- end }}
             - name: GLOBAL_PARALLELISM_LIMIT
               value: {{ .Values.config.globalParallelismLimit | quote }}
             - name: POD_LABEL_TEMPLATES

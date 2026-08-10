@@ -26,16 +26,42 @@ const (
 	sessionDuration     = 24 * time.Hour
 )
 
+// currentSessionVersion is bumped whenever a field access control reads is added
+// to sessionData. Sessions minted by an older operator are then discarded.
+const currentSessionVersion = 1
+
 type contextKey string
 
 const sessionContextKey contextKey = "session"
 
 type sessionData struct {
-	Email       string   `json:"email"`
-	Name        string   `json:"name"`
-	Expiry      int64    `json:"exp"`
-	AccessToken string   `json:"at,omitempty"`
-	Groups      []string `json:"groups"`
+	Version       int      `json:"v,omitempty"`
+	Email         string   `json:"email"`
+	Name          string   `json:"name"`
+	EmailVerified bool     `json:"ev,omitempty"`
+	Username      string   `json:"username,omitempty"`
+	Expiry        int64    `json:"exp"`
+	AccessToken   string   `json:"at,omitempty"`
+	Groups        []string `json:"groups"`
+}
+
+// identities returns the values user-based access rules may match, normalized
+// the same way the configured rules are.
+func (s *sessionData) identities() []string {
+	if s == nil {
+		return nil
+	}
+	ids := make([]string, 0, 2)
+	candidates := []string{s.Username}
+	if s.EmailVerified {
+		candidates = append(candidates, s.Email)
+	}
+	for _, id := range candidates {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // getSessionFromContext retrieves the session from the request context.
@@ -139,8 +165,10 @@ func openGCM(gcm cipher.AEAD, data []byte) ([]byte, error) {
 }
 
 func isPublicPath(path string) bool {
-	// Health, auth endpoints, auth status API
-	if path == "/health" || path == "/api/v1/auth/status" {
+	// Health, auth endpoints, auth status API.
+	// The access status carries no job data and has to reach a visitor who
+	// cannot sign in yet, since an unenforceable rule set hides everything.
+	if path == "/health" || path == "/api/v1/auth/status" || path == "/api/v1/access/status" {
 		return true
 	}
 	if strings.HasPrefix(path, "/auth/") {
@@ -160,6 +188,18 @@ func isPublicPath(path string) bool {
 		return true
 	}
 
+	return false
+}
+
+func isAnonymousReadPath(path string) bool {
+	switch path {
+	case "/", "/index.html", "/logs",
+		"/api/v1/version",
+		"/api/v1/renovatejobs",
+		"/api/v1/logs",
+		"/api/v1/discovery/status":
+		return true
+	}
 	return false
 }
 
@@ -210,6 +250,12 @@ func (b *baseAuth) authMiddleware(next http.Handler) http.Handler {
 				}
 				return
 			}
+
+			if isAnonymousReadPath(path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Audit log failed authentication attempt
 			b.logger.V(1).Info("Unauthenticated request rejected",
 				"path", path,
@@ -272,10 +318,11 @@ func isHTTPS(r *http.Request) bool {
 // interfere with) from the cookie-setting step.
 func (b *baseAuth) buildCompleteURL(ctx context.Context, email, name string, opts ...func(*sessionData)) (string, error) {
 	session := sessionData{
-		Email:  email,
-		Name:   name,
-		Groups: []string{},
-		Expiry: time.Now().Add(sessionDuration).Unix(),
+		Version: currentSessionVersion,
+		Email:   email,
+		Name:    name,
+		Groups:  []string{},
+		Expiry:  time.Now().Add(sessionDuration).Unix(),
 	}
 	for _, opt := range opts {
 		opt(&session)
@@ -469,6 +516,13 @@ func (b *baseAuth) getSession(r *http.Request) (*sessionData, error) {
 	session, err := b.decryptSession(r.Context(), cookie.Value)
 	if err != nil {
 		return nil, err
+	}
+
+	// Checked here rather than in decryptSessionData so it covers the
+	// server-side store path too, which does not go through that function.
+	if session.Version != currentSessionVersion {
+		return nil, fmt.Errorf("session layout %d is stale (current %d), re-authentication required",
+			session.Version, currentSessionVersion)
 	}
 
 	// In server-side mode the store handles TTL-based expiry. In cookie-only
