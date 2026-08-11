@@ -391,6 +391,10 @@ This is useful when your identity provider returns many groups but you only want
 to use certain ones for authorization. An OIDC provider that emits no groups at
 all leaves every job hidden.
 
+Both are matched case-insensitively, because group names are normalized to lowercase before filtering, so `allowedGroupPrefix: "Renovate-"` and `allowedGroupPattern: "^Team-Renovate$"` work the same as their lowercase spellings. The pattern is compiled with the case-insensitive flag rather than lowercased, so escapes keep their meaning: `\D`, `\S`, `\W`, `\B` and `\p{Lu}` are not rewritten.
+
+When a filter is configured and a user has no group left after it, the login is refused, so watch for `WARNING: All user groups filtered out by validation` in the operator log. It reports the count after each of the three layers, which distinguishes a provider sending no groups (`original_count: 0`) from a policy that rejects them all (`after_policy: 0`).
+
 ### Deprecated: allowedGroups
 
 `spec.allowedGroups` and `auth.defaultAllowedGroups` still work and are treated

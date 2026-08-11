@@ -280,9 +280,11 @@ auth:
     logoutUrl: ""
     # -- optional: only accept groups with this prefix (e.g., "renovate-")
     # -- Leave empty to accept all groups. High-security environments should set this.
+    # -- Matched case-insensitively, since group names are normalized to lowercase.
     allowedGroupPrefix: ""
     # -- optional: only accept groups matching this regex pattern (e.g., "^(team-|platform-).*")
     # -- Leave empty to accept all groups. Can be combined with allowedGroupPrefix.
+    # -- Matched case-insensitively, since group names are normalized to lowercase.
     allowedGroupPattern: ""
     # -- optional: name of the OIDC claim that carries group memberships (defaults to "groups")
     # -- Set this if your provider emits groups under a namespaced claim, e.g. "https://example.com/groups".

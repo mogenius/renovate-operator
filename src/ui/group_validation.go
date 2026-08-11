@@ -112,14 +112,54 @@ func normalizeAndValidateGroups(groups []string, logger logr.Logger) []string {
 }
 
 // GroupFilterConfig defines optional filtering rules for LAYER 3 validation.
+//
+// Both fields are matched against the LAYER 2 output, which is lowercased, so
+// they must be case-insensitive themselves. Build them with
+// NewGroupFilterConfig rather than by hand, otherwise a configuration value
+// like "^Team-Renovate$" matches nothing at all.
 type GroupFilterConfig struct {
 	// AllowedPrefix filters groups to only those starting with this prefix.
 	// Example: "renovate-" only allows "renovate-team-a", "renovate-admin"
+	// Must be lowercase; NewGroupFilterConfig takes care of that.
 	AllowedPrefix string
 
 	// AllowedPattern is a regex pattern that groups must match.
 	// Example: "^(team-|platform-|admin-).*" allows team-*, platform-*, admin-*
+	// Must be case-insensitive; NewGroupFilterConfig takes care of that.
 	AllowedPattern *regexp.Regexp
+}
+
+// NewGroupFilterConfig builds the LAYER 3 policy from its configured strings.
+//
+// LAYER 2 lowercases every group before LAYER 3 sees it, so a policy carrying
+// any uppercase character can never match and the user is left with no groups.
+// The same reasoning already applies to the other two group inputs: the
+// operator lowercases DEFAULT_ALLOWED_GROUPS as it parses it, and
+// filterRenovateJobsByGroups runs a RenovateJob's spec.allowedGroups through
+// normalizeGroups. This makes the prefix and pattern consistent with those.
+//
+// The prefix is a literal, so it is simply lowercased. The pattern is compiled
+// case-insensitively instead, because lowercasing a regex source rewrites the
+// negated classes into their opposites (\D -> \d, \S -> \s, \W -> \w,
+// \B -> \b), turns Unicode classes such as \p{Lu} into unknown ones and makes
+// the ungreedy flag (?U) fail to compile. A leading (?i) applies to the whole
+// expression, including every branch of a top-level alternation.
+func NewGroupFilterConfig(allowedPrefix, allowedPattern string) (GroupFilterConfig, error) {
+	config := GroupFilterConfig{
+		AllowedPrefix: strings.ToLower(strings.TrimSpace(allowedPrefix)),
+	}
+
+	if allowedPattern == "" {
+		return config, nil
+	}
+
+	pattern, err := regexp.Compile("(?i)" + allowedPattern)
+	if err != nil {
+		return GroupFilterConfig{}, fmt.Errorf("invalid group pattern regex %q: %w", allowedPattern, err)
+	}
+	config.AllowedPattern = pattern
+
+	return config, nil
 }
 
 // filterGroupsByPolicy performs LAYER 3 validation: policy-based filtering.
