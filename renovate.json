@@ -21,6 +21,14 @@
   ],
   "packageRules": [
     {
+      "description": "The otel v0.x modules (log, sdk/log, otlploggrpc, contrib bridges) share an unstable API and only compile in lockstep, so core and contrib must land in a single PR regardless of update type.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["go.opentelemetry.io/**"],
+      "groupName": "opentelemetry",
+      "separateMajorMinor": false,
+      "separateMinorPatch": false
+    },
+    {
       "matchPackageNames": ["registry.k8s.io/kubectl", "valkey"],
       "semanticCommitType": "fix"
     },
