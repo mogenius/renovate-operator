@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"renovate-operator/internal/telemetry"
 	"slices"
 	"strings"
@@ -133,15 +132,10 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		return nil, err
 	}
 
-	// Parse group filter pattern if provided
-	var groupFilterConfig GroupFilterConfig
-	groupFilterConfig.AllowedPrefix = cfg.AllowedGroupPrefix
-	if cfg.AllowedGroupPattern != "" {
-		pattern, err := regexp.Compile(cfg.AllowedGroupPattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid group pattern regex: %w", err)
-		}
-		groupFilterConfig.AllowedPattern = pattern
+	// Parse the group filter policy if provided
+	groupFilterConfig, err := NewGroupFilterConfig(cfg.AllowedGroupPrefix, cfg.AllowedGroupPattern)
+	if err != nil {
+		return nil, err
 	}
 
 	if cfg.FetchUserInfoGroups {
