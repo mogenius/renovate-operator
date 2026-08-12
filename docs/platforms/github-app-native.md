@@ -1,8 +1,5 @@
 # GitHub App — Native Integration
 
-> [!IMPORTANT]
-> GitHub App native integration is in Beta.
-
 The native approach lets the operator manage the GitHub App token lifecycle directly — no External Secrets Operator required. The operator reads your App credentials from a Kubernetes Secret, generates a short-lived installation access token via the GitHub API, and injects it as `RENOVATE_TOKEN` into each Renovate Job automatically.
 
 If you haven't created your GitHub App yet: [GitHub App Setup](./github-app-setup.md)
