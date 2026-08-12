@@ -1,0 +1,49 @@
+name: Issue triage labels
+
+on:
+  issues:
+    types:
+      - opened
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: self-hosted
+
+    steps:
+      - name: Apply triage labels
+        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const existing = new Set((issue.labels ?? []).map(l => l.name));
+            const add = new Set(['needs triage']);
+
+            // Issue templates already carry bug/feature; classify only the ones opened
+            // without a template (blank issue, API, gh CLI) so nothing arrives unsorted.
+            if (!existing.has('bug') && !existing.has('feature')) {
+              const title = (issue.title ?? '').toLowerCase();
+              const body = (issue.body ?? '').toLowerCase();
+
+              if (/^(bug|fix)[:\/(]/.test(title)) {
+                add.add('bug');
+              } else if (/^(feat|feature)[:\/(]/.test(title)) {
+                add.add('feature');
+              }
+            }
+
+            const labels = [...add].filter(l => !existing.has(l));
+            if (labels.length === 0) {
+              core.info('Nothing to add');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels,
+            });
+            core.info(`Added: ${labels.join(', ')}`);

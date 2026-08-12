@@ -11,67 +11,67 @@ on:
 
 jobs:
   build:
-    runs-on: arc-runner-set-amd64
+    runs-on: self-hosted
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: '>=1.25.4'
-        cache-dependency-path: src/go.sum
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ">=1.25.4"
+          cache-dependency-path: src/go.sum
 
-    - name: build
-      run: |
-        cd src
+      - name: build
+        run: |
+          cd src
 
-        go mod download
+          go mod download
 
-        go build -tags timetzdata ./...
+          go build -tags timetzdata ./...
   test:
     needs: [build]
-    runs-on: arc-runner-set-amd64
+    runs-on: self-hosted
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: '>=1.25.4'
-        cache-dependency-path: src/go.sum
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ">=1.25.4"
+          cache-dependency-path: src/go.sum
 
-    - name: lint and test
-      run: |
-        cd src
-        go mod download
-        go test ./... -v
+      - name: lint and test
+        run: |
+          cd src
+          go mod download
+          go test ./... -v
 
   lint:
     needs: [build]
-    runs-on: arc-runner-set-amd64
+    runs-on: self-hosted
     permissions:
       # Required: allow read access to the content for analysis.
       contents: read
       # Optional: allow read access to pull request. Use with `only-new-issues` option.
       pull-requests: read
     steps:
-    - name: Checkout code
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: '>=1.25.4'
-        cache-dependency-path: src/go.sum
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ">=1.25.4"
+          cache-dependency-path: src/go.sum
 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-      with:
-        version: latest
-        only-new-issues: true
-        args: --timeout=10m --config=.golangci.yml
-        working-directory: src
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: latest
+          only-new-issues: true
+          args: --timeout=10m --config=.golangci.yml
+          working-directory: src
