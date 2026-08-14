@@ -2,8 +2,8 @@ apiVersion: v2
 name: renovate-operator
 description: Chart to deploy the renovate operator to your cluster
 type: application
-version: 5.6.0
-appVersion: 5.6.0
+version: 6.0.0
+appVersion: 6.0.0
 # The CRD carries CEL validation rules (x-kubernetes-validations), which are GA from 1.29.
 kubeVersion: ">=1.29.0-0"
 home: https://mogenius.com
