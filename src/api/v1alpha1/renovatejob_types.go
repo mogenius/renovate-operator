@@ -11,6 +11,7 @@ import (
 )
 
 // RenovateJobSpec defines the desired state of RenovateJob
+// +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 type RenovateJobSpec struct {
 	// Cron schedule in standard cron format
 	Schedule string `json:"schedule"`
@@ -70,18 +71,14 @@ type RenovateJobSpec struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// DNS Policy for the renovate pods
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
-	// Groups allowed to view this RenovateJob in the UI, compared case-insensitively
-	// against the groups on the user's session. Only consulted when authentication is
-	// enabled; with authentication off, every job is visible to everyone.
-	//
-	// When this is empty the operator-wide DEFAULT_ALLOWED_GROUPS applies instead, and
-	// when that is empty too the job is visible to every authenticated user. Leaving
-	// both empty does not hide anything: restricting a job means setting one of them.
-	//
-	// A job that does list groups is hidden from everyone if the configured auth
-	// provider supplies no group claims, because no session can then match.
+	// Deprecated: use Access.AdminGroups. Groups granted full access to this
+	// RenovateJob when authentication is enabled. Mutually exclusive with Access.
 	// +optional
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
+	// Access control for this RenovateJob in the web UI when authentication is
+	// enabled. If empty or not set, the job is hidden from all users.
+	// +optional
+	Access *RenovateJobAccess `json:"access,omitempty"`
 	// Configuration for the scratch volume
 	// +optional
 	ScratchVolume *RenovateJobScratchVolume `json:"scratchVolume,omitempty"`
@@ -121,6 +118,43 @@ type RenovateConfigMapKeyReference struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$`
 	Key string `json:"key"`
+}
+
+// access control for a RenovateJob in the web UI.
+//
+// Inheritance is per field: a field left unset takes the operator-wide default
+// (DEFAULT_READER_GROUPS, DEFAULT_ADMIN_GROUPS, DEFAULT_READER_USERS,
+// DEFAULT_ADMIN_USERS, DEFAULT_ANONYMOUS_READ, DEFAULT_ANONYMOUS_READ_LOGS). A
+// field that IS set **replaces** the default for that field rather than adding
+// to it, so listing one group here drops every default group, and setting
+// anonymousRead: false revokes an enabled default. Fields left unset are
+// unaffected by the ones that are set.
+type RenovateJobAccess struct {
+	// Groups allowed to view this RenovateJob without triggering, cancelling or
+	// reconfiguring anything.
+	// +optional
+	ReaderGroups []string `json:"readerGroups,omitempty"`
+	// Groups allowed to view this RenovateJob and to trigger, cancel and
+	// reconfigure its runs.
+	// +optional
+	AdminGroups []string `json:"adminGroups,omitempty"`
+	// Individual users allowed to view this RenovateJob, named by the email or
+	// username their identity provider reports. Compared case-insensitively.
+	// +optional
+	ReaderUsers []string `json:"readerUsers,omitempty"`
+	// Individual users allowed to view this RenovateJob and to trigger, cancel
+	// and reconfigure its runs. See ReaderUsers for how a user is matched.
+	// +optional
+	AdminUsers []string `json:"adminUsers,omitempty"`
+	// If true, this RenovateJob is readable without a session. Grants read access
+	// to every visitor, which group matches can only extend.
+	// +optional
+	AnonymousRead *bool `json:"anonymousRead,omitempty"`
+	// If true, visitors that only hold anonymous read access may also stream
+	// Renovate logs. Has no effect unless AnonymousRead is in effect. Renovate
+	// logs are unredacted, so this is opt-in separately from AnonymousRead.
+	// +optional
+	AnonymousReadLogs *bool `json:"anonymousReadLogs,omitempty"`
 }
 
 type RenovateJobScratchVolume struct {
@@ -354,10 +388,47 @@ func (in *RenovateJobScratchVolume) DeepCopyInto(out *RenovateJobScratchVolume) 
 	}
 }
 
+// DeepCopyInto deep copies a RenovateJobAccess into out.
+func (in *RenovateJobAccess) DeepCopyInto(out *RenovateJobAccess) {
+	*out = *in
+	if in.ReaderGroups != nil {
+		out.ReaderGroups = make([]string, len(in.ReaderGroups))
+		copy(out.ReaderGroups, in.ReaderGroups)
+	}
+	if in.AdminGroups != nil {
+		out.AdminGroups = make([]string, len(in.AdminGroups))
+		copy(out.AdminGroups, in.AdminGroups)
+	}
+	if in.ReaderUsers != nil {
+		out.ReaderUsers = make([]string, len(in.ReaderUsers))
+		copy(out.ReaderUsers, in.ReaderUsers)
+	}
+	if in.AdminUsers != nil {
+		out.AdminUsers = make([]string, len(in.AdminUsers))
+		copy(out.AdminUsers, in.AdminUsers)
+	}
+	if in.AnonymousRead != nil {
+		out.AnonymousRead = new(bool)
+		*out.AnonymousRead = *in.AnonymousRead
+	}
+	if in.AnonymousReadLogs != nil {
+		out.AnonymousReadLogs = new(bool)
+		*out.AnonymousReadLogs = *in.AnonymousReadLogs
+	}
+}
+
 // DeepCopyInto deep copies a RenovateJob into out.
 func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 	*out = *in
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	if in.Spec.AllowedGroups != nil {
+		out.Spec.AllowedGroups = make([]string, len(in.Spec.AllowedGroups))
+		copy(out.Spec.AllowedGroups, in.Spec.AllowedGroups)
+	}
+	if in.Spec.Access != nil {
+		out.Spec.Access = new(RenovateJobAccess)
+		in.Spec.Access.DeepCopyInto(out.Spec.Access)
+	}
 	if in.Spec.ScratchVolume != nil {
 		out.Spec.ScratchVolume = new(RenovateJobScratchVolume)
 		in.Spec.ScratchVolume.DeepCopyInto(out.Spec.ScratchVolume)

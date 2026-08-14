@@ -485,229 +485,176 @@ func (m *mockScheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
 	return time.Now().Add(24 * time.Hour)
 }
 
-func TestFilterRenovateJobsByGroups(t *testing.T) {
+func TestFilterReadableJobs(t *testing.T) {
+	adminGroups := []string{"team-admin"}
+	readerGroups := []string{"team-reader"}
+
 	tests := []struct {
 		name        string
 		jobs        []api.RenovateJob
 		authEnabled bool
 		session     *sessionData
-		wantLen     int
-		wantJobs    []string // job names expected in result
+		defaults    AccessDefaults
+		wantJobs    []string
+		wantRoles   []string
 	}{
 		{
-			name: "auth disabled - all jobs visible",
+			name: "auth disabled - every job is admin",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-b"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}},
 			},
 			authEnabled: false,
-			session:     nil,
-			wantLen:     2,
 			wantJobs:    []string{"job1", "job2"},
+			wantRoles:   []string{"admin", "admin"},
 		},
 		{
-			name: "auth enabled but no session - empty list (security)",
+			name: "auth enabled without session - nothing visible",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
 			},
 			authEnabled: true,
-			session:     nil,
-			wantLen:     0,
 			wantJobs:    []string{},
 		},
 		{
-			name: "user with matching group sees job",
+			name: "job without access configuration is hidden (fail closed)",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{}}},
 			},
 			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-a"}},
-			wantLen:     1,
+			session:     &sessionData{Groups: []string{"team-admin"}},
+			wantJobs:    []string{},
+		},
+		{
+			name: "admin group grants admin, reader group grants reader",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups}}},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"team-admin", "team-reader"}},
+			wantJobs:    []string{"job1", "job2"},
+			wantRoles:   []string{"admin", "reader"},
+		},
+		{
+			name: "admin wins when a user holds both group kinds",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups, AdminGroups: adminGroups}}},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"team-reader", "team-admin"}},
 			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"admin"},
 		},
 		{
-			name: "user without matching group sees nothing",
+			name: "deprecated allowedGroups still grants admin",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
 			},
 			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-b"}},
-			wantLen:     0,
-			wantJobs:    []string{},
-		},
-		{
-			name: "user with no groups sees nothing",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: nil},
-			wantLen:     0,
-			wantJobs:    []string{},
-		},
-		{
-			name: "job without allowedGroups visible to all authenticated users",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{}}},
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-a"}},
-			wantLen:     2,
-			wantJobs:    []string{"job1", "job2"},
-		},
-		{
-			name: "user with multiple groups sees all matching jobs",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-b"}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job3"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-c"}}},
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-a", "team-b"}},
-			wantLen:     2,
-			wantJobs:    []string{"job1", "job2"},
-		},
-		{
-			name: "job with multiple groups matches any user group",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a", "team-b", "team-c"}}},
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-b"}},
-			wantLen:     1,
+			session:     &sessionData{Groups: []string{"team-legacy"}},
 			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"admin"},
+		},
+		{
+			name: "group names are matched case-insensitively",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"Team-Admin"}}}},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"TEAM-ADMIN"}},
+			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"admin"},
+		},
+		{
+			name: "operator defaults apply to jobs that set no groups",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-other"}}}},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"team-default"}},
+			defaults:    AccessDefaults{AdminGroups: []string{"team-default"}},
+			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"admin"},
+		},
+		{
+			name: "anonymous read grants reader without a session",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+			},
+			authEnabled: true,
+			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"reader"},
+		},
+		{
+			name: "anonymous read is a floor for sessions without matching groups",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AdminGroups: adminGroups}}},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"team-unrelated"}},
+			wantJobs:    []string{"job1"},
+			wantRoles:   []string{"reader"},
+		},
+		{
+			name: "job opts out of the anonymous read default",
+			jobs: []api.RenovateJob{
+				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(false)}}},
+			},
+			authEnabled: true,
+			defaults:    AccessDefaults{AnonymousRead: true},
+			wantJobs:    []string{},
+		},
+		{
+			name: "access and deprecated allowedGroups together fail closed",
+			jobs: []api.RenovateJob{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "job1"},
+					Spec: api.RenovateJobSpec{
+						AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
+						Access:        &api.RenovateJobAccess{AdminGroups: adminGroups},
+					},
+				},
+			},
+			authEnabled: true,
+			session:     &sessionData{Groups: []string{"team-legacy", "team-admin"}},
+			wantJobs:    []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := filterRenovateJobsByGroups(tt.jobs, tt.authEnabled, tt.session, nil)
-			if len(result) != tt.wantLen {
-				t.Errorf("filterRenovateJobsByGroups() len = %v, want %v", len(result), tt.wantLen)
+			server := &Server{logger: logr.Discard(), accessDefaults: tt.defaults}
+			if tt.authEnabled {
+				server.auth = &OIDCAuth{}
 			}
-			// Verify expected jobs are in result
-			for _, wantName := range tt.wantJobs {
-				found := false
-				for _, job := range result {
-					if job.Name == wantName {
-						found = true
-						break
-					}
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.session != nil {
+				req = req.WithContext(context.WithValue(req.Context(), sessionContextKey, tt.session))
+			}
+
+			jobs, decisions := server.filterReadableJobs(req, tt.jobs)
+
+			if len(jobs) != len(tt.wantJobs) {
+				t.Fatalf("filterReadableJobs() len = %d, want %d", len(jobs), len(tt.wantJobs))
+			}
+			for i, wantName := range tt.wantJobs {
+				if jobs[i].Name != wantName {
+					t.Errorf("job[%d] = %q, want %q", i, jobs[i].Name, wantName)
 				}
-				if !found {
-					t.Errorf("Expected job %s not found in result", wantName)
+				if i < len(tt.wantRoles) && decisions[i].Role.String() != tt.wantRoles[i] {
+					t.Errorf("job %q role = %q, want %q", jobs[i].Name, decisions[i].Role.String(), tt.wantRoles[i])
 				}
 			}
 		})
 	}
 }
 
-func TestFilterRenovateJobsByGroups_WithDefaults(t *testing.T) {
-	tests := []struct {
-		name                 string
-		jobs                 []api.RenovateJob
-		authEnabled          bool
-		session              *sessionData
-		defaultAllowedGroups []string
-		wantLen              int
-		wantJobs             []string
-	}{
-		{
-			name: "job without allowedGroups uses defaults - user has default group",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"default-team"}},
-			defaultAllowedGroups: []string{"default-team"},
-			wantLen:              1,
-			wantJobs:             []string{"job1"},
-		},
-		{
-			name: "job without allowedGroups uses defaults - user lacks default group",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"team-a"}},
-			defaultAllowedGroups: []string{"default-team"},
-			wantLen:              0,
-			wantJobs:             []string{},
-		},
-		{
-			name: "job with explicit allowedGroups ignores defaults",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"default-team"}},
-			defaultAllowedGroups: []string{"default-team"},
-			wantLen:              0,
-			wantJobs:             []string{},
-		},
-		{
-			// Group restrictions are opt-in: with nothing configured there is nothing to
-			// filter on, so the job stays visible. This is intended, not an oversight —
-			// making it fail closed would hide every job on any installation that has
-			// never set groups, so change it only deliberately.
-			name: "job without allowedGroups and no defaults - visible to all authenticated users",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"team-a"}},
-			defaultAllowedGroups: nil,
-			wantLen:              1,
-			wantJobs:             []string{"job1"},
-		},
-		{
-			name: "multiple defaults - user has one",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"team-b"}},
-			defaultAllowedGroups: []string{"team-a", "team-b", "team-c"},
-			wantLen:              1,
-			wantJobs:             []string{"job1"},
-		},
-		{
-			name: "mixed jobs - some with explicit groups, some using defaults",
-			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: nil}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}}},
-			},
-			authEnabled:          true,
-			session:              &sessionData{Groups: []string{"team-a"}},
-			defaultAllowedGroups: []string{"default-team"},
-			wantLen:              1,
-			wantJobs:             []string{"job2"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := filterRenovateJobsByGroups(tt.jobs, tt.authEnabled, tt.session, tt.defaultAllowedGroups)
-			if len(result) != tt.wantLen {
-				t.Errorf("filterRenovateJobsByGroups() len = %v, want %v", len(result), tt.wantLen)
-			}
-			// Verify expected jobs are in result
-			for _, wantName := range tt.wantJobs {
-				found := false
-				for _, job := range result {
-					if job.Name == wantName {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Expected job %s not found in result", wantName)
-				}
-			}
-		})
-	}
-}
+func ptr[T any](v T) *T { return &v }
 
 func TestHasIntersection(t *testing.T) {
 	tests := []struct {
@@ -900,14 +847,44 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 			wantStatusCode: http.StatusOK,
 		},
 		{
-			name: "unauthorized user gets 403",
+			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
 				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
 				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
+			wantStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "reader by group match may stream logs",
+			job: &api.RenovateJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
+				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
+			},
+			userGroups:     []string{"team-b"},
+			authEnabled:    true,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name: "anonymous reader without log access gets 403",
+			job: &api.RenovateJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
+				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}},
+			},
+			userGroups:     []string{"team-b"},
+			authEnabled:    true,
 			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name: "anonymous reader with log access may stream logs",
+			job: &api.RenovateJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
+				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AnonymousReadLogs: ptr(true)}},
+			},
+			userGroups:     []string{"team-b"},
+			authEnabled:    true,
+			wantStatusCode: http.StatusOK,
 		},
 		{
 			name: "auth disabled - all users can access",
@@ -993,14 +970,14 @@ func TestAuthorizeJobAccess_DirectBypassAttempt(t *testing.T) {
 	ctx := context.WithValue(req.Context(), sessionContextKey, session)
 	req = req.WithContext(ctx)
 
-	authorized := server.authorizeJobAccess(req, "default", "secret-job")
-	if authorized {
-		t.Error("User should not be authorized to access job with different group")
+	_, decision := server.resolveJobAccess(req, "default", "secret-job")
+	if decision.canRead() {
+		t.Error("User should not be able to read a job whose groups they do not hold")
 	}
 }
 
-// TestAuthorizeAndGetJobAvoidsDoubleFetch verifies we don't fetch jobs twice
-func TestAuthorizeAndGetJobAvoidsDoubleFetch(t *testing.T) {
+// TestResolveJobAccessAvoidsDoubleFetch verifies we don't fetch jobs twice
+func TestResolveJobAccessAvoidsDoubleFetch(t *testing.T) {
 	fetchCount := 0
 	mockManager := &mockRenovateJobManager{
 		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -1017,11 +994,10 @@ func TestAuthorizeAndGetJobAvoidsDoubleFetch(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	// First call to authorizeAndGetJob
-	job, authorized := server.authorizeAndGetJob(req, "default", "job1")
+	job, decision := server.resolveJobAccess(req, "default", "job1")
 
-	if !authorized {
-		t.Error("Expected authorization to succeed")
+	if !decision.canWrite() {
+		t.Error("Expected admin access when no auth provider is configured")
 	}
 	if job == nil {
 		t.Error("Expected job to be returned")
@@ -1050,10 +1026,20 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 			wantStatusCode: http.StatusOK,
 		},
 		{
-			name: "unauthorized user gets 403",
+			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
 				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
 				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+			},
+			userGroups:     []string{"team-b"},
+			authEnabled:    true,
+			wantStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "reader gets 403 on write actions",
+			job: &api.RenovateJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
+				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,

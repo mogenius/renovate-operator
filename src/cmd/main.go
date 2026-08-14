@@ -62,10 +62,10 @@ func splitAndTrim(s, sep string) []string {
 }
 
 type authSetup struct {
-	provider             ui.AuthProvider
-	kvStore              kvstore.KVStore
-	defaultAllowedGroups []string
-	cleanup              func()
+	provider       ui.AuthProvider
+	kvStore        kvstore.KVStore
+	accessDefaults ui.AccessDefaults
+	cleanup        func()
 }
 
 func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
@@ -158,39 +158,95 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			ClientID:     githubClientID,
 			ClientSecret: githubClientSecret,
 			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
+			OrgGroups:    config.GetValue("GITHUB_ORG_GROUPS") == "true",
 		}, cookieKey, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
-		log.Info("GitHub OAuth authentication enabled")
+		log.Info("GitHub OAuth authentication enabled", "orgGroups", config.GetValue("GITHUB_ORG_GROUPS") == "true")
 	} else {
 		log.Info("No authentication configured, UI access is unauthenticated")
 	}
 
-	// Parse default allowed groups (comma-separated)
-	var defaultAllowedGroups []string
-	defaultGroupsStr := config.GetValue("DEFAULT_ALLOWED_GROUPS")
-	if defaultGroupsStr != "" {
-		for _, group := range splitAndTrim(defaultGroupsStr, ",") {
-			if group != "" {
-				normalized := strings.ToLower(strings.TrimSpace(group))
-				defaultAllowedGroups = append(defaultAllowedGroups, normalized)
-			}
-		}
-		log.Info("Default allowed groups configured", "groups", defaultAllowedGroups)
-	}
-
-	if authProvider != nil && !authProvider.SupportsGroups() && len(defaultAllowedGroups) > 0 {
-		log.Error(nil,
-			"auth provider does not support group claims -- DEFAULT_ALLOWED_GROUPS is configured but will have no effect, all jobs will be hidden from all users",
-			"ignored_groups", defaultAllowedGroups)
-	}
+	accessDefaults := parseAccessDefaults(log)
 
 	return authSetup{
-		provider:             authProvider,
-		kvStore:              kvStore,
-		defaultAllowedGroups: defaultAllowedGroups,
-		cleanup:              cleanup,
+		provider:       authProvider,
+		kvStore:        kvStore,
+		accessDefaults: accessDefaults,
+		cleanup:        cleanup,
 	}
+}
+
+// parseAccessDefaults reads the operator-wide access defaults that apply to
+// RenovateJobs which leave parts of their access configuration unset.
+func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
+	defaults := ui.AccessDefaults{
+		ReaderGroups:      parseGroupList(config.GetValue("DEFAULT_READER_GROUPS")),
+		AdminGroups:       parseGroupList(config.GetValue("DEFAULT_ADMIN_GROUPS")),
+		ReaderUsers:       parseGroupList(config.GetValue("DEFAULT_READER_USERS")),
+		AdminUsers:        parseGroupList(config.GetValue("DEFAULT_ADMIN_USERS")),
+		AnonymousRead:     config.GetValue("DEFAULT_ANONYMOUS_READ") == "true",
+		AnonymousReadLogs: config.GetValue("DEFAULT_ANONYMOUS_READ_LOGS") == "true",
+	}
+
+	// The deprecated DEFAULT_ALLOWED_GROUPS granted what is now admin access.
+	if legacy := parseGroupList(config.GetValue("DEFAULT_ALLOWED_GROUPS")); len(legacy) > 0 {
+		log.Info("DEFAULT_ALLOWED_GROUPS is deprecated, use DEFAULT_ADMIN_GROUPS (auth.defaultAccess.adminGroups)",
+			"groups", legacy)
+		defaults.AdminGroups = append(defaults.AdminGroups, legacy...)
+	}
+
+	log.Info("Default access configured",
+		"readerGroups", defaults.ReaderGroups,
+		"adminGroups", defaults.AdminGroups,
+		"readerUsers", defaults.ReaderUsers,
+		"adminUsers", defaults.AdminUsers,
+		"anonymousRead", defaults.AnonymousRead,
+		"anonymousReadLogs", defaults.AnonymousReadLogs)
+
+	return defaults
+}
+
+// parseGroupList splits a comma-separated group list and normalizes it the same
+// way session groups are normalized, so both sides of a comparison match.
+func parseGroupList(value string) []string {
+	if value == "" {
+		return nil
+	}
+	groups := splitAndTrim(value, ",")
+	normalized := make([]string, 0, len(groups))
+	for _, group := range groups {
+		// A trailing or doubled comma would otherwise contribute an empty entry
+		// that matches nothing and shows up in the startup log as noise.
+		if group == "" {
+			continue
+		}
+		normalized = append(normalized, strings.ToLower(group))
+	}
+	return normalized
+}
+
+// warnAccessRulesEnforceable warns when the operator-wide access defaults are
+// written against groups the auth provider cannot supply. It never aborts: a UI
+// misconfiguration must not take reconciliation and scheduling down with it.
+//
+// This only covers the defaults, which are known at startup. Per-job group rules
+// are checked live by the UI, which hides every job and serves the reason on
+// /api/v1/access/status while the rules cannot be enforced.
+func warnAccessRulesEnforceable(log logr.Logger, provider ui.AuthProvider, defaults ui.AccessDefaults) {
+	if provider == nil || provider.SupportsGroups() {
+		return
+	}
+	if len(defaults.ReaderGroups) == 0 && len(defaults.AdminGroups) == 0 {
+		return
+	}
+
+	log.Error(nil, "!!! ACCESS RULES CANNOT BE ENFORCED !!!")
+	log.Error(nil, "the configured auth provider supplies no groups, so no group rule can ever match")
+	log.Error(nil, "every RenovateJob stays hidden in the UI until this is fixed")
+	log.Error(nil, "set auth.github.orgGroups=true (GITHUB_ORG_GROUPS), or name individual accounts via DEFAULT_ADMIN_USERS/DEFAULT_READER_USERS instead of groups",
+		"defaultReaderGroups", defaults.ReaderGroups,
+		"defaultAdminGroups", defaults.AdminGroups)
 }
 
 func main() {
@@ -355,9 +411,45 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "GITHUB_ORG_GROUPS",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			// Deprecated: use DEFAULT_ADMIN_GROUPS
 			Key:      "DEFAULT_ALLOWED_GROUPS",
 			Optional: true,
 			Default:  "",
+		},
+		{
+			Key:      "DEFAULT_READER_GROUPS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "DEFAULT_ADMIN_GROUPS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "DEFAULT_READER_USERS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "DEFAULT_ADMIN_USERS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "DEFAULT_ANONYMOUS_READ",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			Key:      "DEFAULT_ANONYMOUS_READ_LOGS",
+			Optional: true,
+			Default:  "false",
 		},
 		{
 			Key:      "OIDC_ALLOWED_GROUP_PREFIX",
@@ -687,8 +779,10 @@ func main() {
 	auth := initAuth(valkeyConf)
 	defer auth.cleanup()
 
+	warnAccessRulesEnforceable(ctrl.Log.WithName("auth"), auth.provider, auth.accessDefaults)
+
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.accessDefaults)
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
