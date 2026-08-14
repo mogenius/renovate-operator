@@ -32,6 +32,9 @@ const (
 	// LabelValueComponentValkeyCache marks the generated Secret holding the
 	// Renovate cache URL.
 	LabelValueComponentValkeyCache = "renovate-valkey-cache"
+	// LabelValueComponentRenovateConfig marks the generated ConfigMap holding a
+	// job's inline Renovate configuration.
+	LabelValueComponentRenovateConfig = "renovate-config"
 )
 
 // FinalizerWebhookCleanup marks RenovateJobs whose synced webhooks must be

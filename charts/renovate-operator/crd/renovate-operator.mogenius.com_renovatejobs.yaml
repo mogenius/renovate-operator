@@ -3298,6 +3298,45 @@ spec:
                 required:
                 - name
                 type: object
+              renovateConfig:
+                description: Renovate configuration file for the job pods
+                properties:
+                  configMapRef:
+                    description: Reference to a key in an existing ConfigMap holding
+                      the configuration file
+                    properties:
+                      key:
+                        description: Key holding the configuration file, also used
+                          as the mounted file name
+                        maxLength: 253
+                        pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
+                        type: string
+                      name:
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                  fileName:
+                    description: File name the inline configuration is mounted as;
+                      the extension tells Renovate the format. Defaults to "config.js".
+                      Ignored with configMapRef.
+                    maxLength: 253
+                    pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
+                    type: string
+                  inline:
+                    description: Inline Renovate configuration, written to a ConfigMap
+                      owned by the RenovateJob
+                    maxLength: 262144
+                    minLength: 1
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of inline and configMapRef must be set
+                  rule: has(self.inline) != has(self.configMapRef)
               resources:
                 description: Resource requirements for the renovate container
                 properties:

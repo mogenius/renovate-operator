@@ -234,6 +234,13 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		})
 	}
 
+	if job.Spec.RenovateConfig != nil {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_CONFIG_FILE",
+			Value: renovateConfigMountPath + "/" + renovateConfigFileName(job.Spec.RenovateConfig),
+		})
+	}
+
 	if job.Spec.Provider != nil {
 		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -563,6 +570,28 @@ func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
 		}
 		volumes = append(volumes, volume)
 		volumeMounts = append(volumeMounts, mount)
+	}
+
+	if cfg := job.Spec.RenovateConfig; cfg != nil {
+		configMapName := renovateConfigMapName(job)
+		if cfg.ConfigMapRef != nil {
+			configMapName = cfg.ConfigMapRef.Name
+		}
+		fileName := renovateConfigFileName(cfg)
+		volumes = append(volumes, v1.Volume{
+			Name: renovateConfigVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{Name: configMapName},
+					Items:                []v1.KeyToPath{{Key: fileName, Path: fileName}},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, v1.VolumeMount{
+			Name:      renovateConfigVolumeName,
+			MountPath: renovateConfigMountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	if job.Spec.ExtraVolumes != nil {

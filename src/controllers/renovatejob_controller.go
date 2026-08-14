@@ -75,6 +75,9 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")
 		}
+		if err := renovate.EnsureRenovateConfigMap(ctx, r.K8sClient, renovateJob); err != nil {
+			logger.Error(err, "failed to ensure renovate config configmap")
+		}
 		r.handleAnnotationTriggers(ctx, logger, renovateJob)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {

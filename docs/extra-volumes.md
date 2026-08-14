@@ -38,6 +38,9 @@ You can add additional volumes and volume mounts to your `RenovateJob` using the
 
 ### Example: Mounting a ConfigMap with Renovate Configuration
 
+> [!IMPORTANT] For Renovate configuration files, prefer the first-class
+> [`spec.renovateConfig`](renovate-config.md) field.
+
 This example shows how to mount a ConfigMap containing a custom Renovate configuration file:
 
 ```yaml

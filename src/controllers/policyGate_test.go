@@ -36,6 +36,7 @@ func gateReconciler(t *testing.T, job *api.RenovateJob, allowedHosts ...string) 
 		Scheduler: sched,
 		Discovery: &fakeDiscovery{},
 		GithubApp: &fakeGithubAppToken{},
+		K8sClient: buildFakeK8sClient(t),
 		Policy:    policy.Policy{AllowedHosts: allowedHosts},
 	}, mgr, sched
 }
@@ -148,6 +149,7 @@ func TestReconcileAcceptsEverythingWhenPolicyDisabled(t *testing.T) {
 		Scheduler: sched,
 		Discovery: &fakeDiscovery{},
 		GithubApp: &fakeGithubAppToken{},
+		K8sClient: buildFakeK8sClient(t),
 		Policy:    policy.Policy{Disabled: true},
 	}
 
