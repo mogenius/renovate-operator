@@ -6,7 +6,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-var GroupVersion = schema.GroupVersion{Group: "renovate-operator.mogenius.com", Version: "v1alpha1"}
+// GroupName is this API group, and the prefix of every label, annotation and
+// finalizer the operator owns. It must match the +groupName marker in
+// renovatejob_types.go, which controller-gen reads from the comment and cannot
+// resolve from this constant.
+const GroupName = "renovate-operator.mogenius.com"
+
+var GroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 func AddToScheme(s *runtime.Scheme) error {
 	s.AddKnownTypes(GroupVersion, &RenovateJob{}, &RenovateJobList{})

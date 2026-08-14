@@ -7,18 +7,18 @@ on:
 
 jobs:
   lint:
-    uses: mogenius/github-actions/.github/workflows/helm-lint.yml@75995e916be275ed15c2dd4748d664f5e35dfb89 # v1.7.2
+    uses: mogenius/github-actions/.github/workflows/helm-lint.yml@b5293d661baea684bc9d1a95b1ecd64ead344b92 # v1.7.4
     with:
       path: ./charts/renovate-operator
 
   tests:
-    uses: mogenius/github-actions/.github/workflows/helm-unittest.yml@75995e916be275ed15c2dd4748d664f5e35dfb89 # v1.7.2
+    uses: mogenius/github-actions/.github/workflows/helm-unittest.yml@b5293d661baea684bc9d1a95b1ecd64ead344b92 # v1.7.4
     with:
       path: ./charts/renovate-operator
 
 
   template:
-    uses: mogenius/github-actions/.github/workflows/helm-template.yml@75995e916be275ed15c2dd4748d664f5e35dfb89 # v1.7.2
+    uses: mogenius/github-actions/.github/workflows/helm-template.yml@b5293d661baea684bc9d1a95b1ecd64ead344b92 # v1.7.4
     with:
       path: ./charts/renovate-operator
       namespace: renovate-operator

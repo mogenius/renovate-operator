@@ -128,6 +128,37 @@ route:
     # - timeouts:
     #     request: 30s
     #     backendRequest: 30s
+  # -- ListenerSet for the operator web UI (Gateway API v1.3+)
+  listenerset:
+    # -- whether to enable the ListenerSet
+    enabled: false
+    # -- labels to place on the ListenerSet
+    labels: {}
+    # -- annotations to place on the ListenerSet
+    annotations: {}
+    # -- parentRef pointing to the parent Gateway (required when enabled)
+    parentRef: {}
+    # -- name of the listener entry
+    listenerName: https
+    # -- port the listener should bind to
+    port: 443
+    # -- protocol for the listener (HTTP, HTTPS, TLS); used to derive the auth-redirect URL scheme
+    protocol: HTTPS
+    # -- hostname for the listener; defaults to the first entry in route.hostnames
+    hostname: ""
+    tls:
+      # -- whether to configure TLS on the listener
+      enabled: false
+      # -- TLS termination mode (Terminate or Passthrough)
+      mode: Terminate
+      # -- name of the TLS secret; defaults to <fullname>-tls
+      secretName: ""
+    # -- allowedRoutes configuration for the listener
+    allowedRoutes:
+      namespaces:
+        from: Same
+    # -- optional: fully custom listeners list; overrides all listener defaults above
+    listeners: []
 
 webhook:
   enabled: false
@@ -177,9 +208,40 @@ webhook:
       # - timeouts:
       #     request: 30s
       #     backendRequest: 30s
+    # -- ListenerSet for the webhook server (Gateway API v1.3+)
+    listenerset:
+      # -- whether to enable the ListenerSet
+      enabled: false
+      # -- labels to place on the ListenerSet
+      labels: {}
+      # -- annotations to place on the ListenerSet
+      annotations: {}
+      # -- parentRef pointing to the parent Gateway (required when enabled)
+      parentRef: {}
+      # -- name of the listener entry
+      listenerName: https
+      # -- port the listener should bind to
+      port: 443
+      # -- protocol for the listener (HTTP, HTTPS, TLS)
+      protocol: HTTPS
+      # -- hostname for the listener; defaults to the first entry in webhook.route.hostnames
+      hostname: ""
+      tls:
+        # -- whether to configure TLS on the listener
+        enabled: false
+        # -- TLS termination mode (Terminate or Passthrough)
+        mode: Terminate
+        # -- name of the TLS secret; defaults to <fullname>-webhook-tls
+        secretName: ""
+      # -- allowedRoutes configuration for the listener
+      allowedRoutes:
+        namespaces:
+          from: Same
+      # -- optional: fully custom listeners list; overrides all listener defaults above
+      listeners: []
 
 auth:
-  # -- comma-separated list of default groups for RenovateJobs without explicit allowedGroups (empty = all authenticated users can see jobs without explicit group restrictions)
+  # -- DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration
   defaultAllowedGroups: ""
   oidc:
     # -- whether to enable OIDC authentication for the UI
@@ -204,9 +266,11 @@ auth:
     logoutUrl: ""
     # -- optional: only accept groups with this prefix (e.g., "renovate-")
     # -- Leave empty to accept all groups. High-security environments should set this.
+    # -- Matched case-insensitively, since group names are normalized to lowercase.
     allowedGroupPrefix: ""
     # -- optional: only accept groups matching this regex pattern (e.g., "^(team-|platform-).*")
     # -- Leave empty to accept all groups. Can be combined with allowedGroupPrefix.
+    # -- Matched case-insensitively, since group names are normalized to lowercase.
     allowedGroupPattern: ""
     # -- optional: name of the OIDC claim that carries group memberships (defaults to "groups")
     # -- Set this if your provider emits groups under a namespaced claim, e.g. "https://example.com/groups".
@@ -239,6 +303,32 @@ auth:
     redirectUrl: ""
     # -- optional: override the scheme (http or https) of the auto-detected redirect URL, e.g. when TLS terminates at an external load balancer or Gateway (ignored when redirectUrl is set)
     redirectScheme: ""
+    # -- optional: map GitHub org and team membership to session groups as "org" and "org/team". Requires the read:org scope, so every user must re-consent
+    orgGroups: false
+
+authorization:
+  # -- whether to enforce per-job access rules. When false, every user who passes authentication
+  # -- holds admin access on every RenovateJob and all group and user rules are ignored, per-job
+  # -- and operator-wide. Anonymous read still applies, so a public read-only dashboard is
+  # -- unaffected. Has no effect when no authentication provider is configured, since every
+  # -- request is an admin in that case.
+  enabled: true
+  # -- default access rules. Each field applies to RenovateJobs that leave the matching field in
+  # -- spec.access unset. A field the job does set replaces the default for that field instead of
+  # -- adding to it, so a per-job spec.access can narrow access as well as widen it.
+  defaults:
+    # -- groups granted read-only access (view jobs, projects and logs, no actions)
+    readerGroups: []
+    # -- groups granted full access (view plus trigger, cancel and discovery)
+    adminGroups: []
+    # -- individual accounts granted read-only access, by email or username
+    readerUsers: []
+    # -- individual accounts granted full access, by email or username
+    adminUsers: []
+    # -- whether RenovateJobs are readable without a session (public dashboard)
+    anonymousRead: false
+    # -- whether visitors holding only anonymous read access may stream Renovate logs (logs are unredacted)
+    anonymousReadLogs: false
 
 rbac:
   # -- if true no clusterrole and clusterrolebinding will be created, only role and rolebinding
@@ -246,6 +336,72 @@ rbac:
   ownNamespaceOnly: false
   # -- optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true)
   watchNamespace: ""
+
+policy:
+  # -- master switch for the policy engine. **Off by default** so that a new install works
+  # -- straight away: you can get Renovate running first and secure the operator afterwards,
+  # -- which also suits homelab and throwaway clusters. On anything shared, turn it on.
+  # --
+  # -- Enabling or disabling does not affect what the CRD itself rejects (hostPath volumes,
+  # -- privileged containers, allowPrivilegeEscalation): those are refused by the Kubernetes
+  # -- API server regardless of this setting.
+  enabled: false
+  # -- hostnames the operator is allowed to send to. This bounds every URL taken from a
+  # -- RenovateJob: spec.provider.endpoint, spec.provider.publicEndpoint and the webhook
+  # -- delivery URL written onto your repositories. A job pointing anywhere else is refused,
+  # -- so the operator's credentials and your repository events cannot be redirected by
+  # -- whoever can edit a RenovateJob.
+  # --
+  # -- Entries are bare hostnames (no scheme, port or path) and must match exactly.
+  # --
+  # -- The defaults cover the public platforms. You must append your own platform host,
+  # -- if self-hosted (e.g. gitlab.example.com).
+  # --
+  # -- The operator's own webhook host is added for you: whenever the webhook server is
+  # -- enabled and a base URL is configured or derivable (webhook.baseUrl, or the host of
+  # -- webhook.ingress/webhook.route), that hostname is appended to this list. It comes
+  # -- from these values, so it is an approved destination already. A per-job
+  # -- spec.webhook.baseUrl pointing elsewhere still has to be listed here explicitly.
+  # -- Set to [] to refuse every destination other than that webhook host.
+  allowedHosts:
+    - api.github.com
+    - github.com
+    - gitlab.com
+    - api.bitbucket.org
+    - bitbucket.org
+    - gitea.com
+    - codeberg.org
+  # -- require a secret to opt in before a RenovateJob may have the operator read it at a
+  # -- caller-chosen key. Applies to spec.webhook.sync.secretRef,
+  # -- spec.webhook.authentication.secretRef and spec.githubAppReference, all of which name
+  # -- both a secret and the key(s) to read. Without an opt-in, anyone who can edit a
+  # -- RenovateJob could have the operator read any value in the namespace using its own
+  # -- credentials. Opt a secret in by labelling it:
+  # --   renovate-operator.mogenius.com/allow-ref: "true"
+  # -- spec.secretRef is unaffected: it is only ever read at Renovate's own well-known token
+  # -- key names, so it is not an arbitrary-key reference.
+  requireSecretRefOptIn: true
+  # -- ServiceAccount names a RenovateJob may run its pods as, via spec.serviceAccount.name.
+  # -- Empty allows only the namespace default, i.e. jobs that leave the field unset.
+  allowedServiceAccounts: []
+  # -- allow a RenovateJob to run its pods as uid 0 via spec.securityContext. Off by
+  # -- default; the operator's hardened defaults run as uid 12021. Note that privileged
+  # -- containers, allowPrivilegeEscalation and hostPath volumes are rejected by the CRD
+  # -- itself and cannot be re-enabled here.
+  allowRootUser: false
+  # -- container image repositories a RenovateJob may run, via spec.image. Each entry
+  # -- authorises exactly the repository it names. The tag or digest on
+  # -- spec.image is ignored; the repository must match verbatim.
+  # --
+  # -- Because the match is literal, every spelling in use has to be listed. Both Docker
+  # -- Hub forms ship below, since "renovate/renovate:<tag>" is the form the docs and
+  # -- most specs use. Add your own entry if you pull Renovate through an internal
+  # -- registry mirror, or write it as "index.docker.io/...".
+  # -- Set to [] to deny every image.
+  allowedImages:
+    - renovate/renovate
+    - docker.io/renovate/renovate
+    - ghcr.io/renovatebot/renovate
 
 # -- security context for the pod and containers
 securityContext:

@@ -1,0 +1,124 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: RBAC secret verbs
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+tests:
+- it: ClusterRole grants only get/create/update on secrets
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["get", "create", "update"]
+
+- it: ClusterRole never grants list, watch or delete on secrets
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - notContains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- it: Role grants only get/create/update on secrets
+  set:
+    rbac.ownNamespaceOnly: true
+  templates:
+  - templates/role/role.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["get", "create", "update"]
+
+- it: Role never grants list, watch or delete on secrets
+  set:
+    rbac.ownNamespaceOnly: true
+  templates:
+  - templates/role/role.yaml
+  asserts:
+  - notContains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- it: ClusterRole grants only get/create/update/delete on configmaps
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["configmaps"]
+        verbs: ["get", "create", "update", "delete"]
+  - notContains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["configmaps"]
+        verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- it: Role grants only get/create/update/delete on configmaps
+  set:
+    rbac.ownNamespaceOnly: true
+  templates:
+  - templates/role/role.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["configmaps"]
+        verbs: ["get", "create", "update", "delete"]
+  - notContains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["configmaps"]
+        verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- it: Pods and jobs keep list and watch, which the informer cache still needs
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - contains:
+      path: rules
+      content:
+        apiGroups: ["batch"]
+        resources: ["jobs"]
+        verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
+- it: ClusterRole is not rendered when scoped to its own namespace
+  set:
+    rbac.ownNamespaceOnly: true
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - hasDocuments:
+      count: 0
+
+- it: Role is not rendered when running cluster-wide
+  templates:
+  - templates/role/role.yaml
+  asserts:
+  - hasDocuments:
+      count: 0

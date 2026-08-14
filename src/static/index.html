@@ -45,6 +45,7 @@
     <script type="text/babel" src="components/ThemeToggle.js"></script>
     <script type="text/babel" src="components/SiteHeader.js"></script>
     <script type="text/babel" src="components/StatBadge.js"></script>
+    <script type="text/babel" src="components/StickyToolbar.js"></script>
     <script type="text/babel" src="components/Footer.js"></script>
 
     <link rel="stylesheet" href="css/styles.css" />
@@ -121,7 +122,6 @@
 
         return (activity.created || 0)
           + (activity.updated || 0)
-          + (activity.needsApproval || 0)
           + (activity.unchanged || 0);
       };
 
@@ -132,6 +132,24 @@
             || (project.logIssues.errorCount || 0) > 0)
         );
       };
+
+      // Expansion state a job card opens in before the user has touched it.
+      // This is the single switch for the dashboard default.
+      const JOB_CARDS_EXPANDED_BY_DEFAULT = true;
+
+      // The jobs whose expansion the user changed away from the constant above --
+      // the only thing persisted. Storing the deviations instead of the expanded
+      // jobs is what keeps that constant meaningful: flipping it re-applies to
+      // every card nobody has touched, while explicit choices still survive.
+      const TOGGLED_JOB_CARDS_STORAGE_KEY = "toggledJobCards";
+
+      const jobStorageKey = (job) => `${job.namespace}/${job.name}`;
+
+      const isJobCardExpanded = (toggledJobCardKeys, jobKey) => (
+        toggledJobCardKeys.has(jobKey)
+          ? !JOB_CARDS_EXPANDED_BY_DEFAULT
+          : JOB_CARDS_EXPANDED_BY_DEFAULT
+      );
 
       const projectMatchesStatFilter = (project, filterKey) => {
         if (!filterKey) {
@@ -179,10 +197,26 @@
           return (endpoint || 'https://gitlab.com').replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
         } else if (platform === 'bitbucket') {
           return 'https://bitbucket.org';
+        } else if (platform === 'bitbucket-server') {
+          return endpoint
+            ? endpoint.replace(/\/rest\/api\/(?:latest|\d+(?:\.\d+)*)\/?$/, '').replace(/\/$/, '')
+            : null;
         } else if (platform === 'gitea' || platform === 'forgejo') {
           return endpoint ? endpoint.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '') : null;
         }
         return null;
+      };
+
+      const _bitbucketServerRepoUrl = (base, projectName) => {
+        const separator = projectName ? projectName.indexOf('/') : -1;
+        if (separator <= 0 || separator === projectName.length - 1) return null;
+
+        const projectKey = projectName.slice(0, separator);
+        const repoSlug = projectName.slice(separator + 1);
+        if (projectKey.startsWith('~')) {
+          return `${base}/users/${encodeURIComponent(projectKey.slice(1))}/repos/${encodeURIComponent(repoSlug)}`;
+        }
+        return `${base}/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(repoSlug)}`;
       };
 
       const buildPRUrl = (platform, endpoint, projectName) => {
@@ -191,6 +225,10 @@
         if (!platform || platform === 'github') return `${base}/${projectName}/pulls`;
         if (platform === 'gitlab') return `${base}/${projectName}/-/merge_requests`;
         if (platform === 'bitbucket') return `${base}/${projectName}/pull-requests`;
+        if (platform === 'bitbucket-server') {
+          const repoUrl = _bitbucketServerRepoUrl(base, projectName);
+          return repoUrl ? `${repoUrl}/pull-requests` : null;
+        }
         if (platform === 'gitea' || platform === 'forgejo') return `${base}/${projectName}/pulls`;
         return null;
       };
@@ -202,6 +240,10 @@
         if (!platform || platform === 'github') return `${base}/${projectName}/pull/${prNumber}`;
         if (platform === 'gitlab') return `${base}/${projectName}/-/merge_requests/${prNumber}`;
         if (platform === 'bitbucket') return `${base}/${projectName}/pull-requests/${prNumber}`;
+        if (platform === 'bitbucket-server') {
+          const repoUrl = _bitbucketServerRepoUrl(base, projectName);
+          return repoUrl ? `${repoUrl}/pull-requests/${prNumber}` : null;
+        }
         if (platform === 'gitea' || platform === 'forgejo') return `${base}/${projectName}/pulls/${prNumber}`;
         return null;
       };
@@ -308,57 +350,17 @@
           return <span className="text-error font-semibold">Overdue</span>;
         }
 
-        const parts = [];
-        if (countdown.days !== undefined)
-          parts.push(
-            <div key="days" className="flex flex-col items-center w-8 sm:w-12">
-              <span className="text-xs sm:text-sm font-bold text-primary tabular-nums">
-                {String(countdown.days).padStart(2, "0")}
-              </span>
-              <span className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase">Days</span>
-            </div>
-          );
-        if (countdown.hours !== undefined)
-          parts.push(
-            <div key="hours" className="flex flex-col items-center w-8 sm:w-12">
-              <span className="text-xs sm:text-sm font-bold text-primary tabular-nums">
-                {String(countdown.hours).padStart(2, "0")}
-              </span>
-              <span className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase">Hrs</span>
-            </div>
-          );
-        if (countdown.minutes !== undefined)
-          parts.push(
-            <div key="minutes" className="flex flex-col items-center w-8 sm:w-12">
-              <span className="text-xs sm:text-sm font-bold text-primary tabular-nums">
-                {String(countdown.minutes).padStart(2, "0")}
-              </span>
-              <span className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase">Min</span>
-            </div>
-          );
-        if (countdown.seconds !== undefined)
-          parts.push(
-            <div key="seconds" className="flex flex-col items-center w-8 sm:w-12">
-              <span className="text-xs sm:text-sm font-bold text-primary tabular-nums">
-                {String(countdown.seconds).padStart(2, "0")}
-              </span>
-              <span className="text-[0.625rem] sm:text-xs text-gray-500 dark:text-slate-400 uppercase">Sec</span>
-            </div>
-          );
+        const pad = (n) => String(n).padStart(2, "0");
+        const segments = [];
+        if (countdown.days !== undefined) segments.push(`${countdown.days}d`);
+        if (countdown.hours !== undefined) segments.push(`${pad(countdown.hours)}h`);
+        if (countdown.minutes !== undefined) segments.push(`${pad(countdown.minutes)}m`);
+        if (countdown.seconds !== undefined) segments.push(`${pad(countdown.seconds)}s`);
 
         return (
-          <div className="flex gap-0.5 sm:gap-1 items-center flex-wrap">
-            {parts.map((part, index) => (
-              <React.Fragment key={part.key}>
-                {index > 0 && (
-                  <span className="text-gray-400 dark:text-slate-500 font-bold text-base sm:text-xl px-0.5">
-                    :
-                  </span>
-                )}
-                {part}
-              </React.Fragment>
-            ))}
-          </div>
+          <span className="font-mono text-xs font-semibold text-primary tabular-nums">
+            {segments.join(" ")}
+          </span>
         );
       }
 
@@ -480,6 +482,18 @@
         return response;
       };
 
+      // The server ships the permitted actions per job, so the frontend never
+      // maps roles to actions itself: two readers can differ on log access.
+      const can = (job, permission) =>
+        Array.isArray(job?.permissions) && job.permissions.includes(permission);
+
+      // Explains a disabled control. Anonymous visitors get a route to access,
+      // signed-in users get the reason they lack it.
+      const permissionHint = (authInfo) =>
+        authInfo && authInfo.enabled && !authInfo.authenticated
+          ? "Sign in with an account that has admin access to use this"
+          : "Requires admin access";
+
       function App() {
         const [jobs, setJobs] = useState([]);
         const [loading, setLoading] = useState(true);
@@ -499,6 +513,9 @@
         const nextToastIdRef = useRef(0);
         const hasLoadedOnce = useRef(false);
         const [authInfo, setAuthInfo] = useState(null);
+        // Set when the operator cannot enforce its access rules. It then hides
+        // every job, so this is the only explanation the visitor gets.
+        const [accessStatus, setAccessStatus] = useState(null);
         const STAT_FILTER_LABELS = {
           failed: "Failed",
           scheduled: "Scheduled",
@@ -556,6 +573,36 @@
         const clearStatFilter = useCallback(() => {
           setSelectedStatFilter(null);
           persistStatFilter(null);
+        }, []);
+
+        // Job cards open according to JOB_CARDS_EXPANDED_BY_DEFAULT. This Set holds
+        // the jobs the user toggled *away* from that default -- not the expanded
+        // ones -- so a card the user collapsed stays collapsed across the 30s
+        // auto-refresh while untouched cards keep following the constant.
+        const [toggledJobCardKeys, setToggledJobCardKeys] = useState(() => {
+          try {
+            const stored = JSON.parse(localStorage.getItem(TOGGLED_JOB_CARDS_STORAGE_KEY) || '[]');
+            return new Set(Array.isArray(stored) ? stored : []);
+          } catch {
+            return new Set();
+          }
+        });
+
+        const persistToggledJobCardKeys = (keys) => {
+          try { localStorage.setItem(TOGGLED_JOB_CARDS_STORAGE_KEY, JSON.stringify([...keys])); } catch {}
+        };
+
+        const toggleJobCardExpansion = useCallback((jobKey) => {
+          setToggledJobCardKeys((current) => {
+            const next = new Set(current);
+            if (next.has(jobKey)) {
+              next.delete(jobKey);
+            } else {
+              next.add(jobKey);
+            }
+            persistToggledJobCardKeys(next);
+            return next;
+          });
         }, []);
 
         const filteredJobs = useMemo(() => {
@@ -626,6 +673,42 @@
           );
         }, [searchFilteredJobs]);
 
+        // Expand/collapse all only act on the jobs currently rendered, so neither
+        // the stat filter nor the search box silently changes the state of a job
+        // it hides.
+        const expandedVisibleJobCount = useMemo(
+          () => searchFilteredJobs.filter((job) => isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))).length,
+          [searchFilteredJobs, toggledJobCardKeys]
+        );
+
+        // Whether a bulk action has to add or remove keys depends on the default,
+        // so both buttons go through one helper stating the state they want.
+        const setExpansionForVisibleJobs = useCallback((expanded) => {
+          setToggledJobCardKeys((current) => {
+            const next = new Set(current);
+            searchFilteredJobs.forEach((job) => {
+              const jobKey = jobStorageKey(job);
+              if (expanded === JOB_CARDS_EXPANDED_BY_DEFAULT) {
+                next.delete(jobKey);
+              } else {
+                next.add(jobKey);
+              }
+            });
+            persistToggledJobCardKeys(next);
+            return next;
+          });
+        }, [searchFilteredJobs]);
+
+        const expandAllJobs = useCallback(
+          () => setExpansionForVisibleJobs(true),
+          [setExpansionForVisibleJobs]
+        );
+
+        const collapseAllJobs = useCallback(
+          () => setExpansionForVisibleJobs(false),
+          [setExpansionForVisibleJobs]
+        );
+
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
             nextToastIdRef.current += 1;
@@ -682,6 +765,13 @@
               setLoading(true);
             }
             setError(null);
+
+            // Fetched on every poll, not once on mount, so the banner clears as
+            // soon as the configuration is fixed.
+            fetch(BASE + "/api/v1/access/status")
+              .then((res) => res.json())
+              .then((data) => setAccessStatus(data))
+              .catch(() => {});
 
             const response = await authFetch("/api/v1/renovatejobs");
             if (!response.ok)
@@ -761,7 +851,7 @@
           }
         };
 
-        const triggerRenovate = async (job, project) => {
+        const triggerRenovate = async (job, project, executionOptions = {}) => {
           if (project.triggering) return;
 
           setJobs((prev) =>
@@ -786,6 +876,7 @@
                 renovateJob: job.name,
                 namespace: job.namespace,
                 project: project.name,
+                executionOptions: Object.keys(executionOptions).length > 0 ? executionOptions : undefined,
               }),
             });
 
@@ -853,7 +944,7 @@
           }
         };
 
-        const triggerAllRenovate = async (job) => {
+        const triggerAllRenovate = async (job, executionOptions = {}) => {
           if (job.triggeringAll) return;
 
           setJobs((prev) =>
@@ -871,6 +962,7 @@
               body: JSON.stringify({
                 renovateJob: job.name,
                 namespace: job.namespace,
+                executionOptions: Object.keys(executionOptions).length > 0 ? executionOptions : undefined,
               }),
             });
 
@@ -899,35 +991,6 @@
           }
         };
 
-        const saveExecutionOptions = async (job, options) => {
-          try {
-            const response = await authFetch("/api/v1/executionOptions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                renovateJob: job.name,
-                namespace: job.namespace,
-                debug: options.debug,
-              }),
-            });
-            if (response.ok) {
-              setJobs((prev) =>
-                prev.map((j) =>
-                  j.name === job.name && j.namespace === job.namespace
-                    ? { ...j, executionOptions: { ...j.executionOptions, ...options } }
-                    : j
-                )
-              );
-              addToast("success", "Options Saved", `Execution options updated for ${job.name}`);
-            } else {
-              const errorText = await response.text();
-              throw new Error(errorText || "Failed to save options");
-            }
-          } catch (err) {
-            addToast("error", "Save Failed", err.message);
-          }
-        };
-
         useEffect(() => {
           fetch(BASE + "/api/v1/auth/status")
             .then((res) => res.json())
@@ -950,76 +1013,177 @@
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-            <SiteHeader version={version} authInfo={authInfo}>
-              <StatBadge
-                label="All"
-                value={loading ? "—" : stats.total}
-                onClick={clearStatFilter}
-                selected={!selectedStatFilter}
-                title="Show all projects"
-              />
-              <StatBadge
-                label="Failed"
-                value={loading ? "—" : stats.failed}
-                valueClass="text-error"
-                onClick={() => toggleStatFilter("failed")}
-                selected={selectedStatFilter === "failed"}
-                title="Show only jobs with failed projects"
-              />
-              <StatBadge
-                label="Scheduled"
-                value={loading ? "—" : stats.scheduled}
-                valueClass="text-warning"
-                onClick={() => toggleStatFilter("scheduled")}
-                selected={selectedStatFilter === "scheduled"}
-                title="Show only jobs with scheduled projects"
-              />
-              <StatBadge
-                label="Running"
-                value={loading ? "—" : stats.running}
-                valueClass="text-primary"
-                onClick={() => toggleStatFilter("running")}
-                selected={selectedStatFilter === "running"}
-                title="Show only jobs with running projects"
-              />
-              <StatBadge
-                label="Completed"
-                value={loading ? "—" : stats.completed}
-                valueClass="text-success"
-                onClick={() => toggleStatFilter("completed")}
-                selected={selectedStatFilter === "completed"}
-                title="Show only jobs with completed projects"
-              />
-              <StatBadge
-                label="Open PRs"
-                value={loading ? "—" : stats.openPRs}
-                valueClass="text-blue-500"
-                borderClass="border-blue-200 dark:border-blue-700"
-                onClick={() => toggleStatFilter("openPRs")}
-                selected={selectedStatFilter === "openPRs"}
-                title="Show only jobs with open pull requests or merge requests"
-              />
-              <StatBadge
-                label="Pending"
-                value={loading ? "—" : stats.pending}
-                valueClass="text-orange-500"
-                borderClass="border-orange-200 dark:border-orange-700"
-                onClick={() => toggleStatFilter("pending")}
-                selected={selectedStatFilter === "pending"}
-                title="Show only jobs with updates awaiting approval"
-              />
-              <StatBadge
-                label="With Issues"
-                value={loading ? "—" : stats.withIssues}
-                valueClass="text-amber-500"
-                borderClass="border-amber-300 dark:border-amber-600"
-                onClick={() => toggleStatFilter("withIssues")}
-                selected={selectedStatFilter === "withIssues"}
-                title="Show only jobs with warnings or errors"
-              />
-            </SiteHeader>
+            {/* Brand strip only — everything the user filters and searches with
+                lives in the sticky toolbar below, so it stays reachable while
+                scrolling through the job cards. */}
+            <SiteHeader version={version} authInfo={authInfo} hasBottomMargin={false} />
 
-            <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pb-6 sm:pb-8">
+            <StickyToolbar testId="dashboard-toolbar">
+              {/* One scrollable row rather than a wrapping grid: the toolbar has to
+                  stay short enough that it does not eat the viewport it is pinned to. */}
+              <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-0.5">
+                <StatBadge
+                  label="All"
+                  value={loading ? "—" : stats.total}
+                  onClick={clearStatFilter}
+                  selected={!selectedStatFilter}
+                  title="Show all projects"
+                />
+                <StatBadge
+                  label="Failed"
+                  value={loading ? "—" : stats.failed}
+                  valueClass="text-error"
+                  onClick={() => toggleStatFilter("failed")}
+                  selected={selectedStatFilter === "failed"}
+                  title="Show only jobs with failed projects"
+                />
+                <StatBadge
+                  label="Scheduled"
+                  value={loading ? "—" : stats.scheduled}
+                  valueClass="text-warning"
+                  onClick={() => toggleStatFilter("scheduled")}
+                  selected={selectedStatFilter === "scheduled"}
+                  title="Show only jobs with scheduled projects"
+                />
+                <StatBadge
+                  label="Running"
+                  value={loading ? "—" : stats.running}
+                  valueClass="text-primary"
+                  onClick={() => toggleStatFilter("running")}
+                  selected={selectedStatFilter === "running"}
+                  title="Show only jobs with running projects"
+                />
+                <StatBadge
+                  label="Completed"
+                  value={loading ? "—" : stats.completed}
+                  valueClass="text-success"
+                  onClick={() => toggleStatFilter("completed")}
+                  selected={selectedStatFilter === "completed"}
+                  title="Show only jobs with completed projects"
+                />
+                <StatBadge
+                  label="Open PRs"
+                  value={loading ? "—" : stats.openPRs}
+                  valueClass="text-blue-500"
+                  borderClass="border-blue-200 dark:border-blue-700"
+                  onClick={() => toggleStatFilter("openPRs")}
+                  selected={selectedStatFilter === "openPRs"}
+                  title="Show only jobs with open pull requests or merge requests"
+                />
+                <StatBadge
+                  label="Pending"
+                  value={loading ? "—" : stats.pending}
+                  valueClass="text-orange-500"
+                  borderClass="border-orange-200 dark:border-orange-700"
+                  onClick={() => toggleStatFilter("pending")}
+                  selected={selectedStatFilter === "pending"}
+                  title="Show only jobs with updates awaiting approval"
+                />
+                <StatBadge
+                  label="With Issues"
+                  value={loading ? "—" : stats.withIssues}
+                  valueClass="text-amber-500"
+                  borderClass="border-amber-300 dark:border-amber-600"
+                  onClick={() => toggleStatFilter("withIssues")}
+                  selected={selectedStatFilter === "withIssues"}
+                  title="Show only jobs with warnings or errors"
+                />
+              </div>
+
+              {(!loading || jobs.length > 0) && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="project-search" className="sr-only">Search projects</label>
+                  <div className="relative flex-1 min-w-0">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                      <svg className="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input
+                      id="project-search"
+                      type="search"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
+                      placeholder="Search projects…"
+                      className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-1.5 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      aria-label="Search projects by name"
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+                        aria-label="Clear search"
+                      >
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {searchFilteredJobs.length > 1 && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={expandAllJobs}
+                        disabled={expandedVisibleJobCount === searchFilteredJobs.length}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                        aria-label="Expand all job cards"
+                      >
+                        {/* The short label keeps the search box usable on a phone,
+                            where this row has to share one line with it. */}
+                        <span className="sm:hidden">Expand</span>
+                        <span className="hidden sm:inline">Expand all</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={collapseAllJobs}
+                        disabled={expandedVisibleJobCount === 0}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
+                        aria-label="Collapse all job cards"
+                      >
+                        <span className="sm:hidden">Collapse</span>
+                        <span className="hidden sm:inline">Collapse all</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </StickyToolbar>
+
+            <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8">
+              {accessStatus?.misconfigured && (
+                <div
+                  role="alert"
+                  data-testid="access-misconfigured"
+                  className="mb-6 rounded-lg bg-error/10 border-2 border-error/40 p-4 sm:p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="w-6 h-6 text-error flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-semibold text-error">
+                        Access rules cannot be enforced
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-700 dark:text-slate-300 break-words">
+                        {accessStatus.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {loading && jobs.length === 0 && (
                 <div className="space-y-6">
                   <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-gray-200 dark:border-slate-700 shadow-sm animate-pulse">
@@ -1060,7 +1224,7 @@
                   <p className="text-gray-600 dark:text-slate-400 mb-4">{error}</p>
                   <button
                     onClick={loadJobs}
-                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-sm bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
                     aria-label="Retry loading jobs"
                   >
                     Retry
@@ -1068,41 +1232,31 @@
                 </div>
               )}
 
+              {/* The misconfiguration banner already explains an empty list, and
+                  its advice outranks the sign-in prompt this would show. */}
+              {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && (
+                <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 text-center">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
+                    No RenovateJobs visible
+                  </h3>
+                  <p className="text-gray-600 dark:text-slate-400 mb-4">
+                    {authInfo && authInfo.enabled && !authInfo.authenticated
+                      ? "Sign in to see the jobs your account grants access to."
+                      : "Either no RenovateJob exists yet, or none of them grant your account access."}
+                  </p>
+                  {authInfo && authInfo.enabled && !authInfo.authenticated && (
+                    <a
+                      href={`${BASE}/auth/login`}
+                      className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                    >
+                      Sign in
+                    </a>
+                  )}
+                </div>
+              )}
+
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  <div>
-                    <label htmlFor="project-search" className="sr-only">Search projects</label>
-                    <div className="relative">
-                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <svg className="h-4 w-4 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                      </div>
-                      <input
-                        id="project-search"
-                        type="search"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
-                        placeholder="Search projects…"
-                        className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        aria-label="Search projects by name"
-                      />
-                      {searchTerm && (
-                        <button
-                          type="button"
-                          onClick={clearSearch}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
-                          aria-label="Clear search"
-                        >
-                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
                   {(selectedStatFilter || searchTerm.trim()) && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
                       <p className="text-sm text-gray-700 dark:text-slate-300">
@@ -1145,11 +1299,13 @@
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
+                      expanded={isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))}
+                      onToggleExpanded={toggleJobCardExpansion}
                       onRunDiscovery={runDiscovery}
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
-                      onSaveExecutionOptions={saveExecutionOptions}
+                      authInfo={authInfo}
                     />
                   ))}
 
@@ -1189,7 +1345,7 @@
                             <button
                               type="button"
                               onClick={clearSearch}
-                              className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+                              className="px-3 py-1.5 text-sm bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
                             >
                               Clear search
                             </button>
@@ -1198,7 +1354,7 @@
                             <button
                               type="button"
                               onClick={clearStatFilter}
-                              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
                             >
                               Clear filter
                             </button>
@@ -1516,18 +1672,28 @@
         );
       }
 
-      function ActionButton({ project, onTrigger, onCancel, width }) {
+      function BugIcon({ className }) {
+        return (
+          <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/>
+          </svg>
+        );
+      }
+
+      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
         const isRunning = project.status === "running";
         const isScheduled = project.status === "scheduled";
         const isPrioritized = isScheduled && (project.priority || 0) > 0;
         const isTriggering = !!project.triggering;
         const isCancelling = !!project.cancelling;
+        const isDebugScheduled = isScheduled && !!project.executionOptions?.debug;
 
         if (isRunning) {
           return (
             <button
               onClick={onCancel}
-              disabled={isCancelling}
+              disabled={isCancelling || !canCancel}
+              title={canCancel ? undefined : hint}
               className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
               aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
             >
@@ -1544,41 +1710,69 @@
           ? "Prioritize"
           : "Trigger";
 
+        // Why the controls are dead, if they are: a policy halt outranks a
+        // missing permission, since fixing the policy is the prerequisite.
+        const blocked = !jobAccepted
+          ? "Halted by the operator's policy"
+          : !canTrigger
+          ? hint
+          : undefined;
+
         return (
-          <button
-            onClick={onTrigger}
-            disabled={isTriggering || isPrioritized}
-            className={`bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
-            aria-label={
-              isTriggering
-                ? "Triggering renovate"
-                : isPrioritized
-                ? `Renovate already prioritized for ${project.name}`
-                : isScheduled
-                ? `Prioritize renovate for ${project.name}`
-                : `Trigger renovate for ${project.name}`
-            }
-          >
-            <span className="inline-flex items-center justify-center gap-1">
-              {isPrioritized && (
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                  <path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l5 5a1 1 0 01-1.414 1.414L11 6.414V16a1 1 0 11-2 0V6.414L5.707 9.707a1 1 0 01-1.414-1.414l5-5A1 1 0 0110 3z" clipRule="evenodd" />
-                </svg>
-              )}
+          <div className={`flex items-stretch shadow-sm rounded-lg overflow-hidden ${width || ""}`}>
+            <button
+              onClick={onTrigger}
+              disabled={isTriggering || isPrioritized || !!blocked}
+              title={blocked}
+              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all"
+              aria-label={
+                blocked
+                  ? blocked
+                  : isTriggering
+                  ? "Triggering renovate"
+                  : isPrioritized
+                  ? `Renovate already prioritized for ${project.name}`
+                  : isScheduled
+                  ? `Prioritize renovate for ${project.name}`
+                  : `Trigger renovate for ${project.name}`
+              }
+            >
               {label}
-            </span>
-          </button>
+            </button>
+            <button
+              onClick={onTriggerDebug}
+              disabled={isTriggering || !!blocked}
+              title={blocked || "Trigger in debug mode"}
+              className={`${isDebugScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
+              aria-label={blocked || `Trigger ${project.name} in debug mode`}
+            >
+              <BugIcon className="w-3.5 h-3.5" />
+            </button>
+          </div>
         );
       }
 
-      function JobCard({ job, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, onSaveExecutionOptions }) {
-        const [open, setOpen] = useState(true);
+      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
         });
+        const actionHint = permissionHint(authInfo);
+        const canTrigger = can(job, "trigger");
+        const canTriggerAll = can(job, "triggerAll");
+        const canCancel = can(job, "cancel");
+        const canDiscovery = can(job, "discovery");
+        const canViewLogs = can(job, "logs");
+        const readOnly = job.role === "reader";
+        // A policy halt outranks a missing permission: it blocks everyone, so
+        // reporting the permission first would send the user down a dead end.
+        const haltedHint = job.accepted === false ? "Halted by the operator's policy" : undefined;
+        const discoveryBlocked = haltedHint || (canDiscovery ? undefined : actionHint);
+        const triggerAllBlocked = haltedHint || (canTriggerAll ? undefined : actionHint);
         const STATUS_FILTERS = ["Onboarding Closed", "Disabled", "No Config"];
-        const jobKey = `${job.namespace}/${job.name}`;
+        const jobKey = jobStorageKey(job);
+        // Expansion is owned by App so the expand/collapse-all controls can drive it.
+        const toggleOpen = () => onToggleExpanded(jobKey);
         const [hiddenStatuses, setHiddenStatuses] = useState(() => {
           try {
             const stored = JSON.parse(localStorage.getItem(`hiddenStatuses:${jobKey}`) || '[]');
@@ -1626,6 +1820,13 @@
           }
           return sorted;
         }, [job.projects, sortConfig, hiddenStatuses, hideNoPRs, hideNoIssues]);
+        const hasActiveFilters = hiddenStatuses.length > 0 || hideNoPRs || hideNoIssues;
+        const open = expanded;
+        useEffect(() => {
+          if (hasActiveFilters && sortedProjects.length === 0 && expanded) {
+            onToggleExpanded(jobKey);
+          }
+        }, [hasActiveFilters, sortedProjects.length]); // eslint-disable-line react-hooks/exhaustive-deps
         const statusCounts = useMemo(() => {
           const counts = {};
           for (const s of STATUS_FILTERS) counts[s] = 0;
@@ -1664,7 +1865,6 @@
         const [showOptions, setShowOptions] = useState(false);
         const [optionsPos, setOptionsPos] = useState({ top: 0, right: 0 });
         const optionsBtnRef = useRef(null);
-        const [debugOption, setDebugOption] = useState(job.executionOptions?.debug ?? false);
 
         const getBadgeClass = (status) => {
           const base =
@@ -1746,219 +1946,158 @@
         return (
           <div className="relative bg-white dark:bg-slate-800 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200">
             <div
-              className="flex flex-col gap-3 sm:gap-4 p-3 sm:p-4 lg:p-6 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
-              onClick={() => setOpen(!open)}
+              className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+              onClick={toggleOpen}
             >
-              {/* Title Section */}
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  className={`transform transition-transform duration-200 flex-shrink-0 ${
-                    open ? "rotate-90" : ""
-                  }`}
-                  aria-label={
-                    open ? "Collapse job details" : "Expand job details"
-                  }
+              {/* Chevron */}
+              <button
+                className={`transform transition-transform duration-200 flex-shrink-0 ${
+                  open ? "rotate-90" : ""
+                }`}
+                aria-label={
+                  open ? "Collapse job details" : "Expand job details"
+                }
+                aria-hidden="true"
+              >
+                <svg
+                  className="w-4 h-4 text-gray-500 dark:text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                   aria-hidden="true"
                 >
-                  <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-slate-100 truncate">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+
+              {/* Title: name + namespace */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-slate-100 truncate leading-tight">
                     {job.name}
                   </h2>
-                  <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">
-                    Namespace:{" "}
-                    <span className="font-mono">{job.namespace}</span>
-                  </p>
-                </div>
-                <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    ref={optionsBtnRef}
-                    onClick={() => {
-                      if (!showOptions && optionsBtnRef.current) {
-                        const rect = optionsBtnRef.current.getBoundingClientRect();
-                        setOptionsPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                      }
-                      setShowOptions(!showOptions);
-                    }}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                    aria-label="Execution options"
-                  >
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-                  {showOptions && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowOptions(false)} />
-                      <div style={{ top: optionsPos.top, right: optionsPos.right }} className="fixed z-50 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-4">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Execution Options</h3>
-                        <label className="flex items-center gap-2 mb-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={debugOption}
-                            onChange={(e) => setDebugOption(e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 accent-primary"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-slate-300">Debug mode</span>
-                        </label>
-                        <button
-                          onClick={() => {
-                            onSaveExecutionOptions(job, { debug: debugOption });
-                            setShowOptions(false);
-                          }}
-                          className="w-full bg-primary hover:bg-primary-hover text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-                        >
-                          Save
-                        </button>
-                        <div className="border-t border-gray-200 dark:border-slate-700 mt-3 pt-3">
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-2">Hide Projects</h3>
-                          {STATUS_FILTERS.map((status) => (
-                            <label key={status} className="flex items-center gap-2 mb-1.5 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={hiddenStatuses.includes(status)}
-                                onChange={() => toggleStatusFilter(status)}
-                                className="w-4 h-4 rounded border-gray-300 accent-primary"
-                              />
-                              <span className="text-sm text-gray-700 dark:text-slate-300">
-                                {status}{statusCounts[status] > 0 ? ` (${statusCounts[status]})` : ""}
-                              </span>
-                            </label>
-                          ))}
-                          <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={hideNoPRs}
-                              onChange={toggleHideNoPRs}
-                              className="w-4 h-4 rounded border-gray-300 accent-primary"
-                            />
-                            <span className="text-sm text-gray-700 dark:text-slate-300">Without PRs</span>
-                          </label>
-                          <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={hideNoIssues}
-                              onChange={toggleHideNoIssues}
-                              className="w-4 h-4 rounded border-gray-300 accent-primary"
-                            />
-                            <span className="text-sm text-gray-700 dark:text-slate-300">Without Issues</span>
-                          </label>
-                        </div>
-                      </div>
-                    </>
+                  {readOnly && (
+                    <span
+                      className="flex-shrink-0 px-2 py-0.5 rounded-full border border-gray-300 dark:border-slate-600 text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400"
+                      title={actionHint}
+                    >
+                      Read-only
+                    </span>
                   )}
                 </div>
+                <p className="text-xs text-gray-500 dark:text-slate-400 leading-tight font-mono">
+                  {job.namespace}
+                </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
-                <div className="flex items-center gap-2 min-w-0">
-                  <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 font-medium flex-shrink-0">
-                    Schedule:
-                  </span>
-                  <span className="font-mono text-xs sm:text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">
-                    {job.cronExpression || "Not set"}
-                  </span>
-                </div>
+              {/* Schedule info — hidden on small screens */}
+              <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0 w-[15rem]">
+                <svg
+                  className="w-3.5 h-3.5 text-primary flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-xs text-gray-600 dark:text-slate-300 font-medium">
+                  Schedule:
+                </span>
+                <span className="font-mono text-xs font-semibold text-gray-900 dark:text-slate-100 truncate">
+                  {job.cronExpression || "Not set"}
+                </span>
+              </div>
 
-                <div className="flex items-center gap-2 min-w-0">
-                  <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 font-medium flex-shrink-0">
-                    Next Run:
-                  </span>
-                  {job.nextSchedule ? (
-                    <Countdown nextSchedule={job.nextSchedule} />
-                  ) : (
-                    <span className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">N/A</span>
-                  )}
-                </div>
+              {/* Next Run countdown — hidden on small screens */}
+              <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0 w-[14rem]">
+                <svg
+                  className="w-3.5 h-3.5 text-primary flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span className="text-xs text-gray-600 dark:text-slate-300 font-medium">
+                  Next Run:
+                </span>
+                {job.nextSchedule ? (
+                  <Countdown nextSchedule={job.nextSchedule} />
+                ) : (
+                  <span className="text-xs text-gray-500 dark:text-slate-400">N/A</span>
+                )}
+              </div>
 
-                <div className="flex items-center gap-2 sm:ml-auto">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRunDiscovery(job);
-                    }}
-                    disabled={job.discoveryRunning}
-                    className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
-                    aria-label={
-                      job.discoveryRunning
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 ml-auto flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRunDiscovery(job);
+                  }}
+                  disabled={job.discoveryRunning || !!discoveryBlocked}
+                  title={discoveryBlocked}
+                  className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                  aria-label={
+                    discoveryBlocked
+                      ? discoveryBlocked
+                      : job.discoveryRunning
                         ? "Discovery running"
                         : `Run discovery for ${job.name}`
-                    }
+                  }
+                >
+                  <svg
+                    className={`w-3.5 h-3.5 flex-shrink-0 ${
+                      job.discoveryRunning ? "animate-spin" : ""
+                    }`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
                   >
-                    <svg
-                      className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                        job.discoveryRunning ? "animate-spin" : ""
-                      }`}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span>
-                      {job.discoveryRunning ? "Running..." : "Run Discovery"}
-                    </span>
-                  </button>
+                    <path
+                      fillRule="evenodd"
+                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="hidden sm:inline">
+                    {job.discoveryRunning ? "Running..." : "Run Discovery"}
+                  </span>
+                </button>
 
+                <div className="flex items-stretch shadow-sm rounded-lg overflow-hidden">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onTriggerAllRenovate(job);
                     }}
-                    disabled={job.triggeringAll || !job.projects || job.projects.length === 0}
-                    className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
+                    disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
+                    title={triggerAllBlocked}
+                    className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 font-semibold text-[0.813rem] hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
                     aria-label={
-                      job.triggeringAll
-                        ? "Triggering all projects"
-                        : `Trigger all projects for ${job.name}`
+                      triggerAllBlocked
+                        ? triggerAllBlocked
+                        : job.triggeringAll
+                          ? "Triggering all projects"
+                          : `Trigger all projects for ${job.name}`
                     }
                   >
                     <svg
-                      className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                      className={`w-3.5 h-3.5 flex-shrink-0 ${
                         job.triggeringAll ? "animate-spin" : ""
                       }`}
                       fill="currentColor"
@@ -1970,13 +2109,119 @@
                         clipRule="evenodd"
                       />
                     </svg>
-                    <span>
+                    <span className="hidden sm:inline">
                       {job.triggeringAll ? "Triggering..." : "Trigger All"}
                     </span>
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTriggerAllRenovate(job, { debug: true });
+                    }}
+                    disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
+                    title={triggerAllBlocked || "Trigger all in debug mode"}
+                    className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10 flex items-center"
+                    aria-label={triggerAllBlocked || `Trigger all projects in debug mode for ${job.name}`}
+                  >
+                    <BugIcon className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
+
+              {/* Gear / options */}
+              <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button
+                  ref={optionsBtnRef}
+                  onClick={() => {
+                    if (!showOptions && optionsBtnRef.current) {
+                      const rect = optionsBtnRef.current.getBoundingClientRect();
+                      setOptionsPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                    }
+                    setShowOptions(!showOptions);
+                  }}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                  aria-label="Execution options"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+                {showOptions && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowOptions(false)} />
+                    <div style={{ top: optionsPos.top, right: optionsPos.right }} className="fixed z-50 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-4">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-2">Hide Projects</h3>
+                        {STATUS_FILTERS.map((status) => (
+                          <label key={status} className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hiddenStatuses.includes(status)}
+                              onChange={() => toggleStatusFilter(status)}
+                              className="w-4 h-4 rounded border-gray-300 accent-primary"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-slate-300">
+                              {status}{statusCounts[status] > 0 ? ` (${statusCounts[status]})` : ""}
+                            </span>
+                          </label>
+                        ))}
+                        <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hideNoPRs}
+                            onChange={toggleHideNoPRs}
+                            className="w-4 h-4 rounded border-gray-300 accent-primary"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-slate-300">Without PRs</span>
+                        </label>
+                        <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hideNoIssues}
+                            onChange={toggleHideNoIssues}
+                            className="w-4 h-4 rounded border-gray-300 accent-primary"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-slate-300">Without Issues</span>
+                        </label>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
+            {job.accepted === false && (
+              <div
+                role="alert"
+                className="mx-3 sm:mx-4 mt-2 mb-2 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2"
+              >
+                <div className="flex items-start gap-2">
+                  <svg
+                    className="w-4 h-4 text-warning flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-semibold text-warning">
+                      Halted by the operator's policy: nothing will run for this job
+                    </p>
+                    {job.acceptedMessage && (
+                      <p className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-slate-300 break-words">
+                        {job.acceptedMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {open && (
               <div className="border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
@@ -2039,7 +2284,7 @@
                                   {...tooltipProps}
                                   className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
                                 >
-                                  <td className="px-3 xl:px-6 py-4">
+                                  <td className="px-3 xl:px-6 py-3">
                               <div className="flex items-center gap-2 w-full justify-between">
                                 <span className={`font-medium min-w-0 break-words ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
@@ -2051,12 +2296,12 @@
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 xl:px-6 py-4">
+                            <td className="px-3 xl:px-6 py-3">
                               <span className={getBadgeClass(project.status)}>
                                 {project.status || "-"}
                               </span>
                             </td>
-                            <td className="px-3 xl:px-6 py-4" data-no-tooltip="true">
+                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                               <PRActivityBadges
                                 prActivity={project.prActivity}
                                 expanded={expandedProjects.has(project.name)}
@@ -2064,7 +2309,7 @@
                                 projectName={project.name}
                               />
                             </td>
-                            <td className="px-3 xl:px-6 py-4" data-no-tooltip="true">
+                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                               <IssuesBadges
                                 logIssues={project.logIssues}
                                 expanded={expandedIssues.has(project.name)}
@@ -2072,14 +2317,14 @@
                                 projectName={project.name}
                               />
                             </td>
-                            <td className="px-3 xl:px-6 py-4">
+                            <td className="px-3 xl:px-6 py-3">
                               <span className="text-sm text-gray-600 dark:text-slate-300">
                                 {project.lastTransition
                                   ? formatTimeAgo(project.lastTransition)
                                   : ""}
                               </span>
                             </td>
-                            <td className="px-3 xl:px-6 py-4" data-no-tooltip="true">
+                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                               <div className="flex items-center gap-2">
                                 {(() => {
                                   const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
@@ -2124,24 +2369,31 @@
                                 })()}
                               </div>
                             </td>
-                            <td className="px-3 xl:px-6 py-4 text-right" data-no-tooltip="true">
+                            <td className="px-3 xl:px-6 py-3 text-right" data-no-tooltip="true">
                               <div className="flex items-center justify-end gap-2">
                                 <ActionButton
                                   project={project}
                                   onTrigger={() => onTriggerRenovate(job, project)}
+                                  onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
                                   onCancel={() => onCancelRenovate(job, project)}
-                                  width="w-[100px]"
+                                  width="w-[130px]"
+                                  jobAccepted={job.accepted !== false}
+                                  canTrigger={canTrigger}
+                                  canCancel={canCancel}
+                                  hint={actionHint}
                                 />
                                 <a
-                                  href={`${BASE}/logs?renovate=${encodeURIComponent(
+                                  href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
                                     job.name
                                   )}&namespace=${encodeURIComponent(
                                     job.namespace
                                   )}&project=${encodeURIComponent(
                                     project.name
-                                  )}`}
+                                  )}` : undefined}
                                   target="_blank"
-                                  className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block min-w-[60px] text-center"
+                                  title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                                  aria-disabled={canViewLogs ? undefined : "true"}
+                                  className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
                                   aria-label={`View logs for ${project.name}`}
                                 >
                                   Logs
@@ -2267,7 +2519,9 @@
                             colSpan="7"
                             className="px-6 py-8 text-center text-gray-500 dark:text-slate-400"
                           >
-                            No projects found. Run discovery to find projects.
+                            {hasActiveFilters
+                              ? `0 of ${(job.projects || []).length} projects matched your filters`
+                              : "No projects found. Run discovery to find projects."}
                           </td>
                         </tr>
                       )}
@@ -2398,17 +2652,24 @@
                           <ActionButton
                             project={project}
                             onTrigger={() => onTriggerRenovate(job, project)}
+                            onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
                             onCancel={() => onCancelRenovate(job, project)}
-                            width="w-[110px]"
+                            width="w-[140px]"
+                            jobAccepted={job.accepted !== false}
+                            canTrigger={canTrigger}
+                            canCancel={canCancel}
+                            hint={actionHint}
                           />
                           <a
-                            href={`${BASE}/logs?renovate=${encodeURIComponent(
+                            href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
                               job.name
                             )}&namespace=${encodeURIComponent(
                               job.namespace
-                            )}&project=${encodeURIComponent(project.name)}`}
+                            )}&project=${encodeURIComponent(project.name)}` : undefined}
                             target="_blank"
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-block w-[70px] text-center"
+                            title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                            aria-disabled={canViewLogs ? undefined : "true"}
+                            className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
                             aria-label={`View logs for ${project.name}`}
                           >
                             Logs
@@ -2544,7 +2805,9 @@
               </>
                   ) : (
                     <div className="p-8 text-center text-gray-500 dark:text-slate-400">
-                      No projects found. Run discovery to find projects.
+                      {hasActiveFilters
+                        ? `0 of ${(job.projects || []).length} projects matched your filters`
+                        : "No projects found. Run discovery to find projects."}
                     </div>
                   )}
                 </div>

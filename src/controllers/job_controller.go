@@ -2,6 +2,7 @@ package controllers
 
 import (
 	context "context"
+	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 
@@ -47,15 +48,15 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	if job.Labels == nil {
 		return ctrl.Result{}, nil
 	}
-	jobType := job.Labels[crdManager.JOB_LABEL_TYPE]
-	renovateJobName := job.Labels[crdManager.JOB_LABEL_RENOVATEJOB]
+	jobType := job.Labels[api.LabelJobType]
+	renovateJobName := job.Labels[api.LabelRenovateJob]
 
 	// only handle jobs that are managed by us (identified by the presence of our labels)
 	if renovateJobName == "" || jobType == "" {
 		return ctrl.Result{}, nil
 	}
 
-	if job.Annotations[crdManager.JOB_ANNOTATION_PROCESSED] == "true" {
+	if job.Annotations[api.ProcessedAnnotationKey] == "true" {
 		return ctrl.Result{}, nil
 	}
 
@@ -71,7 +72,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, err
 		}
 	case string(crdManager.ExecutorJobType):
-		project := job.Annotations[crdManager.JOB_ANNOTATION_PROJECT]
+		project := job.Annotations[api.ProjectAnnotationKey]
 
 		err := r.Executor.ProcessProjectJobResult(ctx, job, project, jobId)
 		if err != nil {

@@ -30,6 +30,8 @@ const (
 	labelLevel     = "level"
 	labelProvider  = "provider"
 	labelErrorType = "error_type"
+	// labelPolicyCheck names which policy check refused an action
+	labelPolicyCheck = "check"
 )
 
 // Prometheus metrics — existing.
@@ -268,6 +270,19 @@ var (
 			Help: "Total Kubernetes Secret resolution errors by error type",
 		},
 		[]string{labelErrorType})
+
+	policyEnabled = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_policy_enabled",
+			Help: "Whether the operator's policy engine is enforcing (1) or off (0)",
+		})
+
+	policyDenials = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "renovate_operator_policy_denials_total",
+			Help: "Total RenovateJob actions refused by the operator's policy, by check",
+		},
+		[]string{labelPolicyCheck})
 )
 
 // OTel metrics — no-ops when OTel is not configured. Mirrors the Prometheus
@@ -300,6 +315,7 @@ var (
 	otelWebhookAuthFail, _   = otelMeter.Int64Counter("renovate_operator.webhook.auth.failures", metric.WithDescription("Webhook auth failures"))
 	otelWebhookDecodeFail, _ = otelMeter.Int64Counter("renovate_operator.webhook.payload_decode.failures", metric.WithDescription("Webhook payload decode failures"))
 	otelSecretResolErrors, _ = otelMeter.Int64Counter("renovate_operator.secret.resolution.errors", metric.WithDescription("Secret resolution errors"))
+	otelPolicyDenials, _     = otelMeter.Int64Counter("renovate_operator.policy.denials", metric.WithDescription("RenovateJob actions refused by policy"))
 )
 
 func Register(registry ctrlmetrics.RegistererGatherer) {
@@ -343,6 +359,8 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		webhookPayloadDecodeFailures,
 		// Group I
 		secretResolutionErrors,
+		policyEnabled,
+		policyDenials,
 	)
 }
 
@@ -632,6 +650,22 @@ func IncSecretResolutionError(ctx context.Context, errorType string) {
 	addOtel(ctx, otelSecretResolErrors, 1, attribute.String(labelErrorType, errorType))
 }
 
+// SetPolicyEnabled records whether the policy engine is enforcing.
+func SetPolicyEnabled(enabled bool) {
+	value := 0.0
+	if enabled {
+		value = 1
+	}
+	policyEnabled.Set(value)
+}
+
+// IncPolicyDenial records that a policy check refused an action. check is a
+// bounded enum: "destination".
+func IncPolicyDenial(ctx context.Context, check string) {
+	policyDenials.WithLabelValues(check).Inc()
+	addOtel(ctx, otelPolicyDenials, 1, attribute.String(labelPolicyCheck, check))
+}
+
 // ---------------------------------------------------------------------------
 // Hydration
 // ---------------------------------------------------------------------------
@@ -660,7 +694,7 @@ func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
 
 		if p.PRActivity != nil {
 			SetApprovalsNeeded(namespace, job, p.Name, p.PRActivity.NeedsApproval)
-			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.NeedsApproval+p.PRActivity.Unchanged)
+			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.Unchanged)
 		}
 
 		if p.Duration != nil {

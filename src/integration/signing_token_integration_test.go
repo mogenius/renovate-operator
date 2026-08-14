@@ -36,6 +36,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/policy"
 	"renovate-operator/webhook"
 )
 
@@ -111,7 +112,7 @@ func validEvent(project, extra string) []byte {
 
 func renovateJob(name, project string, authEnabled bool) *api.RenovateJob {
 	job := &api.RenovateJob{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Spec:       api.RenovateJobSpec{Webhook: &api.RenovateWebhook{Enabled: true}},
 		Status:     api.RenovateJobStatus{Projects: []api.ProjectStatus{{Name: project}}},
@@ -155,7 +156,7 @@ func startWebhookServer(t *testing.T) (string, crdmanager.RenovateJobManager) {
 		WithStatusSubresource(&api.RenovateJob{}).
 		Build()
 
-	mgr := crdmanager.NewRenovateJobManager(cl, nil, logr.Discard(), nil, nil)
+	mgr := crdmanager.NewRenovateJobManager(cl, nil, logr.Discard(), nil, nil, policy.Policy{})
 	webhook.NewWebookServer(mgr, logr.Discard()).Run()
 
 	baseURL := "http://127.0.0.1:" + port

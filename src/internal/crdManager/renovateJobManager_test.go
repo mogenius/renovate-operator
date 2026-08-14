@@ -10,6 +10,7 @@ import (
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/objectstore"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 
 	"github.com/go-logr/logr"
@@ -18,12 +19,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+// testPolicy allows the hosts the fixtures in this file point at, so tests that
+// are not about the destination policy are unaffected by it.
+func testPolicy() policy.Policy {
+	return policy.Policy{AllowedHosts: []string{"api.github.com", "example.com", "operator.example.com"}}
+}
+
 // helper to create a basic RenovateJob
 func makeJob(name, namespace string, projects []api.ProjectStatus) *api.RenovateJob {
 	j := &api.RenovateJob{}
 	j.Name = name
 	j.Namespace = namespace
-	j.TypeMeta = metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"}
+	j.TypeMeta = metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"}
 	j.ObjectMeta = metav1.ObjectMeta{Name: name, Namespace: namespace}
 	j.Spec = api.RenovateJobSpec{Schedule: "*/5 * * * *"}
 	j.Status = api.RenovateJobStatus{Projects: projects}
@@ -45,7 +52,7 @@ func TestListRenovateJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobs(ctx)
 	if err != nil {
@@ -71,7 +78,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 	list, err := mgr.ListRenovateJobsFull(ctx)
 	if err != nil {
@@ -107,7 +114,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 
 	err = mgr.UpdateProjectStatus(ctx, "existingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
@@ -147,7 +154,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 
 	// predicate: mark non-running projects as scheduled
@@ -193,7 +200,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 
 	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
@@ -245,7 +252,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
-	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil)
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
 
 	list, err := mgr.GetProjectsByStatus(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, api.JobStatusCompleted)
@@ -298,12 +305,60 @@ func TestWebhookURLForJobUsesBaseURLAndPlatformPath(t *testing.T) {
 	}
 }
 
+func TestWebhookURLForJobPrefersSpecBaseURL(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = "https://renovate.internal.example/"
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://renovate.internal.example/webhook/v1/forgejo" {
+		t.Errorf("expected spec base URL to take precedence, got %s", url)
+	}
+}
+
+func TestWebhookURLForJobFallsBackToEnvBaseURL(t *testing.T) {
+	setBaseURL(t, "https://hooks.example.com")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = ""
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://hooks.example.com/webhook/v1/forgejo" {
+		t.Errorf("expected fallback to WEBHOOK_BASE_URL, got %s", url)
+	}
+}
+
+func TestWebhookURLForJobUsesSpecBaseURLWithoutEnv(t *testing.T) {
+	setBaseURL(t, "")
+
+	job := syncJob("forgejo")
+	job.Spec.Webhook.BaseURL = "https://renovate.internal.example"
+
+	url, err := webhookURLForJob(job)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://renovate.internal.example/webhook/v1/forgejo" {
+		t.Errorf("expected spec base URL to be sufficient on its own, got %s", url)
+	}
+}
+
 func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
 	setBaseURL(t, "")
 
 	_, err := webhookURLForJob(syncJob("forgejo"))
 	if err == nil || !strings.Contains(err.Error(), "WEBHOOK_BASE_URL") {
 		t.Fatalf("expected actionable error without base URL, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "spec.webhook.baseUrl") {
+		t.Errorf("expected error to mention the per-job override, got %v", err)
 	}
 }
 

@@ -159,6 +159,87 @@ func TestSyncUpdatesInactiveWebhook(t *testing.T) {
 	}
 }
 
+func TestSyncMigratesHookWrittenUnderAnotherBaseURL(t *testing.T) {
+	client := newFakeClient()
+	// healthy hook of ours, but written before the base URL changed
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: "https://old.example.com/webhook/v1/forgejo?job=a&namespace=b", Active: true, EventsUpToDate: true},
+	}
+
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
+
+	if len(client.created) != 0 {
+		t.Errorf("expected no second hook to be created, got %v", client.created)
+	}
+	if len(client.updated) != 1 {
+		t.Fatalf("expected the hook to be updated in place, got %v", client.updated)
+	}
+	if len(client.hooks["org/a"]) != 1 {
+		t.Fatalf("expected exactly 1 hook on org/a, got %d", len(client.hooks["org/a"]))
+	}
+	if got := client.hooks["org/a"][0]; got.URL != testOpts.WebhookURL || got.ID != "7" {
+		t.Errorf("expected hook 7 rewritten to the new delivery URL, got %+v", got)
+	}
+}
+
+func TestSyncMatchesRegardlessOfQueryParameterOrder(t *testing.T) {
+	client := newFakeClient()
+	// hand-created hook: same parameters, written in the other order
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: "https://operator.example.com/webhook/v1/forgejo?namespace=b&job=a", Active: true, EventsUpToDate: true},
+	}
+
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
+
+	if len(client.created) != 0 {
+		t.Errorf("expected the existing hook to be recognised, got creations %v", client.created)
+	}
+}
+
+func TestSyncIgnoresHooksOfOtherJobs(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		// another RenovateJob in the same namespace, and the same job name in another namespace
+		{ID: "7", URL: "https://operator.example.com/webhook/v1/forgejo?job=other&namespace=b", Active: true, EventsUpToDate: true},
+		{ID: "8", URL: "https://operator.example.com/webhook/v1/forgejo?job=a&namespace=other", Active: true, EventsUpToDate: true},
+	}
+
+	Sync(context.Background(), logr.Discard(), client, testOpts, []string{"org/a"}, nil)
+
+	if len(client.updated) != 0 {
+		t.Errorf("expected another job's hook to be left alone, got updates %v", client.updated)
+	}
+	if len(client.created) != 1 {
+		t.Errorf("expected this job's hook to be created alongside, got %v", client.created)
+	}
+}
+
+func TestSyncRemovalIgnoresHooksOfOtherJobs(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/old"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: "https://operator.example.com/webhook/v1/forgejo?job=other&namespace=b"},
+	}
+
+	Sync(context.Background(), logr.Discard(), client, testOpts, nil, []string{"org/old"})
+
+	if len(client.deleted) != 0 {
+		t.Errorf("expected another job's hook to survive removal, got %v", client.deleted)
+	}
+}
+
+func TestSyncRemovesHookWrittenUnderAnotherBaseURL(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/old"] = []gitProviderClients.Webhook{
+		{ID: "3", URL: "https://old.example.com/webhook/v1/forgejo?job=a&namespace=b"},
+	}
+
+	Sync(context.Background(), logr.Discard(), client, testOpts, nil, []string{"org/old"})
+
+	if len(client.hooks["org/old"]) != 0 {
+		t.Errorf("expected the hook to be removed despite the base URL change, got %+v", client.hooks["org/old"])
+	}
+}
+
 func TestSyncRemovesHookFromRemovedRepos(t *testing.T) {
 	client := newFakeClient()
 	client.hooks["org/old"] = []gitProviderClients.Webhook{

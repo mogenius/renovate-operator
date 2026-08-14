@@ -4,6 +4,7 @@ import (
 	context "context"
 	"fmt"
 
+	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/internal/kvstore"
 
@@ -32,8 +33,8 @@ func ensureRedisURLSecret(ctx context.Context, c client.Client, namespace string
 			Name:      redisURLSecretName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "renovate-operator",
-				"app.kubernetes.io/component":  "renovate-valkey-cache",
+				api.LabelAppManagedBy: api.LabelValueManagedBy,
+				api.LabelAppComponent: api.LabelValueComponentValkeyCache,
 			},
 		},
 		Data: map[string][]byte{

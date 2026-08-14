@@ -21,6 +21,13 @@ spec:
     - jsonPath: .spec.provider.name
       name: Provider
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].reason
+      name: Reason
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -45,6 +52,51 @@ spec:
           spec:
             description: RenovateJobSpec defines the desired state of RenovateJob
             properties:
+              access:
+                description: |-
+                  Access control for this RenovateJob in the web UI when authentication is
+                  enabled. If empty or not set, the job is hidden from all users.
+                properties:
+                  adminGroups:
+                    description: |-
+                      Groups allowed to view this RenovateJob and to trigger, cancel and
+                      reconfigure its runs.
+                    items:
+                      type: string
+                    type: array
+                  adminUsers:
+                    description: |-
+                      Individual users allowed to view this RenovateJob and to trigger, cancel
+                      and reconfigure its runs. See ReaderUsers for how a user is matched.
+                    items:
+                      type: string
+                    type: array
+                  anonymousRead:
+                    description: |-
+                      If true, this RenovateJob is readable without a session. Grants read access
+                      to every visitor, which group matches can only extend.
+                    type: boolean
+                  anonymousReadLogs:
+                    description: |-
+                      If true, visitors that only hold anonymous read access may also stream
+                      Renovate logs. Has no effect unless AnonymousRead is in effect. Renovate
+                      logs are unredacted, so this is opt-in separately from AnonymousRead.
+                    type: boolean
+                  readerGroups:
+                    description: |-
+                      Groups allowed to view this RenovateJob without triggering, cancelling or
+                      reconfiguring anything.
+                    items:
+                      type: string
+                    type: array
+                  readerUsers:
+                    description: |-
+                      Individual users allowed to view this RenovateJob, named by the email or
+                      username their identity provider reports. Compared case-insensitively.
+                    items:
+                      type: string
+                    type: array
+                type: object
               affinity:
                 description: Affinity settings for scheduling the resulting pod
                 properties:
@@ -959,8 +1011,8 @@ spec:
                 type: object
               allowedGroups:
                 description: |-
-                  Groups allowed to view this RenovateJob when authentication is enabled.
-                  If empty or not set, the job is hidden from all users.
+                  Deprecated: use Access.AdminGroups. Groups granted full access to this
+                  RenovateJob when authentication is enabled. Mutually exclusive with Access.
                 items:
                   type: string
                 type: array
@@ -1248,9 +1300,12 @@ spec:
                   - mountPath
                   - name
                   type: object
+                maxItems: 64
                 type: array
               extraVolumes:
-                description: Additional volumes to mount in the renovate pods
+                description: |-
+                  Additional volumes to mount in the renovate pods.
+                  hostPath is rejected: it would give the pod the node's filesystem
                 items:
                   description: Volume represents a named volume in a pod that may
                     be accessed by any container in the pod.
@@ -3149,7 +3204,11 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 64
                 type: array
+                x-kubernetes-validations:
+                - message: hostPath volumes are not allowed on RenovateJob pods
+                  rule: self.all(v, !has(v.hostPath))
               githubAppReference:
                 description: |-
                   Reference to a Github App for authentication, this will automatically mount a secret with
@@ -3212,11 +3271,19 @@ spec:
                 description: Maximum number of projects to process in parallel
                 format: int32
                 type: integer
+              priorityClassName:
+                description: PriorityClassName for the resulting pod, used to set
+                  the pod's scheduling priority.
+                type: string
               provider:
                 description: Renovate Provider Information to fill "RENOVATE_ENDPOINT"
                   and "RENOVATE_PLATFORM" environment variables in the renovate container
                 properties:
                   endpoint:
+                    description: |-
+                      Endpoint is the platform API base URL. Its host must be listed in the
+                      operator's policy.allowedHosts, otherwise the job is refused.
+                    pattern: ^https?://[^?#]+$
                     type: string
                   name:
                     type: string
@@ -3225,10 +3292,51 @@ spec:
                       PublicEndpoint is the externally reachable URL for the provider, used only for UI links.
                       When set, this overrides Endpoint for dashboard links while Endpoint continues to be
                       used for Renovate API calls and cloning. Defaults to Endpoint when omitted.
+                      Its host must be listed in the operator's policy.allowedHosts.
+                    pattern: ^https?://[^?#]+$
                     type: string
                 required:
                 - name
                 type: object
+              renovateConfig:
+                description: Renovate configuration file for the job pods
+                properties:
+                  configMapRef:
+                    description: Reference to a key in an existing ConfigMap holding
+                      the configuration file
+                    properties:
+                      key:
+                        description: Key holding the configuration file, also used
+                          as the mounted file name
+                        maxLength: 253
+                        pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
+                        type: string
+                      name:
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                  fileName:
+                    description: File name the inline configuration is mounted as;
+                      the extension tells Renovate the format. Defaults to "config.js".
+                      Ignored with configMapRef.
+                    maxLength: 253
+                    pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
+                    type: string
+                  inline:
+                    description: Inline Renovate configuration, written to a ConfigMap
+                      owned by the RenovateJob
+                    maxLength: 262144
+                    minLength: 1
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of inline and configMapRef must be set
+                  rule: has(self.inline) != has(self.configMapRef)
               resources:
                 description: Resource requirements for the renovate container
                 properties:
@@ -3573,9 +3681,10 @@ spec:
                 properties:
                   container:
                     description: |-
-                      SecurityContext holds security configuration that will be applied to a container.
-                      Some fields are present in both SecurityContext and PodSecurityContext.  When both
-                      are set, the values in SecurityContext take precedence.
+                      Container security context. privileged and allowPrivilegeEscalation are rejected
+                      outright: both hand the pod a route off the node, which no Renovate use case
+                      needs. Running as root is governed by the operator's policy.allowRootUser
+                      instead, since a custom image may legitimately need it.
                     properties:
                       allowPrivilegeEscalation:
                         description: |-
@@ -3765,6 +3874,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: privileged containers are not allowed on RenovateJob
+                        pods
+                      rule: '!has(self.privileged) || !self.privileged'
+                    - message: allowPrivilegeEscalation is not allowed on RenovateJob
+                        pods
+                      rule: '!has(self.allowPrivilegeEscalation) || !self.allowPrivilegeEscalation'
                   pod:
                     description: |-
                       PodSecurityContext holds pod-level security attributes and common container settings.
@@ -4253,6 +4369,16 @@ spec:
                     required:
                     - enabled
                     type: object
+                  baseUrl:
+                    description: |-
+                      Externally reachable base URL of the operator's webhook server for this
+                      job, e.g. https://renovate.example.com. The platform-specific path is
+                      appended to it. Takes precedence over the operator-wide
+                      WEBHOOK_BASE_URL environment variable, which is used when this is empty.
+                      Set it when a platform needs a different hostname to reach the operator
+                      than the operator-wide default provides.
+                    pattern: ^https?://[^?#]+$
+                    type: string
                   enabled:
                     type: boolean
                   sync:
@@ -4287,21 +4413,89 @@ spec:
             - provider
             - schedule
             type: object
+            x-kubernetes-validations:
+            - message: allowedGroups and access are mutually exclusive; migrate allowedGroups
+                to access.adminGroups
+              rule: '!(has(self.allowedGroups) && has(self.access))'
           status:
             description: RenovateJobStatus defines the observed state of RenovateJob
             properties:
-              executionOptions:
-                properties:
-                  debug:
-                    description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
-                    type: boolean
-                type: object
+              conditions:
+                description: |-
+                  Conditions holds the observed state of the RenovateJob. The operator sets the
+                  "Accepted" condition to False when the job violates the operator's policy, with
+                  a reason and a message naming the value to fix; nothing runs while it is False.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               projects:
                 items:
                   description: Status of a single project within a RenovateJob
                   properties:
                     duration:
                       type: string
+                    executionOptions:
+                      properties:
+                        debug:
+                          description: If true, the renovate job will be executed
+                            with RENOVATE_LOG_LEVEL=debug
+                          type: boolean
+                      type: object
                     lastTransition:
                       description: LastTransition records when the project most recently
                         changed state.

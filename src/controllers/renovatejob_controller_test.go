@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -31,6 +32,7 @@ import (
 // fakeManager implements the full RenovateJobManager interface but only the
 // methods used by the reconciler are given meaningful behaviour in tests.
 type fakeManager struct {
+	acceptedCalls                []acceptedCall
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
@@ -61,7 +63,15 @@ func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p 
 	}
 	return nil
 }
-func (m *fakeManager) UpdateExecutionOptions(ctx context.Context, jobId crdManager.RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+
+type acceptedCall struct {
+	accepted bool
+	reason   string
+	message  string
+}
+
+func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+	m.acceptedCalls = append(m.acceptedCalls, acceptedCall{accepted: accepted, reason: reason, message: message})
 	return nil
 }
 func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
@@ -310,6 +320,7 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		Scheduler: sched,
 		Discovery: &fakeDiscovery{},
 		GithubApp: &fakeGithubAppToken{},
+		K8sClient: buildFakeK8sClient(t),
 	}
 
 	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
@@ -368,12 +379,15 @@ func buildFakeK8sClient(t *testing.T, objs ...crclient.Object) crclient.Client {
 	if err := api.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 }
 
 func makeRenovateJob(name, namespace string, annotations map[string]string) *api.RenovateJob {
 	return &api.RenovateJob{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "renovate-operator.mogenius.com/v1alpha1", Kind: "RenovateJob"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: annotations},
 		Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
 	}
@@ -391,7 +405,7 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY: "true",
+		api.TriggerDiscoveryAnnotationKey: "true",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: disc,
@@ -404,7 +418,7 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 	if !discoveryTriggered {
 		t.Fatal("expected CreateDiscoveryJob to be called")
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_DISCOVERY]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerDiscoveryAnnotationKey]; ok {
 		t.Fatal("expected discovery annotation to be removed after processing")
 	}
 }
@@ -430,7 +444,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL: "true",
+		api.TriggerScheduleAllAnnotationKey: "true",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -450,7 +464,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 			t.Fatalf("expected %q to be scheduled, got %v", want, scheduled)
 		}
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE_ALL]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerScheduleAllAnnotationKey]; ok {
 		t.Fatal("expected schedule-all annotation to be removed after processing")
 	}
 }
@@ -476,7 +490,7 @@ func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE: "org/p1, org/p2",
+		api.TriggerScheduleAnnotationKey: "org/p1, org/p2",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -489,7 +503,7 @@ func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
 	if len(scheduled) != 1 || scheduled[0] != "org/p1" {
 		t.Fatalf("expected only org/p1 to be scheduled, got %v", scheduled)
 	}
-	if _, ok := renovateJob.Annotations[crdManager.RENOVATEJOB_ANNOTATION_TRIGGER_SCHEDULE]; ok {
+	if _, ok := renovateJob.Annotations[api.TriggerScheduleAnnotationKey]; ok {
 		t.Fatal("expected schedule annotation to be removed after processing")
 	}
 }
@@ -546,14 +560,14 @@ func TestReconcileAddsFinalizerWhenSyncEnabled(t *testing.T) {
 	if err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "with-sync", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if !controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected webhook cleanup finalizer to be added")
 	}
 }
 
 func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	job := makeRenovateJob("no-sync", "default", nil)
-	job.Finalizers = []string{webhookCleanupFinalizer}
+	job.Finalizers = []string{api.FinalizerWebhookCleanup}
 	cl := buildFakeK8sClient(t, job)
 
 	mgr := &fakeManager{getFn: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -573,14 +587,14 @@ func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	if err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "no-sync", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected webhook cleanup finalizer to be removed when sync is disabled")
 	}
 }
 
 func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	job := syncEnabledJob("deleting", "default")
-	job.Finalizers = []string{webhookCleanupFinalizer}
+	job.Finalizers = []string{api.FinalizerWebhookCleanup}
 	now := metav1.Now()
 	job.DeletionTimestamp = &now
 	cl := buildFakeK8sClient(t, job)
@@ -611,7 +625,7 @@ func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	// removing the last finalizer lets the fake client delete the object
 	updated := &api.RenovateJob{}
 	err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "deleting", Namespace: "default"}, updated)
-	if err == nil && controllerutil.ContainsFinalizer(updated, webhookCleanupFinalizer) {
+	if err == nil && controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected finalizer to be removed after cleanup")
 	}
 }

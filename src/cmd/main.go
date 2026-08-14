@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	api "renovate-operator/api/v1alpha1"
@@ -27,6 +29,7 @@ import (
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/metricStore"
@@ -59,10 +62,10 @@ func splitAndTrim(s, sep string) []string {
 }
 
 type authSetup struct {
-	provider             ui.AuthProvider
-	kvStore              kvstore.KVStore
-	defaultAllowedGroups []string
-	cleanup              func()
+	provider       ui.AuthProvider
+	kvStore        kvstore.KVStore
+	accessDefaults ui.AccessDefaults
+	cleanup        func()
 }
 
 func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
@@ -155,39 +158,97 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			ClientID:     githubClientID,
 			ClientSecret: githubClientSecret,
 			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
+			OrgGroups:    config.GetValue("GITHUB_ORG_GROUPS") == "true",
 		}, cookieKey, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
-		log.Info("GitHub OAuth authentication enabled")
+		log.Info("GitHub OAuth authentication enabled", "orgGroups", config.GetValue("GITHUB_ORG_GROUPS") == "true")
 	} else {
 		log.Info("No authentication configured, UI access is unauthenticated")
 	}
 
-	// Parse default allowed groups (comma-separated)
-	var defaultAllowedGroups []string
-	defaultGroupsStr := config.GetValue("DEFAULT_ALLOWED_GROUPS")
-	if defaultGroupsStr != "" {
-		for _, group := range splitAndTrim(defaultGroupsStr, ",") {
-			if group != "" {
-				normalized := strings.ToLower(strings.TrimSpace(group))
-				defaultAllowedGroups = append(defaultAllowedGroups, normalized)
-			}
-		}
-		log.Info("Default allowed groups configured", "groups", defaultAllowedGroups)
-	}
-
-	if authProvider != nil && !authProvider.SupportsGroups() && len(defaultAllowedGroups) > 0 {
-		log.Error(nil,
-			"auth provider does not support group claims -- DEFAULT_ALLOWED_GROUPS is configured but will have no effect, all jobs will be hidden from all users",
-			"ignored_groups", defaultAllowedGroups)
-	}
+	accessDefaults := parseAccessDefaults(log)
 
 	return authSetup{
-		provider:             authProvider,
-		kvStore:              kvStore,
-		defaultAllowedGroups: defaultAllowedGroups,
-		cleanup:              cleanup,
+		provider:       authProvider,
+		kvStore:        kvStore,
+		accessDefaults: accessDefaults,
+		cleanup:        cleanup,
 	}
+}
+
+// parseAccessDefaults reads the operator-wide access defaults that apply to
+// RenovateJobs which leave parts of their access configuration unset.
+func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
+	defaults := ui.AccessDefaults{
+		ReaderGroups:          parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_READER_GROUPS")),
+		AdminGroups:           parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_ADMIN_GROUPS")),
+		ReaderUsers:           parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_READER_USERS")),
+		AdminUsers:            parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_ADMIN_USERS")),
+		AnonymousRead:         config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ") == "true",
+		AnonymousReadLogs:     config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS") == "true",
+		AuthorizationDisabled: config.GetValue("AUTHORIZATION_ENABLED") == "false",
+	}
+
+	// The deprecated DEFAULT_ALLOWED_GROUPS granted what is now admin access.
+	if legacy := parseGroupList(config.GetValue("DEFAULT_ALLOWED_GROUPS")); len(legacy) > 0 {
+		log.Info("DEFAULT_ALLOWED_GROUPS is deprecated, use AUTHORIZATION_DEFAULT_ADMIN_GROUPS (authorization.defaults.adminGroups)",
+			"groups", legacy)
+		defaults.AdminGroups = append(defaults.AdminGroups, legacy...)
+	}
+
+	log.Info("Default access configured",
+		"authorizationEnabled", !defaults.AuthorizationDisabled,
+		"readerGroups", defaults.ReaderGroups,
+		"adminGroups", defaults.AdminGroups,
+		"readerUsers", defaults.ReaderUsers,
+		"adminUsers", defaults.AdminUsers,
+		"anonymousRead", defaults.AnonymousRead,
+		"anonymousReadLogs", defaults.AnonymousReadLogs)
+
+	return defaults
+}
+
+// parseGroupList splits a comma-separated group list and normalizes it the same
+// way session groups are normalized, so both sides of a comparison match.
+func parseGroupList(value string) []string {
+	if value == "" {
+		return nil
+	}
+	groups := splitAndTrim(value, ",")
+	normalized := make([]string, 0, len(groups))
+	for _, group := range groups {
+		// A trailing or doubled comma would otherwise contribute an empty entry
+		// that matches nothing and shows up in the startup log as noise.
+		if group == "" {
+			continue
+		}
+		normalized = append(normalized, strings.ToLower(group))
+	}
+	return normalized
+}
+
+// warnAccessRulesEnforceable warns when the operator-wide access defaults are
+// written against groups the auth provider cannot supply. It never aborts: a UI
+// misconfiguration must not take reconciliation and scheduling down with it.
+//
+// This only covers the defaults, which are known at startup. Per-job group rules
+// are checked live by the UI, which hides every job and serves the reason on
+// /api/v1/access/status while the rules cannot be enforced.
+func warnAccessRulesEnforceable(log logr.Logger, provider ui.AuthProvider, defaults ui.AccessDefaults) {
+	if provider == nil || provider.SupportsGroups() {
+		return
+	}
+	if len(defaults.ReaderGroups) == 0 && len(defaults.AdminGroups) == 0 {
+		return
+	}
+
+	log.Error(nil, "!!! ACCESS RULES CANNOT BE ENFORCED !!!")
+	log.Error(nil, "the configured auth provider supplies no groups, so no group rule can ever match")
+	log.Error(nil, "every RenovateJob stays hidden in the UI until this is fixed")
+	log.Error(nil, "set auth.github.orgGroups=true (GITHUB_ORG_GROUPS), or name individual accounts via AUTHORIZATION_DEFAULT_ADMIN_USERS/AUTHORIZATION_DEFAULT_READER_USERS instead of groups",
+		"defaultReaderGroups", defaults.ReaderGroups,
+		"defaultAdminGroups", defaults.AdminGroups)
 }
 
 func main() {
@@ -352,9 +413,56 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "GITHUB_ORG_GROUPS",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			// Deprecated: use DEFAULT_ADMIN_GROUPS
 			Key:      "DEFAULT_ALLOWED_GROUPS",
 			Optional: true,
 			Default:  "",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_READER_GROUPS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_ADMIN_GROUPS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_READER_USERS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_ADMIN_USERS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_ANONYMOUS_READ",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			Key:      "AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS",
+			Optional: true,
+			Default:  "false",
+		},
+		{
+			Key:      "AUTHORIZATION_ENABLED",
+			Optional: true,
+			Default:  "true",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'AUTHORIZATION_ENABLED' must be 'true' or 'false'")
+				}
+				return nil
+			},
 		},
 		{
 			Key:      "OIDC_ALLOWED_GROUP_PREFIX",
@@ -510,6 +618,66 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Key:      "POLICY_ENABLED",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_ENABLED' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_HOSTS",
+			Optional: true,
+			Default:  "",
+			Validate: func(value string) error {
+				if err := policy.ValidateAllowedHosts(value); err != nil {
+					return fmt.Errorf("'POLICY_ALLOWED_HOSTS' %w", err)
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_REQUIRE_SECRET_REF_OPT_IN",
+			Optional: true,
+			Default:  "true",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_REQUIRE_SECRET_REF_OPT_IN' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_SERVICE_ACCOUNTS",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "POLICY_ALLOW_ROOT_USER",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'POLICY_ALLOW_ROOT_USER' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "POLICY_ALLOWED_IMAGES",
+			Optional: true,
+			Default:  "",
+			Validate: func(value string) error {
+				if err := policy.ValidateAllowedImages(value); err != nil {
+					return fmt.Errorf("'POLICY_ALLOWED_IMAGES' %w", err)
+				}
+				return nil
+			},
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
@@ -532,6 +700,14 @@ func main() {
 		LeaderElectionNamespace:       config.GetValue("POD_NAMESPACE"),
 		LeaderElectionReleaseOnCancel: true,
 		Cache:                         cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
+		// Secrets and ConfigMaps bypass the informer cache: a cached read needs
+		// list+watch on every one in the watched scope and keeps all of their
+		// values in memory, while the operator only ever reads a handful by name.
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&corev1.Secret{}, &corev1.ConfigMap{}},
+			},
+		},
 	}
 
 	mgr, err := ctrl.NewManager(cfg, mgrOptions)
@@ -547,7 +723,39 @@ func main() {
 	health := health.NewHealthCheck()
 	ctx := ctrl.SetupSignalHandler()
 
-	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient())
+	guardRails := policy.FromConfig()
+	policyLog := ctrl.Log.WithName("policy")
+	metricStore.SetPolicyEnabled(!guardRails.Disabled)
+	if guardRails.Disabled {
+		// Loud on purpose, and on every start: this is the default, so most operators
+		// see it without having chosen it. Anyone able to write a RenovateJob can have
+		// the operator read any secret in its namespace and send it, or the job's
+		// platform token, to a host of their choosing.
+		policyLog.Info("WARNING: ############################################################")
+		policyLog.Info("WARNING: the policy engine is NOT ENABLED -- this operator is running in an UNSECURED mode.")
+		policyLog.Info("WARNING: any principal that can create or edit a RenovateJob in any watched namespace can:")
+		policyLog.Info("WARNING:   * have the operator read any secret in that namespace, at any key, and send it to a host they choose")
+		policyLog.Info("WARNING:   * redirect this job's Renovate platform token to a host they choose")
+		policyLog.Info("WARNING:   * point your repositories' webhooks at a host they choose, persistently")
+		policyLog.Info("WARNING:   * run the Renovate pod as another ServiceAccount, as root, or from any image")
+		policyLog.Info("WARNING: enforcement is off by default so a new install works out of the box -- it is meant to be turned on.")
+		policyLog.Info("WARNING: turn it on with policy.enabled=true (POLICY_ENABLED) -- configure policy.allowedHosts first.")
+		policyLog.Info("WARNING: see docs/migration-v5-to-v6.md")
+		policyLog.Info("WARNING: ############################################################")
+	} else {
+		if len(guardRails.AllowedHosts) == 0 {
+			policyLog.Error(nil,
+				"no allowed destination hosts configured -- every RenovateJob will be refused, no Renovate run will start and no webhook will be synced. Set policy.allowedHosts (POLICY_ALLOWED_HOSTS) to the platform hosts this operator may talk to, or set policy.enabled=false to turn the policy engine off entirely")
+		} else {
+			policyLog.Info("Destination policy active", "allowedHosts", guardRails.AllowedHosts)
+		}
+		if guardRails.AllowUnlabeledSecretRefs {
+			policyLog.Info("WARNING: secret reference opt-in is disabled. A RenovateJob may have the operator read any secret key in its namespace. " +
+				"Prefer leaving policy.requireSecretRefOptIn enabled and labelling the secrets you intend to reference.")
+		}
+	}
+
+	gitProviderClientFactory := gitProviderClientFactory.NewGitProviderClientFactory(mgr.GetClient(), guardRails)
 
 	valkeyConf := kvstore.ConfigFromEnv(config.GetValue)
 
@@ -568,7 +776,7 @@ func main() {
 	assert.NoError(err, "failed to get Kubernetes clientset for pod log reader")
 	podLogReader := podLogs.New(clientset)
 
-	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader)
+	jobMgr := crdManager.NewRenovateJobManager(mgr.GetClient(), gitProviderClientFactory, ctrl.Log.WithName("job-manager"), ls, podLogReader, guardRails)
 
 	discovery := renovate.NewDiscoveryAgent(
 		mgr.GetScheme(),
@@ -576,6 +784,7 @@ func main() {
 		ctrl.Log.WithName("renovate-discovery"),
 		jobMgr,
 		podLogReader,
+		guardRails,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)
@@ -583,9 +792,11 @@ func main() {
 	auth := initAuth(valkeyConf)
 	defer auth.cleanup()
 
+	warnAccessRulesEnforceable(ctrl.Log.WithName("auth"), auth.provider, auth.accessDefaults)
+
 	// UI and webhook servers run on all replicas
 	repoCache := ui.NewMemoryRepoCache()
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.defaultAllowedGroups, repoCache)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.accessDefaults, repoCache)
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
@@ -606,9 +817,10 @@ func main() {
 		health,
 		ls,
 		podLogReader,
+		guardRails,
 	)
 
-	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"))
+	githubAppToken := github.NewGitHubAppTokenCreatorWithLogger(mgr.GetClient(), ctrl.Log.WithName("github-app-token"), guardRails)
 
 	// Executor and scheduler must only run on the leader to prevent duplicate jobs.
 	// When leadership is lost, controller-runtime cancels ctx and the process exits.
@@ -634,6 +846,7 @@ func main() {
 		Discovery: discovery,
 		K8sClient: mgr.GetClient(),
 		GithubApp: githubAppToken,
+		Policy:    guardRails,
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 

@@ -18,31 +18,32 @@ import (
 )
 
 type Server struct {
-	manager              crdmanager.RenovateJobManager
-	discovery            renovate.DiscoveryAgent
-	scheduler            scheduler.Scheduler
-	logger               logr.Logger
-	server               *http.Server
-	health               health.HealthCheck
-	version              string
-	auth                 AuthProvider
-	defaultAllowedGroups []string
-	repoCache            RepoCache
-	Router               *mux.Router
+	manager        crdmanager.RenovateJobManager
+	discovery      renovate.DiscoveryAgent
+	scheduler      scheduler.Scheduler
+	logger         logr.Logger
+	server         *http.Server
+	health         health.HealthCheck
+	version        string
+	auth           AuthProvider
+	accessDefaults AccessDefaults
+	accessCheck    accessCheckCache
+	repoCache      RepoCache
+	Router         *mux.Router
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, defaultAllowedGroups []string, repoCache RepoCache) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, accessDefaults AccessDefaults, repoCache RepoCache) *Server {
 	return &Server{
-		manager:              manager,
-		logger:               logger,
-		health:               health,
-		discovery:            discovery,
-		scheduler:            scheduler,
-		version:              version,
-		auth:                 auth,
-		defaultAllowedGroups: defaultAllowedGroups,
-		repoCache:            repoCache,
-		Router:               mux.NewRouter(),
+		manager:        manager,
+		logger:         logger,
+		health:         health,
+		discovery:      discovery,
+		scheduler:      scheduler,
+		version:        version,
+		auth:           auth,
+		accessDefaults: accessDefaults,
+		repoCache:      repoCache,
+		Router:         mux.NewRouter(),
 	}
 }
 

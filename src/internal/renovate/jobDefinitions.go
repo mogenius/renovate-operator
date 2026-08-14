@@ -96,6 +96,7 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
 					RuntimeClassName:             job.Spec.RuntimeClassName,
+					PriorityClassName:            job.Spec.PriorityClassName,
 					Volumes:                      volumes,
 				},
 			},
@@ -115,10 +116,17 @@ func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 }
 
 // create a Job spec for renovate run on project...
-func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *batchv1.Job {
+func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.RenovateExecutionOptions, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceparentEnvVar(traceparent)...)
+
+	if executionOptions != nil && executionOptions.Debug {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_LOG_LEVEL",
+			Value: "debug",
+		})
+	}
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -147,7 +155,7 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
 	command := []string{"renovate"}
-	args := []string{project}
+	args := []string{"--autodiscover=false", project}
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
@@ -181,6 +189,7 @@ func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *b
 					Tolerations:                  job.Spec.Tolerations,
 					TopologySpreadConstraints:    job.Spec.TopologySpreadConstraints,
 					RuntimeClassName:             job.Spec.RuntimeClassName,
+					PriorityClassName:            job.Spec.PriorityClassName,
 					Volumes:                      volumes,
 				},
 			},
@@ -207,6 +216,10 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 			Value: "json",
 		},
 		{
+			Name:  "RENOVATE_REPORT_TYPE",
+			Value: "logging",
+		},
+		{
 			Name:  "NODE_NO_WARNINGS",
 			Value: "1",
 		},
@@ -221,6 +234,13 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		})
 	}
 
+	if job.Spec.RenovateConfig != nil {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  "RENOVATE_CONFIG_FILE",
+			Value: renovateConfigMountPath + "/" + renovateConfigFileName(job.Spec.RenovateConfig),
+		})
+	}
+
 	if job.Spec.Provider != nil {
 		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
@@ -229,13 +249,6 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		}, v1.EnvVar{
 			Name:  "RENOVATE_PLATFORM",
 			Value: platform,
-		})
-	}
-
-	if job.Status.ExecutionOptions != nil && job.Status.ExecutionOptions.Debug {
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_LOG_LEVEL",
-			Value: "debug",
 		})
 	}
 
@@ -254,7 +267,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 	}
 
 	if config.GetValue("S3_FORWARD_CACHE_TO_JOBS") == "true" && config.GetValue("S3_BUCKET") != "" {
-		s3CacheType := fmt.Sprintf("s3://%s/%s", config.GetValue("S3_BUCKET"), config.GetValue("S3_CACHE_PREFIX"))
+		s3CacheType := fmt.Sprintf("s3://%s/%s/", config.GetValue("S3_BUCKET"), config.GetValue("S3_CACHE_PREFIX"))
 		predefinedEnvVars = append(predefinedEnvVars,
 			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE", Value: "enabled"},
 			v1.EnvVar{Name: "RENOVATE_REPOSITORY_CACHE_TYPE", Value: s3CacheType},
@@ -297,11 +310,7 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 	return predefinedEnvVars
 }
 
-func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
-	if spec.SecurityContext != nil && spec.SecurityContext.Pod != nil {
-		return spec.SecurityContext.Pod
-	}
-
+func hardenedPodSecurityContext() *v1.PodSecurityContext {
 	return &v1.PodSecurityContext{
 		RunAsUser:    new(int64(12021)),
 		RunAsGroup:   new(int64(12021)),
@@ -312,11 +321,8 @@ func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
 		},
 	}
 }
-func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
-	if spec.SecurityContext != nil && spec.SecurityContext.Container != nil {
-		return spec.SecurityContext.Container
-	}
 
+func hardenedContainerSecurityContext() *v1.SecurityContext {
 	return &v1.SecurityContext{
 		RunAsUser:    new(int64(12021)),
 		RunAsGroup:   new(int64(12021)),
@@ -331,6 +337,70 @@ func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
 			Drop: []v1.Capability{"ALL"},
 		},
 	}
+}
+
+// getPodSecurityContext merges the spec over the hardened defaults rather than
+// replacing them: overriding one field (fsGroup, say) must not silently drop
+// runAsNonRoot and the seccomp profile with it.
+func getPodSecurityContext(spec api.RenovateJobSpec) *v1.PodSecurityContext {
+	defaults := hardenedPodSecurityContext()
+	if spec.SecurityContext == nil || spec.SecurityContext.Pod == nil {
+		return defaults
+	}
+
+	merged := spec.SecurityContext.Pod.DeepCopy()
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.RunAsGroup == nil {
+		merged.RunAsGroup = defaults.RunAsGroup
+	}
+	if merged.FSGroup == nil {
+		merged.FSGroup = defaults.FSGroup
+	}
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.SeccompProfile == nil {
+		merged.SeccompProfile = defaults.SeccompProfile
+	}
+	return merged
+}
+
+// getContainerSecurityContext merges the spec over the hardened defaults; see
+// getPodSecurityContext.
+func getContainerSecurityContext(spec api.RenovateJobSpec) *v1.SecurityContext {
+	defaults := hardenedContainerSecurityContext()
+	if spec.SecurityContext == nil || spec.SecurityContext.Container == nil {
+		return defaults
+	}
+
+	merged := spec.SecurityContext.Container.DeepCopy()
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.RunAsGroup == nil {
+		merged.RunAsGroup = defaults.RunAsGroup
+	}
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.SeccompProfile == nil {
+		merged.SeccompProfile = defaults.SeccompProfile
+	}
+	if merged.ReadOnlyRootFilesystem == nil {
+		merged.ReadOnlyRootFilesystem = defaults.ReadOnlyRootFilesystem
+	}
+	if merged.Privileged == nil {
+		merged.Privileged = defaults.Privileged
+	}
+	if merged.AllowPrivilegeEscalation == nil {
+		merged.AllowPrivilegeEscalation = defaults.AllowPrivilegeEscalation
+	}
+	if merged.Capabilities == nil {
+		merged.Capabilities = defaults.Capabilities
+	}
+	return merged
 }
 
 func getAutoMountServiceAccountToken(spec api.RenovateJobSpec) *bool {
@@ -500,6 +570,28 @@ func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
 		}
 		volumes = append(volumes, volume)
 		volumeMounts = append(volumeMounts, mount)
+	}
+
+	if cfg := job.Spec.RenovateConfig; cfg != nil {
+		configMapName := renovateConfigMapName(job)
+		if cfg.ConfigMapRef != nil {
+			configMapName = cfg.ConfigMapRef.Name
+		}
+		fileName := renovateConfigFileName(cfg)
+		volumes = append(volumes, v1.Volume{
+			Name: renovateConfigVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{Name: configMapName},
+					Items:                []v1.KeyToPath{{Key: fileName, Path: fileName}},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, v1.VolumeMount{
+			Name:      renovateConfigVolumeName,
+			MountPath: renovateConfigMountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	if job.Spec.ExtraVolumes != nil {

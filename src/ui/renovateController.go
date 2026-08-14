@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // UIProjectStatus extends the crdmanager project status with UI-specific fields.
@@ -40,59 +43,86 @@ type RenovateJobInfo struct {
 	Projects         []UIProjectStatus         `json:"projects"`
 	Platform         string                    `json:"platform,omitempty"`
 	PlatformEndpoint string                    `json:"platformEndpoint,omitempty"`
-	ExecutionOptions *ExecutionOptions         `json:"executionOptions,omitempty"`
+	// Accepted is false when the operator's policy refuses this job, in which case
+	// nothing runs for it and AcceptedMessage says what to fix. Jobs reconciled by an
+	// older operator have no condition yet and are reported as accepted.
+	Accepted        bool     `json:"accepted"`
+	AcceptedMessage string   `json:"acceptedMessage,omitempty"`
+	Role            string   `json:"role,omitempty"`
+	Permissions     []string `json:"permissions"`
 }
 
-type ExecutionOptions struct {
-	Debug bool `json:"debug,omitempty"`
+func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
+	if s.auth == nil {
+		return adminDecision()
+	}
+	return resolveAccess(job, getSessionFromContext(r), s.accessDefaults, s.logger)
 }
 
-// filterRenovateJobsByGroups filters jobs based on user groups and job's allowedGroups.
-// Authorization rules:
-// - When auth is disabled (authEnabled == false): all jobs visible
-// - When auth is enabled (authEnabled == true):
-//   - Jobs without allowedGroups use defaultAllowedGroups (from operator config)
-//   - If defaultAllowedGroups is also empty, job is visible to all authenticated users
-//   - Jobs with allowedGroups shown only if user has at least one matching group
-//   - Users without groups see no jobs (unless the job has no group restrictions)
-//   - If session is nil (edge case/bug), return empty list for security
-func filterRenovateJobsByGroups(jobs []api.RenovateJob, authEnabled bool, session *sessionData, defaultAllowedGroups []string) []api.RenovateJob {
-	// If auth is disabled, return all jobs
-	if !authEnabled {
-		return jobs
-	}
+// checkAccessEnforceable reports whether the configured access rules can be
+// enforced, given the full set of jobs, and refreshes the cached verdict.
+func (s *Server) checkAccessEnforceable(jobs []api.RenovateJob) *AccessMisconfiguration {
+	misconfiguration, jobsWithGroups := detectAccessMisconfiguration(s.auth, s.accessDefaults, jobs)
 
-	// If auth is enabled but no session, return empty for security (defense in depth)
-	if session == nil {
-		return []api.RenovateJob{}
-	}
-
-	userGroups := session.Groups
-	if userGroups == nil {
-		userGroups = []string{}
-	}
-
-	filtered := make([]api.RenovateJob, 0, len(jobs))
-	for _, job := range jobs {
-		// Determine effective allowed groups for this job
-		effectiveAllowedGroups := normalizeGroups(job.Spec.AllowedGroups)
-		if len(effectiveAllowedGroups) == 0 {
-			// Use default groups if job has no explicit allowedGroups
-			effectiveAllowedGroups = defaultAllowedGroups
+	// Logged only on a transition, because the dashboard polls: repeating this
+	// for every request, or even once per cache period, buries the log.
+	if s.accessCheck.store(misconfiguration) {
+		if misconfiguration != nil {
+			s.logger.Error(nil, "access rules cannot be enforced, hiding every RenovateJob",
+				"reason", misconfiguration.Reason,
+				"detail", misconfiguration.Message,
+				"defaultReaderGroups", s.accessDefaults.ReaderGroups,
+				"defaultAdminGroups", s.accessDefaults.AdminGroups,
+				"jobsWithGroups", jobsWithGroups)
+		} else {
+			s.logger.Info("access rules are enforceable again, RenovateJobs are visible")
 		}
+	}
 
-		// If no effective groups (neither job-specific nor defaults), job is visible to all authenticated users
-		if len(effectiveAllowedGroups) == 0 {
-			filtered = append(filtered, job)
+	return misconfiguration
+}
+
+// accessEnforceable is checkAccessEnforceable for the endpoints that hold a
+// single job and therefore have no job list of their own.
+//
+// The verdict is cached for accessCheckTTL. Without it every request to the
+// endpoints the dashboard polls -- and which anonymous read exposes without a
+// session -- would take the manager's global lock to list every RenovateJob.
+func (s *Server) accessEnforceable(ctx context.Context) *AccessMisconfiguration {
+	if s.auth == nil || s.auth.SupportsGroups() {
+		return nil
+	}
+
+	if verdict, ok := s.accessCheck.load(); ok {
+		return verdict
+	}
+
+	jobs, err := s.manager.ListRenovateJobsFull(ctx)
+	if err != nil {
+		// Cannot prove the configuration is unenforceable, so do not treat it as
+		// such: the per-job resolution still fails closed.
+		s.logger.Error(err, "failed to list renovatejobs to validate access rules, continuing")
+		return nil
+	}
+	return s.checkAccessEnforceable(jobs)
+}
+
+func (s *Server) filterReadableJobs(r *http.Request, jobs []api.RenovateJob) ([]api.RenovateJob, []accessDecision) {
+	if s.checkAccessEnforceable(jobs) != nil {
+		return nil, nil
+	}
+
+	readable := make([]api.RenovateJob, 0, len(jobs))
+	decisions := make([]accessDecision, 0, len(jobs))
+	for i := range jobs {
+		decision := s.decideJobAccess(r, &jobs[i])
+		if !decision.canRead() {
 			continue
 		}
-
-		// Check if user has any matching group
-		if hasIntersection(userGroups, effectiveAllowedGroups) {
-			filtered = append(filtered, job)
-		}
+		readable = append(readable, jobs[i])
+		decisions = append(decisions, decision)
 	}
-	return filtered
+	return readable, decisions
 }
 
 // hasIntersection returns true if there's at least one common element between two string slices.
@@ -120,109 +150,86 @@ func hasIntersection(a, b []string) bool {
 	return false
 }
 
-// authorizeAndGetJob checks authorization and returns the job if authorized.
-// Returns (job, true) if authorized, (nil, false) otherwise.
-// This avoids duplicate K8s API calls by returning the job for reuse.
-func (s *Server) authorizeAndGetJob(r *http.Request, namespace, jobName string) (*api.RenovateJob, bool) {
-	// If auth is disabled, fetch and return the job
-	if s.auth == nil {
-		job, err := s.manager.GetRenovateJob(r.Context(), jobName, namespace)
-		if err != nil || job == nil {
-			return nil, false
-		}
-		return job, true
+// resolveJobAccess fetches a job and evaluates the request's access to it.
+// Returns the job for reuse so callers do not fetch it twice.
+func (s *Server) resolveJobAccess(r *http.Request, namespace, jobName string) (*api.RenovateJob, accessDecision) {
+	if s.accessEnforceable(r.Context()) != nil {
+		return nil, accessDecision{}
 	}
 
-	// Get session from context
-	session := getSessionFromContext(r)
-	if session == nil {
-		// Auth enabled but no session - deny access (should not happen due to middleware)
-		s.logger.Info("Authorization denied: no session in context",
-			"action", "job_access",
-			"resource", jobName,
-			"namespace", namespace,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr)
-		return nil, false
-	}
-
-	// Get the job
 	job, err := s.manager.GetRenovateJob(r.Context(), jobName, namespace)
 	if err != nil || job == nil {
-		// Return false for both "not found" and "error" to prevent information disclosure
-		s.logger.V(1).Info("Authorization check: job not found or error",
-			"user", session.Email,
+		// Treat "not found" and "error" alike to prevent information disclosure
+		s.logger.V(1).Info("Access check: job not found or error",
+			"user", sessionEmail(r),
 			"resource", jobName,
 			"namespace", namespace,
 			"error", err)
-		return nil, false
+		return nil, accessDecision{}
 	}
 
-	// Determine effective allowed groups for this job
-	effectiveAllowedGroups := normalizeGroups(job.Spec.AllowedGroups)
-	if len(effectiveAllowedGroups) == 0 {
-		// Use default groups if job has no explicit allowedGroups
-		effectiveAllowedGroups = s.defaultAllowedGroups
-	}
-
-	// If no effective groups (neither job-specific nor defaults), job is visible to all authenticated users
-	if len(effectiveAllowedGroups) == 0 {
-		s.logger.V(1).Info("Authorization granted: job has no group restrictions",
-			"user", session.Email,
-			"resource", jobName,
-			"namespace", namespace,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr)
-		return job, true
-	}
-
-	// Check if user has any matching group
-	userGroups := session.Groups
-	if userGroups == nil {
-		userGroups = []string{}
-	}
-
-	authorized := hasIntersection(userGroups, effectiveAllowedGroups)
+	decision := s.decideJobAccess(r, job)
 
 	// Audit log the authorization decision
-	if authorized {
-		s.logger.V(1).Info("Authorization granted",
-			"user", session.Email,
-			"user_groups", session.Groups,
-			"resource", jobName,
-			"namespace", namespace,
-			"allowed_groups", effectiveAllowedGroups,
-			"path", r.URL.Path,
-			"method", r.Method,
-			"remote_addr", r.RemoteAddr)
-		return job, true
-	}
-
-	s.logger.Info("Authorization denied: no matching groups",
-		"user", session.Email,
-		"user_groups", session.Groups,
+	s.logger.V(1).Info("Access resolved",
+		"user", sessionEmail(r),
+		"role", decision.Role.String(),
 		"resource", jobName,
 		"namespace", namespace,
-		"allowed_groups", effectiveAllowedGroups,
 		"path", r.URL.Path,
 		"method", r.Method,
 		"remote_addr", r.RemoteAddr)
 
-	return nil, false
+	return job, decision
 }
 
-// authorizeJobAccess checks if the current user is authorized to access the given RenovateJob.
-// Returns true if authorized, false otherwise. Includes comprehensive audit logging.
-// For endpoints that need the job after authorization, use authorizeAndGetJob to avoid duplicate fetches.
-func (s *Server) authorizeJobAccess(r *http.Request, namespace, jobName string) bool {
-	_, authorized := s.authorizeAndGetJob(r, namespace, jobName)
-	return authorized
+func (s *Server) requireRead(w http.ResponseWriter, r *http.Request, namespace, jobName string) (*api.RenovateJob, bool) {
+	job, decision := s.resolveJobAccess(r, namespace, jobName)
+	if !decision.canRead() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return nil, false
+	}
+	return job, true
+}
+
+func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, namespace, jobName, permission string) (*api.RenovateJob, bool) {
+	job, decision := s.resolveJobAccess(r, namespace, jobName)
+	if !decision.canRead() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return nil, false
+	}
+
+	if !decision.has(permission) {
+		s.logger.Info("Access denied: missing permission",
+			"user", sessionEmail(r),
+			"role", decision.Role.String(),
+			"permission", permission,
+			"resource", jobName,
+			"namespace", namespace,
+			"path", r.URL.Path,
+			"method", r.Method,
+			"remote_addr", r.RemoteAddr)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil, false
+	}
+
+	return job, true
+}
+
+// sessionEmail returns the session's email for audit logs, or "anonymous" when
+// the request carries no session.
+func sessionEmail(r *http.Request) string {
+	if session := getSessionFromContext(r); session != nil {
+		return session.Email
+	}
+	return "anonymous"
 }
 
 func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 	apiV1.Use(telemetry.MuxMiddleware("renovate-operator-ui-api-v1"))
 	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
+	apiV1.HandleFunc("/access/status", s.getAccessStatus).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
 	apiV1.HandleFunc("/renovate/all", s.runRenovateForAllProjects).Methods("POST")
@@ -230,7 +237,6 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
-	apiV1.HandleFunc("/executionOptions", s.updateExecutionOptions).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +248,24 @@ func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getAccessStatus reports whether the operator can enforce its access rules.
+func (s *Server) getAccessStatus(w http.ResponseWriter, r *http.Request) {
+	result := struct {
+		Misconfigured bool   `json:"misconfigured"`
+		Reason        string `json:"reason,omitempty"`
+		Message       string `json:"message,omitempty"`
+	}{}
+
+	if misconfiguration := s.accessEnforceable(r.Context()); misconfiguration != nil {
+		result.Misconfigured = true
+		result.Reason = misconfiguration.Reason
+		result.Message = misconfiguration.Message
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	renovateJobs, err := s.manager.ListRenovateJobsFull(r.Context())
 	if err != nil {
@@ -249,10 +273,8 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter jobs based on user's groups
-	authEnabled := s.auth != nil
+	renovateJobs, decisions := s.filterReadableJobs(r, renovateJobs)
 	session := getSessionFromContext(r)
-	renovateJobs = filterRenovateJobsByGroups(renovateJobs, authEnabled, session, s.defaultAllowedGroups)
 
 	result := make([]RenovateJobInfo, 0)
 	for i := range renovateJobs {
@@ -285,6 +307,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 				Duration:             p.Duration,
 				PRActivity:           p.PRActivity,
 				LogIssues:            p.LogIssues,
+				ExecutionOptions:     p.ExecutionOptions,
 			})
 		}
 
@@ -312,19 +335,21 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 			projects = append(projects, proj)
 		}
+		accepted, acceptedMessage := acceptedState(renovateJob)
 
 		result = append(result, RenovateJobInfo{
 			Name:             renovateJob.Name,
 			Namespace:        renovateJob.Namespace,
+			Accepted:         accepted,
+			AcceptedMessage:  acceptedMessage,
 			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname()),
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
 			DiscoveryStatus:  discoveryStatus,
 			Platform:         platform,
 			PlatformEndpoint: platformEndpoint,
-			ExecutionOptions: &ExecutionOptions{
-				Debug: renovateJob.Status.ExecutionOptions != nil && renovateJob.Status.ExecutionOptions.Debug,
-			},
+			Role:             decisions[i].Role.String(),
+			Permissions:      decisions[i].permissions(),
 		})
 	}
 
@@ -332,13 +357,21 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
+// acceptedState reads the Accepted condition.
+func acceptedState(job *api.RenovateJob) (bool, string) {
+	condition := meta.FindStatusCondition(job.Status.Conditions, api.ConditionAccepted)
+	if condition == nil {
+		return true, ""
+	}
+	return condition.Status != metav1.ConditionFalse, condition.Message
+}
+
 func (s *Server) getRenovateJobLogs(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	renovate := r.URL.Query().Get("renovate")
 	project := r.URL.Query().Get("project")
 
-	if !s.authorizeJobAccess(r, namespace, renovate) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if _, ok := s.requirePermission(w, r, namespace, renovate, permLogs); !ok {
 		return
 	}
 
@@ -430,60 +463,62 @@ func getRenovateJsonBody(r *http.Request) (*struct {
 }
 
 func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
-	// Expect application/json or form values
-	params, err := getRenovateJsonBody(r)
-	if err != nil {
+	var body struct {
+		RenovateJob      string                        `json:"renovateJob"`
+		Namespace        string                        `json:"namespace"`
+		Project          string                        `json:"project"`
+		ExecutionOptions *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
-	if params.name == "" || params.namespace == "" || params.project == "" {
-		badRequestError(w, err, "Missing parameters")
+	if body.RenovateJob == "" || body.Namespace == "" || body.Project == "" {
+		badRequestError(w, nil, "Missing parameters")
 		return
 	}
 
-	// Authorization check (returns job to check platform permissions)
-	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
-	if !authorized {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	job, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permTrigger)
+	if !ok {
 		return
 	}
 
-	// Check write permission on the specific repo
 	session := getSessionFromContext(r)
 	if job != nil {
 		platform, endpoint := utils.GetPlatformAndEndpoint(job.Spec.Provider)
-		if !canUserWriteRepo(r.Context(), session, platform, endpoint, params.project, s.repoCache, s.logger) {
+		if !canUserWriteRepo(r.Context(), session, platform, endpoint, body.Project, s.repoCache, s.logger) {
 			s.logger.Info("Write access denied for repo",
-				"user", session.Email,
-				"project", params.project,
-				"renovateJob", params.name,
-				"namespace", params.namespace)
+				"user", sessionEmail(r),
+				"project", body.Project,
+				"renovateJob", body.RenovateJob,
+				"namespace", body.Namespace)
 			http.Error(w, "forbidden: write access required", http.StatusForbidden)
 			return
 		}
 	}
 
-	err = s.manager.UpdateProjectStatus(
+	err := s.manager.UpdateProjectStatus(
 		r.Context(),
-		params.project,
+		body.Project,
 		crdmanager.RenovateJobIdentifier{
-			Name:      params.name,
-			Namespace: params.namespace,
+			Name:      body.RenovateJob,
+			Namespace: body.Namespace,
 		},
 		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 2,
+			Status:           api.JobStatusScheduled,
+			Priority:         2,
+			ExecutionOptions: body.ExecutionOptions,
 		},
 	)
 	if err != nil {
-		s.logger.Error(err, "Failed to run Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace)
+		s.logger.Error(err, "Failed to run Renovate for project", "project", body.Project, "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 		internalServerError(w, err, "failed to run Renovate for project")
 		return
 	}
 
 	writeSuccess(w, SuccessResult{Message: "Renovate job triggered for project"})
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", params.project, "renovateJob", params.name, "namespace", params.namespace, "priority", 2)
+	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", body.Project, "renovateJob", body.RenovateJob, "namespace", body.Namespace, "priority", 2)
 }
 
 func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request) {
@@ -498,8 +533,7 @@ func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !s.authorizeJobAccess(r, params.namespace, params.name) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if _, ok := s.requirePermission(w, r, params.namespace, params.name, permCancel); !ok {
 		return
 	}
 
@@ -522,20 +556,23 @@ func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
-	params, err := getRenovateJsonBody(r)
-	if err != nil {
+	var body struct {
+		RenovateJob      string                        `json:"renovateJob"`
+		Namespace        string                        `json:"namespace"`
+		ExecutionOptions *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		badRequestError(w, err, "failed to parse request body")
 		return
 	}
 
-	if params.name == "" || params.namespace == "" {
-		badRequestError(w, err, "Missing parameters")
+	if body.RenovateJob == "" || body.Namespace == "" {
+		badRequestError(w, nil, "Missing parameters")
 		return
 	}
 
-	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
-	if !authorized {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	job, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permTriggerAll)
+	if !ok {
 		return
 	}
 
@@ -548,11 +585,11 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 	}
 
 	jobIdentifier := crdmanager.RenovateJobIdentifier{
-		Name:      params.name,
-		Namespace: params.namespace,
+		Name:      body.RenovateJob,
+		Namespace: body.Namespace,
 	}
 
-	err = s.manager.UpdateProjectStatusBatched(
+	err := s.manager.UpdateProjectStatusBatched(
 		r.Context(),
 		func(p api.ProjectStatus) bool {
 			if p.Status == api.JobStatusRunning || p.Status == api.JobStatusScheduled {
@@ -569,18 +606,19 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		},
 		jobIdentifier,
 		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 2,
+			Status:           api.JobStatusScheduled,
+			Priority:         2,
+			ExecutionOptions: body.ExecutionOptions,
 		},
 	)
 	if err != nil {
-		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", params.name, "namespace", params.namespace)
+		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 		internalServerError(w, err, "failed to trigger all projects")
 		return
 	}
 
 	writeSuccess(w, SuccessResult{Message: "All projects triggered"})
-	s.logger.V(2).Info("Successfully triggered all projects", "renovateJob", params.name, "namespace", params.namespace)
+	s.logger.V(2).Info("Successfully triggered all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace)
 }
 
 func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) {
@@ -595,14 +633,9 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Authorization check (returns job to avoid duplicate K8s API call)
-	job, authorized := s.authorizeAndGetJob(r, params.namespace, params.name)
-	if !authorized {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if job == nil {
-		internalServerError(w, nil, "failed to get renovate job")
+	// requirePermission returns the job to avoid a duplicate K8s API call
+	job, ok := s.requirePermission(w, r, params.namespace, params.name, permDiscovery)
+	if !ok {
 		return
 	}
 
@@ -625,59 +658,15 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 }
 
-func (s *Server) updateExecutionOptions(w http.ResponseWriter, r *http.Request) {
-	var params struct {
-		RenovateJob string `json:"renovateJob"`
-		Namespace   string `json:"namespace"`
-		Debug       bool   `json:"debug"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		badRequestError(w, err, "failed to parse request body")
-		return
-	}
-	if params.RenovateJob == "" || params.Namespace == "" {
-		badRequestError(w, nil, "missing parameters")
-		return
-	}
-
-	if !s.authorizeJobAccess(r, params.Namespace, params.RenovateJob) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
-	err := s.manager.UpdateExecutionOptions(
-		r.Context(),
-		crdmanager.RenovateJobIdentifier{
-			Name:      params.RenovateJob,
-			Namespace: params.Namespace,
-		},
-		&api.RenovateExecutionOptions{
-			Debug: params.Debug,
-		},
-	)
-	if err != nil {
-		s.logger.Error(err, "Failed to update execution options", "renovateJob", params.RenovateJob, "namespace", params.Namespace)
-		internalServerError(w, err, "failed to update execution options")
-		return
-	}
-
-	writeSuccess(w, SuccessResult{Message: "execution options updated"})
-}
-
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	namespace := r.URL.Query().Get("namespace")
 	renovate := r.URL.Query().Get("renovate")
 
-	// Authorization check (returns job to avoid duplicate K8s API call)
-	job, authorized := s.authorizeAndGetJob(r, namespace, renovate)
-	if !authorized {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if job == nil {
-		internalServerError(w, nil, "failed to get renovate job")
+	// requireRead returns the job to avoid a duplicate K8s API call
+	job, ok := s.requireRead(w, r, namespace, renovate)
+	if !ok {
 		return
 	}
 	status, err := s.discovery.GetDiscoveryJobStatus(ctx, job)

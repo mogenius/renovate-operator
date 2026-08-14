@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"renovate-operator/internal/telemetry"
 	"slices"
 	"strings"
@@ -133,15 +132,10 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		return nil, err
 	}
 
-	// Parse group filter pattern if provided
-	var groupFilterConfig GroupFilterConfig
-	groupFilterConfig.AllowedPrefix = cfg.AllowedGroupPrefix
-	if cfg.AllowedGroupPattern != "" {
-		pattern, err := regexp.Compile(cfg.AllowedGroupPattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid group pattern regex: %w", err)
-		}
-		groupFilterConfig.AllowedPattern = pattern
+	// Parse the group filter policy if provided
+	groupFilterConfig, err := NewGroupFilterConfig(cfg.AllowedGroupPrefix, cfg.AllowedGroupPattern)
+	if err != nil {
+		return nil, err
 	}
 
 	if cfg.FetchUserInfoGroups {
@@ -248,9 +242,11 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Groups []string `json:"-"` // read from the configurable claim below
+		Email             string   `json:"email"`
+		Name              string   `json:"name"`
+		EmailVerified     *bool    `json:"email_verified"`
+		PreferredUsername string   `json:"preferred_username"`
+		Groups            []string `json:"-"` // read from the configurable claim below
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		o.logger.Error(err, "failed to parse claims")
@@ -307,9 +303,20 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An address the provider explicitly marks unverified must not satisfy a
+	// user-based access rule, or an account that can set an arbitrary email
+	// could claim any adminUsers entry. It stays on the session for display.
+	emailVerified := claims.EmailVerified == nil || *claims.EmailVerified
+	if !emailVerified {
+		o.logger.Info("OIDC email is marked unverified, it will not match user-based access rules",
+			"user", claims.Email)
+	}
+
 	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {
 		s.Groups = validatedGroups
 		s.AccessToken = oauth2Token.AccessToken
+		s.Username = claims.PreferredUsername
+		s.EmailVerified = emailVerified
 	})
 	if err != nil {
 		o.logger.Error(err, "failed to build complete URL")

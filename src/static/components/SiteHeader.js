@@ -1,8 +1,11 @@
-function SiteHeader({ version, authInfo, children }) {
-  const showAuth = authInfo && authInfo.enabled && authInfo.authenticated;
+// hasBottomMargin=false lets a page put its own bar directly underneath the brand
+// strip — the dashboard's sticky toolbar does exactly that.
+function SiteHeader({ version, authInfo, children, hasBottomMargin = true }) {
+  const authEnabled = authInfo && authInfo.enabled;
+  const showAuth = authEnabled && authInfo.authenticated;
   const base = window.__BASE_PATH__ || "";
 
-  const authBlock = showAuth && (
+  const authBlock = showAuth ? (
     <div className="flex items-center gap-2">
       <span
         className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[120px] sm:max-w-[150px]"
@@ -12,15 +15,26 @@ function SiteHeader({ version, authInfo, children }) {
       </span>
       <a
         href={`${base}/auth/logout`}
-        className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+        className="px-2 sm:px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
       >
         Logout
       </a>
     </div>
+  ) : (
+    // Reachable without a session only when a job allows anonymous read, so the
+    // page renders and offers the way to gain more than read access.
+    authEnabled && (
+      <a
+        href={`${base}/auth/login`}
+        className="px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
+      >
+        Sign in
+      </a>
+    )
   );
 
   return (
-    <header className="bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 mb-4 sm:mb-6 transition-colors duration-200">
+    <header className={`bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 transition-colors duration-200 ${hasBottomMargin ? "mb-4 sm:mb-6" : ""}`}>
       <div className="max-w-7xl mx-auto">
         {/* Brand strip */}
         <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-5">

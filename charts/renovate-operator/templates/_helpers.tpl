@@ -73,6 +73,25 @@ Returns an empty string when no base path is configured.
 {{- end -}}
 
 {{/*
+Returns the POLICY_ALLOWED_HOSTS value: policy.allowedHosts plus the hostname of
+the operator's own webhook base URL. That URL is chart configuration, so its host
+is an operator-approved destination by construction.
+*/}}
+{{- define "renovate-operator.policyAllowedHosts" -}}
+{{- $hosts := .Values.policy.allowedHosts | default (list) -}}
+{{- if .Values.webhook.enabled -}}
+{{- $baseUrl := include "renovate-operator.webhookBaseUrl" . -}}
+{{- if $baseUrl -}}
+{{- $hostname := (urlParse $baseUrl).hostname -}}
+{{- if and $hostname (not (has $hostname $hosts)) -}}
+{{- $hosts = append $hosts $hostname -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- join "," $hosts -}}
+{{- end -}}
+
+{{/*
 Returns the external base URL of the webhook server. When unifiedWebhookHost
 is true the UI ingress/route values are used; otherwise the webhook-specific
 values are used. Priority within each: route.hostnames[0] (https) →
@@ -92,7 +111,19 @@ not exposed.
 {{- end -}}
 {{- $url := "" -}}
 {{- if and $v.route.enabled $v.route.hostnames -}}
-{{- $url = printf "%s://%s" (default "https" $override) (index $v.route.hostnames 0) -}}
+{{- $lsScheme := "https" -}}
+{{- if and $v.route.listenerset.enabled $v.route.listenerset.protocol -}}
+{{- if eq $v.route.listenerset.protocol "HTTP" -}}
+{{- $lsScheme = "http" -}}
+{{- end -}}
+{{- end -}}
+{{- $url = printf "%s://%s" (default $lsScheme $override) (index $v.route.hostnames 0) -}}
+{{- else if and $v.route.listenerset.enabled $v.route.listenerset.hostname -}}
+{{- $lsScheme := "https" -}}
+{{- if and $v.route.listenerset.protocol (eq $v.route.listenerset.protocol "HTTP") -}}
+{{- $lsScheme = "http" -}}
+{{- end -}}
+{{- $url = printf "%s://%s" (default $lsScheme $override) $v.route.listenerset.hostname -}}
 {{- else if and $v.ingress.enabled $v.ingress.host -}}
 {{- $scheme := "http" -}}
 {{- if $v.ingress.tls -}}

@@ -1,0 +1,502 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mogenius/renovate-operator/charts/renovate-operator/values.schema.json",
+  "title": "renovate-operator Helm values",
+  "description": "Value schema for the renovate-operator chart. Requires Helm v4 or newer (JSON Schema draft 2020-12).",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "stringMap": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "string" }
+    },
+    "pullPolicy": {
+      "type": "string",
+      "enum": ["Always", "IfNotPresent", "Never"]
+    },
+    "scheme": {
+      "description": "empty falls back to the auto-derived scheme",
+      "type": "string",
+      "enum": ["", "http", "https"]
+    },
+    "imagePullSecrets": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+      }
+    },
+    "objectList": {
+      "type": ["array", "null"],
+      "items": { "type": "object" }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registry": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": ["string", "null"] },
+        "pullPolicy": { "$ref": "#/$defs/pullPolicy" },
+        "imagePullSecrets": { "$ref": "#/$defs/imagePullSecrets" }
+      }
+    },
+    "securityContext": {
+      "description": "raw Kubernetes pod and container securityContext",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pod": { "type": ["object", "null"] },
+        "container": { "type": ["object", "null"] }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ingressClassName": { "type": ["string", "null"] },
+        "host": { "type": ["string", "null"] },
+        "tls": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "properties": {
+              "hosts": { "type": "array", "items": { "type": "string" } },
+              "secretName": { "type": "string" }
+            }
+          }
+        },
+        "labels": { "$ref": "#/$defs/stringMap" },
+        "annotations": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "httpRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "labels": { "$ref": "#/$defs/stringMap" },
+        "hostnames": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "parentRefs": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "namespace": { "type": "string" },
+              "group": { "type": "string" },
+              "kind": { "type": "string" },
+              "sectionName": { "type": "string" },
+              "port": { "type": "integer" }
+            },
+            "required": ["name"]
+          }
+        },
+        "group": { "type": "string" },
+        "kind": { "type": "string" },
+        "weight": { "type": "integer" },
+        "additionalRules": { "$ref": "#/$defs/objectList" },
+        "listenerset": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "labels": { "$ref": "#/$defs/stringMap" },
+            "annotations": { "$ref": "#/$defs/stringMap" },
+            "parentRef": { "type": "object" },
+            "listenerName": { "type": "string" },
+            "port": { "type": "integer" },
+            "protocol": { "type": "string", "enum": ["HTTP", "HTTPS", "TLS"] },
+            "hostname": { "type": "string" },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "mode": { "type": "string", "enum": ["Terminate", "Passthrough"] },
+                "secretName": { "type": "string" }
+              }
+            },
+            "allowedRoutes": { "type": "object" },
+            "listeners": { "$ref": "#/$defs/objectList" }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "global": {
+      "description": "values shared with subcharts",
+      "type": ["object", "null"]
+    },
+    "fullnameOverride": {
+      "description": "override the fullname of created resources",
+      "type": "string"
+    },
+    "replicaCount": {
+      "description": "number of operator replicas; leader election is enabled automatically when > 1",
+      "type": "integer",
+      "minimum": 0
+    },
+    "crd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "type": "boolean" },
+        "mode": {
+          "description": "hook installs the CRD via a pre-install/pre-upgrade job, template renders it as part of the release",
+          "type": "string",
+          "enum": ["hook", "template"]
+        },
+        "image": { "$ref": "#/$defs/image" },
+        "securityContext": { "$ref": "#/$defs/securityContext" }
+      }
+    },
+    "image": { "$ref": "#/$defs/image" },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "labels": { "$ref": "#/$defs/stringMap" },
+        "podLabels": { "$ref": "#/$defs/stringMap" },
+        "podAnnotations": { "$ref": "#/$defs/stringMap" },
+        "revisionHistoryLimit": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultJobBackoffLimit": { "type": "integer", "minimum": 0 },
+        "defaultJobActiveDeadlineSeconds": { "type": "integer", "minimum": 1 },
+        "deleteSuccessfulJobs": { "type": "boolean" },
+        "jobTTLSecondsAfterFinished": {
+          "description": "-1 keeps finished jobs forever",
+          "type": "integer",
+          "minimum": -1
+        },
+        "globalParallelismLimit": {
+          "description": "0 = unlimited",
+          "type": "integer",
+          "minimum": 0
+        },
+        "podLabelTemplates": { "$ref": "#/$defs/stringMap" },
+        "logStorage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["disabled", "memory", "valkey", "s3"]
+            }
+          }
+        },
+        "forwardCacheToJobs": { "type": "boolean" },
+        "forwardS3CacheToJobs": { "type": "boolean" }
+      }
+    },
+    "basePath": {
+      "description": "sub-path the UI, API and auth endpoints are served under (e.g. \"/renovate\"); empty serves from the root",
+      "type": "string"
+    },
+    "ingress": { "$ref": "#/$defs/ingress" },
+    "route": { "$ref": "#/$defs/httpRoute" },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "unifiedWebhookHost": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "baseUrl": { "type": "string" },
+        "baseUrlScheme": { "$ref": "#/$defs/scheme" },
+        "ingress": { "$ref": "#/$defs/ingress" },
+        "route": { "$ref": "#/$defs/httpRoute" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultAllowedGroups": {
+          "description": "DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
+          "type": "string"
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuerUrl": { "type": "string" },
+            "clientId": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "secretKey": { "type": "string" },
+            "sessionSecretKey": { "type": "string" },
+            "redirectUrl": { "type": "string" },
+            "redirectScheme": { "$ref": "#/$defs/scheme" },
+            "insecureSkipVerify": { "type": "boolean" },
+            "logoutUrl": { "type": "string" },
+            "allowedGroupPrefix": { "type": "string" },
+            "allowedGroupPattern": { "type": "string" },
+            "groupsClaim": { "type": "string" },
+            "additionalScopes": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "fetchUserInfoGroups": { "type": "boolean" },
+            "pkceEnabled": { "type": "boolean" },
+            "caCert": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": { "type": "string" },
+                "key": { "type": "string" },
+                "mountPath": { "type": "string" }
+              }
+            }
+          },
+          "dependentRequired": {
+            "issuerUrl": ["clientId"]
+          }
+        },
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "clientId": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "secretKey": { "type": "string" },
+            "sessionSecretKey": { "type": "string" },
+            "redirectUrl": { "type": "string" },
+            "redirectScheme": { "$ref": "#/$defs/scheme" },
+            "orgGroups": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "whether to enforce per-job access rules; when false every authenticated user holds admin access and all group and user rules are ignored (anonymous read still applies)",
+          "type": "boolean"
+        },
+        "defaults": {
+          "description": "default access rules for RenovateJobs that leave the matching field in spec.access unset",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "readerGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "adminGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "readerUsers": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "adminUsers": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "anonymousRead": { "type": "boolean" },
+            "anonymousReadLogs": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ownNamespaceOnly": { "type": "boolean" },
+        "watchNamespace": { "type": "string" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "master switch for the policy engine; false runs the operator unsecured",
+          "type": "boolean"
+        },
+        "allowedHosts": {
+          "description": "exact bare hostnames the operator may send to; no scheme, port, path or wildcard",
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$"
+          }
+        },
+        "requireSecretRefOptIn": { "type": "boolean" },
+        "allowedServiceAccounts": {
+          "description": "ServiceAccount names a RenovateJob may run as; empty allows only the namespace default",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "allowRootUser": { "type": "boolean" },
+        "allowedImages": {
+          "description": "image repository prefixes a RenovateJob may run; empty denies every image",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "securityContext": { "$ref": "#/$defs/securityContext" },
+    "resources": { "type": ["object", "null"] },
+    "extraEnv": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+      }
+    },
+    "extraVolumes": { "$ref": "#/$defs/objectList" },
+    "extraVolumeMounts": { "$ref": "#/$defs/objectList" },
+    "nodeSelector": { "$ref": "#/$defs/stringMap" },
+    "tolerations": { "$ref": "#/$defs/objectList" },
+    "affinity": { "type": ["object", "null"] },
+    "topologySpreadConstraints": { "$ref": "#/$defs/objectList" },
+    "priorityClassName": { "type": "string" },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "create": { "type": "boolean" },
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "labels": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "description": "one of debug, info, error, panic or any integer value > 0",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(debug|info|error|panic|[1-9][0-9]*)$"
+            },
+            { "type": "integer", "minimum": 1 }
+          ]
+        },
+        "format": { "type": "string", "enum": ["json", "console"] }
+      }
+    },
+    "externalKeyValueStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "useTls": { "type": "boolean" },
+        "host": { "type": ["string", "null"] },
+        "port": { "type": ["integer", "string", "null"] },
+        "username": { "type": ["string", "null"] },
+        "existingSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": ["string", "null"] },
+            "urlKey": { "type": ["string", "null"] },
+            "hostKey": { "type": ["string", "null"] },
+            "portKey": { "type": ["string", "null"] },
+            "usernameKey": { "type": ["string", "null"] },
+            "passwordKey": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "valkey": {
+      "description": "bundled valkey subchart; keys beyond the ones listed here are passed through to the subchart",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingSecret": {
+          "description": "DEPRECATED: use externalKeyValueStore.existingSecret.name instead",
+          "type": "string"
+        },
+        "existingSecretKey": {
+          "description": "DEPRECATED: use externalKeyValueStore.existingSecret.urlKey instead",
+          "type": "string"
+        }
+      }
+    },
+    "s3": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bucket": { "type": "string" },
+        "region": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "forcePathStyle": { "type": "boolean" },
+        "logPrefix": { "type": "string" },
+        "cachePrefix": { "type": "string" },
+        "existingSecret": {
+          "description": "Secret must contain the keys access-key-id and secret-access-key",
+          "type": "string"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": ["string", "null"] },
+            "labels": { "$ref": "#/$defs/stringMap" }
+          }
+        },
+        "dashboard": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "annotations": { "$ref": "#/$defs/stringMap" },
+            "labels": { "$ref": "#/$defs/stringMap" },
+            "namespace": { "type": ["string", "null"] },
+            "grafanaDashboard": {
+              "description": "passed through to the GrafanaDashboard CR spec",
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "extraManifests": {
+      "description": "list of extra manifests, each rendered through tpl",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "endpoint": { "type": "string" },
+        "protocol": { "type": "string", "enum": ["grpc"] },
+        "forwardToJobs": { "type": "boolean" },
+        "jobEndpoint": { "type": "string" }
+      }
+    }
+  }
+}

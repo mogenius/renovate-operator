@@ -21,6 +21,7 @@ import (
 	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/podLogs"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
 	"renovate-operator/internal/webhookSync"
@@ -29,6 +30,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -79,8 +81,9 @@ type RenovateJobManager interface {
 	// against the webhook signing keys configured for the specified RenovateJob CRD. Standard Webhooks is a
 	// vendor-neutral signing scheme; GitLab "signing tokens" are one implementation of it, not the only one.
 	IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
-	// UpdateExecutionOptions updates the execution options for the specified RenovateJob CRD.
-	UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error
+	// SetAcceptedCondition records whether the RenovateJob satisfies the operator's
+	// policy, so a refusal is visible on the resource rather than only in the log.
+	SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) error
 	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
 	// transitions its CRD status to cancelled, freeing the slot for the next dispatch.
 	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
@@ -95,6 +98,7 @@ type renovateJobManager struct {
 	lock                     *sync.RWMutex
 	logStore                 logStore.LogStore
 	logReader                podLogs.PodLogReader
+	policy                   policy.Policy
 }
 
 type RenovateJobIdentifier struct {
@@ -114,17 +118,18 @@ func NonZeroTime(t time.Time) *time.Time {
 }
 
 type RenovateProjectStatus struct {
-	Name                 string                    `json:"name"`
-	Status               api.RenovateProjectStatus `json:"status"`
-	LastTransition       *time.Time                `json:"lastTransition,omitempty"`
-	Priority             int32                     `json:"priority,omitempty"`
-	RenovateResultStatus *string                   `json:"renovateResultStatus,omitempty"`
-	Duration             *string                   `json:"duration,omitempty"`
-	PRActivity           *api.PRActivity           `json:"prActivity,omitempty"`
-	LogIssues            *api.LogIssues            `json:"logIssues,omitempty"`
+	Name                 string                        `json:"name"`
+	Status               api.RenovateProjectStatus     `json:"status"`
+	LastTransition       *time.Time                    `json:"lastTransition,omitempty"`
+	Priority             int32                         `json:"priority,omitempty"`
+	RenovateResultStatus *string                       `json:"renovateResultStatus,omitempty"`
+	Duration             *string                       `json:"duration,omitempty"`
+	PRActivity           *api.PRActivity               `json:"prActivity,omitempty"`
+	LogIssues            *api.LogIssues                `json:"logIssues,omitempty"`
+	ExecutionOptions     *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
 }
 
-func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore, lr podLogs.PodLogReader) RenovateJobManager {
+func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore, lr podLogs.PodLogReader, p policy.Policy) RenovateJobManager {
 	return &renovateJobManager{
 		client:                   client,
 		gitProviderClientFactory: gitProviderClientFactory,
@@ -132,6 +137,7 @@ func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitPro
 		lock:                     &sync.RWMutex{},
 		logStore:                 ls,
 		logReader:                lr,
+		policy:                   p,
 	}
 }
 
@@ -175,6 +181,7 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 				Duration:             project.Duration,
 				PRActivity:           project.PRActivity,
 				LogIssues:            project.LogIssues,
+				ExecutionOptions:     project.ExecutionOptions,
 			})
 		}
 	}
@@ -199,6 +206,7 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 			Duration:             project.Duration,
 			PRActivity:           project.PRActivity,
 			LogIssues:            project.LogIssues,
+			ExecutionOptions:     project.ExecutionOptions,
 		})
 	}
 	return result, nil
@@ -427,6 +435,15 @@ func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *ap
 	if err != nil {
 		return err
 	}
+	// Only writes are gated. For a removal the delivery URL is matching input, not
+	// a destination, and refusing it would strand exactly the hook that a hostile
+	// baseUrl created.
+	if len(desired) > 0 {
+		if err := r.policy.ValidateDestination(rawURL, "spec.webhook.baseUrl"); err != nil {
+			metricStore.IncPolicyDenial(ctx, "destination")
+			return fmt.Errorf("refusing to write webhooks: %w", err)
+		}
+	}
 	webhookURL, err := buildWebhookURL(rawURL, job)
 	if err != nil {
 		return fmt.Errorf("failed to parse webhookURL: %w", err)
@@ -452,9 +469,15 @@ func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *ap
 }
 
 func webhookURLForJob(renovateJob *api.RenovateJob) (string, error) {
-	baseURL := config.GetValue("WEBHOOK_BASE_URL")
+	baseURL := ""
+	if renovateJob.Spec.Webhook != nil {
+		baseURL = renovateJob.Spec.Webhook.BaseURL
+	}
 	if baseURL == "" {
-		return "", fmt.Errorf("webhook delivery URL is unknown: expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
+		baseURL = config.GetValue("WEBHOOK_BASE_URL")
+	}
+	if baseURL == "" {
+		return "", fmt.Errorf("webhook delivery URL is unknown: set spec.webhook.baseUrl on the RenovateJob, or expose the webhook via the chart's webhook.route/webhook.ingress (WEBHOOK_BASE_URL)")
 	}
 	platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 	path, err := utils.WebhookEndpointPath(platform)
@@ -539,6 +562,11 @@ func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.
 		} else {
 			metricStore.IncSecretResolutionError(ctx, "api_error")
 		}
+		return nil, err
+	}
+
+	if err := r.policy.ValidateReferencedSecret(secret); err != nil {
+		metricStore.IncPolicyDenial(ctx, "secret_ref")
 		return nil, err
 	}
 
@@ -676,16 +704,34 @@ func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project strin
 	})
 }
 
-func (r *renovateJobManager) UpdateExecutionOptions(ctx context.Context, job RenovateJobIdentifier, options *api.RenovateExecutionOptions) error {
+func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) error {
 	defer r.globalManagerLock(false)()
+
+	status := v1.ConditionTrue
+	if !accepted {
+		status = v1.ConditionFalse
+	}
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
 		if err != nil {
 			return err
 		}
-		renovateJob.Status.ExecutionOptions = options
 
+		condition := v1.Condition{
+			Type:               api.ConditionAccepted,
+			Status:             status,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: renovateJob.Generation,
+		}
+
+		// The reconciler runs on a one-minute requeue, so writing unconditionally
+		// would rewrite the status and bump resourceVersion on every tick forever.
+		// SetStatusCondition reports whether anything actually changed.
+		if !meta.SetStatusCondition(&renovateJob.Status.Conditions, condition) {
+			return nil
+		}
 		return r.client.Status().Update(ctx, renovateJob)
 	})
 }
