@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	"renovate-operator/config"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -244,6 +245,28 @@ func TestJobDefinitions_NoRenovateConfig(t *testing.T) {
 	}
 	if find(pod.Volumes, byName[corev1.Volume](renovateConfigVolumeName)) != nil {
 		t.Error("expected no config volume without renovateConfig")
+	}
+}
+
+func TestJobDefinitions_ExtraEnvOverridesRenovateConfigFile(t *testing.T) {
+	err := config.InitializeConfigModule([]config.ConfigItemDescription{})
+	if err != nil {
+		t.Fatalf("expected to initialize config module without error, got %v", err)
+	}
+
+	job := configJob(&api.RenovateJobConfig{Inline: "{}"})
+	job.Spec.Image = "renovate/renovate:latest"
+	job.Spec.ExtraEnv = []corev1.EnvVar{{Name: "RENOVATE_CONFIG_FILE", Value: "/custom/config.js"}}
+
+	pod := newRenovateJob(job, "org/repo", nil, "").Spec.Template.Spec
+	var values []string
+	for _, env := range pod.Containers[0].Env {
+		if env.Name == "RENOVATE_CONFIG_FILE" {
+			values = append(values, env.Value)
+		}
+	}
+	if !slices.Equal(values, []string{"/custom/config.js"}) {
+		t.Errorf("expected only the extraEnv value, got %v", values)
 	}
 }
 
