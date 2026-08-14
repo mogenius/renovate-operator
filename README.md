@@ -66,33 +66,8 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 
 ## Documentation
 
-- **Platform Setup**
-  - [GitLab](./docs/platforms/gitlab.md)
-  - [GitHub PAT](./docs/platforms/github-pat.md)
-  - [GitHub App - External Secrets Operator](./docs/platforms/github-app-eso.md)
-  - [GitHub App - Native](./docs/platforms/github-app-native.md)
-  - _Azure DevOps, Bitbucket, Gitea, Forgejo, and others: configure via `extraEnv`_ ([see Renovate platform docs](./docs/platforms/generic.md))
-- [Autodiscovery](./docs/autodiscovery.md)
-- Webhook API
-  - [Generic](./docs/webhooks/webhook.md)
-  - [Automatic Webhook Sync](./docs/webhooks/sync.md)
-  - [Forgejo](./docs/webhooks/forgejo.md)
-  - [Gitea](./docs/webhooks/gitea.md)
-  - [GitHub](./docs/webhooks/github.md)
-  - [GitLab](./docs/webhooks/gitlab.md)
-  - [Bitbucket](./docs/webhooks/bitbucket.md)
-- [Custom Renovate Configuration](./docs/renovate-config.md)
-- [Extra Volumes](./docs/extra-volumes.md)
-- [Image Pull Secrets](./docs/image-pull-secrets.md)
-- [Scheduling](./docs/scheduling.md)
-- [Annotation Triggers](./docs/annotation-triggers.md)
-- [Metrics](./docs/metrics.md)
-- [PR Activity](./docs/pr-activity.md)
-- [Authentication](./docs/auth.md)
-- [Serving the UI under a Sub-Path](./docs/base-path.md)
-- [Valkey / Redis Cache](./docs/valkey.md)
-- [S3 Object Storage](./docs/s3.md)
-- [Templated Pod Labels](./docs/pod-label-templates.md)
+- [Getting Started](./docs/getting-started.md) — install, first RenovateJob, platform setup
+- [Full documentation index](./docs/README.md)
 
 ## Contributing
 

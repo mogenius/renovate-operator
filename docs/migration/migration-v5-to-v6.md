@@ -5,7 +5,7 @@ v6 brings two independent changes: a policy engine, and a rewritten UI access mo
 The policy engine exists because a RenovateJob is more powerful than it looks: the operator acts on
 one using **its own** cluster credentials, so a few spec fields let whoever can edit a RenovateJob
 read secrets they cannot otherwise read, and send them, or the job's platform token, to a host of
-their choosing. [security.md](security.md) has the full reasoning.
+their choosing. [security.md](../security/security.md) has the full reasoning.
 
 The access model replaces the single `spec.allowedGroups` boolean with reader and admin roles. Unlike
 the policy engine it ships **on**, and it changes what an existing install shows in the UI, so read
@@ -42,7 +42,7 @@ RenovateJobs addresses all of it, and an external admission policy engine such a
 `ValidatingAdmissionPolicy` can express the same constraints and some the built-in engine cannot. If
 you take one of those routes, leave `policy.enabled: false` and skip to
 [section 6](#6-what-the-crd-rejects-outright), which applies either way. See
-[security.md](security.md#choosing-a-mitigation) for the trade-offs and a coverage table.
+[security.md](../security/security.md#choosing-a-mitigation) for the trade-offs and a coverage table.
 
 ## What breaks on upgrade regardless
 
@@ -242,7 +242,7 @@ request is treated as an admin and access rules are ignored, exactly as in v5.
 
 v5 had one control: `spec.allowedGroups`, which granted everything or nothing. v6 splits that into
 readers and admins, adds anonymous read for public dashboards, and gates the unredacted Renovate logs
-separately. [auth.md](auth.md#access-control) is the reference; this section is only what changes on
+separately. [auth.md](../configuration/auth.md#access-control) is the reference; this section is only what changes on
 upgrade.
 
 The chart keeps the two concepts apart. `auth` configures **authentication**, the identity providers
