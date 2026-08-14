@@ -226,33 +226,8 @@
       "additionalProperties": false,
       "properties": {
         "defaultAllowedGroups": {
-          "description": "DEPRECATED: use auth.defaultAccess.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
+          "description": "DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
           "type": "string"
-        },
-        "defaultAccess": {
-          "description": "default access rules for RenovateJobs that leave the matching field in spec.access unset",
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "readerGroups": {
-              "type": ["array", "null"],
-              "items": { "type": "string" }
-            },
-            "adminGroups": {
-              "type": ["array", "null"],
-              "items": { "type": "string" }
-            },
-            "readerUsers": {
-              "type": ["array", "null"],
-              "items": { "type": "string" }
-            },
-            "adminUsers": {
-              "type": ["array", "null"],
-              "items": { "type": "string" }
-            },
-            "anonymousRead": { "type": "boolean" },
-            "anonymousReadLogs": { "type": "boolean" }
-          }
         },
         "oidc": {
           "type": "object",
@@ -303,6 +278,41 @@
             "redirectUrl": { "type": "string" },
             "redirectScheme": { "$ref": "#/$defs/scheme" },
             "orgGroups": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "whether to enforce per-job access rules; when false every authenticated user holds admin access and all group and user rules are ignored (anonymous read still applies)",
+          "type": "boolean"
+        },
+        "defaults": {
+          "description": "default access rules for RenovateJobs that leave the matching field in spec.access unset",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "readerGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "adminGroups": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "readerUsers": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "adminUsers": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "anonymousRead": { "type": "boolean" },
+            "anonymousReadLogs": { "type": "boolean" }
           }
         }
       }

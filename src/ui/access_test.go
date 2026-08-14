@@ -66,6 +66,47 @@ func TestResolveAccess(t *testing.T) {
 			wantPermissions: []string{},
 		},
 		{
+			name:            "authorization disabled makes any session an admin",
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}}},
+			session:         &sessionData{Email: "nobody@example.com", Groups: []string{"team-unrelated"}},
+			defaults:        AccessDefaults{AuthorizationDisabled: true},
+			wantRole:        roleAdmin,
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+		},
+		{
+			name:            "authorization disabled grants a session admin on an unconfigured job",
+			job:             &api.RenovateJob{},
+			session:         &sessionData{Email: "nobody@example.com"},
+			defaults:        AccessDefaults{AuthorizationDisabled: true},
+			wantRole:        roleAdmin,
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+		},
+		{
+			name:            "authorization disabled still denies requests without a session",
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}}},
+			defaults:        AccessDefaults{AuthorizationDisabled: true},
+			wantRole:        roleNone,
+			wantPermissions: []string{},
+		},
+		{
+			name:            "authorization disabled still honours anonymous read",
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AnonymousReadLogs: ptr(true)}}},
+			defaults:        AccessDefaults{AuthorizationDisabled: true},
+			wantRole:        roleReader,
+			wantPermissions: []string{permLogs},
+		},
+		{
+			name: "authorization disabled overrides a conflicting access configuration for a session",
+			job: &api.RenovateJob{Spec: api.RenovateJobSpec{
+				AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
+				Access:        &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}},
+			}},
+			session:         &sessionData{Email: "nobody@example.com"},
+			defaults:        AccessDefaults{AuthorizationDisabled: true},
+			wantRole:        roleAdmin,
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+		},
+		{
 			name:            "admin user matched by email",
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"me@example.com"}}}},
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true},
@@ -356,6 +397,14 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 			jobs:             []api.RenovateJob{{ObjectMeta: metav1.ObjectMeta{Name: "plain"}}, groupsJob("job1")},
 			wantReason:       ReasonGroupsUnsupported,
 			wantAffectedJobs: []string{"default/job1"},
+		},
+		{
+			// The group rules are never evaluated, so they cannot hide anything and
+			// there is nothing to warn about.
+			name:     "groupless provider with authorization disabled is enforceable",
+			provider: groupless,
+			defaults: AccessDefaults{ReaderGroups: []string{"team-reader"}, AuthorizationDisabled: true},
+			jobs:     []api.RenovateJob{groupsJob("job1")},
 		},
 		{
 			name:     "groupless provider with deprecated allowedGroups is not enforceable",

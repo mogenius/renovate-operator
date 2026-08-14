@@ -181,22 +181,24 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 // RenovateJobs which leave parts of their access configuration unset.
 func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
 	defaults := ui.AccessDefaults{
-		ReaderGroups:      parseGroupList(config.GetValue("DEFAULT_READER_GROUPS")),
-		AdminGroups:       parseGroupList(config.GetValue("DEFAULT_ADMIN_GROUPS")),
-		ReaderUsers:       parseGroupList(config.GetValue("DEFAULT_READER_USERS")),
-		AdminUsers:        parseGroupList(config.GetValue("DEFAULT_ADMIN_USERS")),
-		AnonymousRead:     config.GetValue("DEFAULT_ANONYMOUS_READ") == "true",
-		AnonymousReadLogs: config.GetValue("DEFAULT_ANONYMOUS_READ_LOGS") == "true",
+		ReaderGroups:          parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_READER_GROUPS")),
+		AdminGroups:           parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_ADMIN_GROUPS")),
+		ReaderUsers:           parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_READER_USERS")),
+		AdminUsers:            parseGroupList(config.GetValue("AUTHORIZATION_DEFAULT_ADMIN_USERS")),
+		AnonymousRead:         config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ") == "true",
+		AnonymousReadLogs:     config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS") == "true",
+		AuthorizationDisabled: config.GetValue("AUTHORIZATION_ENABLED") == "false",
 	}
 
 	// The deprecated DEFAULT_ALLOWED_GROUPS granted what is now admin access.
 	if legacy := parseGroupList(config.GetValue("DEFAULT_ALLOWED_GROUPS")); len(legacy) > 0 {
-		log.Info("DEFAULT_ALLOWED_GROUPS is deprecated, use DEFAULT_ADMIN_GROUPS (auth.defaultAccess.adminGroups)",
+		log.Info("DEFAULT_ALLOWED_GROUPS is deprecated, use AUTHORIZATION_DEFAULT_ADMIN_GROUPS (authorization.defaults.adminGroups)",
 			"groups", legacy)
 		defaults.AdminGroups = append(defaults.AdminGroups, legacy...)
 	}
 
 	log.Info("Default access configured",
+		"authorizationEnabled", !defaults.AuthorizationDisabled,
 		"readerGroups", defaults.ReaderGroups,
 		"adminGroups", defaults.AdminGroups,
 		"readerUsers", defaults.ReaderUsers,
@@ -244,7 +246,7 @@ func warnAccessRulesEnforceable(log logr.Logger, provider ui.AuthProvider, defau
 	log.Error(nil, "!!! ACCESS RULES CANNOT BE ENFORCED !!!")
 	log.Error(nil, "the configured auth provider supplies no groups, so no group rule can ever match")
 	log.Error(nil, "every RenovateJob stays hidden in the UI until this is fixed")
-	log.Error(nil, "set auth.github.orgGroups=true (GITHUB_ORG_GROUPS), or name individual accounts via DEFAULT_ADMIN_USERS/DEFAULT_READER_USERS instead of groups",
+	log.Error(nil, "set auth.github.orgGroups=true (GITHUB_ORG_GROUPS), or name individual accounts via AUTHORIZATION_DEFAULT_ADMIN_USERS/AUTHORIZATION_DEFAULT_READER_USERS instead of groups",
 		"defaultReaderGroups", defaults.ReaderGroups,
 		"defaultAdminGroups", defaults.AdminGroups)
 }
@@ -422,34 +424,45 @@ func main() {
 			Default:  "",
 		},
 		{
-			Key:      "DEFAULT_READER_GROUPS",
+			Key:      "AUTHORIZATION_DEFAULT_READER_GROUPS",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "DEFAULT_ADMIN_GROUPS",
+			Key:      "AUTHORIZATION_DEFAULT_ADMIN_GROUPS",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "DEFAULT_READER_USERS",
+			Key:      "AUTHORIZATION_DEFAULT_READER_USERS",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "DEFAULT_ADMIN_USERS",
+			Key:      "AUTHORIZATION_DEFAULT_ADMIN_USERS",
 			Optional: true,
 			Default:  "",
 		},
 		{
-			Key:      "DEFAULT_ANONYMOUS_READ",
+			Key:      "AUTHORIZATION_DEFAULT_ANONYMOUS_READ",
 			Optional: true,
 			Default:  "false",
 		},
 		{
-			Key:      "DEFAULT_ANONYMOUS_READ_LOGS",
+			Key:      "AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS",
 			Optional: true,
 			Default:  "false",
+		},
+		{
+			Key:      "AUTHORIZATION_ENABLED",
+			Optional: true,
+			Default:  "true",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'AUTHORIZATION_ENABLED' must be 'true' or 'false'")
+				}
+				return nil
+			},
 		},
 		{
 			Key:      "OIDC_ALLOWED_GROUP_PREFIX",
