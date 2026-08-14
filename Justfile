@@ -54,6 +54,35 @@ test-helm:
 test-integration:
     cd src && go test -tags integration -count=1 -v ./integration/...
 
+# Serve the frontend with mock data for manual UI work, no cluster needed.
+# Override the fixture size with MOCK_JOB_COUNT / MOCK_PROJECTS_PER_JOB.
+# Runs on its own port so a dev server left running never collides with test-ui.
+ui-dev: jsInstall
+    cd tests/ui && MOCK_API=1 STATIC_FRONTEND_PORT=8098 node staticFrontendServer.mjs
+
+# Execute the browser tests for the static frontend (see tests/ui/README.md)
+test-ui *args: jsInstall
+    #!/usr/bin/env sh
+    set -e
+    cd tests/ui
+    [ -d node_modules ] || npm ci
+    npx playwright install chromium > /dev/null
+    npx playwright test {{args}}
+
+# Run the browser tests against the pages from another revision, to confirm a
+# spec really fails without the change it covers (e.g. `just test-ui-baseline HEAD`)
+test-ui-baseline revision *args: jsInstall
+    #!/usr/bin/env sh
+    set -e
+    mkdir -p tests/ui/.baseline
+    git show {{revision}}:src/static/index.html > tests/ui/.baseline/index.html
+    git show {{revision}}:src/static/pages/logs.html > tests/ui/.baseline/logs.html
+    cd tests/ui
+    [ -d node_modules ] || npm ci
+    npx playwright install chromium > /dev/null
+    INDEX_HTML_PATH="$PWD/.baseline/index.html" LOGS_HTML_PATH="$PWD/.baseline/logs.html" \
+        STATIC_FRONTEND_PORT=8100 npx playwright test {{args}}
+
 # Execute golangci-lint
 golangci-lint: generate
     cd src && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run --config=.golangci.yml '--timeout=1h' ./...
