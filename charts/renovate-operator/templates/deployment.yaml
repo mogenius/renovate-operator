@@ -288,26 +288,28 @@ spec:
               value: {{ .Values.policy.allowRootUser | quote }}
             - name: POLICY_ALLOWED_IMAGES
               value: {{ join "," .Values.policy.allowedImages | quote }}
-            {{- with .Values.auth.defaultAccess }}
+            - name: AUTHORIZATION_ENABLED
+              value: {{ dig "enabled" true .Values.authorization | quote }}
+            {{- with .Values.authorization.defaults }}
             {{- with .readerGroups }}
-            - name: DEFAULT_READER_GROUPS
+            - name: AUTHORIZATION_DEFAULT_READER_GROUPS
               value: {{ join "," . | quote }}
             {{- end }}
             {{- with .adminGroups }}
-            - name: DEFAULT_ADMIN_GROUPS
+            - name: AUTHORIZATION_DEFAULT_ADMIN_GROUPS
               value: {{ join "," . | quote }}
             {{- end }}
             {{- with .readerUsers }}
-            - name: DEFAULT_READER_USERS
+            - name: AUTHORIZATION_DEFAULT_READER_USERS
               value: {{ join "," . | quote }}
             {{- end }}
             {{- with .adminUsers }}
-            - name: DEFAULT_ADMIN_USERS
+            - name: AUTHORIZATION_DEFAULT_ADMIN_USERS
               value: {{ join "," . | quote }}
             {{- end }}
-            - name: DEFAULT_ANONYMOUS_READ
+            - name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ
               value: {{ .anonymousRead | default false | quote }}
-            - name: DEFAULT_ANONYMOUS_READ_LOGS
+            - name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS
               value: {{ .anonymousReadLogs | default false | quote }}
             {{- end }}
             - name: GLOBAL_PARALLELISM_LIMIT

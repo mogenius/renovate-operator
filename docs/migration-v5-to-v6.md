@@ -8,9 +8,11 @@ read secrets they cannot otherwise read, and send them, or the job's platform to
 their choosing. [security.md](security.md) has the full reasoning.
 
 The access model replaces the single `spec.allowedGroups` boolean with reader and admin roles. Unlike
-the policy engine it has **no master switch**, and it changes what an existing install shows in the
-UI, so read [section 8](#8-ui-access-is-now-two-role-and-fails-closed) before upgrading if UI
-authentication is enabled. If you run no auth provider at all, it does not affect you.
+the policy engine it ships **on**, and it changes what an existing install shows in the UI, so read
+[section 8](#8-ui-access-is-now-two-role-and-fails-closed) before upgrading if UI authentication is
+enabled. It does have a master switch, `authorization.enabled: false`, which keeps the login and
+makes every user who passes it an admin. If you run no auth provider at all, none of this affects
+you.
 
 **The policy engine ships off.** It is opt-in so that a fresh install works straight away: you get
 Renovate running first and secure the operator afterwards. A useful side effect for you: upgrading
@@ -231,8 +233,9 @@ secret access.
 
 ## 8. UI access is now two-role and fails closed
 
-Unrelated to the policy engine, and **not** covered by `policy.enabled`. It only concerns the web UI,
-so nothing here affects whether Renovate runs.
+Unrelated to the policy engine, and **not** covered by `policy.enabled`. It has its own switch,
+`authorization.enabled`. It only concerns the web UI, so nothing here affects whether Renovate
+runs.
 
 **If you have no auth provider configured, skip this section.** With no identity to evaluate, every
 request is treated as an admin and access rules are ignored, exactly as in v5.
@@ -242,6 +245,29 @@ readers and admins, adds anonymous read for public dashboards, and gates the unr
 separately. [auth.md](auth.md#access-control) is the reference; this section is only what changes on
 upgrade.
 
+The chart keeps the two concepts apart. `auth` configures **authentication**, the identity providers
+and their sessions. The new top-level `authorization` block configures **what an identity may do**:
+
+```yaml
+auth:                      # who you are
+  oidc: {...}
+  github: {...}
+
+authorization:             # what you may do
+  enabled: true
+  defaults:
+    readerGroups: []
+    adminGroups: []
+    readerUsers: []
+    adminUsers: []
+    anonymousRead: false
+    anonymousReadLogs: false
+```
+
+The corresponding environment variables are `AUTHORIZATION_ENABLED` and `AUTHORIZATION_DEFAULT_*`.
+The one exception is the deprecated `auth.defaultAllowedGroups` (`DEFAULT_ALLOWED_GROUPS`), which
+keeps its v5 name and location.
+
 ### The empty dashboard
 
 This is the one that bites. In v5, a job without `allowedGroups` was visible to **every authenticated
@@ -250,12 +276,16 @@ anywhere is hidden from everyone.
 
 If UI auth is enabled and you never configured groups, the dashboard goes empty on upgrade.
 
+Where per-user access is not required, [Opting out of authorization
+entirely](#opting-out-of-authorization-entirely) resolves this without configuring any of the
+following.
+
 **Single user, GitHub OAuth as a gate on a public domain?** Name yourself. This needs no org, no team
 and no extra OAuth scope:
 
 ```yaml
-auth:
-  defaultAccess:
+authorization:
+  defaults:
     adminUsers:
       - octocat         # your GitHub login
       - me@example.com  # or your email, either matches
@@ -267,8 +297,8 @@ email is private, because the operator then only knows a synthesized `<login>@gi
 Otherwise, the closest equivalent to what v5 did is to name the groups that should hold full access:
 
 ```yaml
-auth:
-  defaultAccess:
+authorization:
+  defaults:
     adminGroups:
       - team-devops       # full access: view, trigger, cancel, discovery
     readerGroups:
@@ -279,8 +309,8 @@ Or, if the dashboard was effectively public before because everyone who could si
 everything, keep it visible to everyone and restrict only the actions:
 
 ```yaml
-auth:
-  defaultAccess:
+authorization:
+  defaults:
     anonymousRead: true       # anyone may view, no session needed
     anonymousReadLogs: false  # but not stream Renovate logs
     adminGroups:
@@ -295,6 +325,36 @@ one group drops every default group, and `anonymousRead: false` revokes an enabl
 Set `anonymousReadLogs` deliberately. Renovate logs are passed through unredacted and can expose
 private registry URLs, internal dependency names and branch names, which is why it is a second opt-in
 rather than part of read access.
+
+### Opting out of authorization entirely
+
+Authorization can be disabled while authentication stays in place. This suits deployments where the
+login exists to keep strangers out rather than to distinguish between users:
+
+```yaml
+authorization:
+  enabled: false   # AUTHORIZATION_ENABLED
+```
+
+Every user who can log in then holds admin access on every RenovateJob, matching v5 behaviour when no
+groups were configured. Compared with leaving the group lists empty, this states the intent
+explicitly rather than relying on a default.
+
+What it does and does not touch:
+
+- `readerGroups`, `adminGroups`, `readerUsers` and `adminUsers` are ignored, per-job and operator-wide
+- `anonymousRead` and `anonymousReadLogs` **still apply**, so a public read-only dashboard is
+  unaffected. They govern what a visitor without a session may see, which authentication does not
+  determine
+- the empty dashboard described above cannot occur, and the unenforceable-rules banner is never shown
+- `auth.github.orgGroups` is no longer required, avoiding the `read:org` re-consent it forces on
+  every user
+- the startup log reports the state as `authorizationEnabled=false`
+- the policy engine is unaffected. It is a separate switch and continues to govern what the operator
+  acts on
+
+The default `true` applies wherever different users require different access. The flag is global and
+has no per-job override, so a single RenovateJob cannot remain restricted while the rest are open.
 
 ### Everyone is signed out on upgrade
 
@@ -405,5 +465,5 @@ shows it to **every authenticated user**: a rollback widens access rather than p
 cannot pre-empt this by populating both fields, since v6 rejects a spec that sets `allowedGroups` and
 `access` together. Either stay on `spec.allowedGroups`, which both versions honour, or treat restoring
 it as a step of the downgrade, once the v5 CRD has replaced the v6 one and dropped that rule. Also
-drop `auth.defaultAccess` and `auth.github.orgGroups` from your values before reinstalling the v5
-chart, whose values schema rejects keys it does not know.
+drop the whole `authorization` block and `auth.github.orgGroups` from your values before reinstalling
+the v5 chart, whose values schema rejects keys it does not know.

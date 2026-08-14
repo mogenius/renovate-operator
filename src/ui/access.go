@@ -101,6 +101,11 @@ type AccessDefaults struct {
 	AdminUsers        []string
 	AnonymousRead     bool
 	AnonymousReadLogs bool
+	// AuthorizationDisabled turns every authenticated request into an admin and
+	// stops group and user rules from being evaluated at all. It is spelled
+	// negatively, like policy.Disabled, so the zero value enforces and a test
+	// constructing AccessDefaults{} cannot silently void authorization.
+	AuthorizationDisabled bool
 }
 
 // hasGroups reports whether any group-based rule is configured operator-wide.
@@ -128,6 +133,12 @@ const groupsUnsupportedMessage = "Access rules are configured against groups, bu
 
 func detectAccessMisconfiguration(provider AuthProvider, defaults AccessDefaults, jobs []api.RenovateJob) (m *AccessMisconfiguration, jobsWithGroups []string) {
 	if provider == nil || provider.SupportsGroups() {
+		return nil, nil
+	}
+
+	// Group rules that are never evaluated cannot hide anything, so a provider
+	// without groups is not a misconfiguration here.
+	if defaults.AuthorizationDisabled {
 		return nil, nil
 	}
 
@@ -251,6 +262,15 @@ var conflictingAccessLogged sync.Map
 func resolveAccess(job *api.RenovateJob, session *sessionData, defaults AccessDefaults, logger logr.Logger) accessDecision {
 	if job == nil {
 		return accessDecision{}
+	}
+
+	// Authorization disabled: authentication alone decides, so anyone who got
+	// past the login is an admin and no group or user rule is evaluated.
+	// Requests without a session fall through, because anonymous read is the one
+	// rule that answers a question authentication cannot: what someone who never
+	// logs in may see.
+	if defaults.AuthorizationDisabled && session != nil {
+		return adminDecision()
 	}
 
 	// Normally unreachable: the CRD's CEL rule rejects this combination. It is

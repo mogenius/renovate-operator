@@ -187,7 +187,10 @@ existence is not disclosed. A reader attempting a write gets `403`.
 
 1. **No authentication provider configured**: there is no identity to evaluate,
    so every request is an admin and `spec.access` is ignored.
-2. **Authentication enabled**: the session is matched against the job's effective
+2. **Authorization disabled** (`authorization.enabled: false`): authentication
+   alone decides, so every session is an admin on every job. See
+   [Disabling authorization](#disabling-authorization).
+3. **Authentication enabled**: the session is matched against the job's effective
    access configuration.
    - a match in `adminUsers` or `adminGroups` grants `admin`
    - otherwise a match in `readerUsers` or `readerGroups` grants `reader`
@@ -199,8 +202,8 @@ everyone gets read access, and matches only ever add to it. Signing in can never
 take access away.
 
 > **Fail closed**: a job with no access configuration anywhere is hidden from
-> everyone once authentication is enabled. Set `auth.defaultAccess.adminUsers` or
-> `auth.defaultAccess.adminGroups` (or `spec.access` per job) or the dashboard
+> everyone once authentication is enabled. Set `authorization.defaults.adminUsers` or
+> `authorization.defaults.adminGroups` (or `spec.access` per job) or the dashboard
 > will look empty.
 
 ### Naming users instead of groups
@@ -235,7 +238,9 @@ worth configuring. The username comes from the GitHub `login`, or from the OIDC
 auth:
   github:
     enabled: true       # orgGroups not needed
-  defaultAccess:
+
+authorization:
+  defaults:
     adminUsers:
       - octocat         # GitHub login
       - me@example.com  # or email, either matches
@@ -282,8 +287,8 @@ inherits, `false` opts out of an enabled default.
 These apply to every job that leaves the matching field unset:
 
 ```yaml
-auth:
-  defaultAccess:
+authorization:
+  defaults:
     readerGroups:
       - team-platform
     adminGroups:
@@ -323,6 +328,38 @@ by whatever terminates traffic: a Traefik `RateLimit` middleware, an Envoy Gatew
 Gateway API has no portable rate-limit filter, so this is implementation-specific
 either way.
 
+### Disabling authorization
+
+Authorization can be disabled while authentication stays in place. This suits
+deployments where the login exists to keep strangers out rather than to
+distinguish between users:
+
+```yaml
+authorization:
+  enabled: false        # AUTHORIZATION_ENABLED
+
+auth:
+  oidc:
+    enabled: true
+    # ... provider settings
+```
+
+With this set:
+
+- every user who can log in is an **admin on every RenovateJob**, including
+  triggering, cancelling and reconfiguring runs
+- `spec.access.readerGroups`, `adminGroups`, `readerUsers` and `adminUsers` are
+  ignored, as are their `authorization.defaults` counterparts
+- `spec.access.anonymousRead` and `anonymousReadLogs` **still apply**: they
+  govern what a visitor without a session may see, which authentication does not
+  determine. A public read-only dashboard is therefore unaffected
+- no job is hidden from an authenticated user, so the fail-closed default does
+  not apply and the misconfiguration banner never appears
+- the startup log reports the state as `authorizationEnabled=false`
+
+It has no effect when no authentication provider is configured, since every
+request is already an admin in that case.
+
 ### GitHub org and team groups
 
 GitHub OAuth has no group concept on its own. Enable `auth.github.orgGroups` to
@@ -351,7 +388,7 @@ the UI treats this as an unenforceable configuration: see below.
 
 Group rules configured against an identity provider that supplies no groups
 cannot be enforced. Today that means GitHub OAuth with `auth.github.orgGroups`
-disabled while either `auth.defaultAccess.*Groups` or any job's
+disabled while either `authorization.defaults.*Groups` or any job's
 `spec.access.*Groups` / `spec.allowedGroups` is set. Configuring only
 `adminUsers` / `readerUsers` never triggers it, since those need no groups.
 
