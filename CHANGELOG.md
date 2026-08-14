@@ -6,9 +6,9 @@
 ### ⚠ BREAKING CHANGES
 
 * **auth:** authorization is on by default when authentication is activated. If you're running the operator in an environment where authorization isn't needed but you still want to use authentication, e. G.: in your homelab, you can disable it by setting authorization.enabled = false (or AUTHORIZATION_ENABLED='false' env var) to rely soley on authentication
-* **ui:** A RenovateJob with no access configuration is now hidden from everyone once UI authentication is enabled, where before it was visible to every authenticated user. Installs without an auth provider are unaffected. GitHub OAuth installs using groups must set auth.github.orgGroups=true. See the migration guide at docs/migration-v5-to-v6.md for more info.
+* **ui:** A RenovateJob with no access configuration is now hidden from everyone once UI authentication is enabled, where before it was visible to every authenticated user. Installs without an auth provider are unaffected. GitHub OAuth installs using groups must set auth.github.orgGroups=true. See the migration guide at docs/migration/migration-v5-to-v6.md for more info.
 * The deprecated job identifiers are now removed. The renovate-operator actively migrated them since quite a few versions so you shouldn't be affected but we still marked it as breaking change.
-* **security:** RenovateJobs may no longer declare hostPath volumes, privileged containers or allowPrivilegeEscalation. The API server rejects them, and existing objects using them become unapplyable. The rest of the added policy engine is purely optional and disabled by default. Look at the migration guide docs/migration-v5-to-v6.md for further explanations.
+* **security:** RenovateJobs may no longer declare hostPath volumes, privileged containers or allowPrivilegeEscalation. The API server rejects them, and existing objects using them become unapplyable. The rest of the added policy engine is purely optional and disabled by default. Look at the migration guide docs/migration/migration-v5-to-v6.md for further explanations.
 
 ### Features
 
