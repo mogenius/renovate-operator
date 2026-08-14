@@ -45,27 +45,32 @@ func renovateConfigFileName(cfg *api.RenovateJobConfig) string {
 }
 
 // EnsureRenovateConfigMap syncs spec.renovateConfig.inline into a ConfigMap owned
-// by the RenovateJob, and deletes it when inline config is no longer used.
+// by the RenovateJob, and deletes it when inline config is no longer used. Jobs
+// with such a ConfigMap carry RenovateConfigMapAnnotationKey.
 func EnsureRenovateConfigMap(ctx context.Context, c client.Client, job *api.RenovateJob) error {
 	name := renovateConfigMapName(job)
 
 	if job.Spec.RenovateConfig == nil || job.Spec.RenovateConfig.Inline == "" {
+		if job.Annotations[api.RenovateConfigMapAnnotationKey] == "" {
+			return nil
+		}
 		existing := new(corev1.ConfigMap)
 		err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: job.Namespace}, existing)
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
+		switch {
+		case apierrors.IsNotFound(err):
+		case err != nil:
 			return fmt.Errorf("reading renovate config configmap: %w", err)
-		}
 		// only clean up ConfigMaps this job controls; leave foreign objects alone
-		if !metav1.IsControlledBy(existing, job) {
-			return nil
+		case metav1.IsControlledBy(existing, job):
+			if err := c.Delete(ctx, existing, client.Preconditions{UID: &existing.UID}); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("deleting stale renovate config configmap: %w", err)
+			}
 		}
-		if err := c.Delete(ctx, existing, client.Preconditions{UID: &existing.UID}); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting stale renovate config configmap: %w", err)
-		}
-		return nil
+		return setConfigMapMarker(ctx, c, job, false)
+	}
+
+	if err := setConfigMapMarker(ctx, c, job, true); err != nil {
+		return err
 	}
 
 	configMap := new(corev1.ConfigMap)
@@ -88,6 +93,26 @@ func EnsureRenovateConfigMap(ctx context.Context, c client.Client, job *api.Reno
 	})
 	if err != nil {
 		return fmt.Errorf("ensuring renovate config configmap: %w", err)
+	}
+	return nil
+}
+
+// setConfigMapMarker records on the RenovateJob whether the operator manages an
+// inline-config ConfigMap for it.
+func setConfigMapMarker(ctx context.Context, c client.Client, job *api.RenovateJob, marked bool) error {
+	if marked == (job.Annotations[api.RenovateConfigMapAnnotationKey] != "") {
+		return nil
+	}
+	if marked {
+		if job.Annotations == nil {
+			job.Annotations = make(map[string]string)
+		}
+		job.Annotations[api.RenovateConfigMapAnnotationKey] = "true"
+	} else {
+		delete(job.Annotations, api.RenovateConfigMapAnnotationKey)
+	}
+	if err := c.Update(ctx, job); err != nil {
+		return fmt.Errorf("updating renovate config marker annotation: %w", err)
 	}
 	return nil
 }

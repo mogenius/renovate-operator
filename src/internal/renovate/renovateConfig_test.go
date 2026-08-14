@@ -21,6 +21,26 @@ func configJob(cfg *api.RenovateJobConfig) *api.RenovateJob {
 	return job
 }
 
+// configClient builds a fake client holding the job (so the marker annotation can
+// be updated) and refreshes the job's resourceVersion from it.
+func configClient(t *testing.T, job *api.RenovateJob, objs ...client.Object) client.Client {
+	t.Helper()
+	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).WithObjects(append([]client.Object{job}, objs...)...).Build()
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(job), job); err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	return c
+}
+
+func jobHasMarker(t *testing.T, c client.Client, job *api.RenovateJob) bool {
+	t.Helper()
+	fresh := new(api.RenovateJob)
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(job), fresh); err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	return fresh.Annotations[api.RenovateConfigMapAnnotationKey] != ""
+}
+
 func getOwnedConfigMap(t *testing.T, c client.Client, job *api.RenovateJob) (*corev1.ConfigMap, bool) {
 	t.Helper()
 	cm := new(corev1.ConfigMap)
@@ -32,8 +52,8 @@ func getOwnedConfigMap(t *testing.T, c client.Client, job *api.RenovateJob) (*co
 }
 
 func TestEnsureRenovateConfigMap_Inline(t *testing.T) {
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).Build()
 	job := configJob(&api.RenovateJobConfig{Inline: "module.exports = {};"})
+	c := configClient(t, job)
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
 		t.Fatalf("ensure failed: %v", err)
@@ -52,11 +72,14 @@ func TestEnsureRenovateConfigMap_Inline(t *testing.T) {
 	if cm.Labels[api.LabelAppManagedBy] != api.LabelValueManagedBy {
 		t.Errorf("expected managed-by label, got %v", cm.Labels)
 	}
+	if !jobHasMarker(t, c, job) {
+		t.Error("expected the marker annotation on the RenovateJob")
+	}
 }
 
 func TestEnsureRenovateConfigMap_UpdateReplacesFileName(t *testing.T) {
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).Build()
 	job := configJob(&api.RenovateJobConfig{Inline: "{}", FileName: "config.json"})
+	c := configClient(t, job)
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
 		t.Fatalf("ensure failed: %v", err)
@@ -76,8 +99,8 @@ func TestEnsureRenovateConfigMap_UpdateReplacesFileName(t *testing.T) {
 }
 
 func TestEnsureRenovateConfigMap_DeletesWhenInlineRemoved(t *testing.T) {
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).Build()
 	job := configJob(&api.RenovateJobConfig{Inline: "{}"})
+	c := configClient(t, job)
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
 		t.Fatalf("ensure failed: %v", err)
@@ -89,6 +112,30 @@ func TestEnsureRenovateConfigMap_DeletesWhenInlineRemoved(t *testing.T) {
 
 	if _, ok := getOwnedConfigMap(t, c, job); ok {
 		t.Error("expected the owned ConfigMap to be deleted when switching to configMapRef")
+	}
+	if jobHasMarker(t, c, job) {
+		t.Error("expected the marker annotation to be removed with the ConfigMap")
+	}
+}
+
+func TestEnsureRenovateConfigMap_SkipsCleanupWithoutMarker(t *testing.T) {
+	job := configJob(&api.RenovateJobConfig{Inline: "{}"})
+	c := configClient(t, job)
+
+	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
+		t.Fatalf("ensure failed: %v", err)
+	}
+	delete(job.Annotations, api.RenovateConfigMapAnnotationKey)
+	if err := c.Update(context.Background(), job); err != nil {
+		t.Fatalf("stripping the marker failed: %v", err)
+	}
+	job.Spec.RenovateConfig = nil
+	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
+		t.Fatalf("second ensure failed: %v", err)
+	}
+
+	if _, ok := getOwnedConfigMap(t, c, job); !ok {
+		t.Error("expected cleanup to be skipped for a job without the marker annotation")
 	}
 }
 
@@ -102,7 +149,8 @@ func foreignConfigMap(job *api.RenovateJob) *corev1.ConfigMap {
 
 func TestEnsureRenovateConfigMap_LeavesForeignConfigMapAlone(t *testing.T) {
 	job := configJob(nil)
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).WithObjects(foreignConfigMap(job)).Build()
+	job.Annotations = map[string]string{api.RenovateConfigMapAnnotationKey: "true"}
+	c := configClient(t, job, foreignConfigMap(job))
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
 		t.Fatalf("ensure failed: %v", err)
@@ -110,11 +158,14 @@ func TestEnsureRenovateConfigMap_LeavesForeignConfigMapAlone(t *testing.T) {
 	if _, ok := getOwnedConfigMap(t, c, job); !ok {
 		t.Error("expected the foreign ConfigMap to survive cleanup")
 	}
+	if jobHasMarker(t, c, job) {
+		t.Error("expected the marker annotation to be removed once there is nothing to clean")
+	}
 }
 
 func TestEnsureRenovateConfigMap_RefusesToAdoptForeignConfigMap(t *testing.T) {
 	job := configJob(&api.RenovateJobConfig{Inline: "{}"})
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).WithObjects(foreignConfigMap(job)).Build()
+	c := configClient(t, job, foreignConfigMap(job))
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err == nil {
 		t.Fatal("expected an error refusing to adopt the foreign ConfigMap")
@@ -126,14 +177,17 @@ func TestEnsureRenovateConfigMap_RefusesToAdoptForeignConfigMap(t *testing.T) {
 }
 
 func TestEnsureRenovateConfigMap_NoopWithoutConfig(t *testing.T) {
-	c := fake.NewClientBuilder().WithScheme(policyScheme(t)).Build()
 	job := configJob(nil)
+	c := configClient(t, job)
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
 		t.Fatalf("ensure failed: %v", err)
 	}
 	if _, ok := getOwnedConfigMap(t, c, job); ok {
 		t.Error("expected no ConfigMap without renovateConfig")
+	}
+	if jobHasMarker(t, c, job) {
+		t.Error("expected no marker annotation without renovateConfig")
 	}
 }
 
