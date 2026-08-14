@@ -101,9 +101,8 @@ type RenovateJobConfig struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=262144
 	Inline string `json:"inline,omitempty"`
-	// File name the inline configuration is mounted as; the extension tells Renovate the format. Ignored with configMapRef.
+	// File name the inline configuration is mounted as; the extension tells Renovate the format. Defaults to "config.js". Ignored with configMapRef.
 	// +optional
-	// +kubebuilder:default="config.js"
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$`
 	FileName string `json:"fileName,omitempty"`

@@ -3284,9 +3284,9 @@ spec:
                     - name
                     type: object
                   fileName:
-                    default: config.js
                     description: File name the inline configuration is mounted as;
-                      the extension tells Renovate the format. Ignored with configMapRef.
+                      the extension tells Renovate the format. Defaults to "config.js".
+                      Ignored with configMapRef.
                     maxLength: 253
                     pattern: ^[a-zA-Z0-9._-]+\.(js|cjs|mjs|json|json5)$
                     type: string
