@@ -176,7 +176,7 @@ The operator warns on every start, and each RenovateJob reports `Accepted=True` 
 `PolicyDisabled`, so `kubectl get renovatejobs -o wide` shows the state at a glance.
 
 Secure it afterwards: configure the values below, then flip the switch.
-[migration-v5-to-v6.md](migration-v5-to-v6.md) walks through the sequence. Leaving it off is
+[migration-v5-to-v6.md](../migration/migration-v5-to-v6.md) walks through the sequence. Leaving it off is
 defensible for a homelab, a local cluster or CI; on anything shared it means the controls documented
 here are not in effect.
 
@@ -356,7 +356,7 @@ The API server refuses these at `kubectl apply`, and no operator setting re-enab
 | `spec.securityContext.container.privileged` | equivalent to root on the host |
 | `spec.securityContext.container.allowPrivilegeEscalation` | the same, one step removed |
 
-No documented Renovate use case needs any of them; see [extra-volumes.md](extra-volumes.md) for
+No documented Renovate use case needs any of them; see [extra-volumes.md](../configuration/extra-volumes.md) for
 what the supported volume types cover.
 
 ### Governed by operator policy

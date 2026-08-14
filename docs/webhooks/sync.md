@@ -133,7 +133,7 @@ policy:
     - renovate-operator.renovate-operator.svc.cluster.local # only needed for a per-job override
 ```
 
-This exists because the delivery URL is written onto your repositories and persists there: an unbounded `baseUrl` would keep receiving every repository event — and, on GitLab, Gitea and Forgejo, the webhook authentication token — long after the RenovateJob was corrected. See [security.md](../security.md).
+This exists because the delivery URL is written onto your repositories and persists there: an unbounded `baseUrl` would keep receiving every repository event — and, on GitLab, Gitea and Forgejo, the webhook authentication token — long after the RenovateJob was corrected. See [security.md](../security/security.md).
 
 Removal is deliberately not gated: the operator will still delete a hook whose delivery host is not allowlisted, so a hook left behind by an earlier misconfiguration can be cleaned up.
 
