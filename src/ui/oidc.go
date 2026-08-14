@@ -314,6 +314,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	completeURL, err := o.buildCompleteURL(r.Context(), claims.Email, claims.Name, func(s *sessionData) {
 		s.Groups = validatedGroups
+		s.AccessToken = oauth2Token.AccessToken
 		s.Username = claims.PreferredUsername
 		s.EmailVerified = emailVerified
 	})

@@ -28,10 +28,11 @@ type Server struct {
 	auth           AuthProvider
 	accessDefaults AccessDefaults
 	accessCheck    accessCheckCache
+	repoCache      RepoCache
 	Router         *mux.Router
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, accessDefaults AccessDefaults) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, accessDefaults AccessDefaults, repoCache RepoCache) *Server {
 	return &Server{
 		manager:        manager,
 		logger:         logger,
@@ -41,6 +42,7 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		version:        version,
 		auth:           auth,
 		accessDefaults: accessDefaults,
+		repoCache:      repoCache,
 		Router:         mux.NewRouter(),
 	}
 }
