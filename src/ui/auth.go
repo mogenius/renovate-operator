@@ -28,7 +28,7 @@ const (
 
 // currentSessionVersion is bumped whenever a field access control reads is added
 // to sessionData. Sessions minted by an older operator are then discarded.
-const currentSessionVersion = 1
+const currentSessionVersion = 2
 
 type contextKey string
 

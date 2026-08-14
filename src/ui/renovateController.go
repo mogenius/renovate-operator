@@ -290,11 +290,11 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
+		platform, apiEndpoint := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 		platformEndpoint := utils.GetPublicEndpoint(renovateJob.Spec.Provider)
 
 		// Resolve user's repo permissions for this job's platform
-		userRepos := getUserRepos(r.Context(), session, platform, platformEndpoint, s.repoCache, s.logger)
+		userRepos := getUserRepos(r.Context(), session, platform, apiEndpoint, s.repoCache, s.logger)
 
 		crdProjects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
 		for _, p := range renovateJob.Status.Projects {
@@ -312,7 +312,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Filter projects by user's repo access on the git platform
-		crdProjects = filterProjectsByAccess(r.Context(), session, platform, platformEndpoint, crdProjects, s.repoCache, s.logger)
+		crdProjects = filterProjectsByAccess(r.Context(), session, platform, apiEndpoint, crdProjects, s.repoCache, s.logger)
 
 		// Build UI project list with write permission annotations
 		projects := make([]UIProjectStatus, 0, len(crdProjects))

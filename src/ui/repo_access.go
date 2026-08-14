@@ -106,6 +106,10 @@ func normalizeEndpoint(endpoint string) string {
 	u.Fragment = ""
 	u.User = nil
 	u.Host = strings.ToLower(u.Host)
+	port := u.Port()
+	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+		u.Host = strings.TrimSuffix(u.Host, ":"+port)
+	}
 	return strings.TrimRight(u.String(), "/")
 }
 

@@ -66,6 +66,20 @@ func TestRepoCacheKey(t *testing.T) {
 	}
 }
 
+func TestNormalizeEndpoint(t *testing.T) {
+	tests := map[string]string{
+		"https://EXAMPLE.com:443/api/v1/?page=1#fragment": "https://example.com",
+		"http://EXAMPLE.com:80/api/v1":                    "http://example.com",
+		"https://EXAMPLE.com:8443/api/v1":                 "https://example.com:8443",
+	}
+
+	for endpoint, want := range tests {
+		if got := normalizeEndpoint(endpoint); got != want {
+			t.Errorf("normalizeEndpoint(%q) = %q, want %q", endpoint, got, want)
+		}
+	}
+}
+
 func TestFetchForgejoUserReposWithPermissions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "token test-token" {
