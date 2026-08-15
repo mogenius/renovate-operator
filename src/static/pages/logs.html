@@ -341,7 +341,7 @@
           <StickyToolbar testId="logs-toolbar">
             {/* One scrollable row rather than a wrapping one: the toolbar has to stay
                 short enough that it does not eat the viewport it is pinned to. */}
-            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-0.5">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 py-1">
               <StatBadge label="Errors" value={errorCount === null ? '-' : errorCount} valueClass="text-error" />
               <StatBadge label="Warnings" value={warnCount === null ? '-' : warnCount} valueClass="text-warning" />
               {/* Whether the log is still growing belongs next to the counters that
