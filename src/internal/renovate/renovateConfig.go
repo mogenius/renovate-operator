@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	api "renovate-operator/api/v1alpha1"
+	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/utils"
 
 	corev1 "k8s.io/api/core/v1"
@@ -104,15 +105,7 @@ func setConfigMapMarker(ctx context.Context, c client.Client, job *api.RenovateJ
 		return nil
 	}
 	if marked {
-		if job.Annotations == nil {
-			job.Annotations = make(map[string]string)
-		}
-		job.Annotations[api.RenovateConfigMapAnnotationKey] = "true"
-	} else {
-		delete(job.Annotations, api.RenovateConfigMapAnnotationKey)
+		return crdManager.AddAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey, "true")
 	}
-	if err := c.Update(ctx, job); err != nil {
-		return fmt.Errorf("updating renovate config marker annotation: %w", err)
-	}
-	return nil
+	return crdManager.RemoveAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey)
 }

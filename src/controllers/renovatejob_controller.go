@@ -309,11 +309,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 		return
 	}
 
-	patch := client.MergeFrom(renovateJob.DeepCopyObject().(client.Object))
-	for _, key := range toRemove {
-		delete(renovateJob.Annotations, key)
-	}
-	if err := r.K8sClient.Patch(ctx, renovateJob, patch); err != nil {
+	if err := crdManager.RemoveAnnotation(ctx, r.K8sClient, renovateJob, toRemove...); err != nil {
 		logger.Error(err, "failed to remove trigger annotations from RenovateJob")
 	}
 }
