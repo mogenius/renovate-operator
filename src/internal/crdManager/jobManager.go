@@ -100,12 +100,7 @@ func DeleteJob(ctx context.Context, client crclient.Client, job *batchv1.Job) er
 // MarkJobProcessed stamps api.ProcessedAnnotationKey on the Job so the JobReconciler
 // can skip it on subsequent informer resyncs without re-processing its result.
 func MarkJobProcessed(ctx context.Context, c crclient.Client, job *batchv1.Job) error {
-	patch := crclient.MergeFrom(job.DeepCopy())
-	if job.Annotations == nil {
-		job.Annotations = make(map[string]string)
-	}
-	job.Annotations[api.ProcessedAnnotationKey] = "true"
-	return c.Patch(ctx, job, patch)
+	return AddAnnotation(ctx, c, job, api.ProcessedAnnotationKey, "true")
 }
 func CreateJobWithGeneration(ctx context.Context, client crclient.Client, job *batchv1.Job, selector JobSelector) (string, error) {
 	assert.Assert(selector.JobType != "", "JobType is required in selector")
