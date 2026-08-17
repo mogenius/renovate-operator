@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -329,7 +328,6 @@ func parseAnnotationProjectList(s string) map[string]struct{} {
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.RenovateJob{}).
-		Owns(&batchv1.Job{}).
 		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }
