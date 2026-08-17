@@ -45,9 +45,17 @@ func renovateConfigFileName(cfg *api.RenovateJobConfig) string {
 	return defaultConfigFileName
 }
 
+// inlineConfigHash returns a short hash covering the filename and content of an
+// inline renovate config, used to detect when the ConfigMap needs to be updated.
+func inlineConfigHash(cfg *api.RenovateJobConfig) string {
+	h := sha256.Sum256([]byte(renovateConfigFileName(cfg) + "\x00" + cfg.Inline))
+	return fmt.Sprintf("%x", h[:8])
+}
+
 // EnsureRenovateConfigMap syncs spec.renovateConfig.inline into a ConfigMap owned
-// by the RenovateJob, and deletes it when inline config is no longer used. Jobs
-// with such a ConfigMap carry RenovateConfigMapAnnotationKey.
+// by the RenovateJob, and deletes it when inline config is no longer used.
+// The annotation value is the hash of the inline config; a matching hash with an
+// existing ConfigMap short-circuits the reconcile without any API writes.
 func EnsureRenovateConfigMap(ctx context.Context, c client.Client, job *api.RenovateJob) error {
 	name := renovateConfigMapName(job)
 
@@ -67,11 +75,20 @@ func EnsureRenovateConfigMap(ctx context.Context, c client.Client, job *api.Reno
 				return fmt.Errorf("deleting stale renovate config configmap: %w", err)
 			}
 		}
-		return setConfigMapMarker(ctx, c, job, false)
+		return crdManager.RemoveAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey)
 	}
 
-	if err := setConfigMapMarker(ctx, c, job, true); err != nil {
-		return err
+	// Fast path: hash matches → check ConfigMap exists via cache (no API write).
+	// If missing (external delete), fall through to recreate.
+	hash := inlineConfigHash(job.Spec.RenovateConfig)
+	if job.Annotations[api.RenovateConfigMapAnnotationKey] == hash {
+		existing := new(corev1.ConfigMap)
+		switch err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: job.Namespace}, existing); {
+		case err == nil:
+			return nil
+		case !apierrors.IsNotFound(err):
+			return fmt.Errorf("checking renovate config configmap: %w", err)
+		}
 	}
 
 	configMap := new(corev1.ConfigMap)
@@ -95,17 +112,5 @@ func EnsureRenovateConfigMap(ctx context.Context, c client.Client, job *api.Reno
 	if err != nil {
 		return fmt.Errorf("ensuring renovate config configmap: %w", err)
 	}
-	return nil
-}
-
-// setConfigMapMarker records on the RenovateJob whether the operator manages an
-// inline-config ConfigMap for it.
-func setConfigMapMarker(ctx context.Context, c client.Client, job *api.RenovateJob, marked bool) error {
-	if marked == (job.Annotations[api.RenovateConfigMapAnnotationKey] != "") {
-		return nil
-	}
-	if marked {
-		return crdManager.AddAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey, "true")
-	}
-	return crdManager.RemoveAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey)
+	return crdManager.AddAnnotation(ctx, c, job, api.RenovateConfigMapAnnotationKey, hash)
 }
