@@ -140,6 +140,32 @@ func TestEnsureRenovateConfigMap_SkipsCleanupWithoutMarker(t *testing.T) {
 	}
 }
 
+func TestEnsureRenovateConfigMap_RecreatesIfExternallyDeleted(t *testing.T) {
+	job := configJob(&api.RenovateJobConfig{Inline: "module.exports = {};"})
+	c := configClient(t, job)
+
+	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
+		t.Fatalf("first ensure failed: %v", err)
+	}
+	if _, ok := getOwnedConfigMap(t, c, job); !ok {
+		t.Fatal("expected ConfigMap after first ensure")
+	}
+
+	// simulate external deletion
+	cm, _ := getOwnedConfigMap(t, c, job)
+	if err := c.Delete(context.Background(), cm); err != nil {
+		t.Fatalf("delete configmap: %v", err)
+	}
+
+	// inline config unchanged → hash still matches the annotation, but ConfigMap is gone
+	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
+		t.Fatalf("second ensure failed: %v", err)
+	}
+	if _, ok := getOwnedConfigMap(t, c, job); !ok {
+		t.Error("expected ConfigMap to be recreated after external deletion")
+	}
+}
+
 func foreignConfigMap(job *api.RenovateJob) *corev1.ConfigMap {
 	cm := new(corev1.ConfigMap)
 	cm.Name = renovateConfigMapName(job)
@@ -150,7 +176,7 @@ func foreignConfigMap(job *api.RenovateJob) *corev1.ConfigMap {
 
 func TestEnsureRenovateConfigMap_LeavesForeignConfigMapAlone(t *testing.T) {
 	job := configJob(nil)
-	job.Annotations = map[string]string{api.RenovateConfigMapAnnotationKey: "true"}
+	job.Annotations = map[string]string{api.RenovateConfigMapAnnotationKey: "somehash"}
 	c := configClient(t, job, foreignConfigMap(job))
 
 	if err := EnsureRenovateConfigMap(context.Background(), c, job); err != nil {
