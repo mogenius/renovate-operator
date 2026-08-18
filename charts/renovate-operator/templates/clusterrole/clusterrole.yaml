@@ -36,7 +36,7 @@ rules:
   # stops using inline config.
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "create", "update", "delete"]
+    verbs: ["get", "create", "update", "delete", "list", "watch"]
 
   {{- if gt (int .Values.replicaCount) 1 }}
   # Allow leader election via coordination leases

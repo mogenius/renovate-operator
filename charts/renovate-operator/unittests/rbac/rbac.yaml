@@ -54,7 +54,7 @@ tests:
         resources: ["secrets"]
         verbs: ["create", "get", "list", "watch", "update", "delete"]
 
-- it: ClusterRole grants only get/create/update/delete on configmaps
+- it: ClusterRole grants get/create/update/delete/list/watch on configmaps
   templates:
   - templates/clusterrole/clusterrole.yaml
   asserts:
@@ -63,15 +63,9 @@ tests:
       content:
         apiGroups: [""]
         resources: ["configmaps"]
-        verbs: ["get", "create", "update", "delete"]
-  - notContains:
-      path: rules
-      content:
-        apiGroups: [""]
-        resources: ["configmaps"]
-        verbs: ["create", "get", "list", "watch", "update", "delete"]
+        verbs: ["get", "create", "update", "delete", "list", "watch"]
 
-- it: Role grants only get/create/update/delete on configmaps
+- it: Role grants get/create/update/delete/list/watch on configmaps
   set:
     rbac.ownNamespaceOnly: true
   templates:
@@ -82,13 +76,7 @@ tests:
       content:
         apiGroups: [""]
         resources: ["configmaps"]
-        verbs: ["get", "create", "update", "delete"]
-  - notContains:
-      path: rules
-      content:
-        apiGroups: [""]
-        resources: ["configmaps"]
-        verbs: ["create", "get", "list", "watch", "update", "delete"]
+        verbs: ["get", "create", "update", "delete", "list", "watch"]
 
 - it: Pods and jobs keep list and watch, which the informer cache still needs
   templates:
