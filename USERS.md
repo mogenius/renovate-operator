@@ -25,6 +25,13 @@ Only add yourself if you are running the operator in a permanent deployment (not
 
 ## Adopters
 
+### Claranet France
+Running the operator on Kubernetes to keep dependencies updated across our self-managed GitLab, sweeping every repository hourly.
+- **Providers**: GitLab
+- **Repositories**: ~1350
+- **Link**: https://www.claranet.com/fr
+- **Contact**: @pdecat
+
 ### mogenius
 Running the operator to manage dependency updates across internal services.
 - **Providers**: GitHub
