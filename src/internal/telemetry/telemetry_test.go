@@ -7,8 +7,27 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// TestResourceMerge_SchemaURLConsistency exercises the exact resource.Merge call
+// inside SetupOTelSDK. Mixed semconv versions produce a "conflicting Schema URL"
+// error at runtime; this catches that before deployment.
+func TestResourceMerge_SchemaURLConsistency(t *testing.T) {
+	_, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("renovate-operator"),
+			semconv.ServiceVersion("test"),
+		),
+	)
+	if err != nil {
+		t.Fatalf("resource.Merge failed — semconv version likely mismatches the OTel SDK: %v", err)
+	}
+}
 
 func TestContextWithTraceLogger_NoSpan(t *testing.T) {
 	var output string
