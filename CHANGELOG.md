@@ -1,5 +1,20 @@
 # Changelog
 
+## [6.0.1](https://github.com/mogenius/renovate-operator/compare/6.0.0...6.0.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* adding list and watch for configmaps ([acca1b9](https://github.com/mogenius/renovate-operator/commit/acca1b9874457965d4f2ace065c8df040a5a960a))
+* badges clipped at top on hover ([d1a7365](https://github.com/mogenius/renovate-operator/commit/d1a73657fac527303d3bcf218592d34648484c11)), closes [#606](https://github.com/mogenius/renovate-operator/issues/606)
+* **deps:** update aws-sdk-go-v2 monorepo ([35b2e4f](https://github.com/mogenius/renovate-operator/commit/35b2e4f9ad89ba60141fb02ca1ac678c7171a20f))
+* **deps:** update golang docker tag to v1.27.0 ([5d33f66](https://github.com/mogenius/renovate-operator/commit/5d33f668f070ce381c989e85081d4cf2c7859547))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.77 ([b547b87](https://github.com/mogenius/renovate-operator/commit/b547b8701d4c97967f8d7b2fdd0db37d523c810c))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.4 ([3fb072f](https://github.com/mogenius/renovate-operator/commit/3fb072ffe56cbf6a8f7edd4b8dd1c60edcb8fd0b))
+* **otel:** semconv sdk mismatch ([a002ecf](https://github.com/mogenius/renovate-operator/commit/a002ecf8a7c2d7486fa98a4049796be517e5fa72))
+* reduce amount of unnecessary reconciler loops ([5df6b37](https://github.com/mogenius/renovate-operator/commit/5df6b3735361a99717cb02fe432f03b41e0ec59d))
+* save the hash of the renovate inline config to reduce api calls ([2f3d7db](https://github.com/mogenius/renovate-operator/commit/2f3d7db972041323975852d5ec1d6e7dc7e23f3e))
+
 ## [6.0.0](https://github.com/mogenius/renovate-operator/compare/5.6.0...6.0.0) (2026-08-14)
 
 
