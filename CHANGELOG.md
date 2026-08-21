@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.2](https://github.com/mogenius/renovate-operator/compare/6.0.1...6.0.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **otel:** minor tracing improvements ([2536349](https://github.com/mogenius/renovate-operator/commit/25363493a20d35297ac1e1060734a5ae5eedb92e))
+
 ## [6.0.1](https://github.com/mogenius/renovate-operator/compare/6.0.0...6.0.1) (2026-08-20)
 
 
