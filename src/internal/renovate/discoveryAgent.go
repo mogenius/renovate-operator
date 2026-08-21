@@ -221,7 +221,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
-	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
+	discoveryJob := newDiscoveryJob(&renovateJob, carrier)
 	if options.TriggerAllProjects {
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)

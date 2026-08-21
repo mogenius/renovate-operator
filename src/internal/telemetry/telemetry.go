@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
+	"renovate-operator/config"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -29,12 +30,13 @@ import (
 )
 
 // otelEnabled tracks whether OTel providers were successfully initialized.
-var otelEnabled bool
+// atomic.Bool so concurrent reads from WrapTransport/MuxMiddleware are safe.
+var otelEnabled atomic.Bool
 
 // Enabled reports whether OTel was successfully initialized by SetupOTelSDK.
 // Use this to conditionally register HTTP instrumentation middlewares/transports.
 func Enabled() bool {
-	return otelEnabled
+	return otelEnabled.Load()
 }
 
 // SetupOTelSDK initializes OpenTelemetry trace, metric, and log providers when
@@ -46,13 +48,13 @@ func Enabled() bool {
 // Only gRPC exporters are supported. If OTEL_EXPORTER_OTLP_PROTOCOL is set to a
 // non-gRPC value, an error is returned.
 func SetupOTelSDK(ctx context.Context, version string) (shutdown func(context.Context) error, enabled bool, err error) {
-	otelEnabled = false
+	otelEnabled.Store(false)
 
-	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+	if config.GetValue("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
 		return func(context.Context) error { return nil }, false, nil
 	}
 
-	if proto := os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL"); proto != "" && proto != "grpc" {
+	if proto := config.GetValue("OTEL_EXPORTER_OTLP_PROTOCOL"); proto != "" && proto != "grpc" {
 		return func(context.Context) error { return nil }, false,
 			fmt.Errorf("unsupported OTLP protocol %q: only \"grpc\" is supported", proto)
 	}
@@ -132,7 +134,7 @@ func SetupOTelSDK(ctx context.Context, version string) (shutdown func(context.Co
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetMeterProvider(meterProvider)
 	global.SetLoggerProvider(loggerProvider)
-	otelEnabled = true
+	otelEnabled.Store(true)
 
 	return shutdown, true, nil
 }
@@ -146,10 +148,16 @@ func NewOTelLogSink(name string) *otellogr.LogSink {
 	return otellogr.NewLogSink(name,
 		otellogr.WithLoggerProvider(global.GetLoggerProvider()),
 		otellogr.WithLevelSeverity(func(level int) otellog.Severity {
-			if level == 0 {
+			switch {
+			case level <= 0:
 				return otellog.SeverityInfo
+			case level == 1:
+				return otellog.SeverityDebug4
+			case level == 2:
+				return otellog.SeverityDebug3
+			default:
+				return otellog.SeverityDebug1
 			}
-			return otellog.SeverityDebug
 		}),
 	)
 }
@@ -213,6 +221,15 @@ func (t *TeeLogSink) WithCallDepth(depth int) logr.LogSink {
 	return &TeeLogSink{primary: primary, secondary: secondary}
 }
 
+// StartSpan starts a span and immediately enriches the context logger with the
+// new span's trace_id and span_id. Use this instead of calling tracer.Start +
+// ContextWithTraceLogger separately so logs emitted inside the span always carry
+// the correct span_id, not the parent's.
+func StartSpan(ctx context.Context, tracer oteltrace.Tracer, name string, logger logr.Logger, opts ...oteltrace.SpanStartOption) (context.Context, oteltrace.Span) {
+	ctx, span := tracer.Start(ctx, name, opts...)
+	return ContextWithTraceLogger(ctx, logger), span
+}
+
 // ContextWithTraceLogger stores a trace-enriched logger in the returned context.
 // Downstream code retrieves it with log.FromContext(ctx) and automatically gets
 // trace_id and span_id fields. When there is no valid span the logger is stored
@@ -231,7 +248,7 @@ func ContextWithTraceLogger(ctx context.Context, logger logr.Logger) context.Con
 // WrapTransport wraps an http.RoundTripper with otelhttp instrumentation when
 // OTel is enabled. Returns the transport unchanged when OTel is disabled (zero overhead).
 func WrapTransport(base http.RoundTripper) http.RoundTripper {
-	if !otelEnabled {
+	if !otelEnabled.Load() {
 		return base
 	}
 	return otelhttp.NewTransport(base)
@@ -240,7 +257,7 @@ func WrapTransport(base http.RoundTripper) http.RoundTripper {
 // MuxMiddleware returns an otelmux.Middleware for the given server name when
 // OTel is enabled. Returns a no-op middleware when OTel is disabled.
 func MuxMiddleware(serverName string) mux.MiddlewareFunc {
-	if !otelEnabled {
+	if !otelEnabled.Load() {
 		return func(next http.Handler) http.Handler { return next }
 	}
 	return otelmux.Middleware(serverName)

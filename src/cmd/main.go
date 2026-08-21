@@ -678,6 +678,43 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Key:      "OTEL_EXPORTER_OTLP_ENDPOINT",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "OTEL_EXPORTER_OTLP_PROTOCOL",
+			Optional: true,
+			Default:  "",
+			Validate: func(value string) error {
+				if value != "" && value != "grpc" {
+					return fmt.Errorf("'OTEL_EXPORTER_OTLP_PROTOCOL' must be \"grpc\" or unset (only gRPC is supported)")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "RENOVATE_FORWARD_OTEL",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'RENOVATE_FORWARD_OTEL' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "RENOVATE_JOB_OTEL_ENDPOINT",
+			Optional: true,
+			Default:  "",
+		},
+		{
+			Key:      "OTEL_SERVICE_NAMESPACE",
+			Optional: true,
+			Default:  "",
+		},
 	})
 	assert.NoError(err, "failed to initialize config module")
 
