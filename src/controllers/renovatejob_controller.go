@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
@@ -45,14 +46,14 @@ type RenovateJobReconciler struct {
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx, span := reconcilerTracer.Start(ctx, "RenovateJob.Reconcile",
+	ctx, span := telemetry.StartSpan(ctx, reconcilerTracer, "RenovateJob.Reconcile",
+		log.FromContext(ctx).WithName("renovatejob-controller"),
 		trace.WithAttributes(
 			semconv.K8SNamespaceName(req.Namespace),
-			semconv.CICDPipelineName(req.Name),
+			attribute.String("renovate_operator.renovatejob.name", req.Name),
 		),
 	)
 	defer span.End()
-	ctx = telemetry.ContextWithTraceLogger(ctx, log.FromContext(ctx).WithName("renovatejob-controller"))
 
 	logger := log.FromContext(ctx)
 	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
@@ -79,11 +80,13 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "failed to ensure renovate config configmap")
 		}
 		r.handleAnnotationTriggers(ctx, logger, renovateJob)
+		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
 		// renovatejob cannot be found -> delete the schedule
 		// the github app token secret is owned by the RenovateJob and cleaned up by Kubernetes GC
 		r.Scheduler.RemoveSchedule(req.Namespace, req.Name)
+		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
 		span.RecordError(err)
@@ -168,14 +171,14 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	jobNamespace := renovateJob.Namespace
 	f := func() {
 		ctx := context.Background()
-		ctx, span := reconcilerTracer.Start(ctx, "RenovateJob.ScheduledRun",
+		ctx, span := telemetry.StartSpan(ctx, reconcilerTracer, "RenovateJob.ScheduledRun",
+			logger.WithName(name),
 			trace.WithAttributes(
 				semconv.K8SNamespaceName(jobNamespace),
-				semconv.CICDPipelineName(jobName),
+				attribute.String("renovate_operator.renovatejob.name", jobName),
 			),
 		)
 		defer span.End()
-		ctx = telemetry.ContextWithTraceLogger(ctx, logger.WithName(name))
 		logger := log.FromContext(ctx)
 
 		logger.V(2).Info("Executing schedule for RenovateJob")
@@ -196,6 +199,7 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 			logger.Error(err, "Failed to create discovery job for RenovateJob")
 			return
 		}
+		span.SetStatus(codes.Ok, "")
 		logger.V(2).Info("Discovery job created, completion handled by job controller")
 	}
 

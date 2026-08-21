@@ -222,7 +222,7 @@ func TestJobDefinitions_RenovateConfigInline(t *testing.T) {
 	job := configJob(&api.RenovateJobConfig{Inline: "{}"})
 	job.Spec.Image = "renovate/renovate:latest"
 
-	k8sJob := newRenovateJob(job, "org/repo", nil, "")
+	k8sJob := newRenovateJob(job, "org/repo", nil, nil)
 	pod := k8sJob.Spec.Template.Spec
 
 	if !hasEnv(pod.Containers[0].Env, "RENOVATE_CONFIG_FILE", "/etc/renovate/config.js") {
@@ -244,7 +244,7 @@ func TestJobDefinitions_RenovateConfigMapRef(t *testing.T) {
 	job := configJob(&api.RenovateJobConfig{ConfigMapRef: &api.RenovateConfigMapKeyReference{Name: "user-cm", Key: "renovate.json"}})
 	job.Spec.Image = "renovate/renovate:latest"
 
-	k8sJob := newDiscoveryJob(job, "")
+	k8sJob := newDiscoveryJob(job, nil)
 	pod := k8sJob.Spec.Template.Spec
 
 	if !hasEnv(pod.Containers[0].Env, "RENOVATE_CONFIG_FILE", "/etc/renovate/renovate.json") {
@@ -263,7 +263,7 @@ func TestJobDefinitions_NoRenovateConfig(t *testing.T) {
 	job := configJob(nil)
 	job.Spec.Image = "renovate/renovate:latest"
 
-	pod := newRenovateJob(job, "org/repo", nil, "").Spec.Template.Spec
+	pod := newRenovateJob(job, "org/repo", nil, nil).Spec.Template.Spec
 	for _, env := range pod.Containers[0].Env {
 		if env.Name == "RENOVATE_CONFIG_FILE" {
 			t.Error("expected no RENOVATE_CONFIG_FILE env without renovateConfig")
@@ -284,7 +284,7 @@ func TestJobDefinitions_ExtraEnvOverridesRenovateConfigFile(t *testing.T) {
 	job.Spec.Image = "renovate/renovate:latest"
 	job.Spec.ExtraEnv = []corev1.EnvVar{{Name: "RENOVATE_CONFIG_FILE", Value: "/custom/config.js"}}
 
-	pod := newRenovateJob(job, "org/repo", nil, "").Spec.Template.Spec
+	pod := newRenovateJob(job, "org/repo", nil, nil).Spec.Template.Spec
 	var values []string
 	for _, env := range pod.Containers[0].Env {
 		if env.Name == "RENOVATE_CONFIG_FILE" {
