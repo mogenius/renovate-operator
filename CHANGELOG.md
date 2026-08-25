@@ -1,5 +1,61 @@
 # Changelog
 
+## [6.0.1](https://github.com/mogenius/renovate-operator/compare/6.0.0...6.0.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* adding list and watch for configmaps ([acca1b9](https://github.com/mogenius/renovate-operator/commit/acca1b9874457965d4f2ace065c8df040a5a960a))
+* badges clipped at top on hover ([d1a7365](https://github.com/mogenius/renovate-operator/commit/d1a73657fac527303d3bcf218592d34648484c11)), closes [#606](https://github.com/mogenius/renovate-operator/issues/606)
+* **deps:** update aws-sdk-go-v2 monorepo ([35b2e4f](https://github.com/mogenius/renovate-operator/commit/35b2e4f9ad89ba60141fb02ca1ac678c7171a20f))
+* **deps:** update golang docker tag to v1.27.0 ([5d33f66](https://github.com/mogenius/renovate-operator/commit/5d33f668f070ce381c989e85081d4cf2c7859547))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.77 ([b547b87](https://github.com/mogenius/renovate-operator/commit/b547b8701d4c97967f8d7b2fdd0db37d523c810c))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.36.4 ([3fb072f](https://github.com/mogenius/renovate-operator/commit/3fb072ffe56cbf6a8f7edd4b8dd1c60edcb8fd0b))
+* **otel:** semconv sdk mismatch ([a002ecf](https://github.com/mogenius/renovate-operator/commit/a002ecf8a7c2d7486fa98a4049796be517e5fa72))
+* reduce amount of unnecessary reconciler loops ([5df6b37](https://github.com/mogenius/renovate-operator/commit/5df6b3735361a99717cb02fe432f03b41e0ec59d))
+* save the hash of the renovate inline config to reduce api calls ([2f3d7db](https://github.com/mogenius/renovate-operator/commit/2f3d7db972041323975852d5ec1d6e7dc7e23f3e))
+
+## [6.0.0](https://github.com/mogenius/renovate-operator/compare/5.6.0...6.0.0) (2026-08-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** authorization is on by default when authentication is activated. If you're running the operator in an environment where authorization isn't needed but you still want to use authentication, e. G.: in your homelab, you can disable it by setting authorization.enabled = false (or AUTHORIZATION_ENABLED='false' env var) to rely soley on authentication
+* **ui:** A RenovateJob with no access configuration is now hidden from everyone once UI authentication is enabled, where before it was visible to every authenticated user. Installs without an auth provider are unaffected. GitHub OAuth installs using groups must set auth.github.orgGroups=true. See the migration guide at docs/migration/migration-v5-to-v6.md for more info.
+* The deprecated job identifiers are now removed. The renovate-operator actively migrated them since quite a few versions so you shouldn't be affected but we still marked it as breaking change.
+* **security:** RenovateJobs may no longer declare hostPath volumes, privileged containers or allowPrivilegeEscalation. The API server rejects them, and existing objects using them become unapplyable. The rest of the added policy engine is purely optional and disabled by default. Look at the migration guide docs/migration/migration-v5-to-v6.md for further explanations.
+
+### Features
+
+* **auth:** add authorization master switch ([35e7bdd](https://github.com/mogenius/renovate-operator/commit/35e7bdd189cdb00cfae81f8f39cd6c0a07fa133f))
+* **github-app:** promote native github integration from beta to stable ([be77ce5](https://github.com/mogenius/renovate-operator/commit/be77ce5e977785f6292ecc4e0e52d0b4796dbac5))
+* **operator:** support inline and configmap-based renovate config ([2d3df52](https://github.com/mogenius/renovate-operator/commit/2d3df526437fc1e548d4b787d0f2f964d5bfe4c4))
+* replace persistent debug with single push debug ([225d516](https://github.com/mogenius/renovate-operator/commit/225d5161418d80b119fbfc058ef15a86ed3ae5cc)), closes [#561](https://github.com/mogenius/renovate-operator/issues/561)
+* **security:** add optional policy engine to harden renovate runs ([1f0caf2](https://github.com/mogenius/renovate-operator/commit/1f0caf2d34a46deb8dfc1faa17cec4d9a25c9421))
+* **ui:** add access model for reader, admins, and anonymous access ([09b9e6e](https://github.com/mogenius/renovate-operator/commit/09b9e6eca04e9aba06c529f18cf8359cd23f9fd6)), closes [#380](https://github.com/mogenius/renovate-operator/issues/380)
+* **ui:** pin toolbar and search to the top ([#572](https://github.com/mogenius/renovate-operator/issues/572)) ([9e894f1](https://github.com/mogenius/renovate-operator/commit/9e894f15b821b5f511f00525e9701c83463575c0))
+
+
+### Bug Fixes
+
+* **auth:** match the OIDC group filter case-insensitively ([58d8f92](https://github.com/mogenius/renovate-operator/commit/58d8f92fe803781ecfe1da924d2f56383809e442))
+* deacviate all trigger buttons if job hasnt been accepted by policy ([4d40c07](https://github.com/mogenius/renovate-operator/commit/4d40c07f03c07c3d6e34db8c00f35f3d9980c088))
+* **deps:** update aws-sdk-go-v2 monorepo ([4966344](https://github.com/mogenius/renovate-operator/commit/4966344c31ceb263d1a52b4ea9904eecb09067b1))
+* **deps:** update go module directive to v1.26.6 ([1107806](https://github.com/mogenius/renovate-operator/commit/11078061538797271416377d2331012f31bee8af))
+* **deps:** update golang docker tag to v1.26.6 ([f52ac7c](https://github.com/mogenius/renovate-operator/commit/f52ac7c1806e2461c34713b4811bfa041cb40ab2))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.107.1 ([ad4c84b](https://github.com/mogenius/renovate-operator/commit/ad4c84b332592245d0e4421dda7e867fa1929c92))
+* **deps:** update opentelemetry to v1.45.0 ([f497c81](https://github.com/mogenius/renovate-operator/commit/f497c8110d4096eda01c39a69441d4acb3dbc906))
+* **deps:** update opentelemetry-go-contrib monorepo ([68cf1d2](https://github.com/mogenius/renovate-operator/commit/68cf1d24141e9d974639be4b248a636329753522))
+* **metrics:** do not count approval pending PRs towards metrics ([863191c](https://github.com/mogenius/renovate-operator/commit/863191ceca06544753a86a76f4bb7f1acea16f6e)), closes [#584](https://github.com/mogenius/renovate-operator/issues/584)
+* **parser:** do not add branches where no pr has been created yet ([a319bbe](https://github.com/mogenius/renovate-operator/commit/a319bbe767fc95dd1c4c3b9c36494196ab38d27d)), closes [#584](https://github.com/mogenius/renovate-operator/issues/584)
+* **ui:** adapt the height of various objects to be more compact and coherent ([8b25b93](https://github.com/mogenius/renovate-operator/commit/8b25b93b5dc3df2a697cf96087a607c577d445fe)), closes [#559](https://github.com/mogenius/renovate-operator/issues/559)
+* **ui:** add autoscroll and skip to top/bottom buttons in logs ([dafc88f](https://github.com/mogenius/renovate-operator/commit/dafc88f5dfbac79b62f0c199d5639120086e115b))
+
+
+### Code Refactoring
+
+* drop legacy job labels ([619e474](https://github.com/mogenius/renovate-operator/commit/619e474bd9603cc92dbbaa4533e7214486dd0b37))
+
 ## [5.6.0](https://github.com/mogenius/renovate-operator/compare/5.5.0...5.6.0) (2026-08-06)
 
 

@@ -26,7 +26,7 @@ including a compromised CI token that commits to a GitOps repository.
 | 3 | **Arbitrary secret read** | `spec.webhook.sync.secretRef`, `spec.webhook.authentication.secretRef`, `spec.githubAppReference` | these name a secret **and a key**, and the operator reads them with its own credentials, so any value in the namespace, not just the ones the writer could read. Combine with 1 and it leaves the cluster |
 | 4 | **ServiceAccount impersonation** | `spec.serviceAccount.name` | runs the Renovate pod as any ServiceAccount in the namespace. In the operator's own namespace that includes the operator's, which can read secrets cluster-wide |
 | 5 | **Node escape** | `spec.extraVolumes[*].hostPath`, `securityContext.privileged`, `allowPrivilegeEscalation` | the node filesystem, and with it kubelet credentials and every secret on that node |
-| 6 | **Arbitrary code execution** | `spec.image`, `spec.extraEnv` | any image. Note that pinning the image does not close this: the official Renovate image is a Node runtime, and `RENOVATE_CONFIG_FILE` can point at an executable JavaScript config that `spec.extraEnv` supplies |
+| 6 | **Arbitrary code execution** | `spec.image`, `spec.extraEnv`, `spec.renovateConfig` | any image. Note that pinning the image does not close this: the official Renovate image is a Node runtime, `spec.renovateConfig` supplies an executable JavaScript config file as a first-class field, and `RENOVATE_CONFIG_FILE` in `spec.extraEnv` can point at one from any mounted volume |
 | 7 | **Namespace secret mounts** | `spec.extraEnvFrom`, `spec.extraVolumes` | mounts any secret in the namespace into the Renovate pod. This is the *documented feature set* (it is how SSH keys and CA certificates get in) and is equivalent to what `create pods` already grants |
 | 8 | **UI link phishing** | `spec.provider.publicEndpoint` | attacker-controlled links rendered as dashboard and PR links under the operator's own UI |
 
@@ -176,7 +176,7 @@ The operator warns on every start, and each RenovateJob reports `Accepted=True` 
 `PolicyDisabled`, so `kubectl get renovatejobs -o wide` shows the state at a glance.
 
 Secure it afterwards: configure the values below, then flip the switch.
-[migration-v5-to-v6.md](migration-v5-to-v6.md) walks through the sequence. Leaving it off is
+[migration-v5-to-v6.md](../migration/migration-v5-to-v6.md) walks through the sequence. Leaving it off is
 defensible for a homelab, a local cluster or CI; on anything shared it means the controls documented
 here are not in effect.
 
@@ -327,6 +327,20 @@ break every installation for no gain.
 Set `policy.requireSecretRefOptIn: false` to disable the requirement. The operator logs an error at
 startup when it is off, because that restores the original exposure.
 
+## Renovate config files and ConfigMap access
+
+`spec.renovateConfig` supplies a Renovate configuration file to every Job pod
+([renovate-config.md](renovate-config.md)).
+
+Because renovate allows you to supply the config as a JavaScript file, it is automatically
+also a vector for arbitrary code execution. 
+
+This feature also requires the operator to have certain extra permissions to interact with ConfigMaps:
+
+- `get`, `create`, `update` and `delete` on ConfigMaps in the job's namespace
+- No `list` or `watch` permissions on ConfigMaps, so the operator can only touch ConfigMaps it can name.
+
+
 ## What the Renovate pod may be
 
 `create`/`patch` on `renovatejobs` is roughly equivalent to `create` on `pods` in the same
@@ -342,7 +356,7 @@ The API server refuses these at `kubectl apply`, and no operator setting re-enab
 | `spec.securityContext.container.privileged` | equivalent to root on the host |
 | `spec.securityContext.container.allowPrivilegeEscalation` | the same, one step removed |
 
-No documented Renovate use case needs any of them; see [extra-volumes.md](extra-volumes.md) for
+No documented Renovate use case needs any of them; see [extra-volumes.md](../configuration/extra-volumes.md) for
 what the supported volume types cover.
 
 ### Governed by operator policy

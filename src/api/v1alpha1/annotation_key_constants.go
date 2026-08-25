@@ -18,6 +18,10 @@ const (
 	ProcessedAnnotationKey = GroupName + "/processed"
 )
 
+// RenovateConfigMapAnnotationKey marks a RenovateJob whose inline renovate config
+// the operator has synced into a ConfigMap.
+const RenovateConfigMapAnnotationKey = GroupName + "/renovate-config-configmap"
+
 // Annotations users apply to a RenovateJob to trigger a run. The operator removes
 // each one once it has acted on it.
 const (

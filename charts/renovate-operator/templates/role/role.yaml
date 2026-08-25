@@ -32,6 +32,13 @@ rules:
     resources: ["secrets"]
     verbs: ["get", "create", "update"]
 
+  # Manage the per-job renovate config ConfigMap. No list/watch: ConfigMaps
+  # bypass the informer cache like Secrets do; delete cleans up when a job
+  # stops using inline config.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "update", "delete", "list", "watch"]
+
   {{- if gt (int .Values.replicaCount) 1 }}
   # Allow leader election via coordination leases
   - apiGroups: ["coordination.k8s.io"]

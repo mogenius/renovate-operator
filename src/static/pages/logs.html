@@ -46,7 +46,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useCallback, useRef, useMemo } = React;
+    const { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } = React;
 
     function levelInfo(level) {
       if (level >= 60) return { label: "FATAL", color: "error" };
@@ -271,6 +271,45 @@
         return result;
       }, [logs, selectedLevels, searchQuery]);
 
+      const [scrollState, setScrollState] = useState({ atTop: true, atBottom: false, hasScroll: false });
+      const pinnedRef = useRef(false);
+      const bottomSentinelRef = useRef(null);
+
+      const updateScrollState = useCallback(() => {
+        const scrollY = window.scrollY;
+        const innerH = window.innerHeight;
+        const totalH = document.documentElement.scrollHeight;
+        const hasScroll = totalH > innerH;
+        const atTop = !hasScroll || scrollY <= 0;
+        const atBottom = !hasScroll || scrollY + innerH >= totalH - 1;
+        pinnedRef.current = atBottom;
+        setScrollState({ atTop, atBottom, hasScroll });
+      }, []);
+
+      useEffect(() => {
+        window.addEventListener("scroll", updateScrollState, { passive: true });
+        window.addEventListener("resize", updateScrollState, { passive: true });
+        return () => {
+          window.removeEventListener("scroll", updateScrollState);
+          window.removeEventListener("resize", updateScrollState);
+        };
+      }, [updateScrollState]);
+
+      // Runs synchronously after React writes new DOM rows but before the browser
+      // paints — the only reliable way to scroll during a rapid burst of log lines.
+      useLayoutEffect(() => {
+        if (pinnedRef.current && bottomSentinelRef.current) {
+          bottomSentinelRef.current.scrollIntoView();
+        }
+      }, [filteredLogs]);
+
+      useEffect(() => {
+        requestAnimationFrame(updateScrollState);
+      }, [filteredLogs, updateScrollState]);
+
+      const scrollToTop = useCallback(() => window.scrollTo({ top: 0, behavior: "smooth" }), []);
+      const scrollToBottom = useCallback(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }), []);
+
       const handleCopy = useCallback(() => {
         if (!filteredLogs) return;
         const text = filteredLogs.map(e => JSON.stringify(e)).join("\n");
@@ -302,7 +341,7 @@
           <StickyToolbar testId="logs-toolbar">
             {/* One scrollable row rather than a wrapping one: the toolbar has to stay
                 short enough that it does not eat the viewport it is pinned to. */}
-            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-0.5">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 py-1">
               <StatBadge label="Errors" value={errorCount === null ? '-' : errorCount} valueClass="text-error" />
               <StatBadge label="Warnings" value={warnCount === null ? '-' : warnCount} valueClass="text-warning" />
               {/* Whether the log is still growing belongs next to the counters that
@@ -465,9 +504,34 @@
                 {filteredLogs.map((entry, i) => (
                   <LogRow key={i} entry={entry} searchQuery={searchQuery} />
                 ))}
+                <div ref={bottomSentinelRef} />
               </div>
             )}
           </main>
+          {filteredLogs && filteredLogs.length > 0 && (
+            <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+              <button
+                onClick={scrollToTop}
+                disabled={!scrollState.hasScroll || scrollState.atTop}
+                aria-label="Scroll to top"
+                className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-md text-gray-700 dark:text-slate-200 transition-all hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white dark:disabled:hover:bg-slate-800"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              <button
+                onClick={scrollToBottom}
+                disabled={!scrollState.hasScroll || scrollState.atBottom}
+                aria-label="Scroll to bottom"
+                className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-md text-gray-700 dark:text-slate-200 transition-all hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white dark:disabled:hover:bg-slate-800"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          )}
           <Footer />
         </div>
       );

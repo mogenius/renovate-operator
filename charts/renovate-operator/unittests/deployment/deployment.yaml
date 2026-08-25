@@ -347,3 +347,120 @@ tests:
           secretKeyRef:
             name: legacy-secret
             key: valkey-url
+
+- it: Joins default access group lists into comma-separated env values
+  set:
+    authorization:
+      defaults:
+        readerGroups:
+        - team-platform
+        - team-qa
+        adminGroups:
+        - team-devops
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_READER_GROUPS
+        value: "team-platform,team-qa"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ADMIN_GROUPS
+        value: "team-devops"
+
+- it: Joins default access user lists into comma-separated env values
+  set:
+    authorization:
+      defaults:
+        readerUsers:
+        - reader@example.com
+        adminUsers:
+        - me@example.com
+        - octocat
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_READER_USERS
+        value: "reader@example.com"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ADMIN_USERS
+        value: "me@example.com,octocat"
+
+- it: Omits default access group env vars when no groups are configured
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_READER_GROUPS
+        value: ""
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ADMIN_USERS
+        value: ""
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ
+        value: "false"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS
+        value: "false"
+
+- it: Enables anonymous read and anonymous log access
+  set:
+    authorization:
+      defaults:
+        anonymousRead: true
+        anonymousReadLogs: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ
+        value: "true"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS
+        value: "true"
+
+- it: Passes GitHub org groups flag when GitHub OAuth is enabled
+  set:
+    auth:
+      github:
+        enabled: true
+        clientId: some-client-id
+        existingSecret: github-oauth
+        orgGroups: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: GITHUB_ORG_GROUPS
+        value: "true"
+
+- it: Enables authorization by default
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_ENABLED
+        value: "true"
+
+- it: Disables authorization when authorization.enabled is false
+  set:
+    authorization:
+      enabled: false
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_ENABLED
+        value: "false"

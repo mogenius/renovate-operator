@@ -6,7 +6,9 @@ import (
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 
@@ -28,14 +30,14 @@ type JobReconciler struct {
 }
 
 func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx, span := reconcilerTracer.Start(ctx, "Job.Reconcile",
+	ctx, span := telemetry.StartSpan(ctx, reconcilerTracer, "Job.Reconcile",
+		log.FromContext(ctx).WithName("job-controller"),
 		trace.WithAttributes(
 			semconv.K8SNamespaceName(req.Namespace),
-			semconv.CICDPipelineName(req.Name),
+			attribute.String("renovate_operator.k8sjob.name", req.Name),
 		),
 	)
 	defer span.End()
-	ctx = telemetry.ContextWithTraceLogger(ctx, log.FromContext(ctx).WithName("job-controller"))
 
 	logger := log.FromContext(ctx)
 
@@ -67,7 +69,10 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	switch jobType {
 	case string(crdManager.DiscoveryJobType):
-		if err := r.Discovery.ProcessDiscoveryJobResult(ctx, job, jobId); err != nil {
+		err := r.Discovery.ProcessDiscoveryJobResult(ctx, job, jobId)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			logger.Error(err, "Error processing discovery job result", "jobName", job.Name)
 			return ctrl.Result{}, err
 		}
@@ -76,14 +81,18 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 		err := r.Executor.ProcessProjectJobResult(ctx, job, project, jobId)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			logger.Error(err, "Error processing job result", "jobName", job.Name, "project", project)
 			return ctrl.Result{}, err
 		}
 	default:
 		logger.Info("Ignoring job with unrecognized type", "jobName", job.Name, "jobType", jobType)
+		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{}, nil
 	}
 
+	span.SetStatus(codes.Ok, "")
 	return ctrl.Result{}, nil
 }
 

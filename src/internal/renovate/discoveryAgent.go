@@ -208,12 +208,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	if existingJob != nil && existingJob.Status.Succeeded == 0 && existingJob.Status.Failed == 0 {
 		log.FromContext(ctx).V(1).Info("discovery job already running, skipping", "renovateJob", renovateJob.Fullname())
 		if options.TriggerAllProjects && existingJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] != "true" {
-			patch := client.MergeFrom(existingJob.DeepCopy())
-			if existingJob.Annotations == nil {
-				existingJob.Annotations = make(map[string]string)
-			}
-			existingJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] = "true"
-			if err := e.client.Patch(ctx, existingJob, patch); err != nil {
+			if err := crdManager.AddAnnotation(ctx, e.client, existingJob, api.ScheduleAfterDiscoveryAnnotationKey, "true"); err != nil {
 				return "", fmt.Errorf("failed to set schedule-after-discovery annotation on running job: %w", err)
 			}
 		}
@@ -226,7 +221,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
-	discoveryJob := newDiscoveryJob(&renovateJob, carrier.Get("traceparent"))
+	discoveryJob := newDiscoveryJob(&renovateJob, carrier)
 	if options.TriggerAllProjects {
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)

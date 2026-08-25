@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -116,9 +116,8 @@ func (e *renovateExecutor) Start(ctx context.Context) error {
 }
 
 func (e *renovateExecutor) execute(ctx context.Context, options executionOptions) error {
-	ctx, span := executorTracer.Start(ctx, "executor.tick")
+	ctx, span := telemetry.StartSpan(ctx, executorTracer, "executor.tick", e.logger)
 	defer span.End()
-	ctx = telemetry.ContextWithTraceLogger(ctx, e.logger)
 
 	start := time.Now()
 	defer func() {
@@ -148,8 +147,10 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
-	return err
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 // countRunningProjects returns the number of still-running projects globally and per job
@@ -424,7 +425,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
-		k8sJob := newRenovateJob(renovateJob, project.Name, project.ExecutionOptions, carrier.Get("traceparent"))
+		k8sJob := newRenovateJob(renovateJob, project.Name, project.ExecutionOptions, carrier)
 		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}

@@ -38,6 +38,9 @@ You can add additional volumes and volume mounts to your `RenovateJob` using the
 
 ### Example: Mounting a ConfigMap with Renovate Configuration
 
+> [!IMPORTANT] For Renovate configuration files, prefer the first-class
+> [`spec.renovateConfig`](renovate-config.md) field.
+
 This example shows how to mount a ConfigMap containing a custom Renovate configuration file:
 
 ```yaml
@@ -83,7 +86,7 @@ spec:
 - **`hostPath` volumes are rejected.** The API server refuses a RenovateJob that declares one, and
   no operator setting re-enables it: mounting the node's filesystem would hand the pod every
   credential on that node. Use `configMap`, `secret`, `emptyDir`, a PVC or a generic ephemeral volume
-  instead. See [security.md](security.md).
+  instead. See [security.md](../security/security.md).
 - `extraVolumes` and `extraVolumeMounts` are capped at 64 entries each.
 - The volume name in `extraVolumes` must match the name referenced in `extraVolumeMounts`.
 - Both discovery jobs and renovate execution jobs will have the same extra volumes mounted.

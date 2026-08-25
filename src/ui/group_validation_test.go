@@ -333,3 +333,103 @@ func TestRegexCompiledOnce(t *testing.T) {
 		t.Error("Valid group names should pass validation")
 	}
 }
+
+// TestNewGroupFilterConfig covers the case handling that LAYER 2 forces on the
+// policy: groups reach LAYER 3 lowercased, so a policy carrying uppercase has
+// to match anyway or the user ends up with no groups at all.
+func TestNewGroupFilterConfig(t *testing.T) {
+	logger := logr.Discard()
+
+	tests := []struct {
+		name    string
+		prefix  string
+		pattern string
+		groups  []string
+		want    []string
+	}{
+		{
+			name:   "mixed case prefix still matches",
+			prefix: "Renovate-",
+			groups: []string{"renovate-team-a", "team-b"},
+			want:   []string{"renovate-team-a"},
+		},
+		{
+			name:    "mixed case pattern still matches",
+			pattern: `^Team-Renovate$`,
+			groups:  []string{"team-renovate", "team-other"},
+			want:    []string{"team-renovate"},
+		},
+		{
+			name:    "case insensitivity reaches every branch of an alternation",
+			pattern: `^(Team-|Platform-).*`,
+			groups:  []string{"team-a", "platform-b", "other-c"},
+			want:    []string{"team-a", "platform-b"},
+		},
+		{
+			name:   "prefix is trimmed",
+			prefix: "  renovate-  ",
+			groups: []string{"renovate-team-a", "team-b"},
+			want:   []string{"renovate-team-a"},
+		},
+		{
+			name:    "lowercase config keeps behaving as before",
+			prefix:  "renovate-",
+			pattern: `^renovate-team-.*`,
+			groups:  []string{"renovate-team-a", "renovate-admin", "team-b"},
+			want:    []string{"renovate-team-a"},
+		},
+		{
+			name:   "empty policy passes everything through",
+			groups: []string{"team-a", "platform-b"},
+			want:   []string{"team-a", "platform-b"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := NewGroupFilterConfig(tt.prefix, tt.pattern)
+			if err != nil {
+				t.Fatalf("NewGroupFilterConfig() unexpected error: %v", err)
+			}
+
+			result := filterGroupsByPolicy(tt.groups, config, logger)
+			if len(result) != len(tt.want) {
+				t.Fatalf("filterGroupsByPolicy() = %v, want %v", result, tt.want)
+			}
+			for i := range result {
+				if result[i] != tt.want[i] {
+					t.Errorf("filterGroupsByPolicy()[%d] = %s, want %s", i, result[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestNewGroupFilterConfigKeepsPatternSemantics guards the reason the pattern is
+// compiled case-insensitively rather than lowercased: lowercasing the source
+// would turn every negated class into its opposite, silently inverting which
+// groups a deployment accepts.
+func TestNewGroupFilterConfigKeepsPatternSemantics(t *testing.T) {
+	config, err := NewGroupFilterConfig("", `^\D+$`)
+	if err != nil {
+		t.Fatalf("NewGroupFilterConfig() unexpected error: %v", err)
+	}
+
+	if !config.AllowedPattern.MatchString("team-a") {
+		t.Error(`\D should still match a non-digit group name`)
+	}
+	if config.AllowedPattern.MatchString("12345") {
+		t.Error(`\D must not have been rewritten into \d`)
+	}
+
+	// (?U) is a valid Go flag whose lowercase form does not compile at all.
+	if _, err := NewGroupFilterConfig("", `(?U)team-.+`); err != nil {
+		t.Errorf("NewGroupFilterConfig() should accept the (?U) flag, got %v", err)
+	}
+}
+
+func TestNewGroupFilterConfigRejectsInvalidPattern(t *testing.T) {
+	if _, err := NewGroupFilterConfig("", `^(team-`); err == nil {
+		t.Error("NewGroupFilterConfig() should reject an invalid regex")
+	}
+}
