@@ -647,9 +647,6 @@ func TestFilterReadableJobs(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func ptr[T any](v T) *T { return new(v) }
-
 func TestHasIntersection(t *testing.T) {
 	tests := []struct {
 		name string
