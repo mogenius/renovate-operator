@@ -40,9 +40,7 @@ func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batc
 	if job.Spec.SecretRef != "" {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
 			SecretRef: &v1.SecretEnvSource{
-				LocalObjectReference: v1.LocalObjectReference{
-					Name: job.Spec.SecretRef,
-				},
+				Name: job.Spec.SecretRef,
 			},
 		})
 	}
@@ -53,9 +51,7 @@ func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batc
 	if job.Spec.GithubAppReference != nil {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
 			SecretRef: &v1.SecretEnvSource{
-				LocalObjectReference: v1.LocalObjectReference{
-					Name: github.GetNameForGithubAppSecret(job),
-				},
+				Name: github.GetNameForGithubAppSecret(job),
 			},
 		})
 	}
@@ -132,9 +128,7 @@ func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.
 	if job.Spec.SecretRef != "" {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
 			SecretRef: &v1.SecretEnvSource{
-				LocalObjectReference: v1.LocalObjectReference{
-					Name: job.Spec.SecretRef,
-				},
+				Name: job.Spec.SecretRef,
 			},
 		})
 	}
@@ -145,9 +139,7 @@ func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.
 	if job.Spec.GithubAppReference != nil {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
 			SecretRef: &v1.SecretEnvSource{
-				LocalObjectReference: v1.LocalObjectReference{
-					Name: github.GetNameForGithubAppSecret(job),
-				},
+				Name: github.GetNameForGithubAppSecret(job),
 			},
 		})
 	}
@@ -257,10 +249,8 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 			Name: "RENOVATE_REDIS_URL",
 			ValueFrom: &v1.EnvVarSource{
 				SecretKeyRef: &v1.SecretKeySelector{
-					LocalObjectReference: v1.LocalObjectReference{
-						Name: redisURLSecretName,
-					},
-					Key: "redis-url",
+					Name: redisURLSecretName,
+					Key:  "redis-url",
 				},
 			},
 		})
@@ -289,8 +279,8 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 					Name: "AWS_ACCESS_KEY_ID",
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
-							LocalObjectReference: v1.LocalObjectReference{Name: secretName},
-							Key:                  "access-key-id",
+							Name: secretName,
+							Key:  "access-key-id",
 						},
 					},
 				},
@@ -298,8 +288,8 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 					Name: "AWS_SECRET_ACCESS_KEY",
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
-							LocalObjectReference: v1.LocalObjectReference{Name: secretName},
-							Key:                  "secret-access-key",
+							Name: secretName,
+							Key:  "secret-access-key",
 						},
 					},
 				},
@@ -584,11 +574,9 @@ func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
 		fileName := renovateConfigFileName(cfg)
 		volumes = append(volumes, v1.Volume{
 			Name: renovateConfigVolumeName,
-			VolumeSource: v1.VolumeSource{
-				ConfigMap: &v1.ConfigMapVolumeSource{
-					LocalObjectReference: v1.LocalObjectReference{Name: configMapName},
-					Items:                []v1.KeyToPath{{Key: fileName, Path: fileName}},
-				},
+			ConfigMap: &v1.ConfigMapVolumeSource{
+				Name:  configMapName,
+				Items: []v1.KeyToPath{{Key: fileName, Path: fileName}},
 			},
 		})
 		volumeMounts = append(volumeMounts, v1.VolumeMount{

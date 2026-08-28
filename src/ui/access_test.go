@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	api "renovate-operator/api/v1alpha1"
 )
@@ -49,19 +48,19 @@ func TestResolveAccess(t *testing.T) {
 		},
 		{
 			name:            "anonymous read grants no log access by default",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true)}}},
 			wantRole:        roleReader,
 			wantPermissions: []string{},
 		},
 		{
 			name:            "anonymous read logs opt-in grants log access",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AnonymousReadLogs: ptr(true)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true), AnonymousReadLogs: new(true)}}},
 			wantRole:        roleReader,
 			wantPermissions: []string{permLogs},
 		},
 		{
 			name:            "anonymous read logs alone grants nothing",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousReadLogs: ptr(true)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousReadLogs: new(true)}}},
 			wantRole:        roleNone,
 			wantPermissions: []string{},
 		},
@@ -90,7 +89,7 @@ func TestResolveAccess(t *testing.T) {
 		},
 		{
 			name:            "authorization disabled still honours anonymous read",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AnonymousReadLogs: ptr(true)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true), AnonymousReadLogs: new(true)}}},
 			defaults:        AccessDefaults{AuthorizationDisabled: true},
 			wantRole:        roleReader,
 			wantPermissions: []string{permLogs},
@@ -221,14 +220,14 @@ func TestResolveAccess(t *testing.T) {
 		{
 			// The three-state pointer: an explicit false revokes an enabled default.
 			name:            "job anonymousRead false opts out of an enabled default",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(false)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(false)}}},
 			defaults:        AccessDefaults{AnonymousRead: true},
 			wantRole:        roleNone,
 			wantPermissions: []string{},
 		},
 		{
 			name:            "job anonymousReadLogs false opts out of an enabled default",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousReadLogs: ptr(false)}}},
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousReadLogs: new(false)}}},
 			defaults:        AccessDefaults{AnonymousRead: true, AnonymousReadLogs: true},
 			wantRole:        roleReader,
 			wantPermissions: []string{},
@@ -279,8 +278,8 @@ func TestResolveAccess(t *testing.T) {
 // count assertion fails until the new route is covered here.
 func TestWriteRoutesRequireAdmin(t *testing.T) {
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-reader"}}},
+		Name: "job1", Namespace: "default",
+		Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-reader"}}},
 	}
 
 	server := &Server{
@@ -350,8 +349,8 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 // be enforced without a group-capable auth provider.
 func groupsJob(name string) api.RenovateJob {
 	return api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}},
+		Name: name, Namespace: "default",
+		Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}},
 	}
 }
 
@@ -383,7 +382,7 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 			name:     "groupless provider without group rules is enforceable",
 			provider: groupless,
 			defaults: AccessDefaults{AnonymousRead: true},
-			jobs:     []api.RenovateJob{{ObjectMeta: metav1.ObjectMeta{Name: "job1"}}},
+			jobs:     []api.RenovateJob{{Name: "job1"}},
 		},
 		{
 			name:       "groupless provider with default groups is not enforceable",
@@ -394,7 +393,7 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 		{
 			name:             "groupless provider with per-job groups is not enforceable",
 			provider:         groupless,
-			jobs:             []api.RenovateJob{{ObjectMeta: metav1.ObjectMeta{Name: "plain"}}, groupsJob("job1")},
+			jobs:             []api.RenovateJob{{Name: "plain"}, groupsJob("job1")},
 			wantReason:       ReasonGroupsUnsupported,
 			wantAffectedJobs: []string{"default/job1"},
 		},
@@ -410,8 +409,8 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 			name:     "groupless provider with deprecated allowedGroups is not enforceable",
 			provider: groupless,
 			jobs: []api.RenovateJob{{
-				ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}, //nolint:staticcheck // deprecated field is intentionally still honoured
+				Name: "legacy", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}, //nolint:staticcheck // deprecated field is intentionally still honoured
 			}},
 			wantReason:       ReasonGroupsUnsupported,
 			wantAffectedJobs: []string{"default/legacy"},
@@ -450,8 +449,8 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 func TestUnenforceableAccessHidesEverything(t *testing.T) {
 	job := groupsJob("job1")
 	anonymous := api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "public", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}},
+		Name: "public", Namespace: "default",
+		Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true)}},
 	}
 
 	server := &Server{

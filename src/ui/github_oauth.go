@@ -277,7 +277,7 @@ func (g *GitHubOAuth) getJSON(accessToken, url string, target any) (nextURL stri
 // nextPageURL extracts the rel="next" target from an RFC 8288 Link header as
 // GitHub sends it, or "" when there is no next page.
 func nextPageURL(link string) string {
-	for _, entry := range strings.Split(link, ",") {
+	for entry := range strings.SplitSeq(link, ",") {
 		parts := strings.Split(entry, ";")
 		if len(parts) < 2 {
 			continue

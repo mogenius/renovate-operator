@@ -10,7 +10,6 @@ import (
 	"renovate-operator/internal/policy"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -43,7 +42,7 @@ func gateReconciler(t *testing.T, job *api.RenovateJob, allowedHosts ...string) 
 
 func reconcileOnce(t *testing.T, r *RenovateJobReconciler) ctrl.Result {
 	t.Helper()
-	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{Name: "test", Namespace: "default"}
 	res, err := r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

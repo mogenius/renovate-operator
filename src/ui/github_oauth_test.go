@@ -74,7 +74,7 @@ func newTestGitHubOAuth(t *testing.T, handler http.Handler) (*GitHubOAuth, *http
 	t.Cleanup(srv.Close)
 
 	return &GitHubOAuth{
-		baseAuth:   baseAuth{logger: logr.Discard()},
+		logger:     logr.Discard(),
 		httpClient: srv.Client(),
 	}, srv
 }
@@ -158,7 +158,7 @@ func TestFetchGitHubGroupsFailsInsteadOfDowngrading(t *testing.T) {
 	// fetchGitHubGroups builds absolute api.github.com URLs, so the interception
 	// has to happen at the transport rather than by pointing it at a test server.
 	provider := &GitHubOAuth{
-		baseAuth:   baseAuth{logger: logr.Discard()},
+		logger:     logr.Discard(),
 		httpClient: &http.Client{Transport: forbiddenTransport{}},
 	}
 

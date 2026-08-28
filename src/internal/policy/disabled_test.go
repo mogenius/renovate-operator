@@ -50,7 +50,7 @@ func TestDisabledPolicyAllowsEverything(t *testing.T) {
 	if err := disabled.ValidateDestination("https://attacker.example.net", "spec.provider.endpoint"); err != nil {
 		t.Errorf("ValidateDestination: expected no error, got %v", err)
 	}
-	unlabeled := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "db-credentials"}}
+	unlabeled := &corev1.Secret{Name: "db-credentials"}
 	if err := disabled.ValidateReferencedSecret(unlabeled); err != nil {
 		t.Errorf("ValidateReferencedSecret: expected no error, got %v", err)
 	}
