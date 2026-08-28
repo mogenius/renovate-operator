@@ -49,6 +49,22 @@ func KubernetesCompatibleName(name string) string {
 	return collapseSeparators(name, invalidChars, multipleHyphens, "-")
 }
 
+// RenovateProjectCRDName returns a unique Kubernetes-compatible name for a RenovateProject
+// CRD object derived from the parent RenovateJob name and the repository name.
+func RenovateProjectCRDName(renovateJobName, project string) string {
+	fullName := renovateJobName + "-" + project
+	fullName = KubernetesCompatibleName(fullName)
+
+	hash := sha256.Sum256([]byte(fullName))
+	hashStr := fmt.Sprintf("%x", hash[:4])
+
+	if len(fullName) > 54 {
+		fullName = fullName[:54]
+	}
+
+	return fullName + "-" + hashStr
+}
+
 func DiscoveryJobName(in *api.RenovateJob) string {
 	baseName := in.Name
 	baseName = KubernetesCompatibleName(baseName)

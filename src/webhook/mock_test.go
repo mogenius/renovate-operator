@@ -8,8 +8,6 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // mockWebhookManager is used by webhook integration tests.
@@ -67,7 +65,24 @@ func (m *mockWebhookManager) ListRenovateJobs(ctx context.Context) ([]crdmanager
 	return nil, nil
 }
 
+// testProjectAnnotation is a test-only sentinel used by makeTestRenovateJob so
+// GetProjectsForRenovateJob can derive the project without a real CRD lookup.
+const testProjectAnnotation = "test.webhook/project"
+
 func (m *mockWebhookManager) GetProjectsForRenovateJob(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error) {
+	if m.listRenovateJobsFullFunc != nil {
+		jobs, err := m.listRenovateJobsFullFunc(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, j := range jobs {
+			if j.Name == jobId.Name && j.Namespace == jobId.Namespace {
+				if project := j.Annotations[testProjectAnnotation]; project != "" {
+					return []crdmanager.RenovateProjectStatus{{Name: project}}, nil
+				}
+			}
+		}
+	}
 	return nil, nil
 }
 func (m *mockWebhookManager) StreamLogsForProject(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
@@ -110,23 +125,21 @@ func (m *mockWebhookManager) GetProjectsByStatus(ctx context.Context, job crdman
 	return nil, nil
 }
 
-func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return nil
 }
 
-// makeTestRenovateJob builds a RenovateJob with webhook enabled (auth disabled) and a single project,
-// used by integration tests to configure the resolver mock.
+// makeTestRenovateJob builds a RenovateJob with webhook enabled (auth disabled) and a single project.
+// The project name is stored in a test-only annotation so mockWebhookManager.GetProjectsForRenovateJob
+// can derive it without a real CRD lookup.
 func makeTestRenovateJob(namespace, name, project string) api.RenovateJob {
 	return api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Name:        name,
+		Namespace:   namespace,
+		Annotations: map[string]string{testProjectAnnotation: project},
 		Spec: api.RenovateJobSpec{
 			Webhook: &api.RenovateWebhook{
 				Enabled: true,
-			},
-		},
-		Status: api.RenovateJobStatus{
-			Projects: []api.ProjectStatus{
-				{Name: project},
 			},
 		},
 	}

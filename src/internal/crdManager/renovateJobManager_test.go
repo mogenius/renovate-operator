@@ -12,6 +12,7 @@ import (
 	"renovate-operator/internal/objectstore"
 	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
+	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,16 +26,29 @@ func testPolicy() policy.Policy {
 	return policy.Policy{AllowedHosts: []string{"api.github.com", "example.com", "operator.example.com"}}
 }
 
-// helper to create a basic RenovateJob
-func makeJob(name, namespace string, projects []api.ProjectStatus) *api.RenovateJob {
+// helper to create a basic RenovateJob (projects are separate RenovateProject CRDs)
+func makeJob(name, namespace string) *api.RenovateJob {
 	j := &api.RenovateJob{}
 	j.Name = name
 	j.Namespace = namespace
 	j.TypeMeta = metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"}
 	j.ObjectMeta = metav1.ObjectMeta{Name: name, Namespace: namespace}
 	j.Spec = api.RenovateJobSpec{Schedule: "*/5 * * * *"}
-	j.Status = api.RenovateJobStatus{Projects: projects}
 	return j
+}
+
+// helper to create a RenovateProject CRD owned by the given job.
+func makeProject(jobName, namespace, project string, status api.RenovateProjectStatus) *api.RenovateProject {
+	rp := &api.RenovateProject{}
+	rp.Name = utils.RenovateProjectCRDName(jobName, project)
+	rp.Namespace = namespace
+	rp.Labels = map[string]string{api.LabelRenovateJob: jobName}
+	rp.Spec = api.RenovateProjectSpec{Project: project}
+	rp.Status = api.RenovateProjectState{
+		Status:         status,
+		LastTransition: metav1.Now(),
+	}
+	return rp
 }
 
 func TestListRenovateJobs(t *testing.T) {
@@ -43,8 +57,8 @@ func TestListRenovateJobs(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	j1 := makeJob("job1", "default", nil)
-	j2 := makeJob("job2", "kube", nil)
+	j1 := makeJob("job1", "default")
+	j2 := makeJob("job2", "kube")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
@@ -69,10 +83,11 @@ func TestListRenovateJobsFull(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	j1 := makeJob("job1", "default", []api.ProjectStatus{{Name: "p1", Status: api.JobStatusRunning}})
-	j2 := makeJob("job2", "kube", nil)
+	j1 := makeJob("job1", "default")
+	j2 := makeJob("job2", "kube")
+	rp1 := makeProject("job1", "default", "p1", api.JobStatusRunning)
 
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2, rp1).Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
@@ -87,14 +102,18 @@ func TestListRenovateJobsFull(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("expected 2 jobs, got %d", len(list))
 	}
-	// Verify full data is returned (not just identifiers)
 	for _, job := range list {
 		if job.Spec.Schedule != "*/5 * * * *" {
 			t.Fatalf("expected schedule '*/5 * * * *', got '%s'", job.Spec.Schedule)
 		}
-		if job.Name == "job1" && len(job.Status.Projects) != 1 {
-			t.Fatalf("expected job1 to have 1 project, got %d", len(job.Status.Projects))
-		}
+	}
+	// Verify project is accessible via dedicated CRD
+	projects, err := mgr.GetProjectsForRenovateJob(ctx, RenovateJobIdentifier{Name: "job1", Namespace: "default"})
+	if err != nil {
+		t.Fatalf("unexpected error getting projects: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("expected job1 to have 1 project, got %d", len(projects))
 	}
 }
 
@@ -104,11 +123,12 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	j := makeJob("job1", "default", []api.ProjectStatus{{
-		Name:   "existingProject",
-		Status: api.JobStatusScheduled,
-	}})
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+	j := makeJob("job1", "default")
+	rp := makeProject("job1", "default", "existingProject", api.JobStatusScheduled)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(j, rp).
+		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
+		Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
@@ -116,25 +136,25 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 	}
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
+	jobId := RenovateJobIdentifier{Name: "job1", Namespace: "default"}
 
-	err = mgr.UpdateProjectStatus(ctx, "existingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+	err = mgr.UpdateProjectStatus(ctx, "existingProject", jobId, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != nil {
 		t.Fatalf("unexpected error updating project: %v", err)
 	}
-	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
+
+	projects, err := mgr.GetProjectsForRenovateJob(ctx, jobId)
 	if err != nil {
-		t.Fatalf("unexpected error getting job: %v", err)
+		t.Fatalf("unexpected error getting projects: %v", err)
+	}
+	if len(projects) != 1 || projects[0].Name != "existingProject" {
+		t.Fatalf("got unexpected projects after update: %v", projects)
+	}
+	if projects[0].Status != api.JobStatusRunning {
+		t.Fatalf("expected project status running after update, got: %s", projects[0].Status)
 	}
 
-	if len(job.Status.Projects) != 1 || job.Status.Projects[0].Name != "existingProject" {
-		t.Fatalf("got unexcpedted projects after update: %v", job.Status.Projects)
-	}
-
-	if job.Status.Projects[0].Status != api.JobStatusRunning {
-		t.Fatalf("expected project status running after update, got: %s", job.Status.Projects[0].Status)
-	}
-
-	err = mgr.UpdateProjectStatus(ctx, "notExistingProject", RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+	err = mgr.UpdateProjectStatus(ctx, "notExistingProject", jobId, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
 	if err != ErrProjectNotFound {
 		t.Fatalf("expected project not found error updating not existing project")
 	}
@@ -146,9 +166,13 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	projects := []api.ProjectStatus{{Name: "p1", Status: api.JobStatusRunning}, {Name: "p2", Status: api.JobStatusScheduled}}
-	j := makeJob("job1", "default", projects)
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+	j := makeJob("job1", "default")
+	rp1 := makeProject("job1", "default", "p1", api.JobStatusRunning)
+	rp2 := makeProject("job1", "default", "p2", api.JobStatusScheduled)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(j, rp1, rp2).
+		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
+		Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
@@ -156,23 +180,24 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	}
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
+	jobId := RenovateJobIdentifier{Name: "job1", Namespace: "default"}
 
 	// predicate: mark non-running projects as scheduled
-	predicate := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
-	err = mgr.UpdateProjectStatusBatched(ctx, predicate, RenovateJobIdentifier{Name: "job1", Namespace: "default"}, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
+	predicate := func(p RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning }
+	err = mgr.UpdateProjectStatusBatched(ctx, predicate, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
 	if err != nil {
 		t.Fatalf("unexpected error in batched update: %v", err)
 	}
-	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
+
+	projects, err := mgr.GetProjectsForRenovateJob(ctx, jobId)
 	if err != nil {
-		t.Fatalf("unexpected error getting job: %v", err)
+		t.Fatalf("unexpected error getting projects: %v", err)
 	}
-	// p1 should remain running, p2 should be scheduled
-	if len(job.Status.Projects) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(job.Status.Projects))
+	if len(projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(projects))
 	}
 	foundP2 := false
-	for _, p := range job.Status.Projects {
+	for _, p := range projects {
 		if p.Name == "p2" {
 			foundP2 = true
 			if p.Status != api.JobStatusScheduled {
@@ -191,10 +216,13 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	// existing project 'a' present
-	projects := []api.ProjectStatus{{Name: "a", Status: api.JobStatusCompleted}}
-	j := makeJob("job1", "default", projects)
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).WithStatusSubresource(&api.RenovateJob{}).Build()
+	j := makeJob("job1", "default")
+	// existing project 'a' with Completed status
+	rp := makeProject("job1", "default", "a", api.JobStatusCompleted)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(j, rp).
+		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
+		Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
@@ -202,6 +230,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	}
 	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy())
 	ctx := context.Background()
+	jobId := RenovateJobIdentifier{Name: "job1", Namespace: "default"}
 
 	rJob, err := mgr.GetRenovateJob(ctx, "job1", "default")
 	if err != nil {
@@ -212,17 +241,18 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error in reconcile: %v", err)
 	}
-	job, err := mgr.GetRenovateJob(ctx, "job1", "default")
+
+	projects, err := mgr.GetProjectsForRenovateJob(ctx, jobId)
 	if err != nil {
-		t.Fatalf("unexpected error getting job: %v", err)
+		t.Fatalf("unexpected error getting projects: %v", err)
 	}
-	if len(job.Status.Projects) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(job.Status.Projects))
+	if len(projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(projects))
 	}
-	// ensure a kept its existing status
+
 	var statusA api.RenovateProjectStatus
 	var hasB bool
-	for _, p := range job.Status.Projects {
+	for _, p := range projects {
 		if p.Name == "a" {
 			statusA = p.Status
 		}
@@ -244,9 +274,10 @@ func TestGetProjectsFilters(t *testing.T) {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 
-	projects := []api.ProjectStatus{{Name: "a", Status: api.JobStatusCompleted}, {Name: "b", Status: api.JobStatusScheduled}}
-	j := makeJob("job1", "default", projects)
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j).Build()
+	j := makeJob("job1", "default")
+	rp1 := makeProject("job1", "default", "a", api.JobStatusCompleted)
+	rp2 := makeProject("job1", "default", "b", api.JobStatusScheduled)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j, rp1, rp2).Build()
 
 	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
 	if err != nil {
