@@ -886,6 +886,12 @@ func main() {
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
+	err = (&controllers.RenovateProjectReconciler{
+		Manager:   jobMgr,
+		K8sClient: mgr.GetClient(),
+	}).SetupWithManager(mgr)
+	assert.NoError(err, "failed to setup project reconciler")
+
 	err = mgr.Start(ctx)
 	assert.NoError(err, "failed to start manager")
 }

@@ -1,11 +1,11 @@
 # Annotation Triggers
 
-Annotation triggers let you imperatively kick off actions on a `RenovateJob` without waiting for the next scheduled cron run. Set an annotation on the resource and the operator picks it up on the next reconcile loop (within ~1 minute), executes the action, and removes the annotation — making each trigger a one-shot command.
+Annotation triggers let you imperatively kick off actions on a `RenovateJob` or `RenovateProject` without waiting for the next scheduled cron run. Set an annotation on the resource and the operator picks it up on the next reconcile loop (within ~1 minute), executes the action, and removes the annotation — making each trigger a one-shot command.
 
 > **Why annotations instead of labels?**
 > Kubernetes label values cannot contain slashes (`/`), which makes them incompatible with typical project names like `org/repo`. Annotations have no such restriction.
 
-## Available triggers
+## RenovateJob triggers
 
 | Annotation                                    | Value                   | Effect                                              |
 | --------------------------------------------- | ----------------------- | --------------------------------------------------- |
@@ -13,7 +13,30 @@ Annotation triggers let you imperatively kick off actions on a `RenovateJob` wit
 | `renovate-operator.mogenius.com/schedule-all` | `"true"`                | Sets all non-running projects to `Scheduled`        |
 | `renovate-operator.mogenius.com/schedule`     | `"org/repo1,org/repo2"` | Sets the listed non-running projects to `Scheduled` |
 
-Multiple triggers can be set simultaneously — the operator processes all of them in a single reconcile.
+Multiple triggers can be set simultaneously on a `RenovateJob` — the operator processes all of them in a single reconcile.
+
+## RenovateProject triggers
+
+| Annotation                                | Value    | Effect                                      |
+| ----------------------------------------- | -------- | ------------------------------------------- |
+| `renovate-operator.mogenius.com/schedule` | `"true"` | Sets this project to `Scheduled` immediately |
+
+This is the per-project equivalent of the `schedule` trigger on `RenovateJob`. It is useful when you want to re-run Renovate for a single repository without affecting the rest of the projects under the same job.
+
+## Schedule a single project immediately (RenovateProject)
+
+Marks one specific project as `Scheduled` so the executor dispatches it on the next tick (within 10 seconds). The project must already exist as a `RenovateProject` resource (i.e. it has been discovered). If the project is currently `Running` the status update is still applied — the executor will pick it up after the running job completes.
+
+```sh
+kubectl annotate renovateproject <name> -n <namespace> \
+  renovate-operator.mogenius.com/schedule=true
+```
+
+The annotation is removed once the status update succeeds. To find the `RenovateProject` name for a given repository:
+
+```sh
+kubectl get renovateproject -n <namespace> -l renovate-operator.mogenius.com/renovatejob=<job-name>
+```
 
 ## Trigger a discovery run
 
