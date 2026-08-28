@@ -6,8 +6,8 @@ metadata:
 rules:
   # Allow get, list, update on renovatejobs
   - apiGroups: ["renovate-operator.mogenius.com"]
-    resources: ["renovatejobs", "renovatejobs/status"]
-    verbs: ["get", "list", "watch", "update", "patch"]
+    resources: ["renovatejobs", "renovatejobs/status","renovateprojects", "renovateprojects/status"]
+    verbs: ["create", "get", "list", "watch", "update", "patch"]
 
   # Allow create, get, list, update, delete on pods
   - apiGroups: [""]
