@@ -252,20 +252,16 @@
         const [isVisible, setIsVisible] = useState(false);
         const containerRef = React.useRef(null);
         const timeoutRef = React.useRef(null);
+        const portalRef = React.useRef(null);
 
         const handleMouseEnter = (e) => {
-          // Check if hovering over element with data-no-tooltip
-          if (e.target.closest('[data-no-tooltip]')) {
-            return;
-          }
-
+          if (e.target.closest('[data-no-tooltip]')) return;
           timeoutRef.current = setTimeout(() => {
             setIsVisible(true);
-          }, 500); // 500ms delay before showing tooltip
+          }, 500);
         };
 
         const handleMouseMove = (e) => {
-          // Check if moved into element with data-no-tooltip
           if (e.target.closest('[data-no-tooltip]')) {
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
@@ -273,7 +269,6 @@
             }
             setIsVisible(false);
           } else {
-            // Moved into a normal area - start tooltip if not already showing
             if (!isVisible && !timeoutRef.current) {
               timeoutRef.current = setTimeout(() => {
                 setIsVisible(true);
@@ -284,43 +279,52 @@
         };
 
         const handleMouseLeave = () => {
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-          }
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
           setIsVisible(false);
         };
 
         useEffect(() => {
           return () => {
-            if (timeoutRef.current) {
-              clearTimeout(timeoutRef.current);
-            }
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
           };
         }, []);
 
-        const tooltipElement = isVisible && project ? (
-          <div
-            className="fixed z-50 pointer-events-none border-0"
-            style={{
-              left: '50%',
-              top: containerRef.current ?
-                `${containerRef.current.getBoundingClientRect().top - 12}px` : '0',
-              transform: 'translate(-50%, -100%)'
-            }}
-          >
-            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
-              {project.duration && (
-                <>
-                  <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
-                  <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
-                    {project.duration}
-                  </div>
-                </>
-              )}
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0"></div>
-            </div>
-          </div>
-        ) : null;
+        useEffect(() => {
+          const container = document.createElement('div');
+          document.body.appendChild(container);
+          const root = window.createRoot(container);
+          portalRef.current = { container, root };
+          return () => {
+            root.unmount();
+            if (document.body.contains(container)) document.body.removeChild(container);
+          };
+        }, []);
+
+        useEffect(() => {
+          if (!portalRef.current) return;
+          const { root } = portalRef.current;
+          if (isVisible && project && project.duration) {
+            const top = containerRef.current
+              ? `${containerRef.current.getBoundingClientRect().top - 12}px`
+              : '0';
+            root.render(
+              React.createElement('div', {
+                className: 'fixed z-50 pointer-events-none border-0',
+                style: { left: '50%', top, transform: 'translate(-50%, -100%)' }
+              },
+                React.createElement('div', {
+                  className: 'bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative'
+                },
+                  React.createElement('div', { className: 'font-medium mb-1 text-gray-100' }, 'Last Run Duration'),
+                  React.createElement('div', { className: 'text-gray-300 dark:text-slate-300 whitespace-nowrap' }, project.duration),
+                  React.createElement('div', { className: 'absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0' })
+                )
+              )
+            );
+          } else {
+            root.render(null);
+          }
+        }, [isVisible, project]);
 
         return {
           containerRef,
@@ -329,7 +333,7 @@
             onMouseMove: handleMouseMove,
             onMouseLeave: handleMouseLeave,
           },
-          tooltipElement
+          tooltipElement: null,
         };
       }
 
@@ -2264,7 +2268,7 @@
                       {sortedProjects.length > 0 ? (
                         sortedProjects.map((project) => {
                           const ProjectRow = () => {
-                            const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                            const { containerRef, tooltipProps } = useTooltip(project);
 
                             return (
                               <>
@@ -2396,7 +2400,6 @@
                           {expandedIssues.has(project.name) && project.logIssues && (
                             <IssueDetailRow logIssues={project.logIssues} projectName={project.name} jobName={job.name} jobNamespace={job.namespace} />
                           )}
-                          {tooltipElement}
                         </>
                       );
                     };
@@ -2423,7 +2426,7 @@
                   {sortedProjects.length > 0 ? (
                     sortedProjects.map((project) => {
                       const ProjectCard = () => {
-                        const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                        const { containerRef, tooltipProps } = useTooltip(project);
 
                         return (
                           <>
@@ -2599,7 +2602,6 @@
                           })()}
                         </div>
                       </div>
-                      {tooltipElement}
                     </>
                   );
                 };
