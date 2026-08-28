@@ -14,7 +14,6 @@ import (
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -112,7 +111,7 @@ func (m *mockRenovateJobManager) GetProjectsByStatus(ctx context.Context, job cr
 	return nil, nil
 }
 
-func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return nil
 }
 
@@ -341,10 +340,8 @@ func TestDiscoveryStatusForProject_Success(t *testing.T) {
 	mockManager := &mockRenovateJobManager{
 		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: "default",
-				},
+				Name:      "job1",
+				Namespace: "default",
 			}, nil
 		},
 	}
@@ -387,10 +384,8 @@ func TestDiscoveryStatusForProject_NotFound(t *testing.T) {
 	mockManager := &mockRenovateJobManager{
 		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: "default",
-				},
+				Name:      "job1",
+				Namespace: "default",
 			}, nil
 		},
 	}
@@ -434,10 +429,8 @@ func TestRunDiscoveryForProject_AlreadyRunning(t *testing.T) {
 	mockManager := &mockRenovateJobManager{
 		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 			return &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: "default",
-				},
+				Name:      "job1",
+				Namespace: "default",
 			}, nil
 		},
 	}
@@ -501,8 +494,8 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "auth disabled - every job is admin",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{Name: "job2"},
 			},
 			authEnabled: false,
 			wantJobs:    []string{"job1", "job2"},
@@ -511,7 +504,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "auth enabled without session - nothing visible",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
 			},
 			authEnabled: true,
 			wantJobs:    []string{},
@@ -519,8 +512,8 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "job without access configuration is hidden (fail closed)",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{}}},
+				{Name: "job1"},
+				{Name: "job2", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-admin"}},
@@ -529,8 +522,8 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "admin group grants admin, reader group grants reader",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{Name: "job2", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-admin", "team-reader"}},
@@ -540,7 +533,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "admin wins when a user holds both group kinds",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups, AdminGroups: adminGroups}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: readerGroups, AdminGroups: adminGroups}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-reader", "team-admin"}},
@@ -550,7 +543,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "deprecated allowedGroups still grants admin",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
+				{Name: "job1", Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-legacy"}},
@@ -560,7 +553,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "group names are matched case-insensitively",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"Team-Admin"}}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"Team-Admin"}}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"TEAM-ADMIN"}},
@@ -570,8 +563,8 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "operator defaults apply to jobs that set no groups",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-other"}}}},
+				{Name: "job1"},
+				{Name: "job2", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-other"}}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-default"}},
@@ -582,8 +575,8 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "anonymous read grants reader without a session",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true)}}},
+				{Name: "job2", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: adminGroups}}},
 			},
 			authEnabled: true,
 			wantJobs:    []string{"job1"},
@@ -592,7 +585,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "anonymous read is a floor for sessions without matching groups",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AdminGroups: adminGroups}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true), AdminGroups: adminGroups}}},
 			},
 			authEnabled: true,
 			session:     &sessionData{Groups: []string{"team-unrelated"}},
@@ -602,7 +595,7 @@ func TestFilterReadableJobs(t *testing.T) {
 		{
 			name: "job opts out of the anonymous read default",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1"}, Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(false)}}},
+				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(false)}}},
 			},
 			authEnabled: true,
 			defaults:    AccessDefaults{AnonymousRead: true},
@@ -612,7 +605,7 @@ func TestFilterReadableJobs(t *testing.T) {
 			name: "access and deprecated allowedGroups together fail closed",
 			jobs: []api.RenovateJob{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "job1"},
+					Name: "job1",
 					Spec: api.RenovateJobSpec{
 						AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
 						Access:        &api.RenovateJobAccess{AdminGroups: adminGroups},
@@ -654,7 +647,8 @@ func TestFilterReadableJobs(t *testing.T) {
 	}
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 func TestHasIntersection(t *testing.T) {
 	tests := []struct {
@@ -693,7 +687,7 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "authenticated user with matching group",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
 			},
 			sessionGroups: []string{"team-a"},
 			authEnabled:   true,
@@ -702,7 +696,7 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "authenticated user without matching group",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
 			},
 			sessionGroups: []string{"team-b"},
 			authEnabled:   true,
@@ -711,8 +705,8 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "auth disabled - all jobs visible",
 			jobs: []api.RenovateJob{
-				{ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "job2", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-b"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
+				{Name: "job2", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-b"}}},
 			},
 			sessionGroups: nil,
 			authEnabled:   false,
@@ -783,11 +777,9 @@ func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
 	jobs := make([]api.RenovateJob, 0, jobCount)
 	for i := range jobCount {
 		jobs = append(jobs, api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "job-" + string(rune('a'+i)),
-				Namespace: "default",
-			},
-			Spec: api.RenovateJobSpec{Schedule: "0 0 * * *"},
+			Name:      "job-" + string(rune('a'+i)),
+			Namespace: "default",
+			Spec:      api.RenovateJobSpec{Schedule: "0 0 * * *"},
 		})
 	}
 
@@ -839,8 +831,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "authorized user can access logs",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-a"},
 			authEnabled:    true,
@@ -849,8 +841,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -859,8 +851,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "reader by group match may stream logs",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -869,8 +861,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "anonymous reader without log access gets 403",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true)}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true)}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -879,8 +871,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "anonymous reader with log access may stream logs",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: ptr(true), AnonymousReadLogs: ptr(true)}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AnonymousRead: new(true), AnonymousReadLogs: new(true)}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -889,8 +881,8 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 		{
 			name: "auth disabled - all users can access",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    false,
@@ -944,8 +936,8 @@ func TestAuthorizeJobAccess_DirectBypassAttempt(t *testing.T) {
 	// with correct namespace/job name but without proper group membership
 
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "secret-job", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{AllowedGroups: []string{"admin"}},
+		Name: "secret-job", Namespace: "default",
+		Spec: api.RenovateJobSpec{AllowedGroups: []string{"admin"}},
 	}
 
 	mockManager := &mockRenovateJobManager{
@@ -1018,8 +1010,8 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 		{
 			name: "authorized user can trigger all projects",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-a"},
 			authEnabled:    true,
@@ -1028,8 +1020,8 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 		{
 			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -1038,8 +1030,8 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 		{
 			name: "reader gets 403 on write actions",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team-b"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -1048,8 +1040,8 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 		{
 			name: "auth disabled - all users can trigger",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "default"},
-				Spec:       api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Name: "job1", Namespace: "default",
+				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    false,

@@ -13,7 +13,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -84,7 +83,7 @@ func TestGetDNSPolicy(t *testing.T) {
 
 func TestNewJobs_WithSettings(t *testing.T) {
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+		Name: "rj", Namespace: "ns",
 		Spec: api.RenovateJobSpec{
 			Image:     "img",
 			SecretRef: "sref",
@@ -99,10 +98,8 @@ func TestNewJobs_WithSettings(t *testing.T) {
 			},
 			ExtraVolumes: []v1.Volume{
 				{
-					Name: "extra-vol",
-					VolumeSource: v1.VolumeSource{
-						EmptyDir: &v1.EmptyDirVolumeSource{},
-					},
+					Name:     "extra-vol",
+					EmptyDir: &v1.EmptyDirVolumeSource{},
 				},
 			},
 			ExtraVolumeMounts: []v1.VolumeMount{
@@ -260,10 +257,8 @@ func TestNewJobs_WithSettings(t *testing.T) {
 
 func TestNewJob_WithoutSettings(t *testing.T) {
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "nofilter",
-			Namespace: "ns",
-		},
+		Name:      "nofilter",
+		Namespace: "ns",
 		Spec: api.RenovateJobSpec{
 			Image: "renovate:dev",
 		},
@@ -354,7 +349,7 @@ func TestNewJobs_Autodiscovery(t *testing.T) {
 			{Name: "RENOVATE_REQUIRE_CONFIG", Value: "required"},
 		}
 		job := &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Name: "rj", Namespace: "ns",
 			Spec: api.RenovateJobSpec{
 				Image:    "img",
 				ExtraEnv: extraEnv,
@@ -388,8 +383,8 @@ func TestNewJobs_Autodiscovery(t *testing.T) {
 
 	t.Run("executor disables autodiscovery when extra env omits it", func(t *testing.T) {
 		job := &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
-			Spec:       api.RenovateJobSpec{Image: "img"},
+			Name: "rj", Namespace: "ns",
+			Spec: api.RenovateJobSpec{Image: "img"},
 		}
 
 		container := expectContainer(t, newRenovateJob(job, "org/repository", nil, nil))
@@ -411,8 +406,8 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 
 	t.Run("default secret applied when spec has none", func(t *testing.T) {
 		job := &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
-			Spec:       api.RenovateJobSpec{Image: "img"},
+			Name: "rj", Namespace: "ns",
+			Spec: api.RenovateJobSpec{Image: "img"},
 		}
 		dj := newDiscoveryJob(job, nil)
 		expectImagePullSecrets(t, dj, []v1.LocalObjectReference{{Name: "default-secret"}})
@@ -423,7 +418,7 @@ func TestNewJobs_WithDefaultImagePullSecrets(t *testing.T) {
 
 	t.Run("spec and default secrets are combined", func(t *testing.T) {
 		job := &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
+			Name: "rj", Namespace: "ns",
 			Spec: api.RenovateJobSpec{
 				Image:            "img",
 				ImagePullSecrets: []v1.LocalObjectReference{{Name: "spec-secret"}},
@@ -444,8 +439,8 @@ func TestScratchVolume(t *testing.T) {
 
 	baseJob := func(sv *api.RenovateJobScratchVolume) *api.RenovateJob {
 		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: "rj", Namespace: "ns"},
-			Spec:       api.RenovateJobSpec{Image: "img", ScratchVolume: sv},
+			Name: "rj", Namespace: "ns",
+			Spec: api.RenovateJobSpec{Image: "img", ScratchVolume: sv},
 		}
 	}
 

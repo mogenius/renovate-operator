@@ -2,8 +2,6 @@ package v1alpha1
 
 import (
 	"testing"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestRenovateJob_Fullname(t *testing.T) {
@@ -36,10 +34,8 @@ func TestRenovateJob_Fullname(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rj := &RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tt.jobName,
-					Namespace: tt.namespace,
-				},
+				Name:      tt.jobName,
+				Namespace: tt.namespace,
 			}
 
 			got := rj.Fullname()
@@ -53,10 +49,8 @@ func TestRenovateJob_Fullname(t *testing.T) {
 func TestRenovateJob_DeepCopyObject(t *testing.T) {
 	t.Run("non-nil object", func(t *testing.T) {
 		original := &RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-job",
-				Namespace: "default",
-			},
+			Name:      "test-job",
+			Namespace: "default",
 			Spec: RenovateJobSpec{
 				Schedule:    "0 0 * * *",
 				Parallelism: 2,

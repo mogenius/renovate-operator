@@ -3,8 +3,6 @@ package utils
 import (
 	api "renovate-operator/api/v1alpha1"
 	"testing"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestRenovateJob_JobNames(t *testing.T) {
@@ -90,9 +88,7 @@ func TestRenovateJob_JobNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rj := &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: tt.jobName,
-				},
+				Name: tt.jobName,
 			}
 
 			gotExecutor := ExecutorJobName(rj, tt.project)

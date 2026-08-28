@@ -10,7 +10,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,13 +28,11 @@ func ensureRedisURLSecret(ctx context.Context, c client.Client, namespace string
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      redisURLSecretName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				api.LabelAppManagedBy: api.LabelValueManagedBy,
-				api.LabelAppComponent: api.LabelValueComponentValkeyCache,
-			},
+		Name:      redisURLSecretName,
+		Namespace: namespace,
+		Labels: map[string]string{
+			api.LabelAppManagedBy: api.LabelValueManagedBy,
+			api.LabelAppComponent: api.LabelValueComponentValkeyCache,
 		},
 		Data: map[string][]byte{
 			"redis-url": []byte(valkeyURL),

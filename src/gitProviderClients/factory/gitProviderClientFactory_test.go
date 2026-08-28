@@ -51,8 +51,8 @@ func newSecret(name string, data map[string][]byte) *corev1.Secret {
 
 func newUnlabeledSecret(name string, data map[string][]byte) *corev1.Secret {
 	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Data:       data,
+		Name: name, Namespace: "default",
+		Data: data,
 	}
 }
 

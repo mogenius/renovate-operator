@@ -7,7 +7,6 @@ import (
 	api "renovate-operator/api/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValidateDestination(t *testing.T) {
@@ -200,8 +199,8 @@ func TestChartDefaultsAreAccepted(t *testing.T) {
 
 func labeledSecret(name string, labels map[string]string) *corev1.Secret {
 	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", Labels: labels},
-		Data:       map[string][]byte{"password": []byte("s3cret")},
+		Name: name, Namespace: "default", Labels: labels,
+		Data: map[string][]byte{"password": []byte("s3cret")},
 	}
 }
 

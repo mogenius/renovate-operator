@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGetNameForGithubAppSecretFromJobName(t *testing.T) {
@@ -55,20 +53,16 @@ func TestGetNameForGithubAppSecret(t *testing.T) {
 		{
 			name: "basic job",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-renovate-job",
-					Namespace: "default",
-				},
+				Name:      "my-renovate-job",
+				Namespace: "default",
 			},
 			expected: "my-renovate-job-github-app-3bff5513",
 		},
 		{
 			name: "job with long name",
 			job: &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "this-is-a-really-long-renovate-job-name-that-needs-truncation",
-					Namespace: "production",
-				},
+				Name:      "this-is-a-really-long-renovate-job-name-that-needs-truncation",
+				Namespace: "production",
 			},
 			expected: "this-is-a-really-long-renovate-job-name-tha-github-app-e09ef13c",
 		},

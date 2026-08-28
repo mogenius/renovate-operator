@@ -50,8 +50,7 @@ func (v *Violation) Error() string { return v.Message }
 // ReasonFor returns the refusal reason carried by err, or "" if err is not a
 // policy violation.
 func ReasonFor(err error) string {
-	var v *Violation
-	if errors.As(err, &v) {
+	if v, ok := errors.AsType[*Violation](err); ok {
 		return v.Reason
 	}
 	return ""
