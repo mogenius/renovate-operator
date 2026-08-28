@@ -156,7 +156,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	}
 
 	if k8sJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] == "true" {
-		isNotRunning := func(p api.ProjectStatus) bool {
+		isNotRunning := func(p crdManager.RenovateProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
 		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{

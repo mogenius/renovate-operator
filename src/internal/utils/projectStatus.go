@@ -4,11 +4,10 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GetUpdateStatusForProject determines the new status for a project based on its current status and the desired status update.
-func GetUpdateStatusForProject(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
+func GetUpdateStatusForProject(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	switch desiredStatus.Status {
 	case api.JobStatusScheduled:
 		return validateProjectStatusScheduled(projectStatus, desiredStatus)
@@ -25,11 +24,10 @@ func GetUpdateStatusForProject(projectStatus *api.ProjectStatus, desiredStatus *
 	}
 }
 
-func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
-	// cannot schedule a project that is currently running
+func validateProjectStatusScheduled(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
-		projectStatus.LastTransition = v1.Now()
+		projectStatus.LastTransition = metav1.Now()
 		projectStatus.ExecutionOptions = desiredStatus.ExecutionOptions
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
@@ -41,11 +39,10 @@ func validateProjectStatusScheduled(projectStatus *api.ProjectStatus, desiredSta
 	return projectStatus
 }
 
-func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
-	// can only set a project to running if it is currently scheduled
+func validateProjectStatusRunning(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	if projectStatus.Status == api.JobStatusScheduled {
 		projectStatus.Status = api.JobStatusRunning
-		projectStatus.LastTransition = v1.Now()
+		projectStatus.LastTransition = metav1.Now()
 		projectStatus.Priority = 0
 		projectStatus.ExecutionOptions = nil
 	}
@@ -56,12 +53,11 @@ func validateProjectStatusRunning(projectStatus *api.ProjectStatus, desiredStatu
 	return projectStatus
 }
 
-func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
-	// can only set a running project to completed
+func validateProjectStatusCompleted(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusCompleted
 		projectStatus.Priority = 0
-		projectStatus.LastTransition = v1.Now()
+		projectStatus.LastTransition = metav1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -70,12 +66,11 @@ func validateProjectStatusCompleted(projectStatus *api.ProjectStatus, desiredSta
 	return projectStatus
 }
 
-func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
-	// can only set a running project to failed
+func validateProjectStatusFailed(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusFailed
 		projectStatus.Priority = 0
-		projectStatus.LastTransition = v1.Now()
+		projectStatus.LastTransition = metav1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -84,12 +79,11 @@ func validateProjectStatusFailed(projectStatus *api.ProjectStatus, desiredStatus
 	return projectStatus
 }
 
-func validateProjectStatusCancelled(projectStatus *api.ProjectStatus, desiredStatus *types.RenovateStatusUpdate) *api.ProjectStatus {
-	// can only set a running project to cancelled
+func validateProjectStatusCancelled(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
 	if projectStatus.Status == api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusCancelled
 		projectStatus.Priority = 0
-		projectStatus.LastTransition = v1.Now()
+		projectStatus.LastTransition = metav1.Now()
 	}
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
@@ -98,19 +92,19 @@ func validateProjectStatusCancelled(projectStatus *api.ProjectStatus, desiredSta
 	return projectStatus
 }
 
-func updateRenovateResultStatus(projectStatus *api.ProjectStatus, status *string) {
+func updateRenovateResultStatus(projectStatus *api.RenovateProjectState, status *string) {
 	if status != nil {
 		projectStatus.RenovateResultStatus = status
 	}
 }
 
-func updatePRActivity(projectStatus *api.ProjectStatus, activity *api.PRActivity) {
+func updatePRActivity(projectStatus *api.RenovateProjectState, activity *api.PRActivity) {
 	if activity != nil {
 		projectStatus.PRActivity = activity
 	}
 }
 
-func updateLogIssues(projectStatus *api.ProjectStatus, issues *api.LogIssues) {
+func updateLogIssues(projectStatus *api.RenovateProjectState, issues *api.LogIssues) {
 	if issues != nil {
 		projectStatus.LogIssues = issues
 	}

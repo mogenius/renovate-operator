@@ -64,7 +64,16 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		// renovatejob object read without problem -> create the schedule
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
-		metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, renovateJob.Status.Projects)
+		jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+		if projects, projErr := r.Manager.GetProjectsForRenovateJob(ctx, jobId); projErr != nil {
+			logger.Error(projErr, "failed to get projects for metric rehydration")
+		} else {
+			projectMap := make(map[string]api.RenovateProjectState, len(projects))
+			for _, p := range projects {
+				projectMap[p.Name] = p.RenovateProjectState
+			}
+			metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, projectMap)
+		}
 
 		// Gate before anything is scheduled or created.
 		if !r.acceptJob(ctx, logger, renovateJob) {
@@ -216,19 +225,17 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 // resetOrphanedRunning resets Running projects whose k8s Job no longer exists (e.g. deleted
 // while the operator was scaled down). Uses a single list call to avoid per-project API calls.
 func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renovateJob *api.RenovateJob) {
-	hasRunning := false
-	for _, p := range renovateJob.Status.Projects {
-		if p.Status == api.JobStatusRunning {
-			hasRunning = true
-			break
-		}
-	}
-	if !hasRunning {
-		return
-	}
-
 	logger := log.FromContext(ctx)
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	runningProjects, err := r.Manager.GetProjectsByStatus(ctx, jobId, api.JobStatusRunning)
+	if err != nil {
+		logger.Error(err, "failed to get running projects for orphan check")
+		return
+	}
+	if len(runningProjects) == 0 {
+		return
+	}
 
 	existingJobs, err := crdManager.GetJobsByLabel(ctx, r.K8sClient, crdManager.JobSelector{
 		RenovateJobName: renovateJob.Name,
@@ -247,7 +254,7 @@ func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renova
 		}
 	}
 
-	isOrphaned := func(p api.ProjectStatus) bool {
+	isOrphaned := func(p crdManager.RenovateProjectStatus) bool {
 		if p.Status != api.JobStatusRunning {
 			return false
 		}
@@ -286,7 +293,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	}
 
 	if annotations[api.TriggerScheduleAllAnnotationKey] == "true" {
-		isNotRunning := func(p api.ProjectStatus) bool { return p.Status != api.JobStatusRunning }
+		isNotRunning := func(p crdManager.RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning }
 		if err := r.Manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled}); err != nil {
 			logger.Error(err, "failed to schedule all projects")
 		} else {
@@ -297,7 +304,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 
 	if projectsStr := annotations[api.TriggerScheduleAnnotationKey]; projectsStr != "" {
 		projectSet := parseAnnotationProjectList(projectsStr)
-		isTargeted := func(p api.ProjectStatus) bool {
+		isTargeted := func(p crdManager.RenovateProjectStatus) bool {
 			_, ok := projectSet[p.Name]
 			return ok && p.Status != api.JobStatusRunning
 		}

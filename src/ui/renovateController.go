@@ -279,19 +279,11 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		platform, _ := utils.GetPlatformAndEndpoint(renovateJob.Spec.Provider)
 		platformEndpoint := utils.GetPublicEndpoint(renovateJob.Spec.Provider)
 
-		projects := make([]crdmanager.RenovateProjectStatus, 0, len(renovateJob.Status.Projects))
-		for _, p := range renovateJob.Status.Projects {
-			projects = append(projects, crdmanager.RenovateProjectStatus{
-				Name:                 p.Name,
-				Status:               p.Status,
-				LastTransition:       crdmanager.NonZeroTime(p.LastTransition.Time),
-				Priority:             p.Priority,
-				RenovateResultStatus: p.RenovateResultStatus,
-				Duration:             p.Duration,
-				PRActivity:           p.PRActivity,
-				LogIssues:            p.LogIssues,
-				ExecutionOptions:     p.ExecutionOptions,
-			})
+		jobId := crdmanager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+		projects, projErr := s.manager.GetProjectsForRenovateJob(r.Context(), jobId)
+		if projErr != nil {
+			s.logger.Error(projErr, "failed to get projects for job", "job", renovateJob.Name)
+			projects = []crdmanager.RenovateProjectStatus{}
 		}
 
 		accepted, acceptedMessage := acceptedState(renovateJob)
@@ -526,7 +518,7 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 
 	err := s.manager.UpdateProjectStatusBatched(
 		r.Context(),
-		func(p api.ProjectStatus) bool {
+		func(p crdmanager.RenovateProjectStatus) bool {
 			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
 		},
 		jobIdentifier,
