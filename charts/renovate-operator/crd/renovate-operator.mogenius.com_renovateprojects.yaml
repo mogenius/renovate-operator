@@ -58,6 +58,9 @@ spec:
                 description: Project is the full repository name as reported by the
                   git platform (e.g. "org/repo").
                 type: string
+                x-kubernetes-validations:
+                - message: project is immutable
+                  rule: self == oldSelf
             required:
             - project
             type: object

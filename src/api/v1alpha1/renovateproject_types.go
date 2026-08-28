@@ -67,6 +67,7 @@ type RenovateExecutionOptions struct {
 // RenovateProjectSpec contains the immutable identity of the tracked repository.
 type RenovateProjectSpec struct {
 	// Project is the full repository name as reported by the git platform (e.g. "org/repo").
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="project is immutable"
 	Project string `json:"project"`
 }
 
