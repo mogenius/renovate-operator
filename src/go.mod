@@ -12,7 +12,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
-	github.com/netresearch/go-cron v0.15.1
+	github.com/netresearch/go-cron v0.16.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/valkey-io/valkey-go v1.0.77
 	go.opentelemetry.io/contrib/bridges/otellogr v0.20.0
