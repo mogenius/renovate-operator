@@ -164,7 +164,7 @@ func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pem
 	pemString = strings.TrimSpace(pemString)
 
 	if !strings.HasPrefix(pemString, "-----BEGIN") {
-		return "", time.Time{}, fmt.Errorf("PEM data does not start with BEGIN marker (starts with: %s...)", pemString[:min(50, len(pemString))])
+		return "", time.Time{}, fmt.Errorf("PEM data does not start with '-----BEGIN' marker.")
 	}
 
 	block, _ := pem.Decode([]byte(pemString))
