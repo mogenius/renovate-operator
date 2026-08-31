@@ -4,6 +4,8 @@
 package v1alpha1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -387,6 +389,10 @@ func (in *RenovateJob) DeepCopyObject() runtime.Object {
 // unique name for a renovatejob ${name}-${namespace}
 func (in *RenovateJob) Fullname() string {
 	return in.Name + "-" + in.Namespace
+}
+
+func (in *RenovateProvider) Is(provider string) bool {
+	return strings.EqualFold(in.Name, provider)
 }
 
 type RenovateJobList struct {

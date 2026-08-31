@@ -67,6 +67,10 @@ func (g *githubappToken) EnsureToken(ctx context.Context, job *api.RenovateJob) 
 		return nil
 	}
 
+	if !job.Spec.Provider.Is("github") {
+		return nil
+	}
+
 	secretName := GetNameForGithubAppSecret(job)
 	existing := &corev1.Secret{}
 	err := g.client.Get(ctx, client.ObjectKey{Name: secretName, Namespace: job.Namespace}, existing)
@@ -164,7 +168,7 @@ func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pem
 	pemString = strings.TrimSpace(pemString)
 
 	if !strings.HasPrefix(pemString, "-----BEGIN") {
-		return "", time.Time{}, fmt.Errorf("PEM data does not start with '-----BEGIN' marker.")
+		return "", time.Time{}, fmt.Errorf("PEM data does not start with '-----BEGIN' marker")
 	}
 
 	block, _ := pem.Decode([]byte(pemString))
