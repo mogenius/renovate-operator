@@ -145,11 +145,7 @@ func (s *Server) recordResolverAuthFailure(ctx context.Context, provider string,
 }
 
 func (s *Server) handleResolverError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNoMatchingJob) {
-		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if errors.Is(err, ErrAuthenticationFailed) {
+	if errors.Is(err, ErrAuthenticationFailed) || errors.Is(err, ErrNoMatchingJob) {
 		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
