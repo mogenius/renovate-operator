@@ -140,14 +140,14 @@ func TestCreateGithubAppToken_InvalidPEM(t *testing.T) {
 			appID:     "123",
 			installID: "456",
 			pemString: "",
-			wantError: "PEM data does not start with BEGIN marker",
+			wantError: "PEM data does not start with '-----BEGIN' marker",
 		},
 		{
 			name:      "invalid PEM format",
 			appID:     "123",
 			installID: "456",
 			pemString: "not-a-pem-string",
-			wantError: "PEM data does not start with BEGIN marker",
+			wantError: "PEM data does not start with '-----BEGIN' marker",
 		},
 		{
 			name:      "PEM without proper structure",

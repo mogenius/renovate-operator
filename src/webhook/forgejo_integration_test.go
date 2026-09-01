@@ -272,22 +272,22 @@ func TestForgejoWebhook_NoMatchingJob(t *testing.T) {
 			name:           "no namespace or job provided",
 			namespace:      "",
 			job:            "",
-			expectedStatus: http.StatusNotFound,
-			expectedError:  "not found",
+			expectedStatus: http.StatusUnauthorized,
+			expectedError:  "unauthorized",
 		},
 		{
 			name:           "namespace filter matches no job",
 			namespace:      "nonexistent",
 			job:            "",
-			expectedStatus: http.StatusNotFound,
-			expectedError:  "not found",
+			expectedStatus: http.StatusUnauthorized,
+			expectedError:  "unauthorized",
 		},
 		{
 			name:           "job name filter matches no job",
 			namespace:      "",
 			job:            "nonexistent",
-			expectedStatus: http.StatusNotFound,
-			expectedError:  "not found",
+			expectedStatus: http.StatusUnauthorized,
+			expectedError:  "unauthorized",
 		},
 	}
 
