@@ -3,6 +3,11 @@
 ## [6.1.0](https://github.com/mogenius/renovate-operator/compare/6.0.1...6.1.0) (2026-09-01)
 
 
+### ⚠️ Upgrade Notice
+
+Project state has been moved from the `RenovateJob` CRD into a dedicated `RenovateProject` CRD to avoid etcd object size limits. After upgrading, all existing projects will be absent until the next discovery run repopulates them — no data is lost, discovery will restore the state automatically.
+
+
 ### Features
 
 * add annotation based trigger to the renovateproject ([482c6c7](https://github.com/mogenius/renovate-operator/commit/482c6c7a67d59b35f222797284e82fac646ce4d2))
