@@ -27,6 +27,7 @@ type fakeJobManager struct {
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
+	updateProjectStatusFn        func(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -64,6 +65,9 @@ func (f *fakeJobManager) GetProjectsForRenovateJob(ctx context.Context, job crdM
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	if f.updateProjectStatusFn != nil {
+		return f.updateProjectStatusFn(ctx, project, job, status)
+	}
 	return fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
@@ -93,9 +97,13 @@ func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, j
 
 type fakePodLogReader struct {
 	getSucceededJobLogFn func(ctx context.Context, job *batchv1.Job) (string, error)
+	getLastJobLogFn      func(ctx context.Context, job *batchv1.Job) (string, error)
 }
 
 func (f *fakePodLogReader) GetLastJobLog(ctx context.Context, job *batchv1.Job) (string, error) {
+	if f.getLastJobLogFn != nil {
+		return f.getLastJobLogFn(ctx, job)
+	}
 	return "", nil
 }
 func (f *fakePodLogReader) StreamJobLogs(ctx context.Context, job *batchv1.Job, follow bool) (io.ReadCloser, error) {
