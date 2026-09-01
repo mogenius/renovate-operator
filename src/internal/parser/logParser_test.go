@@ -1260,3 +1260,30 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 		}
 	})
 }
+
+func TestParseRenovateLogsRepositoryChangedAbort(t *testing.T) {
+	// When the repository changes mid-run, Renovate aborts before branch processing
+	// and still exits successfully. Its report then carries an empty branch list that
+	// means "not evaluated", not "zero PRs" — so PRActivity must stay nil instead of
+	// reporting zero counts that would wipe the last known state.
+	logs := strings.Join([]string{
+		`{"level":30,"msg":"Renovate started"}`,
+		`{"level":30,"msg":"Repository started"}`,
+		`{"level":30,"msg":"Dependency extraction complete"}`,
+		`{"level":30,"msg":"Repository has changed during renovation - aborting"}`,
+		`{"level":30,"msg":"Repository finished","result":"repository-changed"}`,
+		`{"level":30,"msg":"Printing report","report":{"repositories":{"org/repo":{"branches":[]}}}}`,
+	}, "\n")
+
+	result := ParseRenovateLogs(logs)
+
+	if result.RenovateResultStatus == nil || *result.RenovateResultStatus != "repository-changed" {
+		t.Fatalf("RenovateResultStatus = %v, want repository-changed", result.RenovateResultStatus)
+	}
+	if result.PRActivity != nil {
+		t.Errorf("PRActivity = %+v, want nil for an aborted repository-changed run", result.PRActivity)
+	}
+	if result.LogIssues == nil {
+		t.Error("LogIssues = nil, want non-nil (logs were parsed)")
+	}
+}

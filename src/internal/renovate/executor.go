@@ -267,11 +267,6 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 
 	metricStore.SetRunFailed(jobId.Namespace, jobId.Name, project, newStatus == api.JobStatusFailed)
 	metricStore.SetDependencyIssues(jobId.Namespace, jobId.Name, project, hasIssues)
-	approvalsNeeded := 0
-	if newProjectStatus.PRActivity != nil {
-		approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
-	}
-	metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, approvalsNeeded)
 	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
 
 	// Execution duration (Group A/E). Only emit when the k8s Job reported a StartTime.
@@ -292,15 +287,17 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "error", newProjectStatus.LogIssues.ErrorCount)
 	}
 
-	// Pull request activity (Group E/L).
+	// Pull request activity (Group E/L). A nil PRActivity means the run yielded no
+	// branch data (aborted "repository-changed" run, or unreadable logs): keep the
+	// last known gauges instead of zeroing them; the status merge keeps the stored
+	// PRActivity for the same reason.
 	if pr := newProjectStatus.PRActivity; pr != nil {
+		metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, pr.NeedsApproval)
 		metricStore.AddPullRequestsCreated(ctx, jobId.Namespace, jobId.Name, pr.Created)
 		metricStore.AddPullRequestsMerged(ctx, jobId.Namespace, jobId.Name, pr.Automerged)
 		metricStore.AddPullRequestsUpdated(ctx, jobId.Namespace, jobId.Name, pr.Updated)
 		// Open managed PRs: automerged ones are closed, so exclude them.
 		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, pr.Created+pr.Updated+pr.Unchanged)
-	} else {
-		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, 0)
 	}
 
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
