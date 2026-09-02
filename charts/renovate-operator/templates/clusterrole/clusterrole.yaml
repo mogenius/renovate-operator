@@ -4,10 +4,13 @@ kind: ClusterRole
 metadata:
   name: {{ include "renovate-operator.fullname" . }}
 rules:
-  # Allow get, list, update on renovatejobs
+  # finalizers subresource required for blockOwnerDeletion on OKD/OpenShift.
   - apiGroups: ["renovate-operator.mogenius.com"]
-    resources: ["renovatejobs", "renovatejobs/status","renovateprojects", "renovateprojects/status"]
-    verbs: ["create", "get", "list", "watch", "update", "patch"]
+    resources: ["renovatejobs", "renovatejobs/status", "renovatejobs/finalizers"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["renovate-operator.mogenius.com"]
+    resources: ["renovateprojects", "renovateprojects/status", "renovateprojects/finalizers"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
 
   # Allow create, get, list, update, delete on pods
   - apiGroups: [""]
