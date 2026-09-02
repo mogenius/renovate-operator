@@ -1749,6 +1749,51 @@
         );
       }
 
+      function ProviderLogo({ platform }) {
+        const cls = "w-4 h-4 flex-shrink-0";
+        switch (platform) {
+          case "github":
+            return (
+              <svg className={cls} viewBox="0 0 16 16" fill="currentColor" aria-label="GitHub" title="GitHub">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+            );
+          case "gitlab":
+            return (
+              <svg className={cls} viewBox="0 0 16 16" aria-label="GitLab" title="GitLab">
+                <path fill="#E24329" d="M8 15.08l2.95-9.07H5.05z"/>
+                <path fill="#FC6D26" d="M8 15.08L5.05 6.01H1.1z"/>
+                <path fill="#FCA326" d="M1.1 6.01L.06 9.18a.7.7 0 00.25.78L8 15.08z"/>
+                <path fill="#E24329" d="M1.1 6.01h3.95L3.38.55a.35.35 0 00-.67 0z"/>
+                <path fill="#FC6D26" d="M8 15.08l2.95-9.07h3.95z"/>
+                <path fill="#FCA326" d="M14.9 6.01l1.04 3.17a.7.7 0 01-.25.78L8 15.08z"/>
+                <path fill="#E24329" d="M14.9 6.01h-3.95l1.67-5.46a.35.35 0 01.67 0z"/>
+              </svg>
+            );
+          case "gitea":
+            return (
+              <svg className={cls} viewBox="0 0 640 640" aria-label="Gitea" title="Gitea">
+                <path fill="#609926" d="M592 0H48C21.5 0 0 21.5 0 48v544c0 26.5 21.5 48 48 48h544c26.5 0 48-21.5 48-48V48c0-26.5-21.5-48-48-48zm-74.2 426.3c-5.4 19.3-22.4 32.3-43.1 32.3H405v36.7c0 28.3-17.2 47.2-46.3 47.2-14.3 0-26.3-5.1-35.7-14.6-9.2-9.4-14.4-22.5-14.4-38.7V397H165.3c-20.7 0-37.7-13-43.1-32.3-4.1-14.8 0-30.7 10.2-41.3L326.7 140c6.1-6.3 14.5-9.9 23.3-9.9s17.2 3.6 23.3 9.9l194.3 183.4c10.2 10.7 14.3 26.6 10.2 41.3v61.6z"/>
+              </svg>
+            );
+          case "forgejo":
+            return (
+              <svg className={cls} viewBox="0 0 116 116" aria-label="Forgejo" title="Forgejo">
+                <path fill="#FB923C" d="M58 6C29.3 6 6 29.3 6 58s23.3 52 52 52 52-23.3 52-52S86.7 6 58 6zm0 18c7.7 0 14 6.3 14 14s-6.3 14-14 14-14-6.3-14-14 6.3-14 14-14zm0 72c-13 0-24.5-6.3-31.8-16.1 0-10.6 21.2-16.4 31.8-16.4s31.8 5.8 31.8 16.4C82.5 89.7 71 96 58 96z"/>
+              </svg>
+            );
+          case "bitbucket":
+          case "bitbucket-server":
+            return (
+              <svg className={cls} viewBox="0 0 32 32" aria-label="Bitbucket" title={platform === "bitbucket-server" ? "Bitbucket Server" : "Bitbucket"}>
+                <path fill="#2684FF" d="M2 5.07A1 1 0 001 6.26l4.34 20.2A1.36 1.36 0 006.67 27.5h18.8a1 1 0 001-.82L30.94 6.27a1 1 0 00-1-1.2zm17 14.15h-6.12l-1.65-8.62h9.4z"/>
+              </svg>
+            );
+          default:
+            return null;
+        }
+      }
+
       function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
@@ -1972,6 +2017,7 @@
               {/* Title: name + namespace */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 min-w-0">
+                  <ProviderLogo platform={job.platform} />
                   <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-slate-100 truncate leading-tight">
                     {job.name}
                   </h2>
