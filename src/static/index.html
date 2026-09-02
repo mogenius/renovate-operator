@@ -2081,53 +2081,6 @@
                 </p>
               </div>
 
-              {/* Config info icon */}
-              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0) && (
-                <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <svg
-                    ref={infoIconRef}
-                    className={`w-4 h-4 cursor-default transition-colors ${infoTooltipPos ? "text-primary" : "text-gray-400 dark:text-slate-500"}`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-label="Job configuration info"
-                    onMouseEnter={showInfoTooltip}
-                    onMouseLeave={hideInfoTooltip}
-                  >
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                  {infoTooltipPos && (
-                    <div
-                      style={{ position: "fixed", top: infoTooltipPos.top, left: infoTooltipPos.left, transform: "translateX(-50%)" }}
-                      className="z-50 w-64 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-3 text-left pointer-events-none"
-                      onMouseEnter={showInfoTooltip}
-                      onMouseLeave={hideInfoTooltip}
-                    >
-                      <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-l border-t border-gray-200 dark:border-slate-600 rotate-45" />
-                      {job.discoveryFilters?.length > 0 && (
-                        <div className="mb-2">
-                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discovery Filters</p>
-                          <ul className="space-y-0.5">
-                            {job.discoveryFilters.map((f, i) => (
-                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={f}>{f}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {job.discoverTopics?.length > 0 && (
-                        <div>
-                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discover Topics</p>
-                          <ul className="space-y-0.5">
-                            {job.discoverTopics.map((t, i) => (
-                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={t}>{t}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Schedule info — hidden on small screens */}
               <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0 w-[15rem]">
                 <svg
