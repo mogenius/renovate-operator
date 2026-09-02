@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.2.0](https://github.com/mogenius/renovate-operator/compare/6.1.0...6.2.0) (2026-09-02)
+
+
+### Features
+
+* **ui:** info icon on job cards showing discovery config ([#652](https://github.com/mogenius/renovate-operator/issues/652)) ([9e126b9](https://github.com/mogenius/renovate-operator/commit/9e126b9c9907e905ed30398132bad59b13ac32fb))
+* **ui:** show provider logo in RenovateJob card header ([#651](https://github.com/mogenius/renovate-operator/issues/651)) ([5fa1b47](https://github.com/mogenius/renovate-operator/commit/5fa1b472206aab24ab9a384c0870ef98914d1f6c))
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.27.1 ([4359402](https://github.com/mogenius/renovate-operator/commit/43594024f4d9e13f9ac47492e764ff113d815c89))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.21.0 ([5c10211](https://github.com/mogenius/renovate-operator/commit/5c102113922e6fc632d2dccaa1e9dec77eb2f23a))
+* **helm:** adding missing rbac permissions for renovatejob and project finalizers ([a8f2289](https://github.com/mogenius/renovate-operator/commit/a8f2289757713e86a6ca1bf7fc65cd58f3b9ee05)), closes [#645](https://github.com/mogenius/renovate-operator/issues/645)
+* **ui:** info icon tooltip clipping and position ([#654](https://github.com/mogenius/renovate-operator/issues/654)) ([7c69cc5](https://github.com/mogenius/renovate-operator/commit/7c69cc55fcd98a91feef5e0979040a4127e11ff2))
+
 ## [6.1.0](https://github.com/mogenius/renovate-operator/compare/6.0.1...6.1.0) (2026-09-01)
 
 
