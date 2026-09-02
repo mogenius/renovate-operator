@@ -42,6 +42,7 @@
       window.React = React;
       window.createRoot = createRoot;
     </script>
+    <script type="text/babel" src="components/Spinner.js"></script>
     <script type="text/babel" src="components/ThemeToggle.js"></script>
     <script type="text/babel" src="components/SiteHeader.js"></script>
     <script type="text/babel" src="components/StatBadge.js"></script>
@@ -520,6 +521,19 @@
         // Set when the operator cannot enforce its access rules. It then hides
         // every job, so this is the only explanation the visitor gets.
         const [accessStatus, setAccessStatus] = useState(null);
+        // First-run setup state. The guide itself lives on /setup; the
+        // dashboard only decides whether to send the visitor there. Null
+        // until the first fetch answers, {visible: false} once an auth
+        // provider is configured. The dismissed flag is written on /setup
+        // ("Skip guide") and cleared by opening /setup again.
+        const [setupStatus, setSetupStatus] = useState(null);
+        const [setupGuideDismissed] = useState(() => {
+          try {
+            return localStorage.getItem("setupGuideDismissed") === "true";
+          } catch {
+            return false;
+          }
+        });
         const STAT_FILTER_LABELS = {
           failed: "Failed",
           scheduled: "Scheduled",
@@ -777,6 +791,13 @@
               .then((data) => setAccessStatus(data))
               .catch(() => {});
 
+            // Plain fetch on purpose: for anonymous visitors with auth enabled
+            // this answers 401, which must not bounce them to the login page.
+            fetch(BASE + "/api/v1/setup/status")
+              .then((res) => (res.ok ? res.json() : null))
+              .then((data) => { if (data) setSetupStatus(data); })
+              .catch(() => {});
+
             const response = await authFetch("/api/v1/renovatejobs");
             if (!response.ok)
               throw new Error(`HTTP ${response.status}: Failed to fetch jobs`);
@@ -1013,6 +1034,26 @@
           return () => clearInterval(interval);
         }, [loadJobs]);
 
+        // A fresh install (no jobs at all) is sent to the dedicated /setup
+        // page outright; once jobs exist the dashboard stays usable and a
+        // slim banner links back until setup is finished. The
+        // misconfiguration banner outranks both: nothing else is
+        // trustworthy in that state.
+        const setupIncomplete =
+          !!setupStatus?.visible &&
+          !setupStatus.complete &&
+          !setupGuideDismissed &&
+          !loading &&
+          !error &&
+          !accessStatus?.misconfigured;
+        const goToSetup = setupIncomplete && jobs.length === 0;
+
+        useEffect(() => {
+          if (goToSetup) {
+            window.location.replace(withBase("/setup"));
+          }
+        }, [goToSetup]);
+
         return (
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -1188,6 +1229,37 @@
                 </div>
               )}
 
+              {accessStatus?.warning && !accessStatus?.misconfigured && (
+                <div
+                  role="alert"
+                  data-testid="access-warning"
+                  className="mb-6 rounded-lg bg-warning/10 border border-warning/30 p-4 sm:p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="w-6 h-6 text-warning flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-semibold text-warning">
+                        Some RenovateJobs grant no one access
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-700 dark:text-slate-300 break-words">
+                        {accessStatus.warning.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {loading && jobs.length === 0 && (
                 <div className="space-y-6">
                   <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-gray-200 dark:border-slate-700 shadow-sm animate-pulse">
@@ -1236,9 +1308,25 @@
                 </div>
               )}
 
+              {setupIncomplete && jobs.length > 0 && (
+                <a
+                  href={withBase("/setup")}
+                  data-testid="setup-banner"
+                  className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3 hover:border-primary/40 transition-colors"
+                >
+                  <p className="text-sm text-gray-700 dark:text-slate-300">
+                    Setup is not finished yet — some steps still need your attention.
+                  </p>
+                  <span className="text-sm font-semibold text-primary whitespace-nowrap">
+                    Continue setup →
+                  </span>
+                </a>
+              )}
+
               {/* The misconfiguration banner already explains an empty list, and
-                  its advice outranks the sign-in prompt this would show. */}
-              {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && (
+                  its advice outranks the sign-in prompt this would show. A fresh
+                  install is redirected to /setup instead of seeing this. */}
+              {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && !goToSetup && (
                 <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 text-center">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
                     No RenovateJobs visible
@@ -1313,7 +1401,11 @@
                     />
                   ))}
 
-                  {searchFilteredJobs.length === 0 && !loading && !error && (
+                  {/* Only when a filter or search hid existing jobs: a genuinely
+                      empty install is covered by the setup guide or the empty
+                      state above, and this card would just repeat them. */}
+                  {searchFilteredJobs.length === 0 && !loading && !error &&
+                    (jobs.length > 0 || searchTerm.trim() || selectedStatFilter) && (
                     <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
                       <svg
                         className="w-16 h-16 text-gray-400 mx-auto mb-4"
@@ -1691,9 +1783,10 @@
               onClick={onCancel}
               disabled={isCancelling || !canCancel}
               title={canCancel ? undefined : hint}
-              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
+              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-flex items-center justify-center gap-1.5 ${width || ""}`}
               aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
             >
+              {isCancelling && <Spinner />}
               <span>{isCancelling ? "Cancelling..." : "Cancel"}</span>
             </button>
           );
@@ -1721,7 +1814,7 @@
               onClick={onTrigger}
               disabled={isTriggering || isPrioritized || !!blocked}
               title={blocked}
-              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all"
+              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
               aria-label={
                 blocked
                   ? blocked
@@ -1734,6 +1827,7 @@
                   : `Trigger renovate for ${project.name}`
               }
             >
+              {isTriggering && <Spinner />}
               {label}
             </button>
             <button
@@ -1829,6 +1923,38 @@
             <title>{logo.label}</title>
             <path d={logo.path} />
           </svg>
+        );
+      }
+
+      const getBadgeClass = (status) => {
+        const base =
+          "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap";
+        switch (status) {
+          case "scheduled":
+            return `${base} bg-warning/10 text-warning`;
+          case "running":
+            return `${base} bg-primary/10 text-primary`;
+          case "completed":
+            return `${base} bg-success/10 text-success`;
+          case "failed":
+            return `${base} bg-error/10 text-error`;
+          case "cancelled":
+            return `${base} bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-slate-300`;
+          default:
+            return `${base} bg-primary/10 text-primary`;
+        }
+      };
+
+      // A running project spins in its own status cell, so a long run reads as
+      // work in flight instead of a row stuck on "running". Every other state
+      // is static, so the badge stays a plain label there.
+      function StatusBadge({ status, className = "" }) {
+        const isRunning = (status || "").toLowerCase() === "running";
+        return (
+          <span className={`${getBadgeClass(status)} ${className}`.trim()}>
+            {isRunning && <Spinner className="w-3 h-3 mr-1.5" />}
+            {status || "-"}
+          </span>
         );
       }
 
@@ -1950,25 +2076,6 @@
         const [showOptions, setShowOptions] = useState(false);
         const [optionsPos, setOptionsPos] = useState({ top: 0, right: 0 });
         const optionsBtnRef = useRef(null);
-
-        const getBadgeClass = (status) => {
-          const base =
-            "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap";
-          switch (status) {
-            case "scheduled":
-              return `${base} bg-warning/10 text-warning`;
-            case "running":
-              return `${base} bg-primary/10 text-primary`;
-            case "completed":
-              return `${base} bg-success/10 text-success`;
-            case "failed":
-              return `${base} bg-error/10 text-error`;
-            case "cancelled":
-              return `${base} bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-slate-300`;
-            default:
-              return `${base} bg-primary/10 text-primary`;
-          }
-        };
 
         const handleSort = (key) => {
           let direction = "asc";
@@ -2194,19 +2301,21 @@
                         : `Run discovery for ${job.name}`
                   }
                 >
-                  <svg
-                    className={`w-3.5 h-3.5 flex-shrink-0 ${
-                      job.discoveryRunning ? "animate-spin" : ""
-                    }`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  {job.discoveryRunning ? (
+                    <Spinner />
+                  ) : (
+                    <svg
+                      className="w-3.5 h-3.5 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
                   <span className="hidden sm:inline">
                     {job.discoveryRunning ? "Running..." : "Run Discovery"}
                   </span>
@@ -2229,19 +2338,21 @@
                           : `Trigger all projects for ${job.name}`
                     }
                   >
-                    <svg
-                      className={`w-3.5 h-3.5 flex-shrink-0 ${
-                        job.triggeringAll ? "animate-spin" : ""
-                      }`}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                    {job.triggeringAll ? (
+                      <Spinner />
+                    ) : (
+                      <svg
+                        className="w-3.5 h-3.5 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
                     <span className="hidden sm:inline">
                       {job.triggeringAll ? "Triggering..." : "Trigger All"}
                     </span>
@@ -2429,9 +2540,7 @@
                               </div>
                             </td>
                             <td className="px-3 xl:px-6 py-3">
-                              <span className={getBadgeClass(project.status)}>
-                                {project.status || "-"}
-                              </span>
+                              <StatusBadge status={project.status} />
                             </td>
                             <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                               <PRActivityBadges
@@ -2592,11 +2701,7 @@
                               </p>
                             )}
                           </div>
-                          <span
-                            className={`ml-2 ${getBadgeClass(project.status)}`}
-                          >
-                            {project.status || "-"}
-                          </span>
+                          <StatusBadge status={project.status} className="ml-2" />
                         </div>
                         {/* PR Activity section */}
                         {project.prActivity?.prs?.length > 0 && (

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setup - Renovate Operator</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-small.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
+
+  <script src="js/tailwind.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: "#009bc5",
+            "primary-hover": "#00556c",
+            success: "#00c567",
+            error: "#c22828",
+            warning: "#ff8c1a",
+          },
+        },
+      },
+    };
+  </script>
+  <script src="js/theme-utils.js"></script>
+  <script src="js/babel.min.js"></script>
+  <script src="js/babel-config.js"></script>
+  <script type="module">
+    import { React, createRoot } from './js/react-bundle.esm.js';
+    window.React = React;
+    window.createRoot = createRoot;
+  </script>
+  <script type="text/babel" src="components/Spinner.js"></script>
+  <script type="text/babel" src="components/ThemeToggle.js"></script>
+  <script type="text/babel" src="components/SiteHeader.js"></script>
+  <script type="text/babel" src="components/Footer.js"></script>
+  <script type="text/babel" src="components/SetupGuide.js"></script>
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100 transition-colors duration-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const BASE = window.__BASE_PATH__ || "";
+
+    // How long the button trusts its own click over the operator's reported
+    // discovery status — a few poll cycles, so a slow start still spins.
+    const OPTIMISTIC_DISCOVERY_MS = 60000;
+
+    // The dedicated setup page: header, the guide, footer — none of the
+    // dashboard's stat toolbar. The dashboard redirects fresh installs here
+    // and links back while setup is unfinished; once /api/v1/setup/status
+    // reports the guide unavailable or complete, this page returns to the
+    // dashboard.
+    function App() {
+      const [version, setVersion] = useState(null);
+      const [authInfo, setAuthInfo] = useState(null);
+      const [setup, setSetup] = useState(null);
+      const [jobs, setJobs] = useState([]);
+
+      useEffect(() => {
+        // Opening /setup deliberately re-enables a hidden guide: the dashboard
+        // never links here while dismissed, so this cannot loop.
+        try { localStorage.removeItem("setupGuideDismissed"); } catch {}
+
+        fetch(BASE + "/api/v1/version")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => d && setVersion(d.version))
+          .catch(() => {});
+
+        fetch(BASE + "/api/v1/auth/status")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => d && setAuthInfo(d))
+          .catch(() => {});
+      }, []);
+
+      useEffect(() => {
+        const load = () => {
+          fetch(BASE + "/api/v1/setup/status")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+              // Unavailable (auth configured): this page has no purpose,
+              // hand over to the dashboard. A completed setup stays here
+              // and celebrates instead — the success card below ends the
+              // guide with a click.
+              if (!data || !data.visible) {
+                window.location.replace(BASE + "/");
+                return;
+              }
+              setSetup(data);
+            })
+            .catch(() => {});
+
+          fetch(BASE + "/api/v1/renovatejobs")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+              if (Array.isArray(data)) {
+                setJobs((prev) =>
+                  data.map((job) => {
+                    const existing = prev.find(
+                      (p) => p.name === job.name && p.namespace === job.namespace
+                    );
+                    // The click's optimistic flag bridges the gap until the
+                    // operator reports the discovery job as running, but it
+                    // expires: a discovery that never starts, or one that
+                    // fails without ever being seen as running, must give
+                    // the button back instead of spinning forever.
+                    const startedAt = existing?.discoveryStartedAt || 0;
+                    const awaitingStart =
+                      !!existing?.discoveryRunning &&
+                      Date.now() - startedAt < OPTIMISTIC_DISCOVERY_MS;
+                    return {
+                      ...job,
+                      discoveryStartedAt: startedAt || undefined,
+                      discoveryRunning: job.discoveryStatus === "running" || awaitingStart,
+                    };
+                  })
+                );
+              }
+            })
+            .catch(() => {});
+        };
+
+        load();
+        const interval = setInterval(load, 10000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const runDiscovery = async (job) => {
+        if (job.discoveryRunning) return;
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.name === job.name && j.namespace === job.namespace
+              ? { ...j, discoveryRunning: true, discoveryStartedAt: Date.now() }
+              : j
+          )
+        );
+        try {
+          const response = await fetch(BASE + "/api/v1/discovery/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ renovateJob: job.name, namespace: job.namespace }),
+          });
+          if (!response.ok) throw new Error(await response.text());
+        } catch (err) {
+          console.error("Error running discovery:", err);
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.name === job.name && j.namespace === job.namespace
+                ? { ...j, discoveryRunning: false }
+                : j
+            )
+          );
+        }
+      };
+
+      const dismiss = () => {
+        try { localStorage.setItem("setupGuideDismissed", "true"); } catch {}
+        window.location.href = BASE + "/";
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          <SiteHeader version={version} authInfo={authInfo} />
+
+          <main className="flex-1 max-w-5xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8">
+            {setup && setup.complete ? (
+              <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-sm px-6 py-12 text-center">
+                <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success/15 text-success">
+                  <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+                <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-slate-100">
+                  Setup complete!
+                </h2>
+                <p className="mt-2 text-sm text-gray-600 dark:text-slate-400 max-w-md mx-auto">
+                  Your repositories are discovered and their first Renovate runs are on the
+                  way. The operator now runs on its schedule — follow every project, run and
+                  pull request on the dashboard.
+                </p>
+                <a
+                  href={`${BASE}/`}
+                  className="mt-6 inline-block bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all"
+                >
+                  Open the dashboard
+                </a>
+              </div>
+            ) : setup ? (
+              <SetupGuide setup={setup} jobs={jobs} onRunDiscovery={runDiscovery} onDismiss={dismiss} />
+            ) : (
+              <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-gray-200 dark:border-slate-700 shadow-sm animate-pulse">
+                <div className="h-8 w-1/3 bg-gray-200 dark:bg-slate-700 rounded-lg mb-4"></div>
+                <div className="flex flex-col gap-3">
+                  <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded"></div>
+                  <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded"></div>
+                  <div className="h-4 w-2/3 bg-gray-200 dark:bg-slate-700 rounded"></div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          <Footer />
+        </div>
+      );
+    }
+
+    window.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+
+</html>

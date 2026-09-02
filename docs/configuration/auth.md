@@ -204,7 +204,9 @@ take access away.
 > **Fail closed**: a job with no access configuration anywhere is hidden from
 > everyone once authentication is enabled. Set `authorization.defaults.adminUsers` or
 > `authorization.defaults.adminGroups` (or `spec.access` per job) or the dashboard
-> will look empty.
+> will look empty. The dashboard detects this state and shows a warning banner
+> (served on `/api/v1/access/status` as `warning` with reason `NoAccessRules`),
+> and the operator log names the affected jobs.
 
 ### Naming users instead of groups
 
