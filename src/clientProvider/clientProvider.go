@@ -1,6 +1,8 @@
 package clientProvider
 
 import (
+	"errors"
+	"fmt"
 	"os"
 
 	"k8s.io/client-go/discovery"
@@ -29,22 +31,24 @@ type K8sClientProvider interface {
 }
 type k8sClientProvider struct {
 	clientConfig *rest.Config
+	inCluster    bool
 }
 
 func NewClientProvider() (K8sClientProvider, error) {
-	kubeConfig, err := createKubernetesConfig()
+	kubeConfig, inCluster, err := createKubernetesConfig()
 	if err != nil {
 		return nil, err
 	}
 	return k8sClientProvider{
 		clientConfig: kubeConfig,
+		inCluster:    inCluster,
 	}, nil
 }
 func (provider k8sClientProvider) ClientConfig() *rest.Config {
 	return provider.clientConfig
 }
 func (provider k8sClientProvider) RunsInCluster() bool {
-	return getKubernetesConfig() == ""
+	return provider.inCluster
 }
 
 func (provider k8sClientProvider) K8sClientSet() (clientset kubernetes.Interface, err error) {
@@ -95,15 +99,54 @@ func (provider k8sClientProvider) ApiExtensionsClient() (clientset apiextensions
 	return cachedApiextensionsClient, err
 }
 
-func createKubernetesConfig() (*rest.Config, error) {
-	cfg := getKubernetesConfig()
-	if cfg != "" {
-		return clientcmd.BuildConfigFromFlags("", cfg)
-	} else {
-		return rest.InClusterConfig()
+// createKubernetesConfig resolves the client configuration: an explicit
+// KUBECONFIG wins, then the in-cluster service account, then the default
+// kubeconfig at ~/.kube/config — so a local run works without exporting
+// KUBECONFIG, matching ctrl.GetConfigOrDie in main.go. The bool reports
+// whether the in-cluster configuration was used.
+func createKubernetesConfig() (*rest.Config, bool, error) {
+	if os.Getenv(clientcmd.RecommendedConfigPathEnvVar) != "" {
+		config, err := loadKubeConfig()
+		if err != nil {
+			return nil, false, fmt.Errorf("unable to load the kubeconfig from %s=%s: %w",
+				clientcmd.RecommendedConfigPathEnvVar, os.Getenv(clientcmd.RecommendedConfigPathEnvVar), err)
+		}
+		return config, false, nil
 	}
+
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config, true, nil
+	}
+	// Any other error means we ARE in a cluster with a broken service account
+	// setup; falling back to a kubeconfig would mask that.
+	if !errors.Is(err, rest.ErrNotInCluster) {
+		return nil, false, err
+	}
+
+	config, err = loadKubeConfig()
+	if err != nil {
+		return nil, false, fmt.Errorf("not running in a cluster and no usable kubeconfig found at %s (set KUBECONFIG to use another path): %w",
+			clientcmd.RecommendedHomeFile, err)
+	}
+	return config, false, nil
 }
 
-func getKubernetesConfig() string {
-	return os.Getenv("KUBECONFIG")
+// loadKubeConfig defers to client-go's own loading rules instead of reading a
+// single file: KUBECONFIG may name a whole precedence list of files separated
+// by filepath.ListSeparator, which the rules merge the way kubectl does, and
+// they fall back to ~/.kube/config when the variable is unset.
+//
+// Deliberately not NewNonInteractiveDeferredLoadingClientConfig: that
+// substitutes the in-cluster configuration whenever the files turn out to be
+// unusable, which would both hide a broken kubeconfig behind a working client
+// and report the result as out-of-cluster when it is anything but. Loading the
+// rules directly keeps an unusable kubeconfig an error, and the caller decides
+// what the in-cluster case means.
+func loadKubeConfig() (*rest.Config, error) {
+	apiConfig, err := clientcmd.NewDefaultClientConfigLoadingRules().Load()
+	if err != nil {
+		return nil, err
+	}
+	return clientcmd.NewDefaultClientConfig(*apiConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 }

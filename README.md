@@ -94,6 +94,21 @@ Prerequisites: [`just`](https://github.com/casey/just) must be installed.
    just run
    ```
 
+`KUBECONFIG` may also name several files separated by `:`; they are merged the
+way kubectl merges them.
+
+A local run has no pod and therefore no namespace of its own. The setup guide's
+secret check refuses every namespace in that state — deliberately, so a
+cluster-exposed UI cannot probe secrets in namespaces that are none of its
+business — and logs why. Export `POD_NAMESPACE` with the namespace you are
+setting up to exercise that step locally:
+
+```sh
+export POD_NAMESPACE=renovate-operator
+```
+
+`just run` loads `.env`, so both variables can live there instead of your shell.
+
 **Running Tests**
 
 | Command              | Description                      |

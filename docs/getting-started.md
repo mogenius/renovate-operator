@@ -14,6 +14,18 @@ helm -n renovate-operator upgrade --install renovate-operator \
   --create-namespace --wait
 ```
 
+## Open the UI
+
+The chart creates no ingress by default, so reach the UI with a port-forward:
+
+```sh
+kubectl -n renovate-operator port-forward svc/renovate-operator 8081:8081
+```
+
+Then open <http://localhost:8081>. A fresh install greets you with a setup
+guide that tracks the remaining steps on this page and checks them off as you
+apply the resources. For a permanent URL, set `ingress.enabled` (or
+`route.enabled` for the Gateway API) in the chart values.
 
 ## Create a credentials secret
 
@@ -58,7 +70,7 @@ Apply it:
 kubectl apply -f renovatejob.yaml
 ```
 
-The operator runs a discovery job on the next cron tick, finds matching repositories, and queues them for Renovate. Open the UI to follow progress — the URL is whatever hostname you pointed at the operator.
+The operator runs a discovery job on the next cron tick, finds matching repositories, and queues them for Renovate. Follow progress in the UI — the setup guide at `/setup` also lets you start discovery immediately instead of waiting for the schedule.
 
 ## Next steps
 

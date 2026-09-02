@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"renovate-operator/assert"
 	"renovate-operator/config"
@@ -28,10 +29,17 @@ type Server struct {
 	auth           AuthProvider
 	accessDefaults AccessDefaults
 	accessCheck    accessCheckCache
-	Router         *mux.Router
+	lockoutCheck   accessCheckCache
+	setup          SetupEnvironment
+	setupCheck     setupStatusCache
+	// setupComplete latches once every setup step is done, so the steady
+	// state stops checking projects and secrets for a guide nobody sees.
+	// It resets when the last RenovateJob is deleted (starting over).
+	setupComplete atomic.Bool
+	Router        *mux.Router
 }
 
-func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, accessDefaults AccessDefaults) *Server {
+func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, scheduler scheduler.Scheduler, logger logr.Logger, health health.HealthCheck, version string, auth AuthProvider, accessDefaults AccessDefaults, setup SetupEnvironment) *Server {
 	return &Server{
 		manager:        manager,
 		logger:         logger,
@@ -41,6 +49,7 @@ func NewServer(manager crdmanager.RenovateJobManager, discovery renovate.Discove
 		version:        version,
 		auth:           auth,
 		accessDefaults: accessDefaults,
+		setup:          setup,
 		Router:         mux.NewRouter(),
 	}
 }

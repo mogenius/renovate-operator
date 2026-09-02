@@ -16,6 +16,7 @@ import (
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -175,14 +176,18 @@ func readToken(ctx context.Context, c client.Client, job *api.RenovateJob, platf
 	return tokenFromSecret(secret, secretName)
 }
 
+// WellKnownTokenKeys are the secret keys Renovate and the operator recognize
+// as platform tokens, in order of preference.
+var WellKnownTokenKeys = []string{"RENOVATE_TOKEN", "GITHUB_COM_TOKEN", "GITLAB_TOKEN", "BITBUCKET_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"}
+
 // tokenFromSecret extracts a platform token from a secret by trying the common
 // token key names used by Renovate, in order of preference.
 func tokenFromSecret(secret *corev1.Secret, secretName string) (string, error) {
-	for _, key := range []string{"RENOVATE_TOKEN", "GITHUB_COM_TOKEN", "GITLAB_TOKEN", "BITBUCKET_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"} {
+	for _, key := range WellKnownTokenKeys {
 		if val, ok := secret.Data[key]; ok && len(val) > 0 {
 			return string(val), nil
 		}
 	}
 
-	return "", fmt.Errorf("no platform token found in secret %s (expected one of: RENOVATE_TOKEN, GITHUB_COM_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN, GITEA_TOKEN, FORGEJO_TOKEN)", secretName)
+	return "", fmt.Errorf("no platform token found in secret %s (expected one of: %s)", secretName, strings.Join(WellKnownTokenKeys, ", "))
 }

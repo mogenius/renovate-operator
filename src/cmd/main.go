@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -722,7 +723,11 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	cfg := ctrl.GetConfigOrDie()
+	// Not GetConfigOrDie: it reports the reason through controller-runtime's
+	// logger, which has no sink yet — the process would exit 1 without ever
+	// saying why an unusable kubeconfig was the problem.
+	cfg, err := ctrl.GetConfig()
+	assert.NoError(err, "failed to resolve the Kubernetes client configuration")
 	adaptKubeConfig(cfg)
 
 	otelCleanup := initObservability(&opts)
@@ -832,7 +837,12 @@ func main() {
 	warnAccessRulesEnforceable(ctrl.Log.WithName("auth"), auth.provider, auth.accessDefaults)
 
 	// UI and webhook servers run on all replicas
-	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.accessDefaults)
+	uiServer := ui.NewServer(jobMgr, discovery, cronManager, ctrl.Log.WithName("ui-server"), health, Version, auth.provider, auth.accessDefaults, ui.SetupEnvironment{
+		PolicyEnabled:        !guardRails.Disabled,
+		LogStorageConfigured: config.GetValue("LOG_STORE_MODE") != "disabled",
+		OwnNamespace:         operatorNamespace(),
+		SecretReader:         mgr.GetClient(),
+	})
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
@@ -928,4 +938,21 @@ func initObservability(zapOpts *zap.Options) func() {
 			ctrl.Log.WithName("telemetry").Error(shutdownErr, "failed to shut down OpenTelemetry")
 		}
 	}
+}
+
+// operatorNamespace resolves the namespace the operator itself runs in. The
+// chart sets POD_NAMESPACE from the pod's metadata, but a hand-rolled
+// manifest may not, so the pod's service account token directory is the
+// fallback — it is authoritative for a pod and needs no wiring. Empty only
+// outside a cluster, and the setup guide's secret probe then refuses every
+// namespace rather than widening.
+func operatorNamespace() string {
+	if ns := config.GetValue("POD_NAMESPACE"); ns != "" {
+		return ns
+	}
+	ns, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(ns))
 }

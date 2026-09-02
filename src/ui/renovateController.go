@@ -219,6 +219,8 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.Use(telemetry.MuxMiddleware("renovate-operator-ui-api-v1"))
 	apiV1.HandleFunc("/version", s.getVersion).Methods("GET")
 	apiV1.HandleFunc("/access/status", s.getAccessStatus).Methods("GET")
+	apiV1.HandleFunc("/setup/status", s.getSetupStatus).Methods("GET")
+	apiV1.HandleFunc("/setup/secret", s.getSetupSecretCheck).Methods("GET")
 	apiV1.HandleFunc("/renovatejobs", s.getRenovateJobs).Methods("GET")
 	apiV1.HandleFunc("/renovate", s.runRenovateForProject).Methods("POST")
 	apiV1.HandleFunc("/renovate/all", s.runRenovateForAllProjects).Methods("POST")
@@ -237,22 +239,57 @@ func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getAccessStatus reports whether the operator can enforce its access rules.
+// getAccessStatus reports whether the operator can enforce its access rules,
+// and warns when jobs exist that the rules hide from absolutely everyone.
 func (s *Server) getAccessStatus(w http.ResponseWriter, r *http.Request) {
 	result := struct {
-		Misconfigured bool   `json:"misconfigured"`
-		Reason        string `json:"reason,omitempty"`
-		Message       string `json:"message,omitempty"`
+		Misconfigured bool                    `json:"misconfigured"`
+		Reason        string                  `json:"reason,omitempty"`
+		Message       string                  `json:"message,omitempty"`
+		Warning       *AccessMisconfiguration `json:"warning,omitempty"`
 	}{}
 
 	if misconfiguration := s.accessEnforceable(r.Context()); misconfiguration != nil {
 		result.Misconfigured = true
 		result.Reason = misconfiguration.Reason
 		result.Message = misconfiguration.Message
+	} else {
+		result.Warning = s.lockedOutJobsWarning(r.Context())
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
+}
+
+// lockedOutJobsWarning checks for jobs no one can see, cached like the
+// misconfiguration verdict because this endpoint is public and polled.
+func (s *Server) lockedOutJobsWarning(ctx context.Context) *AccessMisconfiguration {
+	if s.auth == nil || s.accessDefaults.AuthorizationDisabled {
+		return nil
+	}
+
+	if verdict, ok := s.lockoutCheck.load(); ok {
+		return verdict
+	}
+
+	jobs, err := s.manager.ListRenovateJobsFull(ctx)
+	if err != nil {
+		// No list, no verdict — an API blip must not fabricate or clear a warning.
+		s.logger.Error(err, "failed to list renovatejobs to check for locked-out jobs, continuing")
+		return nil
+	}
+
+	verdict, lockedJobs := detectLockedOutJobs(s.auth, s.accessDefaults, jobs)
+	if s.lockoutCheck.store(verdict) {
+		if verdict != nil {
+			s.logger.Error(nil, "RenovateJobs exist that grant no one access",
+				"reason", verdict.Reason,
+				"lockedJobs", lockedJobs)
+		} else {
+			s.logger.Info("every RenovateJob grants someone access again")
+		}
+	}
+	return verdict
 }
 
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
