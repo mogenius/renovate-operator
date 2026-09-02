@@ -35,8 +35,10 @@ type RenovateJobInfo struct {
 	// older operator have no condition yet and are reported as accepted.
 	Accepted        bool     `json:"accepted"`
 	AcceptedMessage string   `json:"acceptedMessage,omitempty"`
-	Role            string   `json:"role,omitempty"`
-	Permissions     []string `json:"permissions"`
+	Role              string   `json:"role,omitempty"`
+	Permissions       []string `json:"permissions"`
+	DiscoveryFilters  []string `json:"discoveryFilters,omitempty"`
+	DiscoverTopics    []string `json:"discoverTopics,omitempty"`
 }
 
 func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
@@ -301,6 +303,8 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			PlatformEndpoint: platformEndpoint,
 			Role:             decisions[i].Role.String(),
 			Permissions:      decisions[i].permissions(),
+			DiscoveryFilters: renovateJob.Spec.DiscoveryFilters,
+			DiscoverTopics:   renovateJob.Spec.DiscoverTopics,
 		})
 	}
 
