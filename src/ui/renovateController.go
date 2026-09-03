@@ -33,12 +33,12 @@ type RenovateJobInfo struct {
 	// Accepted is false when the operator's policy refuses this job, in which case
 	// nothing runs for it and AcceptedMessage says what to fix. Jobs reconciled by an
 	// older operator have no condition yet and are reported as accepted.
-	Accepted        bool     `json:"accepted"`
-	AcceptedMessage string   `json:"acceptedMessage,omitempty"`
-	Role              string   `json:"role,omitempty"`
-	Permissions       []string `json:"permissions"`
-	DiscoveryFilters  []string `json:"discoveryFilters,omitempty"`
-	DiscoverTopics    []string `json:"discoverTopics,omitempty"`
+	Accepted         bool     `json:"accepted"`
+	AcceptedMessage  string   `json:"acceptedMessage,omitempty"`
+	Role             string   `json:"role,omitempty"`
+	Permissions      []string `json:"permissions"`
+	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
+	DiscoverTopics   []string `json:"discoverTopics,omitempty"`
 }
 
 func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
