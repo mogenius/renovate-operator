@@ -1154,6 +1154,48 @@
                   )}
                 </div>
               )}
+
+              {(selectedStatFilter || searchTerm.trim()) && (
+                <div
+                  className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-3 py-2"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="min-w-0 truncate text-sm text-gray-700 dark:text-slate-300">
+                    Showing{" "}
+                    <span className="font-semibold text-primary">{searchFilteredProjectCount}</span>{" "}
+                    project{searchFilteredProjectCount === 1 ? "" : "s"} in{" "}
+                    <span className="font-semibold text-primary">{searchFilteredJobs.length}</span>{" "}
+                    job{searchFilteredJobs.length === 1 ? "" : "s"}
+                    {selectedStatFilter && (
+                      <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
+                    )}
+                    {searchTerm.trim() && (
+                      <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
+                    )}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {searchTerm.trim() && (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                    {selectedStatFilter && (
+                      <button
+                        type="button"
+                        onClick={clearStatFilter}
+                        className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                      >
+                        Clear filter
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </StickyToolbar>
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8">
@@ -1261,44 +1303,6 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {(selectedStatFilter || searchTerm.trim()) && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
-                      <p className="text-sm text-gray-700 dark:text-slate-300">
-                        Showing{" "}
-                        <span className="font-semibold text-primary">{searchFilteredProjectCount}</span>{" "}
-                        project{searchFilteredProjectCount === 1 ? "" : "s"} in{" "}
-                        <span className="font-semibold text-primary">{searchFilteredJobs.length}</span>{" "}
-                        job{searchFilteredJobs.length === 1 ? "" : "s"}
-                        {selectedStatFilter && (
-                          <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
-                        )}
-                        {searchTerm.trim() && (
-                          <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
-                        )}
-                      </p>
-                      <div className="flex items-center gap-3 self-start sm:self-auto">
-                        {searchTerm.trim() && (
-                          <button
-                            type="button"
-                            onClick={clearSearch}
-                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
-                          >
-                            Clear search
-                          </button>
-                        )}
-                        {selectedStatFilter && (
-                          <button
-                            type="button"
-                            onClick={clearStatFilter}
-                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
-                          >
-                            Clear filter
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
                   {searchFilteredJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
