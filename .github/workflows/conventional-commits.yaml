@@ -23,9 +23,9 @@ jobs:
 
           # Conventional Commits pattern:
           #   <type>(<scope>)?!?: <description>
-          # Allowed types: feat, fix, docs, chore, refactor, test, perf, ci, build, revert
+          # Allowed types: feat, fix, docs, chore, refactor, test, perf, ci, build, revert, style
           # Scope is optional; any lowercase alphanumeric / hyphen value is accepted
-          PATTERN='^(feat|fix|docs|chore|refactor|test|perf|ci|build|revert)(\([a-z0-9-]+\))?!?: .+'
+          PATTERN='^(feat|fix|docs|chore|refactor|test|perf|ci|build|revert|style)(\([a-z0-9-]+\))?!?: .+'
 
           COMMITS=$(git log --format="%s" "$BASE".."$HEAD")
 
