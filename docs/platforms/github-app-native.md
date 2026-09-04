@@ -19,11 +19,17 @@ type: Opaque
 metadata:
   name: github-app-credentials
   namespace: renovate-operator
+  labels:
+    renovate-operator.mogenius.com/allow-ref: "true"
 data:
   PEM: <base64-encoded private key>
   APP_ID: <base64-encoded App ID>
   INSTALL_ID: <base64-encoded Installation ID>
 ```
+
+> **Note:** the `allow-ref` label opts the Secret in to being referenced at
+> caller-chosen keys. It is enforced once the [policy engine](../security/security.md)
+> is enabled — set it now so enabling the policy later does not break this job.
 
 ## 2. Create the RenovateJob
 

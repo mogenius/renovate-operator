@@ -16,7 +16,6 @@ import (
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -26,7 +25,9 @@ import (
 type fakeJobManager struct {
 	getJobFn                     func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
-	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
+	updateProjectStatusFn        func(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
@@ -48,7 +49,7 @@ func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.Renova
 func (f *fakeJobManager) CleanupWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
-func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+func (f *fakeJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if f.updateProjectStatusBatchedFn != nil {
 		return f.updateProjectStatusBatchedFn(ctx, fn, job, status)
 	}
@@ -64,10 +65,16 @@ func (f *fakeJobManager) GetProjectsForRenovateJob(ctx context.Context, job crdM
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	if f.updateProjectStatusFn != nil {
+		return f.updateProjectStatusFn(ctx, project, job, status)
+	}
 	return fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	if f.getProjectsByStatusFn != nil {
+		return f.getProjectsByStatusFn(ctx, job, status)
+	}
+	return nil, nil
 }
 func (f *fakeJobManager) StreamLogsForProject(ctx context.Context, job crdManager.RenovateJobIdentifier, project string) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("not implemented")
@@ -90,9 +97,13 @@ func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, j
 
 type fakePodLogReader struct {
 	getSucceededJobLogFn func(ctx context.Context, job *batchv1.Job) (string, error)
+	getLastJobLogFn      func(ctx context.Context, job *batchv1.Job) (string, error)
 }
 
 func (f *fakePodLogReader) GetLastJobLog(ctx context.Context, job *batchv1.Job) (string, error) {
+	if f.getLastJobLogFn != nil {
+		return f.getLastJobLogFn(ctx, job)
+	}
 	return "", nil
 }
 func (f *fakePodLogReader) StreamJobLogs(ctx context.Context, job *batchv1.Job, follow bool) (io.ReadCloser, error) {
@@ -237,13 +248,11 @@ func TestCreateDiscoveryJob_AlreadyRunning(t *testing.T) {
 	})
 
 	runningJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "job1-discovery-existing",
-			Namespace: "ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "job1",
-				api.LabelJobType:     string(crdManager.DiscoveryJobType),
-			},
+		Name:      "job1-discovery-existing",
+		Namespace: "ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "job1",
+			api.LabelJobType:     string(crdManager.DiscoveryJobType),
 		},
 	}
 
@@ -288,13 +297,11 @@ func TestCreateDiscoveryJob_AlreadyRunning_SetsAnnotation(t *testing.T) {
 	})
 
 	runningJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "job1-discovery-existing",
-			Namespace: "ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "job1",
-				api.LabelJobType:     string(crdManager.DiscoveryJobType),
-			},
+		Name:      "job1-discovery-existing",
+		Namespace: "ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "job1",
+			api.LabelJobType:     string(crdManager.DiscoveryJobType),
 		},
 	}
 
@@ -335,7 +342,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 	var capturedProjects []string
 	mgr := &fakeJobManager{
 		getJobFn: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-			return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
+			return &api.RenovateJob{Name: name, Namespace: namespace}, nil
 		},
 		reconcileProjectsFn: func(ctx context.Context, job *api.RenovateJob, projects []string) error {
 			capturedProjects = projects
@@ -352,7 +359,7 @@ func TestProcessDiscoveryJobResult(t *testing.T) {
 
 	// succeeded k8s Job (getJobStatus checks Conditions, not Succeeded counter)
 	k8sJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},
+		Name: "job1-discovery-abc", Namespace: "ns",
 		Status: batchv1.JobStatus{
 			Conditions: []batchv1.JobCondition{
 				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
@@ -393,7 +400,7 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, policy.Policy{}).(*discoveryAgent)
 
 	runningJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job1-discovery-abc", Namespace: "ns"},
+		Name: "job1-discovery-abc", Namespace: "ns",
 	}
 	if err := da.ProcessDiscoveryJobResult(context.Background(), runningJob, crdManager.RenovateJobIdentifier{
 		Namespace: "ns",

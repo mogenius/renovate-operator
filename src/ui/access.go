@@ -158,6 +158,46 @@ func detectAccessMisconfiguration(provider AuthProvider, defaults AccessDefaults
 	}, jobsWithGroups
 }
 
+// ReasonNoAccessRules marks RenovateJobs that no request can ever see: they
+// configure no access rules of their own and the operator-wide defaults grant
+// nothing either. Unlike ReasonGroupsUnsupported this is not unenforceable —
+// the rules are enforced exactly as written — so it is served as a warning
+// and hides nothing beyond what the rules already hide.
+const ReasonNoAccessRules = "NoAccessRules"
+
+const noAccessRulesMessage = "At least one RenovateJob is not visible to anyone: it sets no access rules itself " +
+	"and the operator-wide authorization defaults grant no access either. " +
+	"Set authorization.defaults.adminUsers or adminGroups (AUTHORIZATION_DEFAULT_ADMIN_USERS / AUTHORIZATION_DEFAULT_ADMIN_GROUPS), " +
+	"or add spec.access to the RenovateJob. See the operator logs for the affected RenovateJobs."
+
+// detectLockedOutJobs reports jobs whose effective access configuration grants
+// no user, no group and no anonymous visitor anything — the state
+// docs/configuration/auth.md warns turns the dashboard silently empty.
+func detectLockedOutJobs(provider AuthProvider, defaults AccessDefaults, jobs []api.RenovateJob) (m *AccessMisconfiguration, lockedJobs []string) {
+	// Without a provider everyone is an admin; with authorization disabled any
+	// session is. Either way nothing is locked out.
+	if provider == nil || defaults.AuthorizationDisabled {
+		return nil, nil
+	}
+
+	for i := range jobs {
+		eff := resolveEffectiveAccess(&jobs[i], defaults)
+		if len(eff.adminUsers) == 0 && len(eff.adminGroups) == 0 &&
+			len(eff.readerUsers) == 0 && len(eff.readerGroups) == 0 &&
+			!eff.anonymousRead {
+			lockedJobs = append(lockedJobs, jobs[i].Namespace+"/"+jobs[i].Name)
+		}
+	}
+
+	if len(lockedJobs) == 0 {
+		return nil, nil
+	}
+	return &AccessMisconfiguration{
+		Reason:  ReasonNoAccessRules,
+		Message: noAccessRulesMessage,
+	}, lockedJobs
+}
+
 func jobConfiguresGroups(job *api.RenovateJob) bool {
 	if len(job.Spec.AllowedGroups) > 0 { //nolint:staticcheck // deprecated field is intentionally still honoured
 		return true

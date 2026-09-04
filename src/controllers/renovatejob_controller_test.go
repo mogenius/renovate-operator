@@ -36,7 +36,7 @@ type fakeManager struct {
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
-	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (f *fakeManager) ListRenovateJobs(ctx context.Context) ([]crdManager.RenovateJobIdentifier, error) {
@@ -57,7 +57,7 @@ func (f *fakeManager) GetProjectsForRenovateJob(ctx context.Context, job crdMana
 func (f *fakeManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	return fmt.Errorf("not implemented")
 }
-func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+func (f *fakeManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if f.updateProjectStatusBatchedFn != nil {
 		return f.updateProjectStatusBatchedFn(ctx, fn, job, status)
 	}
@@ -181,10 +181,7 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 	mgr := &fakeManager{}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Status: api.RenovateJobStatus{
-				Projects: []api.ProjectStatus{{Name: "p1", Status: api.JobStatusScheduled}},
-			},
+			Name: name, Namespace: namespace,
 		}, nil
 	}
 
@@ -197,7 +194,7 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 	sched := &fakeScheduler{}
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
 	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
+	renovateJob := &api.RenovateJob{Name: "test", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
 	createScheduler(logger, renovateJob, reconciler)
 
@@ -219,7 +216,7 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 	mgr := &fakeManager{}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
+		return &api.RenovateJob{Name: name, Namespace: namespace}, nil
 	}
 
 	disc := &fakeDiscovery{}
@@ -230,7 +227,7 @@ func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 	sched := &fakeScheduler{}
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: disc}
 	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
+	renovateJob := &api.RenovateJob{Name: "test", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
 	createScheduler(logger, renovateJob, reconciler)
 	if sched.storedFn == nil {
@@ -247,8 +244,8 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	mgr := &fakeManager{}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:39"},
+			Name: name, Namespace: namespace,
+			Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:39"},
 		}, nil
 	}
 
@@ -263,8 +260,8 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 	logger := logr.Discard()
 
 	originalJob := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec:       api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:38"},
+		Name: "test", Namespace: "default",
+		Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:38"},
 	}
 	createScheduler(logger, originalJob, reconciler)
 	sched.storedFn()
@@ -281,13 +278,13 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 func TestCreateScheduler_SchedulerAddError(t *testing.T) {
 	mgr := &fakeManager{}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-		return &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}, nil
+		return &api.RenovateJob{Name: name, Namespace: namespace}, nil
 	}
 
 	sched := &fakeScheduler{addErr: fmt.Errorf("add boom")}
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: sched, Discovery: &fakeDiscovery{}}
 	logger := logr.Discard()
-	renovateJob := &api.RenovateJob{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}, Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
+	renovateJob := &api.RenovateJob{Name: "test", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *"}}
 
 	createScheduler(logger, renovateJob, reconciler)
 
@@ -308,8 +305,8 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	mgr := &fakeManager{}
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
+			Name: name, Namespace: namespace,
+			Spec: api.RenovateJobSpec{Schedule: "*/5 * * * *"},
 		}, nil
 	}
 
@@ -323,7 +320,7 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t),
 	}
 
-	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{Name: "test", Namespace: "default"}
 	res, err := reconciler.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -356,7 +353,7 @@ func TestReconcile_RemoveScheduleOnNotFound(t *testing.T) {
 		GithubApp: &fakeGithubAppToken{},
 	}
 
-	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{Name: "test", Namespace: "default"}
 	res, err := reconciler.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -387,9 +384,9 @@ func buildFakeK8sClient(t *testing.T, objs ...crclient.Object) crclient.Client {
 
 func makeRenovateJob(name, namespace string, annotations map[string]string) *api.RenovateJob {
 	return &api.RenovateJob{
-		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: annotations},
-		Spec:       api.RenovateJobSpec{Schedule: "*/5 * * * *"},
+		APIVersion: api.GroupVersion.String(), Kind: "RenovateJob",
+		Name: name, Namespace: namespace, Annotations: annotations,
+		Spec: api.RenovateJobSpec{Schedule: "*/5 * * * *"},
 	}
 }
 
@@ -426,14 +423,14 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 // TestHandleAnnotationTriggers_ScheduleAll verifies that the schedule-all annotation sets all
 // non-running projects to Scheduled and is removed from the RenovateJob on success.
 func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
-	projects := []api.ProjectStatus{
+	projects := []crdManager.RenovateProjectStatus{
 		{Name: "org/a", Status: api.JobStatusCompleted},
 		{Name: "org/b", Status: api.JobStatusRunning},
 		{Name: "org/c", Status: api.JobStatusFailed},
 	}
 	var scheduled []string
 	mgr := &fakeManager{
-		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(crdManager.RenovateProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 			for _, p := range projects {
 				if fn(p) {
 					scheduled = append(scheduled, p.Name)
@@ -472,14 +469,14 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 // TestHandleAnnotationTriggers_Schedule verifies that the schedule annotation schedules only
 // the listed non-running projects and is removed from the RenovateJob on success.
 func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
-	projects := []api.ProjectStatus{
+	projects := []crdManager.RenovateProjectStatus{
 		{Name: "org/p1", Status: api.JobStatusCompleted},
 		{Name: "org/p2", Status: api.JobStatusRunning}, // in list but running — must be excluded
 		{Name: "org/p3", Status: api.JobStatusFailed},  // not in list — must be excluded
 	}
 	var scheduled []string
 	mgr := &fakeManager{
-		updateProjectStatusBatchedFn: func(_ context.Context, fn func(api.ProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(crdManager.RenovateProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 			for _, p := range projects {
 				if fn(p) {
 					scheduled = append(scheduled, p.Name)
@@ -523,7 +520,7 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 		Discovery: &fakeDiscovery{},
 	}
 
-	req := ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "test", Namespace: "default"}}
+	req := ctrl.Request{Name: "test", Namespace: "default"}
 	_, err := reconciler.Reconcile(context.Background(), req)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
@@ -552,7 +549,7 @@ func TestReconcileAddsFinalizerWhenSyncEnabled(t *testing.T) {
 	}}
 
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}}
-	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "with-sync", Namespace: "default"}}); err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "with-sync", Namespace: "default"}); err != nil {
 		t.Fatalf("unexpected reconcile error: %v", err)
 	}
 
@@ -579,7 +576,7 @@ func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	}}
 
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}}
-	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "no-sync", Namespace: "default"}}); err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "no-sync", Namespace: "default"}); err != nil {
 		t.Fatalf("unexpected reconcile error: %v", err)
 	}
 
@@ -615,7 +612,7 @@ func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	}
 
 	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}}
-	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: k8stypes.NamespacedName{Name: "deleting", Namespace: "default"}}); err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "deleting", Namespace: "default"}); err != nil {
 		t.Fatalf("unexpected reconcile error: %v", err)
 	}
 

@@ -50,7 +50,7 @@ type discoveryAgent struct {
 	logger    logr.Logger
 	scheme    *runtime.Scheme
 	manager   crdManager.RenovateJobManager
-	syncer    map[string]*sync.RWMutex
+	syncer    sync.Map // key: job.Fullname() → *sync.RWMutex
 	logReader podLogs.PodLogReader
 	policy    policy.Policy
 }
@@ -61,7 +61,6 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		logger:    logger,
 		scheme:    scheme,
 		manager:   manager,
-		syncer:    make(map[string]*sync.RWMutex),
 		logReader: lr,
 		policy:    p,
 	}
@@ -70,11 +69,8 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 // GetDiscoveryJobStatus implements DiscoveryAgent.
 func (e *discoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	name := job.Fullname()
-	lock := e.syncer[name]
-	if lock == nil {
-		lock = &sync.RWMutex{}
-		e.syncer[name] = lock
-	}
+	v, _ := e.syncer.LoadOrStore(name, &sync.RWMutex{})
+	lock := v.(*sync.RWMutex)
 	lock.RLock()
 	defer lock.RUnlock()
 
@@ -156,7 +152,7 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 	}
 
 	if k8sJob.Annotations[api.ScheduleAfterDiscoveryAnnotationKey] == "true" {
-		isNotRunning := func(p api.ProjectStatus) bool {
+		isNotRunning := func(p crdManager.RenovateProjectStatus) bool {
 			return p.Status != api.JobStatusRunning
 		}
 		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{
@@ -189,11 +185,8 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	}
 
 	name := renovateJob.Fullname()
-	lock := e.syncer[name]
-	if lock == nil {
-		lock = &sync.RWMutex{}
-		e.syncer[name] = lock
-	}
+	v, _ := e.syncer.LoadOrStore(name, &sync.RWMutex{})
+	lock := v.(*sync.RWMutex)
 	lock.Lock()
 	defer lock.Unlock()
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -168,8 +167,8 @@ func tokenManager(t *testing.T, secret *corev1.Secret, p policy.Policy) *renovat
 
 func TestGetRenovateJobTokensRefusesUnlabeledSecret(t *testing.T) {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "db-credentials", Namespace: "default"},
-		Data:       map[string][]byte{"password": []byte("s3cret")},
+		Name: "db-credentials", Namespace: "default",
+		Data: map[string][]byte{"password": []byte("s3cret")},
 	}
 	mgr := tokenManager(t, secret, policy.Policy{})
 
@@ -187,12 +186,10 @@ func TestGetRenovateJobTokensRefusesUnlabeledSecret(t *testing.T) {
 
 func TestGetRenovateJobTokensReadsLabeledSecret(t *testing.T) {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "webhook-auth",
-			Namespace: "default",
-			Labels:    map[string]string{api.LabelAllowRef: "true"},
-		},
-		Data: map[string][]byte{"token": []byte("first,second")},
+		Name:      "webhook-auth",
+		Namespace: "default",
+		Labels:    map[string]string{api.LabelAllowRef: "true"},
+		Data:      map[string][]byte{"token": []byte("first,second")},
 	}
 	mgr := tokenManager(t, secret, policy.Policy{})
 

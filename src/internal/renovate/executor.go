@@ -139,7 +139,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 
 	// Pass 1: check all currently running projects across all jobs, update their statuses,
 	// and count how many are still running globally and per job.
-	globalRunning, perJobRunning := e.countRunningProjects(renovateJobs)
+	globalRunning, perJobRunning := e.countRunningProjects(ctx, renovateJobs)
 
 	// Pass 2: collect all scheduled projects across all jobs, sort for fairness,
 	// and dispatch new jobs up to the global and per-job limits.
@@ -156,7 +156,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 // countRunningProjects returns the number of still-running projects globally and per job
 // (keyed by job fullname). It also emits per-tick saturation gauges (running/scheduled
 // per job, global running) and the repositories-by-status gauge aggregated per job.
-func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) (int, map[string]int) {
+func (e *renovateExecutor) countRunningProjects(ctx context.Context, renovateJobs []api.RenovateJob) (int, map[string]int) {
 	globalRunning := 0
 	perJobRunning := make(map[string]int, len(renovateJobs))
 
@@ -169,10 +169,17 @@ func (e *renovateExecutor) countRunningProjects(renovateJobs []api.RenovateJob) 
 		key := jobId.Fullname()
 		perJobRunning[key] = 0
 
+		projects, err := e.manager.GetProjectsForRenovateJob(ctx, jobId)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "failed to get projects for count", "job", jobId.Name)
+			metricStore.SetProjectsRunning(renovateJob.Namespace, renovateJob.Name, 0)
+			metricStore.SetProjectsScheduled(renovateJob.Namespace, renovateJob.Name, 0)
+			continue
+		}
+
 		scheduled := 0
 		byResultStatus := make(map[string]int)
-		for j := range renovateJob.Status.Projects {
-			project := &renovateJob.Status.Projects[j]
+		for _, project := range projects {
 			if project.RenovateResultStatus != nil {
 				byResultStatus[metricStore.NormalizeRepositoryStatus(*project.RenovateResultStatus)]++
 			}
@@ -224,13 +231,13 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 	// Guard: only proceed if the project is still Running in the CRD.
 	// Without this, the job controller replays all existing Jobs on startup and
 	// tries to fetch logs for pods that are long gone.
-	renovateJob, err := e.manager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace)
+	runningProjects, err := e.manager.GetProjectsByStatus(ctx, jobId, api.JobStatusRunning)
 	if err != nil {
-		return fmt.Errorf("failed to load RenovateJob for status check: %w", err)
+		return fmt.Errorf("failed to load running projects for status check: %w", err)
 	}
 	projectIsRunning := false
-	for _, p := range renovateJob.Status.Projects {
-		if p.Name == project && p.Status == api.JobStatusRunning {
+	for _, p := range runningProjects {
+		if p.Name == project {
 			projectIsRunning = true
 			break
 		}
@@ -260,11 +267,6 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 
 	metricStore.SetRunFailed(jobId.Namespace, jobId.Name, project, newStatus == api.JobStatusFailed)
 	metricStore.SetDependencyIssues(jobId.Namespace, jobId.Name, project, hasIssues)
-	approvalsNeeded := 0
-	if newProjectStatus.PRActivity != nil {
-		approvalsNeeded = newProjectStatus.PRActivity.NeedsApproval
-	}
-	metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, approvalsNeeded)
 	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
 
 	// Execution duration (Group A/E). Only emit when the k8s Job reported a StartTime.
@@ -285,15 +287,17 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "error", newProjectStatus.LogIssues.ErrorCount)
 	}
 
-	// Pull request activity (Group E/L).
+	// Pull request activity (Group E/L). A nil PRActivity means the run yielded no
+	// branch data (aborted "repository-changed" run, or unreadable logs): keep the
+	// last known gauges instead of zeroing them; the status merge keeps the stored
+	// PRActivity for the same reason.
 	if pr := newProjectStatus.PRActivity; pr != nil {
+		metricStore.SetApprovalsNeeded(jobId.Namespace, jobId.Name, project, pr.NeedsApproval)
 		metricStore.AddPullRequestsCreated(ctx, jobId.Namespace, jobId.Name, pr.Created)
 		metricStore.AddPullRequestsMerged(ctx, jobId.Namespace, jobId.Name, pr.Automerged)
 		metricStore.AddPullRequestsUpdated(ctx, jobId.Namespace, jobId.Name, pr.Updated)
 		// Open managed PRs: automerged ones are closed, so exclude them.
 		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, pr.Created+pr.Updated+pr.Unchanged)
-	} else {
-		metricStore.SetOpenPullRequests(jobId.Namespace, jobId.Name, project, 0)
 	}
 
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
@@ -325,7 +329,7 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 
 // scheduledCandidate is a project ready to be dispatched together with its parent RenovateJob.
 type scheduledCandidate struct {
-	project     api.ProjectStatus
+	project     crdManager.RenovateProjectStatus
 	renovateJob *api.RenovateJob
 	// jobOldestWait is the smallest LastTransition time among all Scheduled projects in the same
 	// RenovateJob. Used as the fairness key: jobs whose projects have been queued longest
@@ -353,11 +357,15 @@ func (e *renovateExecutor) acceptedCandidates(ctx context.Context, renovateJobs 
 		oldestWait := time.Now()
 		startIdx := len(candidates)
 
-		for _, p := range renovateJob.Status.Projects {
-			if p.Status != api.JobStatusScheduled {
-				continue
-			}
-			if p.LastTransition.Time.Before(oldestWait) {
+		jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+		scheduledProjects, err := e.manager.GetProjectsByStatus(ctx, jobId, api.JobStatusScheduled)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "failed to get scheduled projects", "job", renovateJob.Name)
+			continue
+		}
+
+		for _, p := range scheduledProjects {
+			if !p.LastTransition.IsZero() && p.LastTransition.Time.Before(oldestWait) {
 				oldestWait = p.LastTransition.Time
 			}
 			candidates = append(candidates, scheduledCandidate{
@@ -426,7 +434,15 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
 		k8sJob := newRenovateJob(renovateJob, project.Name, project.ExecutionOptions, carrier)
-		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
+
+		var renovateProject api.RenovateProject
+		if err := e.client.Get(ctx, client.ObjectKey{
+			Name:      utils.RenovateProjectCRDName(renovateJob.Name, project.Name),
+			Namespace: renovateJob.Namespace,
+		}, &renovateProject); err != nil {
+			return fmt.Errorf("failed to get RenovateProject for %s: %w", project.Name, err)
+		}
+		if err := controllerutil.SetControllerReference(&renovateProject, k8sJob, e.scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
 

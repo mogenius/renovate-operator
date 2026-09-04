@@ -20,11 +20,15 @@ const MaxLogIssues = 20
 // MaxIssueMessageLen is the maximum length of a single issue message.
 const MaxIssueMessageLen = 256
 
+// renovateResultRepositoryChanged is Renovate's "Repository finished" result when it
+// aborted the run because the repository changed while it was being renovated.
+const renovateResultRepositoryChanged = "repository-changed"
+
 // LogParseResult contains the result of parsing Renovate logs.
 type LogParseResult struct {
 	HasIssues            bool            // true if any WARN (level 40) or ERROR (level 50) found
 	RenovateResultStatus *string         // nil = unknown; "Disabled", "No Config", "Onboarding Closed", or raw result string
-	PRActivity           *api.PRActivity // nil when logs are empty/unparseable, non-nil (possibly zero counts) when logs were parsed successfully
+	PRActivity           *api.PRActivity // nil when logs are empty/unparseable or the run aborted before branch processing ("repository-changed"), non-nil (possibly zero counts) otherwise
 	LogIssues            *api.LogIssues  // nil when logs are empty/unparseable, non-nil when logs were parsed successfully
 }
 
@@ -288,7 +292,12 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 
 	// Build PRActivity and LogIssues if we parsed any log lines
 	if parsedAnyLine {
-		result.PRActivity = buildPRActivity(branchMap)
+		// A "repository-changed" run aborted before branch processing: its report
+		// carries an empty branch list that means "not evaluated", not "no PRs".
+		// Leave PRActivity nil so consumers keep the last known values.
+		if result.RenovateResultStatus == nil || *result.RenovateResultStatus != renovateResultRepositoryChanged {
+			result.PRActivity = buildPRActivity(branchMap)
+		}
 		result.LogIssues = &api.LogIssues{
 			WarnCount:  warnCount,
 			ErrorCount: errorCount,

@@ -115,7 +115,6 @@ func renovateJob(name, project string, authEnabled bool) *api.RenovateJob {
 		TypeMeta:   metav1.TypeMeta{APIVersion: api.GroupVersion.String(), Kind: "RenovateJob"},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Spec:       api.RenovateJobSpec{Webhook: &api.RenovateWebhook{Enabled: true}},
-		Status:     api.RenovateJobStatus{Projects: []api.ProjectStatus{{Name: project}}},
 	}
 	if authEnabled {
 		job.Spec.Webhook.Authentication = &api.RenovateWebhookAuth{
@@ -124,6 +123,18 @@ func renovateJob(name, project string, authEnabled bool) *api.RenovateJob {
 		}
 	}
 	return job
+}
+
+func renovateProject(jobName, project string) *api.RenovateProject {
+	return &api.RenovateProject{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName + "-" + project,
+			Namespace: testNamespace,
+			Labels:    map[string]string{api.LabelRenovateJob: jobName},
+		},
+		Spec:   api.RenovateProjectSpec{Project: project},
+		Status: api.RenovateProjectState{Status: api.JobStatusScheduled},
+	}
 }
 
 // startWebhookServer boots the real webhook.Server on a free port over a fake-client-backed manager
@@ -152,8 +163,14 @@ func startWebhookServer(t *testing.T) (string, crdmanager.RenovateJobManager) {
 	}
 	cl := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(secret, renovateJob(authedJobName, authedProject, true), renovateJob(openJobName, openProject, false)).
-		WithStatusSubresource(&api.RenovateJob{}).
+		WithObjects(
+			secret,
+			renovateJob(authedJobName, authedProject, true),
+			renovateJob(openJobName, openProject, false),
+			renovateProject(authedJobName, authedProject),
+			renovateProject(openJobName, openProject),
+		).
+		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
 		Build()
 
 	mgr := crdmanager.NewRenovateJobManager(cl, nil, logr.Discard(), nil, nil, policy.Policy{})
@@ -206,8 +223,15 @@ func post(t *testing.T, url string, body []byte, headers map[string]string) (int
 	return resp.StatusCode, string(b)
 }
 
-func projectStatus(job *api.RenovateJob, project string) api.RenovateProjectStatus {
-	for _, p := range job.Status.Projects {
+func projectStatus(mgr crdmanager.RenovateJobManager, jobName, project string) api.RenovateProjectStatus {
+	projects, err := mgr.GetProjectsForRenovateJob(context.Background(), crdmanager.RenovateJobIdentifier{
+		Name:      jobName,
+		Namespace: testNamespace,
+	})
+	if err != nil {
+		return ""
+	}
+	for _, p := range projects {
 		if p.Name == project {
 			return p.Status
 		}
@@ -229,11 +253,7 @@ func TestSigningTokenWebhookIntegration(t *testing.T) {
 		if code != http.StatusAccepted {
 			t.Fatalf("want 202, got %d: %s", code, msg)
 		}
-		job, err := mgr.GetRenovateJob(context.Background(), authedJobName, testNamespace)
-		if err != nil {
-			t.Fatalf("read back job: %v", err)
-		}
-		if got := projectStatus(job, authedProject); got != api.JobStatusScheduled {
+		if got := projectStatus(mgr, authedJobName, authedProject); got != api.JobStatusScheduled {
 			t.Errorf("project status = %q, want %q", got, api.JobStatusScheduled)
 		}
 	})
@@ -293,11 +313,7 @@ func TestSigningTokenWebhookIntegration(t *testing.T) {
 		if code, msg := post(t, openURL, body, headers); code != http.StatusAccepted {
 			t.Fatalf("want 202, got %d: %s", code, msg)
 		}
-		job, err := mgr.GetRenovateJob(context.Background(), openJobName, testNamespace)
-		if err != nil {
-			t.Fatalf("read back job: %v", err)
-		}
-		if got := projectStatus(job, openProject); got != api.JobStatusScheduled {
+		if got := projectStatus(mgr, openJobName, openProject); got != api.JobStatusScheduled {
 			t.Errorf("project status = %q, want %q", got, api.JobStatusScheduled)
 		}
 	})

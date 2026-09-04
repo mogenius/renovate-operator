@@ -15,7 +15,7 @@ const GroupName = "renovate-operator.mogenius.com"
 var GroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 func AddToScheme(s *runtime.Scheme) error {
-	s.AddKnownTypes(GroupVersion, &RenovateJob{}, &RenovateJobList{})
+	s.AddKnownTypes(GroupVersion, &RenovateJob{}, &RenovateJobList{}, &RenovateProject{}, &RenovateProjectList{})
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil
 }

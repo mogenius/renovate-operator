@@ -21,6 +21,7 @@ type AuthChecker func(ctx context.Context, jobId crdmanager.RenovateJobIdentifie
 
 type jobLister interface {
 	ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
+	GetProjectsForRenovateJob(ctx context.Context, job crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
 }
 
 type credentialValidator interface {
@@ -51,7 +52,7 @@ func FindAndAuthenticateJob(
 		return crdmanager.RenovateJobIdentifier{}, err
 	}
 
-	candidates := filterCandidates(jobs, namespace, jobName, project)
+	candidates := filterCandidates(ctx, manager, jobs, namespace, jobName, project)
 	if len(candidates) == 0 {
 		return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
 	}
@@ -75,7 +76,7 @@ func FindAndAuthenticateJob(
 	return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
 }
 
-func filterCandidates(jobs []api.RenovateJob, namespace, jobName, project string) []api.RenovateJob {
+func filterCandidates(ctx context.Context, manager jobLister, jobs []api.RenovateJob, namespace, jobName, project string) []api.RenovateJob {
 	out := make([]api.RenovateJob, 0, len(jobs))
 	for _, job := range jobs {
 		if namespace != "" && job.Namespace != namespace {
@@ -87,7 +88,9 @@ func filterCandidates(jobs []api.RenovateJob, namespace, jobName, project string
 		if job.Spec.Webhook == nil || !job.Spec.Webhook.Enabled {
 			continue
 		}
-		if !hasProject(job.Status.Projects, project) {
+		jobId := crdmanager.RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
+		projects, err := manager.GetProjectsForRenovateJob(ctx, jobId)
+		if err != nil || !hasProjectInList(projects, project) {
 			continue
 		}
 		out = append(out, job)
@@ -95,7 +98,7 @@ func filterCandidates(jobs []api.RenovateJob, namespace, jobName, project string
 	return out
 }
 
-func hasProject(projects []api.ProjectStatus, project string) bool {
+func hasProjectInList(projects []crdmanager.RenovateProjectStatus, project string) bool {
 	for _, p := range projects {
 		if p.Name == project {
 			return true

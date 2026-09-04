@@ -6,9 +6,13 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@003b4f8d0dc6b7c9f5b5e8f94b722516b6fdd7a8 # v1.7.7
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@c3e043d602a88fea39b680b67480b4a90d8d31d2 # v1.8.0
     secrets: inherit
     with:
       version: "main"

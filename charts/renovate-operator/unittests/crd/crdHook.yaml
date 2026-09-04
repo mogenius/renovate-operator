@@ -1,0 +1,53 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: CRD install hook ships every CRD
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+tests:
+# The hook used to name one CRD file explicitly, so adding a second CRD to the
+# chart left it uninstalled and the operator failed later, on the first API call
+# needing the missing kind.
+- it: mounts the RenovateJob CRD
+  set:
+    crd.install: true
+    crd.mode: hook
+  templates:
+  - templates/crd-hook.yaml
+  documentIndex: 3
+  asserts:
+  - isKind:
+      of: ConfigMap
+  - exists:
+      path: data["renovate-operator.mogenius.com_renovatejobs.yaml"]
+
+- it: mounts the RenovateProject CRD
+  set:
+    crd.install: true
+    crd.mode: hook
+  templates:
+  - templates/crd-hook.yaml
+  documentIndex: 3
+  asserts:
+  - exists:
+      path: data["renovate-operator.mogenius.com_renovateprojects.yaml"]
+
+# Applying the directory rather than a named file is what keeps the two in step:
+# whatever the ConfigMap mounts gets applied.
+- it: applies the whole mounted directory
+  set:
+    crd.install: true
+    crd.mode: hook
+  templates:
+  - templates/crd-hook.yaml
+  documentIndex: 4
+  asserts:
+  - isKind:
+      of: Job
+  - contains:
+      path: spec.template.spec.containers[0].command
+      content: /crd
+  - notContains:
+      path: spec.template.spec.containers[0].command
+      content: /crd/renovatejob.yaml

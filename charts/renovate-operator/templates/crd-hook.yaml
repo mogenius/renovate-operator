@@ -51,8 +51,16 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
     helm.sh/hook-weight: "-5"
 data:
-  renovatejob.yaml: |
-{{ .Files.Get "crd/renovate-operator.mogenius.com_renovatejobs.yaml" | indent 4 }}
+  # Every CRD the chart ships, so adding one to crd/ is enough to have it
+  # installed. Naming files individually here means a new CRD is silently left
+  # uninstalled, and the operator only fails later, at the first API call that
+  # needs the missing kind. Mirrors the glob in crds.yaml, which the "template"
+  # install mode uses.
+{{- $files := .Files }}
+{{- range $path, $_ := .Files.Glob "crd/**" }}
+  {{ base $path }}: |
+{{ $files.Get $path | indent 4 }}
+{{- end }}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -93,7 +101,7 @@ spec:
             - --server-side
             - --force-conflicts
             - -f
-            - /crd/renovatejob.yaml
+            - /crd
           volumeMounts:
             - name: crd
               mountPath: /crd

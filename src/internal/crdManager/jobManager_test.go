@@ -21,14 +21,12 @@ func TestGetJob(t *testing.T) {
 
 	// Create a test job
 	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "test-job",
-				api.LabelProject:     "test-project",
-				api.LabelJobType:     string(ExecutorJobType),
-			},
+		Name:      "test-job",
+		Namespace: "test-ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "test-job",
+			api.LabelProject:     "test-project",
+			api.LabelJobType:     string(ExecutorJobType),
 		},
 	}
 
@@ -77,13 +75,11 @@ func TestCreateJob(t *testing.T) {
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "new-job",
-			Namespace: "test-ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "new-job",
-				api.LabelJobType:     string(ExecutorJobType),
-			},
+		Name:      "new-job",
+		Namespace: "test-ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "new-job",
+			api.LabelJobType:     string(ExecutorJobType),
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -147,10 +143,8 @@ func TestCreateJobWithGeneration_PreservesExistingTemplateLabels(t *testing.T) {
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "labeled-job",
-			Namespace: "test-ns",
-		},
+		Name:      "labeled-job",
+		Namespace: "test-ns",
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -213,20 +207,16 @@ func TestDeleteJob(t *testing.T) {
 
 	// Create a test job with a pod
 	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-		},
+		Name:      "test-job",
+		Namespace: "test-ns",
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "test-ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "test-job",
-				api.LabelJobType:     string(ExecutorJobType),
-			},
+		Name:      "test-pod",
+		Namespace: "test-ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "test-job",
+			api.LabelJobType:     string(ExecutorJobType),
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -267,20 +257,16 @@ func TestDeleteJobWithWait(t *testing.T) {
 
 	// Create a test job with a pod
 	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-		},
+		Name:      "test-job",
+		Namespace: "test-ns",
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "test-ns",
-			Labels: map[string]string{
-				api.LabelRenovateJob: "test-job",
-				api.LabelJobType:     string(ExecutorJobType),
-			},
+		Name:      "test-pod",
+		Namespace: "test-ns",
+		Labels: map[string]string{
+			api.LabelRenovateJob: "test-job",
+			api.LabelJobType:     string(ExecutorJobType),
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{

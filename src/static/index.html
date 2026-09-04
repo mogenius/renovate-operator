@@ -42,6 +42,7 @@
       window.React = React;
       window.createRoot = createRoot;
     </script>
+    <script type="text/babel" src="components/Spinner.js"></script>
     <script type="text/babel" src="components/ThemeToggle.js"></script>
     <script type="text/babel" src="components/SiteHeader.js"></script>
     <script type="text/babel" src="components/StatBadge.js"></script>
@@ -252,20 +253,16 @@
         const [isVisible, setIsVisible] = useState(false);
         const containerRef = React.useRef(null);
         const timeoutRef = React.useRef(null);
+        const portalRef = React.useRef(null);
 
         const handleMouseEnter = (e) => {
-          // Check if hovering over element with data-no-tooltip
-          if (e.target.closest('[data-no-tooltip]')) {
-            return;
-          }
-
+          if (e.target.closest('[data-no-tooltip]')) return;
           timeoutRef.current = setTimeout(() => {
             setIsVisible(true);
-          }, 500); // 500ms delay before showing tooltip
+          }, 500);
         };
 
         const handleMouseMove = (e) => {
-          // Check if moved into element with data-no-tooltip
           if (e.target.closest('[data-no-tooltip]')) {
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
@@ -273,7 +270,6 @@
             }
             setIsVisible(false);
           } else {
-            // Moved into a normal area - start tooltip if not already showing
             if (!isVisible && !timeoutRef.current) {
               timeoutRef.current = setTimeout(() => {
                 setIsVisible(true);
@@ -284,43 +280,52 @@
         };
 
         const handleMouseLeave = () => {
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-          }
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
           setIsVisible(false);
         };
 
         useEffect(() => {
           return () => {
-            if (timeoutRef.current) {
-              clearTimeout(timeoutRef.current);
-            }
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
           };
         }, []);
 
-        const tooltipElement = isVisible && project ? (
-          <div
-            className="fixed z-50 pointer-events-none border-0"
-            style={{
-              left: '50%',
-              top: containerRef.current ?
-                `${containerRef.current.getBoundingClientRect().top - 12}px` : '0',
-              transform: 'translate(-50%, -100%)'
-            }}
-          >
-            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
-              {project.duration && (
-                <>
-                  <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
-                  <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">
-                    {project.duration}
-                  </div>
-                </>
-              )}
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0"></div>
-            </div>
-          </div>
-        ) : null;
+        useEffect(() => {
+          const container = document.createElement('div');
+          document.body.appendChild(container);
+          const root = window.createRoot(container);
+          portalRef.current = { container, root };
+          return () => {
+            root.unmount();
+            if (document.body.contains(container)) document.body.removeChild(container);
+          };
+        }, []);
+
+        useEffect(() => {
+          if (!portalRef.current) return;
+          const { root } = portalRef.current;
+          if (isVisible && project && project.duration) {
+            const top = containerRef.current
+              ? `${containerRef.current.getBoundingClientRect().top - 12}px`
+              : '0';
+            root.render(
+              React.createElement('div', {
+                className: 'fixed z-50 pointer-events-none border-0',
+                style: { left: '50%', top, transform: 'translate(-50%, -100%)' }
+              },
+                React.createElement('div', {
+                  className: 'bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative'
+                },
+                  React.createElement('div', { className: 'font-medium mb-1 text-gray-100' }, 'Last Run Duration'),
+                  React.createElement('div', { className: 'text-gray-300 dark:text-slate-300 whitespace-nowrap' }, project.duration),
+                  React.createElement('div', { className: 'absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0' })
+                )
+              )
+            );
+          } else {
+            root.render(null);
+          }
+        }, [isVisible, project]);
 
         return {
           containerRef,
@@ -329,7 +334,7 @@
             onMouseMove: handleMouseMove,
             onMouseLeave: handleMouseLeave,
           },
-          tooltipElement
+          tooltipElement: null,
         };
       }
 
@@ -516,6 +521,19 @@
         // Set when the operator cannot enforce its access rules. It then hides
         // every job, so this is the only explanation the visitor gets.
         const [accessStatus, setAccessStatus] = useState(null);
+        // First-run setup state. The guide itself lives on /setup; the
+        // dashboard only decides whether to send the visitor there. Null
+        // until the first fetch answers, {visible: false} once an auth
+        // provider is configured. The dismissed flag is written on /setup
+        // ("Skip guide") and cleared by opening /setup again.
+        const [setupStatus, setSetupStatus] = useState(null);
+        const [setupGuideDismissed] = useState(() => {
+          try {
+            return localStorage.getItem("setupGuideDismissed") === "true";
+          } catch {
+            return false;
+          }
+        });
         const STAT_FILTER_LABELS = {
           failed: "Failed",
           scheduled: "Scheduled",
@@ -773,6 +791,13 @@
               .then((data) => setAccessStatus(data))
               .catch(() => {});
 
+            // Plain fetch on purpose: for anonymous visitors with auth enabled
+            // this answers 401, which must not bounce them to the login page.
+            fetch(BASE + "/api/v1/setup/status")
+              .then((res) => (res.ok ? res.json() : null))
+              .then((data) => { if (data) setSetupStatus(data); })
+              .catch(() => {});
+
             const response = await authFetch("/api/v1/renovatejobs");
             if (!response.ok)
               throw new Error(`HTTP ${response.status}: Failed to fetch jobs`);
@@ -1009,6 +1034,26 @@
           return () => clearInterval(interval);
         }, [loadJobs]);
 
+        // A fresh install (no jobs at all) is sent to the dedicated /setup
+        // page outright; once jobs exist the dashboard stays usable and a
+        // slim banner links back until setup is finished. The
+        // misconfiguration banner outranks both: nothing else is
+        // trustworthy in that state.
+        const setupIncomplete =
+          !!setupStatus?.visible &&
+          !setupStatus.complete &&
+          !setupGuideDismissed &&
+          !loading &&
+          !error &&
+          !accessStatus?.misconfigured;
+        const goToSetup = setupIncomplete && jobs.length === 0;
+
+        useEffect(() => {
+          if (goToSetup) {
+            window.location.replace(withBase("/setup"));
+          }
+        }, [goToSetup]);
+
         return (
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -1150,6 +1195,48 @@
                   )}
                 </div>
               )}
+
+              {(selectedStatFilter || searchTerm.trim()) && (
+                <div
+                  className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-3 py-2"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="min-w-0 truncate text-sm text-gray-700 dark:text-slate-300">
+                    Showing{" "}
+                    <span className="font-semibold text-primary">{searchFilteredProjectCount}</span>{" "}
+                    project{searchFilteredProjectCount === 1 ? "" : "s"} in{" "}
+                    <span className="font-semibold text-primary">{searchFilteredJobs.length}</span>{" "}
+                    job{searchFilteredJobs.length === 1 ? "" : "s"}
+                    {selectedStatFilter && (
+                      <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
+                    )}
+                    {searchTerm.trim() && (
+                      <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
+                    )}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {searchTerm.trim() && (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                    {selectedStatFilter && (
+                      <button
+                        type="button"
+                        onClick={clearStatFilter}
+                        className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+                      >
+                        Clear filter
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </StickyToolbar>
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8">
@@ -1178,6 +1265,37 @@
                       </h3>
                       <p className="mt-1 text-sm text-gray-700 dark:text-slate-300 break-words">
                         {accessStatus.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {accessStatus?.warning && !accessStatus?.misconfigured && (
+                <div
+                  role="alert"
+                  data-testid="access-warning"
+                  className="mb-6 rounded-lg bg-warning/10 border border-warning/30 p-4 sm:p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="w-6 h-6 text-warning flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-semibold text-warning">
+                        Some RenovateJobs grant no one access
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-700 dark:text-slate-300 break-words">
+                        {accessStatus.warning.message}
                       </p>
                     </div>
                   </div>
@@ -1232,9 +1350,25 @@
                 </div>
               )}
 
+              {setupIncomplete && jobs.length > 0 && (
+                <a
+                  href={withBase("/setup")}
+                  data-testid="setup-banner"
+                  className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3 hover:border-primary/40 transition-colors"
+                >
+                  <p className="text-sm text-gray-700 dark:text-slate-300">
+                    Setup is not finished yet — some steps still need your attention.
+                  </p>
+                  <span className="text-sm font-semibold text-primary whitespace-nowrap">
+                    Continue setup →
+                  </span>
+                </a>
+              )}
+
               {/* The misconfiguration banner already explains an empty list, and
-                  its advice outranks the sign-in prompt this would show. */}
-              {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && (
+                  its advice outranks the sign-in prompt this would show. A fresh
+                  install is redirected to /setup instead of seeing this. */}
+              {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && !goToSetup && (
                 <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 text-center">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
                     No RenovateJobs visible
@@ -1257,44 +1391,6 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {(selectedStatFilter || searchTerm.trim()) && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 px-4 py-3">
-                      <p className="text-sm text-gray-700 dark:text-slate-300">
-                        Showing{" "}
-                        <span className="font-semibold text-primary">{searchFilteredProjectCount}</span>{" "}
-                        project{searchFilteredProjectCount === 1 ? "" : "s"} in{" "}
-                        <span className="font-semibold text-primary">{searchFilteredJobs.length}</span>{" "}
-                        job{searchFilteredJobs.length === 1 ? "" : "s"}
-                        {selectedStatFilter && (
-                          <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
-                        )}
-                        {searchTerm.trim() && (
-                          <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
-                        )}
-                      </p>
-                      <div className="flex items-center gap-3 self-start sm:self-auto">
-                        {searchTerm.trim() && (
-                          <button
-                            type="button"
-                            onClick={clearSearch}
-                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
-                          >
-                            Clear search
-                          </button>
-                        )}
-                        {selectedStatFilter && (
-                          <button
-                            type="button"
-                            onClick={clearStatFilter}
-                            className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
-                          >
-                            Clear filter
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
                   {searchFilteredJobs.map((job) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
@@ -1309,7 +1405,11 @@
                     />
                   ))}
 
-                  {searchFilteredJobs.length === 0 && !loading && !error && (
+                  {/* Only when a filter or search hid existing jobs: a genuinely
+                      empty install is covered by the setup guide or the empty
+                      state above, and this card would just repeat them. */}
+                  {searchFilteredJobs.length === 0 && !loading && !error &&
+                    (jobs.length > 0 || searchTerm.trim() || selectedStatFilter) && (
                     <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
                       <svg
                         className="w-16 h-16 text-gray-400 mx-auto mb-4"
@@ -1687,9 +1787,10 @@
               onClick={onCancel}
               disabled={isCancelling || !canCancel}
               title={canCancel ? undefined : hint}
-              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all ${width || ""}`}
+              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-flex items-center justify-center gap-1.5 ${width || ""}`}
               aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
             >
+              {isCancelling && <Spinner />}
               <span>{isCancelling ? "Cancelling..." : "Cancel"}</span>
             </button>
           );
@@ -1717,7 +1818,7 @@
               onClick={onTrigger}
               disabled={isTriggering || isPrioritized || !!blocked}
               title={blocked}
-              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all"
+              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
               aria-label={
                 blocked
                   ? blocked
@@ -1730,6 +1831,7 @@
                   : `Trigger renovate for ${project.name}`
               }
             >
+              {isTriggering && <Spinner />}
               {label}
             </button>
             <button
@@ -1745,11 +1847,134 @@
         );
       }
 
+      // Brand marks (simple-icons paths) keyed by the platform values Renovate
+      // accepts. GitHub deliberately carries no color class so it inherits the
+      // header text color; the rest keep their brand color in both themes.
+      const PROVIDER_LOGOS = {
+        github: {
+          label: "GitHub",
+          path: "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12",
+        },
+        gitlab: {
+          label: "GitLab",
+          colorClass: "text-[#FC6D26]",
+          path: "m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0094-7.003z",
+        },
+        gitea: {
+          label: "Gitea",
+          colorClass: "text-[#609926]",
+          path: "M4.209 4.603c-.247 0-.525.02-.84.088-.333.07-1.28.283-2.054 1.027C-.403 7.25.035 9.685.089 10.052c.065.446.263 1.687 1.21 2.768 1.749 2.141 5.513 2.092 5.513 2.092s.462 1.103 1.168 2.119c.955 1.263 1.936 2.248 2.89 2.367 2.406 0 7.212-.004 7.212-.004s.458.004 1.08-.394c.535-.324 1.013-.893 1.013-.893s.492-.527 1.18-1.73c.21-.37.385-.729.538-1.068 0 0 2.107-4.471 2.107-8.823-.042-1.318-.367-1.55-.443-1.627-.156-.156-.366-.153-.366-.153s-4.475.252-6.792.306c-.508.011-1.012.023-1.512.027v4.474l-.634-.301c0-1.39-.004-4.17-.004-4.17-1.107.016-3.405-.084-3.405-.084s-5.399-.27-5.987-.324c-.187-.011-.401-.032-.648-.032zm.354 1.832h.111s.271 2.269.6 3.597C5.549 11.147 6.22 13 6.22 13s-.996-.119-1.641-.348c-.99-.324-1.409-.714-1.409-.714s-.73-.511-1.096-1.52C1.444 8.73 2.021 7.7 2.021 7.7s.32-.859 1.47-1.145c.395-.106.863-.12 1.072-.12zm8.33 2.554c.26.003.509.127.509.127l.868.422-.529 1.075a.686.686 0 0 0-.614.359.685.685 0 0 0 .072.756l-.939 1.924a.69.69 0 0 0-.66.527.687.687 0 0 0 .347.763.686.686 0 0 0 .867-.206.688.688 0 0 0-.069-.882l.916-1.874a.667.667 0 0 0 .237-.02.657.657 0 0 0 .271-.137 8.826 8.826 0 0 1 1.016.512.761.761 0 0 1 .286.282c.073.21-.073.569-.073.569-.087.29-.702 1.55-.702 1.55a.692.692 0 0 0-.676.477.681.681 0 1 0 1.157-.252c.073-.141.141-.282.214-.431.19-.397.515-1.16.515-1.16.035-.066.218-.394.103-.814-.095-.435-.48-.638-.48-.638-.467-.301-1.116-.58-1.116-.58s0-.156-.042-.27a.688.688 0 0 0-.148-.241l.516-1.062 2.89 1.401s.48.218.583.619c.073.282-.019.534-.069.657-.24.587-2.1 4.317-2.1 4.317s-.232.554-.748.588a1.065 1.065 0 0 1-.393-.045l-.202-.08-4.31-2.1s-.417-.218-.49-.596c-.083-.31.104-.691.104-.691l2.073-4.272s.183-.37.466-.497a.855.855 0 0 1 .35-.077z",
+        },
+        forgejo: {
+          label: "Forgejo",
+          colorClass: "text-[#FB923C]",
+          path: "M16.7773 0c1.6018 0 2.9004 1.2986 2.9004 2.9005s-1.2986 2.9004-2.9004 2.9004c-1.0854 0-2.0315-.596-2.5288-1.4787H12.91c-2.3322 0-4.2272 1.8718-4.2649 4.195l-.0007 2.1175a7.0759 7.0759 0 0 1 4.148-1.4205l.1176-.001 1.3385.0002c.4973-.8827 1.4434-1.4788 2.5288-1.4788 1.6018 0 2.9004 1.2986 2.9004 2.9005s-1.2986 2.9004-2.9004 2.9004c-1.0854 0-2.0315-.596-2.5288-1.4787H12.91c-2.3322 0-4.2272 1.8718-4.2649 4.195l-.0007 2.319c.8827.4973 1.4788 1.4434 1.4788 2.5287 0 1.602-1.2986 2.9005-2.9005 2.9005-1.6018 0-2.9004-1.2986-2.9004-2.9005 0-1.0853.596-2.0314 1.4788-2.5287l-.0002-9.9831c0-3.887 3.1195-7.0453 6.9915-7.108l.1176-.001h1.3385C14.7458.5962 15.692 0 16.7773 0ZM7.2227 19.9052c-.6596 0-1.1943.5347-1.1943 1.1943s.5347 1.1943 1.1943 1.1943 1.1944-.5347 1.1944-1.1943-.5348-1.1943-1.1944-1.1943Zm9.5546-10.4644c-.6596 0-1.1944.5347-1.1944 1.1943s.5348 1.1943 1.1944 1.1943c.6596 0 1.1943-.5347 1.1943-1.1943s-.5347-1.1943-1.1943-1.1943Zm0-7.7346c-.6596 0-1.1944.5347-1.1944 1.1943s.5348 1.1943 1.1944 1.1943c.6596 0 1.1943-.5347 1.1943-1.1943s-.5347-1.1943-1.1943-1.1943Z",
+        },
+        bitbucket: {
+          label: "Bitbucket",
+          colorClass: "text-[#2684FF]",
+          path: "M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.891zM14.52 15.53H9.522L8.17 8.466h7.561z",
+        },
+      };
+
+      // Bitbucket Data Center shares Bitbucket's mark; only the label differs,
+      // so the tooltip is what tells the two apart.
+      PROVIDER_LOGOS["bitbucket-server"] = {
+        ...PROVIDER_LOGOS.bitbucket,
+        label: "Bitbucket Server",
+      };
+
+      // provider.name reaches the UI verbatim from the CRD, so tolerate casing
+      // and separator variants of the platform values Renovate documents.
+      const PROVIDER_ALIASES = {
+        bitbucketserver: "bitbucket-server",
+        bitbucket_server: "bitbucket-server",
+        "bitbucket-datacenter": "bitbucket-server",
+      };
+
+      function ProviderLogo({ platform }) {
+        const raw = typeof platform === "string" ? platform.trim() : "";
+        if (!raw) {
+          return null;
+        }
+        const key = raw.toLowerCase();
+        const logo = PROVIDER_LOGOS[PROVIDER_ALIASES[key] || key];
+
+        // Platforms we ship no mark for (azure, gerrit, codecommit, local, or
+        // anything Renovate adds later) get a monogram instead of a blank.
+        if (!logo) {
+          return (
+            <span
+              className="w-4 h-4 flex-shrink-0 inline-flex items-center justify-center rounded-sm bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[0.625rem] font-bold leading-none uppercase"
+              role="img"
+              aria-label={raw}
+              title={raw}
+            >
+              {raw.charAt(0)}
+            </span>
+          );
+        }
+
+        return (
+          <svg
+            className={`w-4 h-4 flex-shrink-0 ${logo.colorClass || ""}`}
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            role="img"
+            aria-label={logo.label}
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <title>{logo.label}</title>
+            <path d={logo.path} />
+          </svg>
+        );
+      }
+
+      const getBadgeClass = (status) => {
+        const base =
+          "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap";
+        switch (status) {
+          case "scheduled":
+            return `${base} bg-warning/10 text-warning`;
+          case "running":
+            return `${base} bg-primary/10 text-primary`;
+          case "completed":
+            return `${base} bg-success/10 text-success`;
+          case "failed":
+            return `${base} bg-error/10 text-error`;
+          case "cancelled":
+            return `${base} bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-slate-300`;
+          default:
+            return `${base} bg-primary/10 text-primary`;
+        }
+      };
+
+      // A running project spins in its own status cell, so a long run reads as
+      // work in flight instead of a row stuck on "running". Every other state
+      // is static, so the badge stays a plain label there.
+      function StatusBadge({ status, className = "" }) {
+        const isRunning = (status || "").toLowerCase() === "running";
+        return (
+          <span className={`${getBadgeClass(status)} ${className}`.trim()}>
+            {isRunning && <Spinner className="w-3 h-3 mr-1.5" />}
+            {status || "-"}
+          </span>
+        );
+      }
+
       function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
         });
+        const [infoTooltipPos, setInfoTooltipPos] = useState(null);
+        const infoIconRef = useRef(null);
+        const showInfoTooltip = () => {
+          if (!infoIconRef.current) return;
+          const rect = infoIconRef.current.getBoundingClientRect();
+          setInfoTooltipPos({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
+        };
+        const hideInfoTooltip = () => setInfoTooltipPos(null);
         const actionHint = permissionHint(authInfo);
         const canTrigger = can(job, "trigger");
         const canTriggerAll = can(job, "triggerAll");
@@ -1856,25 +2081,6 @@
         const [optionsPos, setOptionsPos] = useState({ top: 0, right: 0 });
         const optionsBtnRef = useRef(null);
 
-        const getBadgeClass = (status) => {
-          const base =
-            "inline-flex items-center rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap";
-          switch (status) {
-            case "scheduled":
-              return `${base} bg-warning/10 text-warning`;
-            case "running":
-              return `${base} bg-primary/10 text-primary`;
-            case "completed":
-              return `${base} bg-success/10 text-success`;
-            case "failed":
-              return `${base} bg-error/10 text-error`;
-            case "cancelled":
-              return `${base} bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-slate-300`;
-            default:
-              return `${base} bg-primary/10 text-primary`;
-          }
-        };
-
         const handleSort = (key) => {
           let direction = "asc";
           if (sortConfig.key === key && sortConfig.direction === "asc") {
@@ -1968,6 +2174,7 @@
               {/* Title: name + namespace */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 min-w-0">
+                  <ProviderLogo platform={job.platform} />
                   <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-slate-100 truncate leading-tight">
                     {job.name}
                   </h2>
@@ -2033,6 +2240,51 @@
                 )}
               </div>
 
+              {/* Config info icon */}
+              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0) && (
+                <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <svg
+                    ref={infoIconRef}
+                    className={`w-4 h-4 cursor-default transition-colors ${infoTooltipPos ? "text-primary" : "text-gray-400 dark:text-slate-500"}`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-label="Job configuration info"
+                    onMouseEnter={showInfoTooltip}
+                    onMouseLeave={hideInfoTooltip}
+                  >
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  {infoTooltipPos && (
+                    <div
+                      style={{ position: "fixed", top: infoTooltipPos.top, left: infoTooltipPos.left, transform: "translateX(-50%)" }}
+                      className="z-50 w-64 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-3 text-left pointer-events-none"
+                    >
+                      <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-l border-t border-gray-200 dark:border-slate-600 rotate-45" />
+                      {job.discoveryFilters?.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discovery Filters</p>
+                          <ul className="space-y-0.5">
+                            {job.discoveryFilters.map((f, i) => (
+                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={f}>{f}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {job.discoverTopics?.length > 0 && (
+                        <div>
+                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discover Topics</p>
+                          <ul className="space-y-0.5">
+                            {job.discoverTopics.map((t, i) => (
+                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={t}>{t}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Action buttons */}
               <div className="flex items-center gap-2 ml-auto flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                 <button
@@ -2051,19 +2303,21 @@
                         : `Run discovery for ${job.name}`
                   }
                 >
-                  <svg
-                    className={`w-3.5 h-3.5 flex-shrink-0 ${
-                      job.discoveryRunning ? "animate-spin" : ""
-                    }`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  {job.discoveryRunning ? (
+                    <Spinner />
+                  ) : (
+                    <svg
+                      className="w-3.5 h-3.5 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
                   <span className="hidden sm:inline">
                     {job.discoveryRunning ? "Running..." : "Run Discovery"}
                   </span>
@@ -2086,19 +2340,21 @@
                           : `Trigger all projects for ${job.name}`
                     }
                   >
-                    <svg
-                      className={`w-3.5 h-3.5 flex-shrink-0 ${
-                        job.triggeringAll ? "animate-spin" : ""
-                      }`}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                    {job.triggeringAll ? (
+                      <Spinner />
+                    ) : (
+                      <svg
+                        className="w-3.5 h-3.5 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
                     <span className="hidden sm:inline">
                       {job.triggeringAll ? "Triggering..." : "Trigger All"}
                     </span>
@@ -2264,7 +2520,7 @@
                       {sortedProjects.length > 0 ? (
                         sortedProjects.map((project) => {
                           const ProjectRow = () => {
-                            const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                            const { containerRef, tooltipProps } = useTooltip(project);
 
                             return (
                               <>
@@ -2275,7 +2531,7 @@
                                 >
                                   <td className="px-3 xl:px-6 py-3">
                               <div className="flex items-center gap-2 w-full justify-between">
-                                <span className={`font-medium min-w-0 break-words ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                                <span className={`font-medium min-w-0 [overflow-wrap:anywhere] ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                                   {project.name}
                                 </span>
                                 {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
@@ -2286,9 +2542,7 @@
                               </div>
                             </td>
                             <td className="px-3 xl:px-6 py-3">
-                              <span className={getBadgeClass(project.status)}>
-                                {project.status || "-"}
-                              </span>
+                              <StatusBadge status={project.status} />
                             </td>
                             <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                               <PRActivityBadges
@@ -2396,7 +2650,6 @@
                           {expandedIssues.has(project.name) && project.logIssues && (
                             <IssueDetailRow logIssues={project.logIssues} projectName={project.name} jobName={job.name} jobNamespace={job.namespace} />
                           )}
-                          {tooltipElement}
                         </>
                       );
                     };
@@ -2423,7 +2676,7 @@
                   {sortedProjects.length > 0 ? (
                     sortedProjects.map((project) => {
                       const ProjectCard = () => {
-                        const { containerRef, tooltipProps, tooltipElement } = useTooltip(project);
+                        const { containerRef, tooltipProps } = useTooltip(project);
 
                         return (
                           <>
@@ -2450,11 +2703,7 @@
                               </p>
                             )}
                           </div>
-                          <span
-                            className={`ml-2 ${getBadgeClass(project.status)}`}
-                          >
-                            {project.status || "-"}
-                          </span>
+                          <StatusBadge status={project.status} className="ml-2" />
                         </div>
                         {/* PR Activity section */}
                         {project.prActivity?.prs?.length > 0 && (
@@ -2599,7 +2848,6 @@
                           })()}
                         </div>
                       </div>
-                      {tooltipElement}
                     </>
                   );
                 };

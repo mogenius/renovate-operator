@@ -1,0 +1,169 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: renovateprojects.renovate-operator.mogenius.com
+spec:
+  group: renovate-operator.mogenius.com
+  names:
+    kind: RenovateProject
+    listKind: RenovateProjectList
+    plural: renovateprojects
+    shortNames:
+    - rp
+    singular: renovateproject
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.labels.renovate-operator\.mogenius\.com/renovatejob
+      name: Job
+      type: string
+    - jsonPath: .spec.project
+      name: Project
+      type: string
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.lastTransition
+      name: Last Transition
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RenovateProjectSpec contains the immutable identity of the
+              tracked repository.
+            properties:
+              project:
+                description: Project is the full repository name as reported by the
+                  git platform (e.g. "org/repo").
+                type: string
+                x-kubernetes-validations:
+                - message: project is immutable
+                  rule: self == oldSelf
+            required:
+            - project
+            type: object
+          status:
+            description: RenovateProjectState captures the runtime status of one Renovate
+              run for this repository.
+            properties:
+              duration:
+                type: string
+              executionOptions:
+                properties:
+                  debug:
+                    description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
+                    type: boolean
+                type: object
+              lastTransition:
+                description: LastTransition records when the project most recently
+                  changed state.
+                format: date-time
+                type: string
+              logIssues:
+                description: LogIssues contains aggregate counts and individual issue
+                  messages from a Renovate run.
+                properties:
+                  errorCount:
+                    type: integer
+                  issues:
+                    items:
+                      description: LogIssue represents a single warning or error from
+                        Renovate logs.
+                      properties:
+                        level:
+                          type: integer
+                        message:
+                          type: string
+                      required:
+                      - level
+                      - message
+                      type: object
+                    type: array
+                  truncated:
+                    type: boolean
+                  warnCount:
+                    type: integer
+                required:
+                - errorCount
+                - warnCount
+                type: object
+              prActivity:
+                description: PRActivity contains aggregate counts and individual details
+                  of PR activity from a run.
+                properties:
+                  automerged:
+                    type: integer
+                  created:
+                    type: integer
+                  needsApproval:
+                    type: integer
+                  prs:
+                    items:
+                      description: PRDetail represents a single PR found in Renovate
+                        logs.
+                      properties:
+                        action:
+                          description: PRAction represents what happened to a PR in
+                            a Renovate run.
+                          type: string
+                        branch:
+                          type: string
+                        number:
+                          type: integer
+                        title:
+                          type: string
+                      required:
+                      - action
+                      - branch
+                      type: object
+                    type: array
+                  truncated:
+                    type: boolean
+                  unchanged:
+                    type: integer
+                  updated:
+                    type: integer
+                required:
+                - automerged
+                - created
+                - needsApproval
+                - unchanged
+                - updated
+                type: object
+              priority:
+                format: int32
+                type: integer
+              renovateResultStatus:
+                type: string
+              status:
+                type: string
+            required:
+            - status
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

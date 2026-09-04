@@ -14,6 +14,10 @@ func (s *Server) registerUiRoutes(router *mux.Router) {
 		s.serveHTML(w, r, "./static/pages/logs.html")
 	}).Methods("GET")
 
+	router.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
+		s.serveHTML(w, r, "./static/pages/setup.html")
+	}).Methods("GET")
+
 	fileServer := http.FileServer(http.Dir("./static/"))
 	base := BasePath()
 	router.PathPrefix("/").Handler(cacheControl(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

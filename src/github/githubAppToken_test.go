@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -141,14 +140,14 @@ func TestCreateGithubAppToken_InvalidPEM(t *testing.T) {
 			appID:     "123",
 			installID: "456",
 			pemString: "",
-			wantError: "PEM data does not start with BEGIN marker",
+			wantError: "PEM data does not start with '-----BEGIN' marker",
 		},
 		{
 			name:      "invalid PEM format",
 			appID:     "123",
 			installID: "456",
 			pemString: "not-a-pem-string",
-			wantError: "PEM data does not start with BEGIN marker",
+			wantError: "PEM data does not start with '-----BEGIN' marker",
 		},
 		{
 			name:      "PEM without proper structure",
@@ -235,10 +234,8 @@ func TestCreateGithubAppTokenFromJob_NoReference(t *testing.T) {
 	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "default",
-		},
+		Name:      "test-job",
+		Namespace: "default",
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: nil,
 		},
@@ -268,10 +265,8 @@ func TestCreateGithubAppTokenFromJob_SecretNotFound(t *testing.T) {
 	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "default",
-		},
+		Name:      "test-job",
+		Namespace: "default",
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: &api.GithubAppReference{
 				SecretName:              "github-app-secret",
@@ -301,14 +296,14 @@ func TestCreateGithubAppTokenFromJob_RefusesUnlabeledSecret(t *testing.T) {
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "db-credentials", Namespace: "default"},
-		Data:       map[string][]byte{"password": []byte("s3cret")},
+		Name: "db-credentials", Namespace: "default",
+		Data: map[string][]byte{"password": []byte("s3cret")},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 	tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-job", Namespace: "default"},
+		Name: "test-job", Namespace: "default",
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: &api.GithubAppReference{
 				SecretName:              "db-credentials",
@@ -376,12 +371,10 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "github-app-secret",
-					Namespace: "default",
-					Labels:    map[string]string{api.LabelAllowRef: "true"},
-				},
-				Data: tt.secretData,
+				Name:      "github-app-secret",
+				Namespace: "default",
+				Labels:    map[string]string{api.LabelAllowRef: "true"},
+				Data:      tt.secretData,
 			}
 
 			fakeClient := fake.NewClientBuilder().
@@ -392,10 +385,8 @@ func TestCreateGithubAppTokenFromJob_MissingSecretKeys(t *testing.T) {
 			tokenCreator := NewGitHubAppTokenCreator(fakeClient)
 
 			job := &api.RenovateJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-job",
-					Namespace: "default",
-				},
+				Name:      "test-job",
+				Namespace: "default",
 				Spec: api.RenovateJobSpec{
 					GithubAppReference: &api.GithubAppReference{
 						SecretName:              "github-app-secret",
@@ -434,11 +425,9 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "github-app-secret",
-			Namespace: "default",
-			Labels:    map[string]string{api.LabelAllowRef: "true"},
-		},
+		Name:      "github-app-secret",
+		Namespace: "default",
+		Labels:    map[string]string{api.LabelAllowRef: "true"},
 		Data: map[string][]byte{
 			"app-id":          []byte("123456"),
 			"installation-id": []byte("78910"),
@@ -469,10 +458,8 @@ func TestCreateGithubAppTokenFromJob_WithValidSecret(t *testing.T) {
 	tokenCreator := NewGitHubAppTokenCreatorWithHTTPClient(fakeClient, mockClient)
 
 	job := &api.RenovateJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "default",
-		},
+		Name:      "test-job",
+		Namespace: "default",
 		Spec: api.RenovateJobSpec{
 			GithubAppReference: &api.GithubAppReference{
 				SecretName:              "github-app-secret",

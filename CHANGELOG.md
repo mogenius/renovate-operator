@@ -1,5 +1,77 @@
 # Changelog
 
+## [6.3.0](https://github.com/mogenius/renovate-operator/compare/6.2.0...6.3.0) (2026-09-04)
+
+
+### Features
+
+* **ui:** guided first-run setup with in-flight spinners ([23fb67f](https://github.com/mogenius/renovate-operator/commit/23fb67fd3ff2084126c14c8bcb1d65998e6314e2))
+
+
+### Bug Fixes
+
+* **deps:** update go module directive to v1.27.1 ([f74a928](https://github.com/mogenius/renovate-operator/commit/f74a92817bbd1039ba345adef74400fb4ba8d029))
+* **deps:** update helm release valkey to v0.12.0 ([c26ecea](https://github.com/mogenius/renovate-operator/commit/c26ecea320a27d6659dd8694d82e7c8fb7e00b13))
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.39.0 ([997bf58](https://github.com/mogenius/renovate-operator/commit/997bf580d19bc74e557d055ab8d8c403a5d2e6fc))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.0 ([46673fc](https://github.com/mogenius/renovate-operator/commit/46673fc47ea6d0bbc940e3899f31596be0062a4f))
+* **ui:** keep filter summary visible while scrolling ([0fd3b6f](https://github.com/mogenius/renovate-operator/commit/0fd3b6f638e5e301c2248242d420d788f76c7363))
+* **ui:** remove duplicate info icon left by move operation ([dc0e0f1](https://github.com/mogenius/renovate-operator/commit/dc0e0f1f98fc0909b5a431d34576019dadcb2e3f))
+
+## [6.2.0](https://github.com/mogenius/renovate-operator/compare/6.1.0...6.2.0) (2026-09-02)
+
+
+### Features
+
+* **ui:** info icon on job cards showing discovery config ([#652](https://github.com/mogenius/renovate-operator/issues/652)) ([9e126b9](https://github.com/mogenius/renovate-operator/commit/9e126b9c9907e905ed30398132bad59b13ac32fb))
+* **ui:** show provider logo in RenovateJob card header ([#651](https://github.com/mogenius/renovate-operator/issues/651)) ([5fa1b47](https://github.com/mogenius/renovate-operator/commit/5fa1b472206aab24ab9a384c0870ef98914d1f6c))
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.27.1 ([4359402](https://github.com/mogenius/renovate-operator/commit/43594024f4d9e13f9ac47492e764ff113d815c89))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.21.0 ([5c10211](https://github.com/mogenius/renovate-operator/commit/5c102113922e6fc632d2dccaa1e9dec77eb2f23a))
+* **helm:** adding missing rbac permissions for renovatejob and project finalizers ([a8f2289](https://github.com/mogenius/renovate-operator/commit/a8f2289757713e86a6ca1bf7fc65cd58f3b9ee05)), closes [#645](https://github.com/mogenius/renovate-operator/issues/645)
+* **ui:** info icon tooltip clipping and position ([#654](https://github.com/mogenius/renovate-operator/issues/654)) ([7c69cc5](https://github.com/mogenius/renovate-operator/commit/7c69cc55fcd98a91feef5e0979040a4127e11ff2))
+
+## [6.1.0](https://github.com/mogenius/renovate-operator/compare/6.0.1...6.1.0) (2026-09-01)
+
+
+### ⚠️ Upgrade Notice
+
+Project state has been moved from the `RenovateJob` CRD into a dedicated `RenovateProject` CRD to avoid etcd object size limits. After upgrading, all existing projects will be absent until the next discovery run repopulates them — no data is lost, discovery will restore the state automatically.
+
+
+### Features
+
+* add annotation based trigger to the renovateproject ([482c6c7](https://github.com/mogenius/renovate-operator/commit/482c6c7a67d59b35f222797284e82fac646ce4d2))
+* extract project status into a separate crd per project ([fb2bccf](https://github.com/mogenius/renovate-operator/commit/fb2bccf1f3aa8256bab680a9f19a6e05b9ae1740)), closes [#616](https://github.com/mogenius/renovate-operator/issues/616)
+
+
+### Bug Fixes
+
+* **chart:** adding permissions for renovateprojects ([bc08342](https://github.com/mogenius/renovate-operator/commit/bc08342b184b88801814dfecf365930aaf0f0152))
+* **chart:** install every CRD from the hook, not just renovatejobs ([eebd949](https://github.com/mogenius/renovate-operator/commit/eebd949ab491ffcde4016c44139ae2fbc6b5c289))
+* **deps:** update aws-sdk-go-v2 monorepo ([040d7ce](https://github.com/mogenius/renovate-operator/commit/040d7ce78f8df50fabcabb1828a0e354dc33d1d2))
+* **deps:** update go to 1.27.0 ([8aeb903](https://github.com/mogenius/renovate-operator/commit/8aeb903a72749ff2683462c54252494eebbdfa82))
+* **deps:** update kubernetes monorepo to v0.36.4 ([7763702](https://github.com/mogenius/renovate-operator/commit/7763702bc5f788cf0d031c2ee82ad972772840b8))
+* **deps:** update kubernetes monorepo to v0.37.0 ([d1993b2](https://github.com/mogenius/renovate-operator/commit/d1993b2c0252977a169241aaccd7a370c445f0e9))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.2 ([e990156](https://github.com/mogenius/renovate-operator/commit/e990156e900f5cb783d19a83d65f355d30379ef3))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.110.0 ([105ee2b](https://github.com/mogenius/renovate-operator/commit/105ee2b9663def2e4cabe069f8d7a06a98f0323d))
+* **deps:** update module github.com/netresearch/go-cron to v0.16.0 ([ef0d2e1](https://github.com/mogenius/renovate-operator/commit/ef0d2e135446b1605fa008b7fd01dbd03e5f772d))
+* **deps:** update node.js to v24.20.0 ([b4703c5](https://github.com/mogenius/renovate-operator/commit/b4703c56af9968cdded947346992e45352dbca81))
+* **deps:** update opentelemetry ([eb1d0f5](https://github.com/mogenius/renovate-operator/commit/eb1d0f5a2ca59634d4a12dd540a92ca9a8fdce44))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.37.0 ([7cda93b](https://github.com/mogenius/renovate-operator/commit/7cda93b60e88b1133bc82aec274de502d1d7ea07))
+* do not log partial pem data if pem is not valid ([ccf8985](https://github.com/mogenius/renovate-operator/commit/ccf89850615e0a39f97190f091955dc9db9b5f26))
+* forbid usage of github apps if provider.name != github ([7105f19](https://github.com/mogenius/renovate-operator/commit/7105f19469436d3147bc16032f16991601627731))
+* golang 1.27 improvements ([019749b](https://github.com/mogenius/renovate-operator/commit/019749bbd587dd0caf0fea4a03f18cd8b4d8897e))
+* keep PR activity metrics when a run aborts with repository-changed ([a174da2](https://github.com/mogenius/renovate-operator/commit/a174da244dfc2ba320c9eb90c714f5d5f75ebaec))
+* make crd project field immutable ([0b98c6a](https://github.com/mogenius/renovate-operator/commit/0b98c6a6da80b9098b21448ced8947671b8e1aed))
+* **otel:** minor tracing improvements ([2536349](https://github.com/mogenius/renovate-operator/commit/25363493a20d35297ac1e1060734a5ae5eedb92e))
+* possible sync errors in discovery agent ([53baee4](https://github.com/mogenius/renovate-operator/commit/53baee49ea15841a3818a3969349a41e0fed9d9c))
+* return StatusUnauthorized regardless of a matching job ([0ddb1b9](https://github.com/mogenius/renovate-operator/commit/0ddb1b95ca130724771ec5db01d817b4db512a95))
+* **ui:** errors if the ui reloads while the tooltip is visible ([dd6a318](https://github.com/mogenius/renovate-operator/commit/dd6a31850a511f0bb35538da44e9f0c7e0a6b41b))
+* **ui:** stop the project table overflowing in Chrome ([9b93963](https://github.com/mogenius/renovate-operator/commit/9b9396375d0e754ee08a3a589c29d7322210ab01))
+
 ## [6.0.1](https://github.com/mogenius/renovate-operator/compare/6.0.0...6.0.1) (2026-08-20)
 
 

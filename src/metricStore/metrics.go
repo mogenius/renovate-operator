@@ -674,38 +674,37 @@ var hydratedJobs sync.Map // key: "namespace/job" → struct{}{}
 
 // RehydrateMetrics re-emits per-project gauges from durable CRD status on the
 // first reconcile after startup. Subsequent calls for the same job are no-ops.
-func RehydrateMetrics(namespace, job string, projects []api.ProjectStatus) {
+func RehydrateMetrics(namespace, job string, projects map[string]api.RenovateProjectState) {
 	key := namespace + "/" + job
 	if _, loaded := hydratedJobs.LoadOrStore(key, struct{}{}); loaded {
 		return
 	}
-	for i := range projects {
-		p := &projects[i]
+	for name, project := range projects {
 
-		SetRunFailed(namespace, job, p.Name, p.Status == api.JobStatusFailed)
+		SetRunFailed(namespace, job, name, project.Status == api.JobStatusFailed)
 
-		hasIssues := p.LogIssues != nil && (p.LogIssues.WarnCount > 0 || p.LogIssues.ErrorCount > 0)
-		SetDependencyIssues(namespace, job, p.Name, hasIssues)
+		hasIssues := project.LogIssues != nil && (project.LogIssues.WarnCount > 0 || project.LogIssues.ErrorCount > 0)
+		SetDependencyIssues(namespace, job, name, hasIssues)
 
-		if p.LogIssues != nil {
-			SetLogIssues(namespace, job, p.Name, "warn", p.LogIssues.WarnCount)
-			SetLogIssues(namespace, job, p.Name, "error", p.LogIssues.ErrorCount)
+		if project.LogIssues != nil {
+			SetLogIssues(namespace, job, name, "warn", project.LogIssues.WarnCount)
+			SetLogIssues(namespace, job, name, "error", project.LogIssues.ErrorCount)
 		}
 
-		if p.PRActivity != nil {
-			SetApprovalsNeeded(namespace, job, p.Name, p.PRActivity.NeedsApproval)
-			SetOpenPullRequests(namespace, job, p.Name, p.PRActivity.Created+p.PRActivity.Updated+p.PRActivity.Unchanged)
+		if project.PRActivity != nil {
+			SetApprovalsNeeded(namespace, job, name, project.PRActivity.NeedsApproval)
+			SetOpenPullRequests(namespace, job, name, project.PRActivity.Created+project.PRActivity.Updated+project.PRActivity.Unchanged)
 		}
 
-		if p.Duration != nil {
-			if d, err := time.ParseDuration(*p.Duration); err == nil {
-				SetLastExecutionDuration(namespace, job, p.Name, d.Seconds())
+		if project.Duration != nil {
+			if d, err := time.ParseDuration(*project.Duration); err == nil {
+				SetLastExecutionDuration(namespace, job, name, d.Seconds())
 			}
 		}
 
 		// Initialize execution counters at 0 so series are visible from startup.
-		projectRuns.WithLabelValues(namespace, job, p.Name, string(api.JobStatusCompleted))
-		projectRuns.WithLabelValues(namespace, job, p.Name, string(api.JobStatusFailed))
+		projectRuns.WithLabelValues(namespace, job, name, string(api.JobStatusCompleted))
+		projectRuns.WithLabelValues(namespace, job, name, string(api.JobStatusFailed))
 	}
 
 	SetDiscoveredRepositories(namespace, job, len(projects))

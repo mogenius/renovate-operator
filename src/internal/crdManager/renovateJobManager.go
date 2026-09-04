@@ -53,7 +53,7 @@ type RenovateJobManager interface {
 	// UpdateProjectStatus updates the status of a specific project within a RenovateJob CRD.
 	UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// UpdateProjectStatusBatched updates the status of multiple projects within a RenovateJob CRD based on a filter function.
-	UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	UpdateProjectStatusBatched(ctx context.Context, fn func(p RenovateProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	// GetProjectsByStatus retrieves all projects with a specific status within a RenovateJob CRD.
 	GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error)
 	// ReconcileProjects reconciles the list of projects in a RenovateJob CRD
@@ -110,23 +110,10 @@ func (in *RenovateJobIdentifier) Fullname() string {
 	return in.Name + "-" + in.Namespace
 }
 
-func NonZeroTime(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
-}
-
 type RenovateProjectStatus struct {
-	Name                 string                        `json:"name"`
-	Status               api.RenovateProjectStatus     `json:"status"`
-	LastTransition       *time.Time                    `json:"lastTransition,omitempty"`
-	Priority             int32                         `json:"priority,omitempty"`
-	RenovateResultStatus *string                       `json:"renovateResultStatus,omitempty"`
-	Duration             *string                       `json:"duration,omitempty"`
-	PRActivity           *api.PRActivity               `json:"prActivity,omitempty"`
-	LogIssues            *api.LogIssues                `json:"logIssues,omitempty"`
-	ExecutionOptions     *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	api.RenovateProjectState
 }
 
 func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory, logger logr.Logger, ls logStore.LogStore, lr podLogs.PodLogReader, p policy.Policy) RenovateJobManager {
@@ -162,27 +149,30 @@ func (r *renovateJobManager) GetRenovateJob(ctx context.Context, name string, na
 	return loadRenovateJob(ctx, name, namespace, r.client)
 }
 
+// toRenovateProjectStatus converts a RenovateProject CRD object into the internal DTO.
+func toRenovateProjectStatus(p *api.RenovateProject) RenovateProjectStatus {
+	return RenovateProjectStatus{
+		Name:                 p.Spec.Project,
+		Namespace:            p.Namespace,
+		RenovateProjectState: p.Status,
+	}
+}
+
 func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error) {
 	defer r.globalManagerLock(true)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
+	var projectList api.RenovateProjectList
+	if err := r.client.List(ctx, &projectList,
+		client.InNamespace(job.Namespace),
+		client.MatchingLabels{api.LabelRenovateJob: job.Name},
+	); err != nil {
 		return nil, err
 	}
+
 	result := make([]RenovateProjectStatus, 0)
-	for _, project := range renovateJob.Status.Projects {
-		if project.Status == status {
-			result = append(result, RenovateProjectStatus{
-				Name:                 project.Name,
-				Status:               project.Status,
-				LastTransition:       NonZeroTime(project.LastTransition.Time),
-				Priority:             project.Priority,
-				RenovateResultStatus: project.RenovateResultStatus,
-				Duration:             project.Duration,
-				PRActivity:           project.PRActivity,
-				LogIssues:            project.LogIssues,
-				ExecutionOptions:     project.ExecutionOptions,
-			})
+	for i := range projectList.Items {
+		if projectList.Items[i].Status.Status == status {
+			result = append(result, toRenovateProjectStatus(&projectList.Items[i]))
 		}
 	}
 	return result, nil
@@ -191,23 +181,17 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error) {
 	defer r.globalManagerLock(true)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
+	var projectList api.RenovateProjectList
+	if err := r.client.List(ctx, &projectList,
+		client.InNamespace(job.Namespace),
+		client.MatchingLabels{api.LabelRenovateJob: job.Name},
+	); err != nil {
 		return nil, err
 	}
-	result := make([]RenovateProjectStatus, 0)
-	for _, project := range renovateJob.Status.Projects {
-		result = append(result, RenovateProjectStatus{
-			Name:                 project.Name,
-			Status:               project.Status,
-			LastTransition:       NonZeroTime(project.LastTransition.Time),
-			Priority:             project.Priority,
-			RenovateResultStatus: project.RenovateResultStatus,
-			Duration:             project.Duration,
-			PRActivity:           project.PRActivity,
-			LogIssues:            project.LogIssues,
-			ExecutionOptions:     project.ExecutionOptions,
-		})
+
+	result := make([]RenovateProjectStatus, 0, len(projectList.Items))
+	for i := range projectList.Items {
+		result = append(result, toRenovateProjectStatus(&projectList.Items[i]))
 	}
 	return result, nil
 }
@@ -247,49 +231,91 @@ func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	defer r.globalManagerLock(false)()
 
+	rpName := utils.RenovateProjectCRDName(job.Name, project)
+
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-		if err != nil {
+		var rp api.RenovateProject
+		if err := r.client.Get(ctx, client.ObjectKey{
+			Name:      rpName,
+			Namespace: job.Namespace,
+		}, &rp); err != nil {
+			if apierrors.IsNotFound(err) {
+				return ErrProjectNotFound
+			}
 			return err
 		}
-		index := -1
-		for i := range renovateJob.Status.Projects {
-			projectStatus := renovateJob.Status.Projects[i]
-			if projectStatus.Name == project {
-				index = i
-				break
-			}
-		}
-		if index == -1 {
-			return ErrProjectNotFound
-		}
 
-		projectStatus := renovateJob.Status.Projects[index]
-		renovateJob.Status.Projects[index] = *utils.GetUpdateStatusForProject(&projectStatus, status)
+		utils.GetUpdateStatusForProject(&rp.Status, status)
 
-		return r.client.Status().Update(ctx, renovateJob)
+		return r.client.Status().Update(ctx, &rp)
 	})
 }
 
-func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p api.ProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p RenovateProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	defer r.globalManagerLock(false)()
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-		if err != nil {
+	var projectList api.RenovateProjectList
+	if err := r.client.List(ctx, &projectList,
+		client.InNamespace(job.Namespace),
+		client.MatchingLabels{api.LabelRenovateJob: job.Name},
+	); err != nil {
+		return err
+	}
+
+	for i := range projectList.Items {
+		rp := &projectList.Items[i]
+		ps := toRenovateProjectStatus(rp)
+
+		if !fn(ps) {
+			continue
+		}
+
+		rpName := rp.Name
+		rpNamespace := rp.Namespace
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var fresh api.RenovateProject
+			if err := r.client.Get(ctx, client.ObjectKey{
+				Name:      rpName,
+				Namespace: rpNamespace,
+			}, &fresh); err != nil {
+				return err
+			}
+			utils.GetUpdateStatusForProject(&fresh.Status, status)
+			return r.client.Status().Update(ctx, &fresh)
+		}); err != nil {
 			return err
 		}
+	}
 
-		for i := range renovateJob.Status.Projects {
-			p := renovateJob.Status.Projects[i]
+	return nil
+}
 
-			if fn(p) {
-				renovateJob.Status.Projects[i] = *utils.GetUpdateStatusForProject(&p, status)
-			}
-		}
-
-		return r.client.Status().Update(ctx, renovateJob)
-	})
+// buildRenovateProject constructs a new RenovateProject object owned by the given RenovateJob.
+func buildRenovateProject(job *api.RenovateJob, project string) *api.RenovateProject {
+	controller := true
+	blockOwnerDeletion := true
+	return &api.RenovateProject{
+		Name:      utils.RenovateProjectCRDName(job.Name, project),
+		Namespace: job.Namespace,
+		Labels: map[string]string{
+			api.LabelRenovateJob:  job.Name,
+			api.LabelProject:      utils.KubernetesCompatibleProjectName(project),
+			api.LabelAppManagedBy: api.LabelValueManagedBy,
+		},
+		OwnerReferences: []v1.OwnerReference{
+			{
+				APIVersion:         api.GroupVersion.String(),
+				Kind:               "RenovateJob",
+				Name:               job.Name,
+				UID:                job.UID,
+				Controller:         &controller,
+				BlockOwnerDeletion: &blockOwnerDeletion,
+			},
+		},
+		Spec: api.RenovateProjectSpec{
+			Project: project,
+		},
+	}
 }
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
@@ -313,61 +339,78 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 	defer r.globalManagerLock(false)()
 
+	// List existing RenovateProject objects for this job.
+	var existing api.RenovateProjectList
+	if err := r.client.List(ctx, &existing,
+		client.InNamespace(renovateJob.Namespace),
+		client.MatchingLabels{api.LabelRenovateJob: renovateJob.Name},
+	); err != nil {
+		return nil, fmt.Errorf("failed to list RenovateProjects: %w", err)
+	}
+
+	existingByName := make(map[string]*api.RenovateProject, len(existing.Items))
+	for i := range existing.Items {
+		existingByName[existing.Items[i].Spec.Project] = &existing.Items[i]
+	}
+
+	newProjectSet := make(map[string]struct{}, len(projects))
+	for _, p := range projects {
+		newProjectSet[p] = struct{}{}
+	}
+
+	// Delete RenovateProject objects for repos that are no longer discovered.
 	var removed []string
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		renovateJob, err := loadRenovateJob(ctx, renovateJob.Name, renovateJob.Namespace, r.client)
-		if err != nil {
-			return err
-		}
-		// Build a set of current CRD projects
-		crdProjectSet := make(map[string]api.ProjectStatus, len(renovateJob.Status.Projects))
-		for i, crdProject := range renovateJob.Status.Projects {
-			crdProjectSet[crdProject.Name] = renovateJob.Status.Projects[i]
-		}
-
-		// Build a set of new projects for quick lookup
-		newProjectSet := make(map[string]struct{}, len(projects))
-		for _, project := range projects {
-			newProjectSet[project] = struct{}{}
-		}
-
-		// Collect removed projects (for webhook cleanup) and drop their metrics
-		removed = removed[:0]
-		for projectName := range crdProjectSet {
-			if _, exists := newProjectSet[projectName]; !exists {
-				removed = append(removed, projectName)
-				metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, projectName)
+	for name, rp := range existingByName {
+		if _, exists := newProjectSet[name]; !exists {
+			removed = append(removed, name)
+			metricStore.DeleteProjectMetrics(renovateJob.Namespace, renovateJob.Name, name)
+			if err := r.client.Delete(ctx, rp); err != nil && !apierrors.IsNotFound(err) {
+				r.logger.Error(err, "failed to delete RenovateProject", "project", name)
 			}
 		}
+	}
 
-		newProjects := make([]api.ProjectStatus, 0, len(projects))
-		for _, project := range projects {
-			if crdProject, exists := crdProjectSet[project]; exists {
-				// add project that exist in the new project list
-				newProjects = append(newProjects, crdProject)
-			} else {
-				// add new project to the list
-				now := v1.Now()
-				newProjects = append(newProjects, api.ProjectStatus{
-					Name:           project,
-					Status:         api.JobStatusScheduled,
-					LastTransition: now,
-				})
-			}
+	// Create RenovateProject objects for newly discovered repos.
+	for _, project := range projects {
+		if _, exists := existingByName[project]; exists {
+			continue
 		}
-		renovateJob.Status.Projects = newProjects
+		rp := buildRenovateProject(renovateJob, project)
+		if err := r.client.Create(ctx, rp); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to create RenovateProject for %s: %w", project, err)
+		}
+		rp.Status = api.RenovateProjectState{
+			Status:         api.JobStatusScheduled,
+			LastTransition: v1.Now(),
+		}
+		if err := r.client.Status().Update(ctx, rp); err != nil {
+			r.logger.Error(err, "failed to set initial status for RenovateProject", "project", project)
+		}
+	}
 
-		return r.client.Status().Update(ctx, renovateJob)
-	})
-	return removed, err
+	return removed, nil
 }
 
 func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
 	unlock := r.globalManagerLock(true)
 	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	var projectList api.RenovateProjectList
+	var listErr error
+	if err == nil {
+		listErr = r.client.List(ctx, &projectList,
+			client.InNamespace(job.Namespace),
+			client.MatchingLabels{api.LabelRenovateJob: job.Name},
+		)
+	}
 	unlock()
 	if err != nil {
 		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+	if listErr != nil {
+		r.logger.Error(listErr, "failed to list RenovateProjects for webhook sync")
 	}
 
 	webhook := renovateJob.Spec.Webhook
@@ -376,12 +419,9 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 	}
 	syncEnabled := webhook.Enabled && webhook.Sync.Enabled
 
-	// Reconcile toward the desired state: with sync enabled, hooks exist on all
-	// current projects and are removed from projects that dropped out; with
-	// sync disabled, hooks are removed from every project.
-	current := make([]string, 0, len(renovateJob.Status.Projects))
-	for _, project := range renovateJob.Status.Projects {
-		current = append(current, project.Name)
+	current := make([]string, 0, len(projectList.Items))
+	for _, p := range projectList.Items {
+		current = append(current, p.Spec.Project)
 	}
 	var desired, removed []string
 	if syncEnabled {
@@ -400,14 +440,25 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
 	unlock := r.globalManagerLock(true)
 	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	var projectList api.RenovateProjectList
+	var listErr error
+	if err == nil {
+		listErr = r.client.List(ctx, &projectList,
+			client.InNamespace(job.Namespace),
+			client.MatchingLabels{api.LabelRenovateJob: job.Name},
+		)
+	}
 	unlock()
 	if err != nil {
 		return fmt.Errorf("failed to load renovate job: %w", err)
 	}
+	if listErr != nil {
+		r.logger.Error(listErr, "failed to list RenovateProjects for webhook cleanup")
+	}
 
-	removed := make([]string, 0, len(renovateJob.Status.Projects))
-	for _, project := range renovateJob.Status.Projects {
-		removed = append(removed, project.Name)
+	removed := make([]string, 0, len(projectList.Items))
+	for _, p := range projectList.Items {
+		removed = append(removed, p.Spec.Project)
 	}
 	if len(removed) == 0 {
 		return nil
@@ -505,18 +556,11 @@ func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job Renov
 	// Phase 1: hold the read lock only for CRD + k8s Job metadata lookup.
 	unlock := r.globalManagerLock(true)
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
-		unlock()
-		return nil, fmt.Errorf("failed to load renovate job: %w", err)
-	}
-
+	rpName := utils.RenovateProjectCRDName(job.Name, project)
+	var rp api.RenovateProject
 	projectRunning := false
-	for _, p := range renovateJob.Status.Projects {
-		if p.Name == project && p.Status == api.JobStatusRunning {
-			projectRunning = true
-			break
-		}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: rpName, Namespace: job.Namespace}, &rp); err == nil {
+		projectRunning = rp.Status.Status == api.JobStatusRunning
 	}
 
 	executorJob, jobErr := GetJobByLabel(ctx, r.client, JobSelector{

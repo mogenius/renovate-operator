@@ -5,20 +5,24 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
-    uses: mogenius/github-actions/.github/workflows/helm-lint.yml@003b4f8d0dc6b7c9f5b5e8f94b722516b6fdd7a8 # v1.7.7
+    uses: mogenius/github-actions/.github/workflows/helm-lint.yml@c3e043d602a88fea39b680b67480b4a90d8d31d2 # v1.8.0
     with:
       path: ./charts/renovate-operator
 
   tests:
-    uses: mogenius/github-actions/.github/workflows/helm-unittest.yml@003b4f8d0dc6b7c9f5b5e8f94b722516b6fdd7a8 # v1.7.7
+    uses: mogenius/github-actions/.github/workflows/helm-unittest.yml@c3e043d602a88fea39b680b67480b4a90d8d31d2 # v1.8.0
     with:
       path: ./charts/renovate-operator
 
 
   template:
-    uses: mogenius/github-actions/.github/workflows/helm-template.yml@003b4f8d0dc6b7c9f5b5e8f94b722516b6fdd7a8 # v1.7.7
+    uses: mogenius/github-actions/.github/workflows/helm-template.yml@c3e043d602a88fea39b680b67480b4a90d8d31d2 # v1.8.0
     with:
       path: ./charts/renovate-operator
       namespace: renovate-operator

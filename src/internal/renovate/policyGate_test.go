@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
+	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/policy"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -48,13 +49,13 @@ func gatePolicy() policy.Policy {
 }
 
 func policyJob(name, endpoint string) api.RenovateJob {
-	job := api.RenovateJob{}
-	job.ObjectMeta = metav1.ObjectMeta{Name: name, Namespace: "default"}
-	job.Spec = api.RenovateJobSpec{
-		Schedule: "*/5 * * * *",
-		Image:    "renovate/renovate:latest",
-		Provider: &api.RenovateProvider{Name: "github", Endpoint: endpoint},
-	}
+	job := api.RenovateJob{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: api.RenovateJobSpec{
+			Schedule: "*/5 * * * *",
+			Image:    "renovate/renovate:latest",
+			Provider: &api.RenovateProvider{Name: "github", Endpoint: endpoint},
+		}}
 	return job
 }
 
@@ -84,18 +85,28 @@ func TestDispatchScheduledSkipsOnlyTheRefusedJob(t *testing.T) {
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
+	// Projects are now stored in RenovateProject CRDs; the manager resolves them.
+	mgr := &fakeJobManager{
+		getProjectsByStatusFn: func(_ context.Context, job crdManager.RenovateJobIdentifier, _ api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
+			switch job.Name {
+			case "allowed":
+				return []crdManager.RenovateProjectStatus{{Name: "org/b", Status: api.JobStatusScheduled}}, nil
+			default:
+				return nil, nil
+			}
+		},
+	}
+
 	e := &renovateExecutor{
-		client: c,
-		scheme: scheme,
-		logger: testLogger,
-		policy: gatePolicy(),
+		client:  c,
+		scheme:  scheme,
+		logger:  testLogger,
+		policy:  gatePolicy(),
+		manager: mgr,
 	}
 
 	refused := policyJob("refused", "https://attacker.example.net")
-	refused.Status.Projects = []api.ProjectStatus{{Name: "org/a", Status: api.JobStatusScheduled}}
-
 	allowed := policyJob("allowed", "")
-	allowed.Status.Projects = []api.ProjectStatus{{Name: "org/b", Status: api.JobStatusScheduled}}
 
 	candidates := e.acceptedCandidates(context.Background(), []api.RenovateJob{refused, allowed})
 

@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.27.0-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine AS builder
 WORKDIR /workspace
 
 
@@ -15,7 +15,7 @@ COPY src .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
     go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
 
-FROM --platform=$BUILDPLATFORM node:24.19.0-alpine AS js-downloader
+FROM --platform=$BUILDPLATFORM node:24.20.0-alpine AS js-downloader
 WORKDIR /workspace
 RUN apk add --no-cache curl
 RUN mkdir -p src/static/js && \
