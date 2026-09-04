@@ -158,6 +158,16 @@ class LogsPage {
     await expect(this.toolbar).toHaveAttribute("data-stuck", "true");
   }
 
+  /**
+   * The page follows the newest line while the view sits at the bottom, so a log
+   * long enough to scroll has already left the top behind by the time it loads.
+   * Scrolling up is also what unpins it, which is what keeps the view here.
+   */
+  async scrollToTop() {
+    await this.page.evaluate(() => window.scrollTo(0, 0));
+    await expect(this.toolbar).toHaveAttribute("data-stuck", "false");
+  }
+
   /** How far the element's top edge sits below the top of the viewport. */
   async distanceFromViewportTop(locator) {
     const box = await locator.boundingBox();

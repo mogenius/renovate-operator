@@ -77,11 +77,23 @@ class DashboardPage {
   }
 
   /**
+   * The clickable title row of a job card: the chevron, the title block and the
+   * per-job controls. Everything below anchors on it rather than counting levels
+   * up from the heading, which broke once the provider logo wrapped the <h2> in
+   * another div. It is the nearest ancestor holding the chevron.
+   */
+  jobCardHeader(jobName) {
+    return this.jobHeading(jobName).locator("xpath=ancestor::div[button][1]");
+  }
+
+  /**
    * The chevron button in a job card's title row. It carries aria-hidden, so it
    * has to be matched by CSS rather than by an accessibility query.
    */
   expandToggle(jobName) {
-    return this.jobHeading(jobName).locator("xpath=../preceding-sibling::button[1]");
+    return this.jobCardHeader(jobName).locator(
+      'xpath=./button[starts-with(@aria-label, "Expand job") or starts-with(@aria-label, "Collapse job")]',
+    );
   }
 
   async isExpanded(jobName) {
@@ -178,14 +190,14 @@ class DashboardPage {
    * button's aria-label is identical on every card.
    */
   executionOptionsButton(jobName) {
-    return this.jobHeading(jobName).locator(
-      'xpath=../following-sibling::div[1]//button[@aria-label="Execution options"]',
-    );
+    return this.jobCardHeader(jobName).locator('button[aria-label="Execution options"]');
   }
 
   /** The popover the gear opens — execution options on top, "Hide Projects" below. */
   executionOptionsMenu(jobName) {
-    return this.jobHeading(jobName).locator("xpath=../following-sibling::div[1]");
+    // The popover renders as a sibling of the gear inside its positioning
+    // wrapper, so the wrapper is the smallest element holding both.
+    return this.executionOptionsButton(jobName).locator("xpath=..");
   }
 
   /** The heading that is only on screen while the popover is open. */

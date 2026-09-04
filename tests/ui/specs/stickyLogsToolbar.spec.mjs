@@ -24,8 +24,11 @@ test.describe("sticky logs toolbar", () => {
     const entries = A_LONG_RUN();
 
     await logs.open(entries);
+    // A run this long loads already scrolled to its newest line, so the top of
+    // the page is somewhere the user has to come back to.
+    await logs.scrollToTop();
 
-    // Before scrolling both are on screen, the toolbar directly below the brand strip.
+    // Up here both are on screen, the toolbar directly below the brand strip.
     await expect(logs.brandLogo).toBeInViewport();
     expect(await logs.distanceFromViewportTop(logs.toolbar)).toBeGreaterThan(0);
 
