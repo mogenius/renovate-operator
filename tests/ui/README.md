@@ -42,6 +42,12 @@ just test-ui --grep "collapsed"   # single test
 Babel and React bundles that `index.html` loads. It installs npm dependencies and
 the Chromium build on first run.
 
+CI runs the same recipe on pull requests that touch `src/static/`, `tests/ui/` or
+the `Justfile` (`.github/workflows/ui-test.yaml`). A PR that changes nothing else
+gets no UI check at all, so the workflow is deliberately not a required check. The
+container image tag there pins the same Playwright version as `package.json` —
+bump both together.
+
 ## Confirming a spec has teeth
 
 `test-ui-baseline` serves `index.html` and `pages/logs.html` from another git
