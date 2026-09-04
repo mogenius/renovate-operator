@@ -1,5 +1,22 @@
 # Changelog
 
+## [6.3.0](https://github.com/mogenius/renovate-operator/compare/6.2.0...6.3.0) (2026-09-04)
+
+
+### Features
+
+* **ui:** guided first-run setup with in-flight spinners ([23fb67f](https://github.com/mogenius/renovate-operator/commit/23fb67fd3ff2084126c14c8bcb1d65998e6314e2))
+
+
+### Bug Fixes
+
+* **deps:** update go module directive to v1.27.1 ([f74a928](https://github.com/mogenius/renovate-operator/commit/f74a92817bbd1039ba345adef74400fb4ba8d029))
+* **deps:** update helm release valkey to v0.12.0 ([c26ecea](https://github.com/mogenius/renovate-operator/commit/c26ecea320a27d6659dd8694d82e7c8fb7e00b13))
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.39.0 ([997bf58](https://github.com/mogenius/renovate-operator/commit/997bf580d19bc74e557d055ab8d8c403a5d2e6fc))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.0 ([46673fc](https://github.com/mogenius/renovate-operator/commit/46673fc47ea6d0bbc940e3899f31596be0062a4f))
+* **ui:** keep filter summary visible while scrolling ([0fd3b6f](https://github.com/mogenius/renovate-operator/commit/0fd3b6f638e5e301c2248242d420d788f76c7363))
+* **ui:** remove duplicate info icon left by move operation ([dc0e0f1](https://github.com/mogenius/renovate-operator/commit/dc0e0f1f98fc0909b5a431d34576019dadcb2e3f))
+
 ## [6.2.0](https://github.com/mogenius/renovate-operator/compare/6.1.0...6.2.0) (2026-09-02)
 
 
