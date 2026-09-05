@@ -38,6 +38,7 @@ src/
 └── webhook/             # HTTP webhook server (per-platform trigger endpoints)
 charts/                  # Helm chart
 docs/                    # user-facing docs — see Docs below
+tests/ui/                  # Playwright browser tests for src/static (see its README)
 ```
 
 ## Conventions
@@ -71,6 +72,6 @@ Non-obvious rules that silently break security or state if skipped:
 
 ## Verification
 
-Run `just check` before finishing (regenerates CRDs, lints, unit tests, Helm unit tests). Run `just generate` alone after changing CRD types or well-known keys.
+Run `just check` before finishing (regenerates CRDs, lints, unit tests,  Helm unit tests). Run `just generate` alone after changing CRD types or well-known keys. Run `just test-ui` (only when `src/static` changed — browser tests, needs Chromium).
 
 Keep the directory map and invariants above in sync with the code as it changes; put design rationale in `docs/`, not here.
