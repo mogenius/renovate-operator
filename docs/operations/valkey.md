@@ -51,6 +51,8 @@ Host, port, and username can each be set as a clear Helm value or sourced from t
 
 The server certificate of a TLS-enabled Valkey must chain to a publicly trusted CA — there is currently no option to supply a custom CA bundle. Note that the executor jobs receive the same URL, so Renovate's containers must be able to verify the certificate too.
 
+When forwarding is enabled, the operator creates one Secret per Renovate Job (`<job-name>-redis`, labeled `app.kubernetes.io/component=renovate-valkey-cache`) carrying the cache URL. The secret is rewritten from the operator's current configuration on every dispatch and is owned by the Job, so Kubernetes garbage collection deletes it when the Job is cleaned up. To propagate rotated Valkey credentials, restart the operator (it reads its own configuration at startup); the next run of each job then receives the new credentials.
+
 ## Deploying with the bundled Helm chart
 
 The chart includes an optional single-node Valkey instance (via the [official Valkey Helm chart](https://github.com/valkey-io/valkey-helm)):

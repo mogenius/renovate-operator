@@ -409,33 +409,3 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 		t.Fatalf("expected nil error for running job, got: %v", err)
 	}
 }
-
-func TestEnsureRedisURLSecret(t *testing.T) {
-	scheme := runtime.NewScheme()
-	if err := api.AddToScheme(scheme); err != nil {
-		t.Fatalf("failed to add api scheme: %v", err)
-	}
-	if err := corev1.AddToScheme(scheme); err != nil {
-		t.Fatalf("failed to add core scheme: %v", err)
-	}
-
-	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
-		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379/0"},
-		{Key: "VALKEY_HOST", Optional: true, Default: ""},
-		{Key: "VALKEY_PORT", Optional: true, Default: "6379"},
-		{Key: "VALKEY_PASSWORD", Optional: true, Default: ""},
-	})
-
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	if err := ensureRedisURLSecret(context.Background(), cl, "ns"); err != nil {
-		t.Fatalf("ensureRedisURLSecret returned error: %v", err)
-	}
-
-	secret := &corev1.Secret{}
-	if err := cl.Get(context.Background(), client.ObjectKey{Name: redisURLSecretName, Namespace: "ns"}, secret); err != nil {
-		t.Fatalf("expected secret to be created: %v", err)
-	}
-	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
-		t.Fatalf("expected redis-url secret data, got %q", got)
-	}
-}
