@@ -17,7 +17,7 @@ import (
 
 // create job spec for a discovery job
 func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batchv1.Job {
-	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars := getDefaultEnvVars(job, discoveryRedisSecretName(job))
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(carrier)...)
 
@@ -113,7 +113,7 @@ func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batc
 
 // create a Job spec for renovate run on project...
 func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.RenovateExecutionOptions, carrier propagation.MapCarrier) *batchv1.Job {
-	predefinedEnvVars := getDefaultEnvVars(job)
+	predefinedEnvVars := getDefaultEnvVars(job, executorRedisSecretName(job, project))
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(carrier)...)
 
@@ -200,7 +200,7 @@ func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.
 	return batchJob
 }
 
-func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
+func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar {
 
 	predefinedEnvVars := []v1.EnvVar{
 		{
@@ -244,12 +244,12 @@ func getDefaultEnvVars(job *api.RenovateJob) []v1.EnvVar {
 		})
 	}
 
-	if config.GetValue("VALKEY_FORWARD_CACHE_TO_JOBS") == "true" && getRenovateCacheURL() != "" {
+	if redisCacheForwardingEnabled() {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name: "RENOVATE_REDIS_URL",
 			ValueFrom: &v1.EnvVarSource{
 				SecretKeyRef: &v1.SecretKeySelector{
-					Name: redisURLSecretName,
+					Name: redisSecretName,
 					Key:  "redis-url",
 				},
 			},
