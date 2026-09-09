@@ -1,0 +1,55 @@
+name: UI browser tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    # The suite only exercises the static frontend, so it stays out of the way of
+    # PRs that cannot affect it. Note this reports no status at all when it does
+    # not match — do not make it a required check.
+    paths:
+      - 'src/static/**'
+      - 'tests/ui/**'
+      - 'Justfile'
+      - '.github/workflows/ui-test.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-ui:
+    runs-on: ubuntu-latest
+    # Ships Chromium and its OS libraries pre-baked. Keep the tag in lockstep with
+    # @playwright/test in tests/ui/package.json — a mismatch fails at startup.
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-noble
+      # Containers default to a 64 MB /dev/shm, which Chromium can exhaust and
+      # then hang on. Cheaper and narrower than Playwright's --ipc=host advice.
+      options: --shm-size=1g
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # `just test-ui` also runs `jsInstall`, which fetches the Tailwind, Babel and
+      # React bundles that index.html loads. They are gitignored, so a fresh
+      # checkout renders a blank page without it.
+      - name: Run the browser tests
+        run: just test-ui
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            tests/ui/playwright-report/
+            tests/ui/test-results/
+          retention-days: 7

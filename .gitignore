@@ -39,3 +39,11 @@ dist/
 
 # Helm chart dependency archives (fetched via `helm dependency build`)
 charts/renovate-operator/charts/*.tgz
+
+
+# UI browser tests (see tests/ui/README.md)
+tests/ui/node_modules/
+tests/ui/test-results/
+tests/ui/playwright-report/
+tests/ui/blob-report/
+tests/ui/.baseline/

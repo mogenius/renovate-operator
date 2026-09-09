@@ -2395,7 +2395,11 @@
                 </button>
                 {showOptions && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowOptions(false)} />
+                    {/* z-40 keeps the dismiss overlay above the sticky toolbar (z-30)
+                        and below this menu (z-50) — see StickyToolbar.js. Below the
+                        toolbar, a click on a filter badge would filter the list and
+                        leave this popover hanging over cards it no longer belongs to. */}
+                    <div className="fixed inset-0 z-40" onClick={() => setShowOptions(false)} />
                     <div style={{ top: optionsPos.top, right: optionsPos.right }} className="fixed z-50 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-2">Hide Projects</h3>
                         {STATUS_FILTERS.map((status) => (

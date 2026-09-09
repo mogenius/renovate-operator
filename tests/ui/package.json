@@ -1,0 +1,14 @@
+{
+  "name": "renovate-operator-ui-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the operator's static frontend in src/static",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.57.0"
+  }
+}
