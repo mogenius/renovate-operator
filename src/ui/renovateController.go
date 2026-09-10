@@ -534,8 +534,13 @@ func (s *Server) cancelRenovateForProject(w http.ResponseWriter, r *http.Request
 
 func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RenovateJob      string                        `json:"renovateJob"`
-		Namespace        string                        `json:"namespace"`
+		RenovateJob string `json:"renovateJob"`
+		Namespace   string `json:"namespace"`
+		// Projects narrows the run to the named projects. The dashboard sends the
+		// ones its filters left on screen; an absent or empty list keeps the
+		// original meaning of "every project this job has", so a caller that never
+		// filters — and a project discovered after the page loaded — is unaffected.
+		Projects         []string                      `json:"projects,omitempty"`
 		ExecutionOptions *api.RenovateExecutionOptions `json:"executionOptions,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -557,9 +562,19 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		Namespace: body.Namespace,
 	}
 
+	requestedProjects := make(map[string]struct{}, len(body.Projects))
+	for _, project := range body.Projects {
+		requestedProjects[project] = struct{}{}
+	}
+
 	err := s.manager.UpdateProjectStatusBatched(
 		r.Context(),
 		func(p crdmanager.RenovateProjectStatus) bool {
+			if len(requestedProjects) > 0 {
+				if _, requested := requestedProjects[p.Name]; !requested {
+					return false
+				}
+			}
 			return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
 		},
 		jobIdentifier,
@@ -570,8 +585,14 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 		},
 	)
 	if err != nil {
-		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace)
+		s.logger.Error(err, "Failed to trigger all projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "requestedProjects", len(requestedProjects))
 		internalServerError(w, err, "failed to trigger all projects")
+		return
+	}
+
+	if len(requestedProjects) > 0 {
+		writeSuccess(w, SuccessResult{Message: "Selected projects triggered"})
+		s.logger.V(2).Info("Successfully triggered selected projects", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "requestedProjects", len(requestedProjects))
 		return
 	}
 
