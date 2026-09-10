@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,14 +28,15 @@ import (
 
 // Mock RenovateJobManager
 type mockRenovateJobManager struct {
-	listRenovateJobsFunc          func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
-	listRenovateJobsFullFunc      func(ctx context.Context) ([]api.RenovateJob, error)
-	getProjectsForRenovateJobFunc func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
-	streamLogsForProjectFunc      func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error)
-	updateProjectStatusFunc       func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
-	getRenovateJobFunc            func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFunc         func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
-	cancelProjectJobFunc          func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
+	listRenovateJobsFunc           func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
+	listRenovateJobsFullFunc       func(ctx context.Context) ([]api.RenovateJob, error)
+	getProjectsForRenovateJobFunc  func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
+	streamLogsForProjectFunc       func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error)
+	updateProjectStatusFunc        func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	getRenovateJobFunc             func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	reconcileProjectsFunc          func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
+	cancelProjectJobFunc           func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
+	updateProjectStatusBatchedFunc func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -112,6 +114,9 @@ func (m *mockRenovateJobManager) GetProjectsByStatus(ctx context.Context, job cr
 }
 
 func (m *mockRenovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	if m.updateProjectStatusBatchedFunc != nil {
+		return m.updateProjectStatusBatchedFunc(ctx, fn, jobId, status)
+	}
 	return nil
 }
 
@@ -1086,6 +1091,116 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 
 			if w.Code != tt.wantStatusCode {
 				t.Errorf("Expected status %d, got %d", tt.wantStatusCode, w.Code)
+			}
+		})
+	}
+}
+
+// TestRunRenovateForAllProjects_ProjectScope pins what the "projects" field in the
+// request body does: the dashboard sends the projects its filters left visible, and
+// only a request without that field means every project of the job (issue #626).
+func TestRunRenovateForAllProjects_ProjectScope(t *testing.T) {
+	existingProjects := []crdmanager.RenovateProjectStatus{
+		{Name: "acme/platform/api-gateway", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusCompleted}},
+		{Name: "acme/platform/api-docs", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusFailed}},
+		{Name: "acme/platform/web-ui", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusCompleted}},
+		{Name: "acme/tooling/cli", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusRunning}},
+	}
+
+	tests := []struct {
+		name            string
+		requestBody     map[string]any
+		wantTriggered   []string
+		wantSuccessText string
+	}{
+		{
+			name: "no project list triggers every project that is not already running",
+			requestBody: map[string]any{
+				"renovateJob": "job1",
+				"namespace":   "default",
+			},
+			wantTriggered:   []string{"acme/platform/api-gateway", "acme/platform/api-docs", "acme/platform/web-ui"},
+			wantSuccessText: "All projects triggered",
+		},
+		{
+			name: "a project list triggers only those projects",
+			requestBody: map[string]any{
+				"renovateJob": "job1",
+				"namespace":   "default",
+				"projects":    []string{"acme/platform/api-gateway", "acme/platform/api-docs"},
+			},
+			wantTriggered:   []string{"acme/platform/api-gateway", "acme/platform/api-docs"},
+			wantSuccessText: "Selected projects triggered",
+		},
+		{
+			name: "an empty project list is treated as no list at all",
+			requestBody: map[string]any{
+				"renovateJob": "job1",
+				"namespace":   "default",
+				"projects":    []string{},
+			},
+			wantTriggered:   []string{"acme/platform/api-gateway", "acme/platform/api-docs", "acme/platform/web-ui"},
+			wantSuccessText: "All projects triggered",
+		},
+		{
+			name: "a running project stays untouched even when it is listed",
+			requestBody: map[string]any{
+				"renovateJob": "job1",
+				"namespace":   "default",
+				"projects":    []string{"acme/tooling/cli", "acme/platform/web-ui"},
+			},
+			wantTriggered:   []string{"acme/platform/web-ui"},
+			wantSuccessText: "Selected projects triggered",
+		},
+		{
+			name: "a project the job does not have triggers nothing else",
+			requestBody: map[string]any{
+				"renovateJob": "job1",
+				"namespace":   "default",
+				"projects":    []string{"acme/never/discovered"},
+			},
+			wantTriggered:   []string{},
+			wantSuccessText: "Selected projects triggered",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			triggered := []string{}
+			mockManager := &mockRenovateJobManager{
+				getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+					return &api.RenovateJob{Name: "job1", Namespace: "default"}, nil
+				},
+				updateProjectStatusBatchedFunc: func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+					for _, project := range existingProjects {
+						if fn(project) {
+							triggered = append(triggered, project.Name)
+						}
+					}
+					return nil
+				},
+			}
+
+			server := &Server{manager: mockManager, logger: logr.Discard()}
+
+			jsonBody, err := json.Marshal(tt.requestBody)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/renovate/all", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+
+			w := httptest.NewRecorder()
+			server.runRenovateForAllProjects(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+			}
+			if !slices.Equal(triggered, tt.wantTriggered) {
+				t.Errorf("Expected %v to be triggered, got %v", tt.wantTriggered, triggered)
+			}
+			if !strings.Contains(w.Body.String(), tt.wantSuccessText) {
+				t.Errorf("Expected response to mention %q, got %s", tt.wantSuccessText, w.Body.String())
 			}
 		})
 	}
