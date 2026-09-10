@@ -414,6 +414,14 @@ const REMAINING_VARIANT_KEYS = PROJECT_STATE_VARIANTS.map((variant) => variant.k
   (key) => !VARIANT_KEYS_IN_EVERY_JOB.includes(key),
 );
 
+/**
+ * ui.accessDecision.permissions() for an admin, which is also what every request
+ * gets when auth is disabled. The UI gates each control on one of these strings
+ * rather than on `role`, so a job payload without them renders read-only.
+ */
+export const ADMIN_PERMISSIONS = ["logs", "trigger", "triggerAll", "cancel", "discovery"];
+export const READER_PERMISSIONS = ["logs"];
+
 export function buildRenovateJob({
   name,
   namespace = "renovate",
@@ -423,6 +431,9 @@ export function buildRenovateJob({
   platform = "github",
   platformEndpoint = "https://api.github.com",
   debug = false,
+  accepted = true,
+  role = "admin",
+  permissions = ADMIN_PERMISSIONS,
 } = {}) {
   return {
     name,
@@ -434,6 +445,9 @@ export function buildRenovateJob({
     platform,
     platformEndpoint,
     executionOptions: { debug },
+    accepted,
+    role,
+    permissions,
   };
 }
 
@@ -477,6 +491,34 @@ export function buildDashboardWithEveryProjectState({ jobName = "job-all-states"
       projects: PROJECT_STATE_VARIANTS.map((variant) =>
         buildProjectInState(`acme/${variant.key}`, variant.key),
       ),
+    }),
+  ];
+}
+
+/**
+ * Two jobs whose projects live in nested group paths — the shape the search box is
+ * used on in practice, where a term like "platform/api" names a strict subset of a
+ * single job. Every project is completed, so nothing is skipped for being mid-run
+ * and the trigger scope is decided by the filters alone.
+ */
+export function buildDashboardWithNestedProjectPaths() {
+  const completed = (name) => buildProject({ name, status: PROJECT_STATUSES.completed });
+  return [
+    buildRenovateJob({
+      name: "team-platform",
+      projects: [
+        completed("acme/platform/api-gateway"),
+        completed("acme/platform/api-docs"),
+        completed("acme/platform/web-ui"),
+        completed("acme/tooling/cli"),
+      ],
+    }),
+    buildRenovateJob({
+      name: "team-payments",
+      projects: [
+        completed("acme/payments/ledger"),
+        completed("acme/payments/api-billing"),
+      ],
     }),
   ];
 }

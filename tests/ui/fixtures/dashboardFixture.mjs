@@ -25,6 +25,8 @@ export { expect };
 class DashboardPage {
   constructor(page) {
     this.page = page;
+    /** Bodies the page POSTed to /api/v1/renovate/all, oldest first. */
+    this.triggerAllRequests = [];
   }
 
   async stubApi(renovateJobs) {
@@ -38,6 +40,12 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovatejobs", (route) =>
       route.fulfill({ json: renovateJobs }),
     );
+    // Recorded rather than only acknowledged: which projects the page names in the
+    // body is the whole point of the trigger-scope spec.
+    await this.page.route("**/api/v1/renovate/all", (route) => {
+      this.triggerAllRequests.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({ json: { message: "All projects triggered" } });
+    });
   }
 
   /**
@@ -237,6 +245,44 @@ class DashboardPage {
   async closeExecutionOptions(jobName) {
     await this.page.mouse.click(5, 5);
     await expect(this.executionOptionsPopover(jobName)).toBeHidden();
+  }
+
+  /**
+   * The card a job's title row belongs to — the header's parent, which also holds
+   * the project table below it.
+   */
+  jobCard(jobName) {
+    return this.jobCardHeader(jobName).locator("xpath=..");
+  }
+
+  /** The project names one card currently lists, in render order. */
+  async projectNamesInJob(jobName) {
+    return this.jobCard(jobName)
+      .locator('table tbody [data-testid="project-name"]')
+      .allTextContents();
+  }
+
+  /** The main half of the split trigger button in a job card's title row. */
+  triggerAllButton(jobName) {
+    return this.jobCardHeader(jobName).getByTestId("trigger-all");
+  }
+
+  /** The bug-icon half of it, which triggers the same scope in debug mode. */
+  triggerAllDebugButton(jobName) {
+    return this.jobCardHeader(jobName).getByTestId("trigger-all-debug");
+  }
+
+  /**
+   * Clicks the trigger button and resolves once the page has posted, so a spec
+   * never reads triggerAllRequests before the request left the browser.
+   */
+  async triggerAll(jobName, { debug = false } = {}) {
+    const sent = this.page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes("/api/v1/renovate/all"),
+    );
+    await (debug ? this.triggerAllDebugButton(jobName) : this.triggerAllButton(jobName)).click();
+    await sent;
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */
