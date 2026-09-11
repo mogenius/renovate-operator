@@ -3,26 +3,23 @@
   "extends": [
     "github>mogenius/renovate-config//presets/golang.json#main"
   ],
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": ["^docs/.+\\.md$"],
-      "matchStrings": [
-        "image: (?<depName>renovate/renovate):(?<currentValue>[^\\s]+)"
-      ],
+      "customType": "regex",
+      "managerFilePatterns": ["/^docs/.+\\.md$/"],
+      "matchStrings": ["image: (?<depName>renovate/renovate):(?<currentValue>[^\\s]+)"],
       "datasourceTemplate": "docker"
     },
     {
-      "fileMatch": ["^Justfile$", "^Dockerfile$"],
-      "matchStrings": [
-        "unpkg\\.com/(?<depName>[^@\"]+)@(?<currentValue>[^/\"]+)"
-      ],
+      "customType": "regex",
+      "managerFilePatterns": ["/^Justfile$/", "/^Dockerfile$/"],
+      "matchStrings": ["unpkg\\.com/(?<depName>[^@\"]+)@(?<currentValue>[^/\"]+)"],
       "datasourceTemplate": "npm"
     },
     {
-      "fileMatch": ["^Justfile$", "^Dockerfile$"],
-      "matchStrings": [
-        "\"(?<depName>react|react-dom)@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
-      ],
+      "customType": "regex",
+      "managerFilePatterns": ["/^Justfile$/", "/^Dockerfile$/"],
+      "matchStrings": ["\"(?<depName>react|react-dom)@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
       "datasourceTemplate": "npm"
     }
   ],
@@ -45,7 +42,7 @@
     },
     {
       "description": "Update renovate/renovate image references in docs on Sunday nights only.",
-      "matchManagers": ["regex"],
+      "matchManagers": ["custom.regex"],
       "matchPackageNames": ["renovate/renovate"],
       "schedule": ["after 10pm on Sunday"],
       "semanticCommitType": "chore"
