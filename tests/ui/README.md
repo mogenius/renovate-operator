@@ -77,8 +77,14 @@ tests/ui/
 └── specs/
     ├── jobCardExpansion.spec.mjs
     ├── stickyToolbar.spec.mjs
+    ├── triggerAllScope.spec.mjs
     └── logsFiltering.spec.mjs
 ```
+
+`dashboardFixture.mjs` records every POST to `/api/v1/renovate/all` in
+`dashboard.triggerAllRequests` rather than only acknowledging it, because which
+projects the page names in that body is the behaviour `triggerAllScope.spec.mjs`
+is about.
 
 `staticFrontendServer.mjs` mirrors `serveHTML` and `registerUiRoutes` in
 `src/ui/ui.go`, including its `<base>` and `window.__BASE_PATH__` injection. Keep

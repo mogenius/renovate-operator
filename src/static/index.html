@@ -684,6 +684,10 @@
             .filter((job) => job.projects.length > 0);
         }, [filteredJobs, searchTerm]);
 
+        // The stat badges and the search box narrow every card's project list, but a
+        // card cannot tell a filtered list from a short one — so App states it.
+        const projectListIsFiltered = Boolean(selectedStatFilter) || searchTerm.trim() !== "";
+
         const searchFilteredProjectCount = useMemo(() => {
           return searchFilteredJobs.reduce(
             (total, job) => total + (Array.isArray(job.projects) ? job.projects.length : 0),
@@ -969,7 +973,10 @@
           }
         };
 
-        const triggerAllRenovate = async (job, executionOptions = {}) => {
+        // `projects` is the list the caller wants run — the rows a card currently
+        // shows. Left null it is omitted from the request, which is what tells the
+        // operator to take every project of that job (issue #626).
+        const triggerAllRenovate = async (job, executionOptions = {}, projects = null) => {
           if (job.triggeringAll) return;
 
           setJobs((prev) =>
@@ -987,6 +994,7 @@
               body: JSON.stringify({
                 renovateJob: job.name,
                 namespace: job.namespace,
+                projects: projects && projects.length > 0 ? projects : undefined,
                 executionOptions: Object.keys(executionOptions).length > 0 ? executionOptions : undefined,
               }),
             });
@@ -994,8 +1002,10 @@
             if (response.ok) {
               addToast(
                 "success",
-                "All Triggered",
-                `All projects triggered for ${job.name}`
+                projects ? "Filtered Projects Triggered" : "All Triggered",
+                projects
+                  ? `${projects.length} ${projects.length === 1 ? "project" : "projects"} triggered for ${job.name}`
+                  : `All projects triggered for ${job.name}`
               );
             } else {
               const errorText = await response.text();
@@ -1401,6 +1411,7 @@
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
+                      projectListIsFiltered={projectListIsFiltered}
                       authInfo={authInfo}
                     />
                   ))}
@@ -1962,7 +1973,7 @@
         );
       }
 
-      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, authInfo }) {
+      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
@@ -2039,6 +2050,21 @@
           return sorted;
         }, [job.projects, sortConfig, hiddenStatuses, hideNoPRs, hideNoIssues]);
         const hasActiveFilters = hiddenStatuses.length > 0 || hideNoPRs || hideNoIssues;
+        // The bulk trigger acts on the rows this card shows and on nothing else:
+        // queued runs cannot be taken back, so triggering repositories a filter hid
+        // is not recoverable (issue #626). Only an unfiltered list is sent as "all",
+        // leaving it to the operator to include whatever it has discovered since.
+        const triggerScopeIsFiltered = projectListIsFiltered || hasActiveFilters;
+        const projectsToTrigger = useMemo(
+          () => sortedProjects.map((project) => project.name),
+          [sortedProjects]
+        );
+        const triggerScopeLabel = triggerScopeIsFiltered
+          ? `Trigger ${projectsToTrigger.length}`
+          : "Trigger All";
+        const triggerScopeDescription = triggerScopeIsFiltered
+          ? `Trigger ${projectsToTrigger.length} filtered ${projectsToTrigger.length === 1 ? "project" : "projects"} for ${job.name}`
+          : `Trigger all projects for ${job.name}`;
         const open = expanded;
         useEffect(() => {
           if (hasActiveFilters && sortedProjects.length === 0 && expanded) {
@@ -2327,17 +2353,22 @@
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onTriggerAllRenovate(job);
+                      onTriggerAllRenovate(
+                        job,
+                        {},
+                        triggerScopeIsFiltered ? projectsToTrigger : null
+                      );
                     }}
-                    disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
-                    title={triggerAllBlocked}
+                    data-testid="trigger-all"
+                    disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
+                    title={triggerAllBlocked || triggerScopeDescription}
                     className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 font-semibold text-[0.813rem] hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
                     aria-label={
                       triggerAllBlocked
                         ? triggerAllBlocked
                         : job.triggeringAll
                           ? "Triggering all projects"
-                          : `Trigger all projects for ${job.name}`
+                          : triggerScopeDescription
                     }
                   >
                     {job.triggeringAll ? (
@@ -2356,18 +2387,23 @@
                       </svg>
                     )}
                     <span className="hidden sm:inline">
-                      {job.triggeringAll ? "Triggering..." : "Trigger All"}
+                      {job.triggeringAll ? "Triggering..." : triggerScopeLabel}
                     </span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onTriggerAllRenovate(job, { debug: true });
+                      onTriggerAllRenovate(
+                        job,
+                        { debug: true },
+                        triggerScopeIsFiltered ? projectsToTrigger : null
+                      );
                     }}
-                    disabled={job.triggeringAll || !job.projects || job.projects.length === 0 || !!triggerAllBlocked}
-                    title={triggerAllBlocked || "Trigger all in debug mode"}
+                    data-testid="trigger-all-debug"
+                    disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
+                    title={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}
                     className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10 flex items-center"
-                    aria-label={triggerAllBlocked || `Trigger all projects in debug mode for ${job.name}`}
+                    aria-label={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}
                   >
                     <BugIcon className="w-3.5 h-3.5" />
                   </button>
@@ -2535,7 +2571,10 @@
                                 >
                                   <td className="px-3 xl:px-6 py-3">
                               <div className="flex items-center gap-2 w-full justify-between">
-                                <span className={`font-medium min-w-0 [overflow-wrap:anywhere] ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                                <span
+                                  data-testid="project-name"
+                                  className={`font-medium min-w-0 [overflow-wrap:anywhere] ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}
+                                >
                                   {project.name}
                                 </span>
                                 {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
