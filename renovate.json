@@ -5,6 +5,13 @@
   ],
   "regexManagers": [
     {
+      "fileMatch": ["^docs/.+\\.md$"],
+      "matchStrings": [
+        "image: (?<depName>renovate/renovate):(?<currentValue>[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
       "fileMatch": ["^Justfile$", "^Dockerfile$"],
       "matchStrings": [
         "unpkg\\.com/(?<depName>[^@\"]+)@(?<currentValue>[^/\"]+)"
@@ -35,6 +42,13 @@
     {
       "matchDatasources": ["npm"],
       "semanticCommitType": "fix"
+    },
+    {
+      "description": "Update renovate/renovate image references in docs on Sunday nights only.",
+      "matchManagers": ["regex"],
+      "matchPackageNames": ["renovate/renovate"],
+      "schedule": ["after 10pm on Sunday"],
+      "semanticCommitType": "chore"
     }
   ]
 }
