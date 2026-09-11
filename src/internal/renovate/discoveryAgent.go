@@ -208,14 +208,18 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", nil
 	}
 
-	redisSecretName := discoveryRedisSecretName(&renovateJob)
-	if err := ensureRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName); err != nil {
-		return "", fmt.Errorf("failed to ensure redis url secret: %w", err)
+	redisSecret, err := createRedisURLSecret(ctx, e.client, renovateJob.Namespace, renovateJob.Name, "", string(crdManager.DiscoveryJobType))
+	if err != nil {
+		return "", fmt.Errorf("failed to create redis url secret: %w", err)
+	}
+	var redisSecretName string
+	if redisSecret != nil {
+		redisSecretName = redisSecret.Name
 	}
 
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
-	discoveryJob := newDiscoveryJob(&renovateJob, carrier)
+	discoveryJob := newDiscoveryJob(&renovateJob, withCarrier(carrier), withRedisSecret(redisSecretName))
 	if options.TriggerAllProjects {
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)
@@ -235,10 +239,9 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", fmt.Errorf("failed to create discovery job: %w", err)
 	}
 
-	// Ownership failure leaves the secret behind until the next discovery
-	// re-upserts it; not worth failing the dispatch over.
-	if err := ownRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName, discoveryJob); err != nil {
-		log.FromContext(ctx).Error(err, "failed to own redis url secret", "job", discoveryJob.Name)
+	// Ownership failure leaves the secret behind until the next discovery; not worth failing over.
+	if err := ownRedisURLSecretsByLabel(ctx, e.client, renovateJob.Namespace, renovateJob.Name, "", string(crdManager.DiscoveryJobType), discoveryJob); err != nil {
+		log.FromContext(ctx).Error(err, "failed to own redis url secrets", "job", discoveryJob.Name)
 	}
 
 	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")

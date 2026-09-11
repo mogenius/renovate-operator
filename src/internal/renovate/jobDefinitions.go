@@ -15,11 +15,40 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+type jobBuildOpt func(*jobBuildConfig)
+
+type jobBuildConfig struct {
+	redisSecretName  string
+	carrier          propagation.MapCarrier
+	executionOptions *api.RenovateExecutionOptions
+}
+
+func withRedisSecret(name string) jobBuildOpt {
+	return func(c *jobBuildConfig) { c.redisSecretName = name }
+}
+
+func withCarrier(carrier propagation.MapCarrier) jobBuildOpt {
+	return func(c *jobBuildConfig) { c.carrier = carrier }
+}
+
+func withExecutionOptions(opts *api.RenovateExecutionOptions) jobBuildOpt {
+	return func(c *jobBuildConfig) { c.executionOptions = opts }
+}
+
+func applyJobBuildOpts(opts []jobBuildOpt) *jobBuildConfig {
+	cfg := &jobBuildConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	return cfg
+}
+
 // create job spec for a discovery job
-func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batchv1.Job {
-	predefinedEnvVars := getDefaultEnvVars(job, discoveryRedisSecretName(job))
+func newDiscoveryJob(job *api.RenovateJob, opts ...jobBuildOpt) *batchv1.Job {
+	cfg := applyJobBuildOpts(opts)
+	predefinedEnvVars := getDefaultEnvVars(job, cfg.redisSecretName)
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
-	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(carrier)...)
+	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(cfg.carrier)...)
 
 	if len(job.Spec.DiscoveryFilters) > 0 {
 		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
@@ -112,12 +141,13 @@ func newDiscoveryJob(job *api.RenovateJob, carrier propagation.MapCarrier) *batc
 }
 
 // create a Job spec for renovate run on project...
-func newRenovateJob(job *api.RenovateJob, project string, executionOptions *api.RenovateExecutionOptions, carrier propagation.MapCarrier) *batchv1.Job {
-	predefinedEnvVars := getDefaultEnvVars(job, executorRedisSecretName(job, project))
+func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *batchv1.Job {
+	cfg := applyJobBuildOpts(opts)
+	predefinedEnvVars := getDefaultEnvVars(job, cfg.redisSecretName)
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
-	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(carrier)...)
+	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(cfg.carrier)...)
 
-	if executionOptions != nil && executionOptions.Debug {
+	if cfg.executionOptions != nil && cfg.executionOptions.Debug {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_LOG_LEVEL",
 			Value: "debug",
@@ -244,7 +274,7 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 		})
 	}
 
-	if redisCacheForwardingEnabled() {
+	if redisCacheForwardingEnabled() && redisSecretName != "" {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name: "RENOVATE_REDIS_URL",
 			ValueFrom: &v1.EnvVarSource{

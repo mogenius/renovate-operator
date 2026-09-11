@@ -30,15 +30,6 @@ func valkeyForwardConfig(t *testing.T) {
 	}
 }
 
-func getSecret(t *testing.T, c client.Client, namespace, name string) *corev1.Secret {
-	t.Helper()
-	secret := &corev1.Secret{}
-	if err := c.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
-		t.Fatalf("expected secret %s/%s: %v", namespace, name, err)
-	}
-	return secret
-}
-
 func listSecrets(t *testing.T, c client.Client) []corev1.Secret {
 	t.Helper()
 	list := &corev1.SecretList{}
@@ -48,47 +39,65 @@ func listSecrets(t *testing.T, c client.Client) []corev1.Secret {
 	return list.Items
 }
 
-func TestEnsureRedisURLSecretCreatesPerJobSecret(t *testing.T) {
+func listSecretsByLabel(t *testing.T, c client.Client, labels client.MatchingLabels) []corev1.Secret {
+	t.Helper()
+	list := &corev1.SecretList{}
+	if err := c.List(context.Background(), list, labels); err != nil {
+		t.Fatalf("failed to list secrets by label: %v", err)
+	}
+	return list.Items
+}
+
+func TestCreateRedisURLSecretCreatesWithGenerateName(t *testing.T) {
 	valkeyForwardConfig(t)
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	if err := ensureRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis"); err != nil {
-		t.Fatalf("ensureRedisURLSecret returned error: %v", err)
+	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "org/project", string(crdManager.ExecutorJobType))
+	if err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
 	}
-
-	stored := getSecret(t, c, "ns", "rj-proj-701b9b0a-redis")
-	if got := string(stored.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
+	if secret == nil {
+		t.Fatal("expected secret to be returned, got nil")
+	}
+	if secret.Name == "" {
+		t.Error("expected generated name, got empty string")
+	}
+	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
 		t.Errorf("expected redis-url with cache db offset, got %q", got)
 	}
-	if got := stored.Labels[api.LabelAppManagedBy]; got != api.LabelValueManagedBy {
+	if got := secret.Labels[api.LabelAppManagedBy]; got != api.LabelValueManagedBy {
 		t.Errorf("expected managed-by label %q, got %q", api.LabelValueManagedBy, got)
 	}
-	if got := stored.Labels[api.LabelAppComponent]; got != api.LabelValueComponentValkeyCache {
+	if got := secret.Labels[api.LabelAppComponent]; got != api.LabelValueComponentValkeyCache {
 		t.Errorf("expected component label %q, got %q", api.LabelValueComponentValkeyCache, got)
 	}
+	if got := secret.Labels[api.LabelRenovateJob]; got != "rj" {
+		t.Errorf("expected renovatejob label %q, got %q", "rj", got)
+	}
+	if got := secret.Labels[api.LabelProject]; got != utils.KubernetesCompatibleProjectName("org/project") {
+		t.Errorf("expected project label %q, got %q", utils.KubernetesCompatibleProjectName("org/project"), got)
+	}
+	if got := secret.Labels[api.LabelJobType]; got != string(crdManager.ExecutorJobType) {
+		t.Errorf("expected job-type label %q, got %q", string(crdManager.ExecutorJobType), got)
+	}
 }
 
-func TestEnsureRedisURLSecretUpdatesRotatedURL(t *testing.T) {
+func TestCreateRedisURLSecretDiscoveryOmitsProjectLabel(t *testing.T) {
 	valkeyForwardConfig(t)
 	scheme := policyScheme(t)
-	stale := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "rj-proj-701b9b0a-redis", Namespace: "ns"},
-		Data:       map[string][]byte{"redis-url": []byte("redis://:old-password@redis.svc.cluster.local:6379/1")},
-	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(stale).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	if err := ensureRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis"); err != nil {
-		t.Fatalf("ensureRedisURLSecret returned error: %v", err)
+	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "", string(crdManager.DiscoveryJobType))
+	if err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
 	}
-
-	stored := getSecret(t, c, "ns", "rj-proj-701b9b0a-redis")
-	if got := string(stored.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
-		t.Errorf("expected rotated redis-url, got %q", got)
+	if _, ok := secret.Labels[api.LabelProject]; ok {
+		t.Errorf("expected no project label on discovery secret, got %q", secret.Labels[api.LabelProject])
 	}
 }
 
-func TestEnsureRedisURLSecretSkippedWithoutForwardFlag(t *testing.T) {
+func TestCreateRedisURLSecretSkippedWithoutForwardFlag(t *testing.T) {
 	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379/0"},
 		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "false"},
@@ -98,15 +107,19 @@ func TestEnsureRedisURLSecretSkippedWithoutForwardFlag(t *testing.T) {
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	if err := ensureRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis"); err != nil {
-		t.Fatalf("ensureRedisURLSecret returned error: %v", err)
+	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "proj", string(crdManager.ExecutorJobType))
+	if err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
+	}
+	if secret != nil {
+		t.Errorf("expected nil secret when forwarding disabled, got %+v", secret)
 	}
 	if secrets := listSecrets(t, c); len(secrets) != 0 {
 		t.Errorf("expected no secrets created, got %d", len(secrets))
 	}
 }
 
-func TestEnsureRedisURLSecretSkippedWithoutValkey(t *testing.T) {
+func TestCreateRedisURLSecretSkippedWithoutValkey(t *testing.T) {
 	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
 		{Key: "VALKEY_URL", Optional: true, Default: ""},
 		{Key: "VALKEY_HOST", Optional: true, Default: ""},
@@ -117,33 +130,54 @@ func TestEnsureRedisURLSecretSkippedWithoutValkey(t *testing.T) {
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	if err := ensureRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis"); err != nil {
-		t.Fatalf("ensureRedisURLSecret returned error: %v", err)
+	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "proj", string(crdManager.ExecutorJobType))
+	if err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
+	}
+	if secret != nil {
+		t.Errorf("expected nil secret when no valkey URL, got %+v", secret)
 	}
 	if secrets := listSecrets(t, c); len(secrets) != 0 {
 		t.Errorf("expected no secrets created, got %d", len(secrets))
 	}
 }
 
-func TestOwnRedisURLSecret(t *testing.T) {
+func TestOwnRedisURLSecretsByLabel(t *testing.T) {
 	valkeyForwardConfig(t)
 	scheme := policyScheme(t)
 	stored := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "rj-proj-701b9b0a-redis", Namespace: "ns"},
-		Data:       map[string][]byte{"redis-url": []byte("redis://redis.svc.cluster.local:6379/1")},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "redis-forward-secret-abcde",
+			Namespace: "ns",
+			Labels: map[string]string{
+				api.LabelAppComponent: api.LabelValueComponentValkeyCache,
+				api.LabelRenovateJob:  "rj",
+				api.LabelJobType:      string(crdManager.ExecutorJobType),
+				api.LabelProject:      utils.KubernetesCompatibleProjectName("org/proj"),
+			},
+		},
+		Data: map[string][]byte{"redis-url": []byte("redis://redis.svc.cluster.local:6379/1")},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(stored).Build()
 
-	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "rj-proj-701b9b0a-abcde", Namespace: "ns", UID: "uid-123"}}
-	if err := ownRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis", job); err != nil {
-		t.Fatalf("ownRedisURLSecret returned error: %v", err)
+	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "executor-job-abcde", Namespace: "ns", UID: "uid-123"}}
+	if err := ownRedisURLSecretsByLabel(context.Background(), c, "ns", "rj", "org/proj", string(crdManager.ExecutorJobType), job); err != nil {
+		t.Fatalf("ownRedisURLSecretsByLabel returned error: %v", err)
 	}
 
-	secret := getSecret(t, c, "ns", "rj-proj-701b9b0a-redis")
-	if len(secret.OwnerReferences) != 1 {
-		t.Fatalf("expected exactly one owner reference, got %+v", secret.OwnerReferences)
+	secrets := listSecretsByLabel(t, c, client.MatchingLabels{
+		api.LabelRenovateJob:  "rj",
+		api.LabelJobType:      string(crdManager.ExecutorJobType),
+		api.LabelAppComponent: api.LabelValueComponentValkeyCache,
+		api.LabelProject:      utils.KubernetesCompatibleProjectName("org/proj"),
+	})
+	if len(secrets) != 1 {
+		t.Fatalf("expected exactly one secret, got %d", len(secrets))
 	}
-	owner := secret.OwnerReferences[0]
+	if len(secrets[0].OwnerReferences) != 1 {
+		t.Fatalf("expected exactly one owner reference, got %+v", secrets[0].OwnerReferences)
+	}
+	owner := secrets[0].OwnerReferences[0]
 	if owner.Kind != "Job" || owner.Name != job.Name || owner.UID != job.UID {
 		t.Errorf("expected owner reference to the job, got %+v", owner)
 	}
@@ -157,22 +191,35 @@ func TestOwnRedisURLSecret(t *testing.T) {
 	}
 }
 
-func TestOwnRedisURLSecretRecreatesCollectedSecret(t *testing.T) {
+func TestOwnRedisURLSecretsByLabelOwnsMultiple(t *testing.T) {
 	valkeyForwardConfig(t)
 	scheme := policyScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	secretLabels := map[string]string{
+		api.LabelAppComponent: api.LabelValueComponentValkeyCache,
+		api.LabelRenovateJob:  "rj",
+		api.LabelJobType:      string(crdManager.ExecutorJobType),
+		api.LabelProject:      utils.KubernetesCompatibleProjectName("org/proj"),
+	}
+	s1 := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "redis-forward-secret-aaaaa", Namespace: "ns", Labels: secretLabels},
+		Data:       map[string][]byte{"redis-url": []byte("redis://...")},
+	}
+	s2 := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "redis-forward-secret-bbbbb", Namespace: "ns", Labels: secretLabels},
+		Data:       map[string][]byte{"redis-url": []byte("redis://...")},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(s1, s2).Build()
 
-	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "rj-proj-701b9b0a-abcde", Namespace: "ns", UID: "uid-123"}}
-	if err := ownRedisURLSecret(context.Background(), c, "ns", "rj-proj-701b9b0a-redis", job); err != nil {
-		t.Fatalf("ownRedisURLSecret returned error: %v", err)
+	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "executor-job-abcde", Namespace: "ns", UID: "uid-456"}}
+	if err := ownRedisURLSecretsByLabel(context.Background(), c, "ns", "rj", "org/proj", string(crdManager.ExecutorJobType), job); err != nil {
+		t.Fatalf("ownRedisURLSecretsByLabel returned error: %v", err)
 	}
 
-	secret := getSecret(t, c, "ns", "rj-proj-701b9b0a-redis")
-	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
-		t.Errorf("expected redis-url data on recreated secret, got %q", got)
-	}
-	if len(secret.OwnerReferences) != 1 || secret.OwnerReferences[0].Name != job.Name {
-		t.Errorf("expected recreated secret owned by the job, got %+v", secret.OwnerReferences)
+	secrets := listSecrets(t, c)
+	for _, s := range secrets {
+		if len(s.OwnerReferences) != 1 || s.OwnerReferences[0].Name != job.Name {
+			t.Errorf("secret %s: expected owner %s, got %+v", s.Name, job.Name, s.OwnerReferences)
+		}
 	}
 }
 
@@ -213,20 +260,25 @@ func TestDispatchScheduledCreatesOwnedRedisSecret(t *testing.T) {
 		t.Fatalf("expected one Kubernetes Job, got %d", len(jobs))
 	}
 
-	secretName := executorRedisSecretName(&renovateJob, "org/b")
-	secret := getSecret(t, c, renovateJob.Namespace, secretName)
+	secrets := listSecretsByLabel(t, c, client.MatchingLabels{
+		api.LabelRenovateJob:  renovateJob.Name,
+		api.LabelJobType:      string(crdManager.ExecutorJobType),
+		api.LabelAppComponent: api.LabelValueComponentValkeyCache,
+		api.LabelProject:      utils.KubernetesCompatibleProjectName("org/b"),
+	})
+	if len(secrets) != 1 {
+		t.Fatalf("expected exactly one redis secret, got %d", len(secrets))
+	}
+	secret := secrets[0]
 	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
 		t.Errorf("expected redis-url with cache db offset, got %q", got)
 	}
 	if len(secret.OwnerReferences) != 1 || secret.OwnerReferences[0].Name != jobs[0].Name {
 		t.Errorf("expected secret owned by the created job %s, got %+v", jobs[0].Name, secret.OwnerReferences)
 	}
-	if secrets := listSecrets(t, c); len(secrets) != 1 {
-		t.Errorf("expected exactly one secret (no shared namespace secret), got %d", len(secrets))
-	}
 
 	container := expectContainer(t, &jobs[0])
-	expectEnvVarFromSecretKey(t, container, "RENOVATE_REDIS_URL", secretName, "redis-url")
+	expectEnvVarFromSecretKey(t, container, "RENOVATE_REDIS_URL", secret.Name, "redis-url")
 }
 
 func TestCreateDiscoveryJobCreatesOwnedRedisSecret(t *testing.T) {
@@ -245,8 +297,15 @@ func TestCreateDiscoveryJobCreatesOwnedRedisSecret(t *testing.T) {
 		t.Fatalf("expected one Kubernetes Job, got %d", len(jobs))
 	}
 
-	secretName := discoveryRedisSecretName(&renovateJob)
-	secret := getSecret(t, c, renovateJob.Namespace, secretName)
+	secrets := listSecretsByLabel(t, c, client.MatchingLabels{
+		api.LabelRenovateJob:  renovateJob.Name,
+		api.LabelJobType:      string(crdManager.DiscoveryJobType),
+		api.LabelAppComponent: api.LabelValueComponentValkeyCache,
+	})
+	if len(secrets) != 1 {
+		t.Fatalf("expected exactly one redis secret, got %d", len(secrets))
+	}
+	secret := secrets[0]
 	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
 		t.Errorf("expected redis-url with cache db offset, got %q", got)
 	}
@@ -255,5 +314,5 @@ func TestCreateDiscoveryJobCreatesOwnedRedisSecret(t *testing.T) {
 	}
 
 	container := expectContainer(t, &jobs[0])
-	expectEnvVarFromSecretKey(t, container, "RENOVATE_REDIS_URL", secretName, "redis-url")
+	expectEnvVarFromSecretKey(t, container, "RENOVATE_REDIS_URL", secret.Name, "redis-url")
 }
