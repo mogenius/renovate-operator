@@ -1,13 +1,12 @@
 name: UI browser tests
 
 on:
+  push:
+    branches:
+      - release-please--branches--main
   pull_request:
     branches:
       - main
-      - develop
-    # The suite only exercises the static frontend, so it stays out of the way of
-    # PRs that cannot affect it. Note this reports no status at all when it does
-    # not match — do not make it a required check.
     paths:
       - 'src/static/**'
       - 'tests/ui/**'
