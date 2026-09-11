@@ -60,41 +60,26 @@ func createRedisURLSecret(ctx context.Context, c client.Client, namespace, renov
 	return secret, nil
 }
 
-// ownRedisURLSecretsByLabel finds all redis forwarding secrets for the given
-// RenovateJob and project by label selector and sets the k8s Job as their owner,
-// so GC deletes them together with the Job (TTL cleanup or explicit deletion).
-func ownRedisURLSecretsByLabel(ctx context.Context, c client.Client, namespace, renovateJobName, project, jobType string, job *batchv1.Job) error {
-	if !redisCacheForwardingEnabled() {
+// ownRedisURLSecret sets the k8s Job as owner of the named secret so GC deletes
+// it together with the Job (TTL cleanup or explicit deletion).
+func ownRedisURLSecret(ctx context.Context, c client.Client, namespace, name string, job *batchv1.Job) error {
+	if !redisCacheForwardingEnabled() || name == "" {
 		return nil
 	}
 
-	matchLabels := client.MatchingLabels{
-		api.LabelRenovateJob:  renovateJobName,
-		api.LabelJobType:      jobType,
-		api.LabelAppComponent: api.LabelValueComponentValkeyCache,
-	}
-	if project != "" {
-		matchLabels[api.LabelProject] = utils.KubernetesCompatibleProjectName(project)
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+		return fmt.Errorf("getting redis url secret: %w", err)
 	}
 
-	secretList := &corev1.SecretList{}
-	if err := c.List(ctx, secretList, client.InNamespace(namespace), matchLabels); err != nil {
-		return fmt.Errorf("listing redis url secrets: %w", err)
-	}
-
-	ownerRef := metav1.OwnerReference{
+	secret.OwnerReferences = []metav1.OwnerReference{{
 		APIVersion: batchv1.SchemeGroupVersion.String(),
 		Kind:       "Job",
 		Name:       job.Name,
 		UID:        job.UID,
-	}
-
-	for i := range secretList.Items {
-		secret := &secretList.Items[i]
-		secret.OwnerReferences = []metav1.OwnerReference{ownerRef}
-		if err := c.Update(ctx, secret); err != nil {
-			return fmt.Errorf("owning redis url secret %s: %w", secret.Name, err)
-		}
+	}}
+	if err := c.Update(ctx, secret); err != nil {
+		return fmt.Errorf("owning redis url secret: %w", err)
 	}
 	return nil
 }

@@ -240,8 +240,8 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	}
 
 	// Ownership failure leaves the secret behind until the next discovery; not worth failing over.
-	if err := ownRedisURLSecretsByLabel(ctx, e.client, renovateJob.Namespace, renovateJob.Name, "", string(crdManager.DiscoveryJobType), discoveryJob); err != nil {
-		log.FromContext(ctx).Error(err, "failed to own redis url secrets", "job", discoveryJob.Name)
+	if err := ownRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName, discoveryJob); err != nil {
+		log.FromContext(ctx).Error(err, "failed to own redis url secret", "job", discoveryJob.Name)
 	}
 
 	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")

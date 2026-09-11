@@ -458,8 +458,8 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 		}
 
 		// Ownership failure leaves the secret behind until the next dispatch; not worth failing over.
-		if err := ownRedisURLSecretsByLabel(ctx, e.client, renovateJob.Namespace, renovateJob.Name, project.Name, string(crdManager.ExecutorJobType), k8sJob); err != nil {
-			log.FromContext(ctx).Error(err, "failed to own redis url secrets", "job", k8sJob.Name)
+		if err := ownRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName, k8sJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to own redis url secret", "job", k8sJob.Name)
 		}
 
 		metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "executor")
