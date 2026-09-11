@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.3.1](https://github.com/mogenius/renovate-operator/compare/6.3.0...6.3.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([b4f3b5b](https://github.com/mogenius/renovate-operator/commit/b4f3b5beeaf36757f2e1eae8a8ccb19f44ee3cdc))
+* **deps:** update aws-sdk-go-v2 monorepo ([3ecf37d](https://github.com/mogenius/renovate-operator/commit/3ecf37dc8e6287483e688f55848ffeb67e756cf0))
+* **deps:** update module golang.org/x/oauth2 to v0.37.0 ([6b6e0c1](https://github.com/mogenius/renovate-operator/commit/6b6e0c15b87041242e60e3a0428a44b06aa0114e))
+* **deps:** update node.js to v24.21.0 ([68783fc](https://github.com/mogenius/renovate-operator/commit/68783fc838cd4e3dc829d63224d222d7772373c2))
+* **deps:** update react monorepo to v19.3.0 ([7d19a1a](https://github.com/mogenius/renovate-operator/commit/7d19a1ae8e22491e9892d83dc2cc188063988aa3))
+* do not rely on secret list to set the owner reference ([347cb9c](https://github.com/mogenius/renovate-operator/commit/347cb9c6cc0e9f1fc7cbed780ff6b018425bf832))
+* redis secret name might get too long, use generate name ([20b66f0](https://github.com/mogenius/renovate-operator/commit/20b66f0ae34850049861792130708f7d1c31c613))
+* the redis/ valkey cache secret attaches to job lifecycle ([8ee0f21](https://github.com/mogenius/renovate-operator/commit/8ee0f21ad9eea8dd97dbb19be36e2ceaccee3418))
+
 ## [6.3.0](https://github.com/mogenius/renovate-operator/compare/6.2.0...6.3.0) (2026-09-04)
 
 
