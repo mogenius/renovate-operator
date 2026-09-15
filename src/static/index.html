@@ -1376,26 +1376,18 @@
               )}
 
               {/* The misconfiguration banner already explains an empty list, and
-                  its advice outranks the sign-in prompt this would show. A fresh
-                  install is redirected to /setup instead of seeing this. */}
+                  its advice outranks this. A fresh install is redirected to
+                  /setup instead of seeing this. Unauthenticated visitors with
+                  no anonymous access are redirected to login by authFetch
+                  before reaching this state. */}
               {!loading && !error && jobs.length === 0 && !accessStatus?.misconfigured && !goToSetup && (
                 <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6 text-center">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
                     No RenovateJobs visible
                   </h3>
-                  <p className="text-gray-600 dark:text-slate-400 mb-4">
-                    {authInfo && authInfo.enabled && !authInfo.authenticated
-                      ? "Sign in to see the jobs your account grants access to."
-                      : "Either no RenovateJob exists yet, or none of them grant your account access."}
+                  <p className="text-gray-600 dark:text-slate-400">
+                    Either no RenovateJob exists yet, or none of them grant your account access.
                   </p>
-                  {authInfo && authInfo.enabled && !authInfo.authenticated && (
-                    <a
-                      href={`${BASE}/auth/login`}
-                      className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
-                    >
-                      Sign in
-                    </a>
-                  )}
                 </div>
               )}
 
