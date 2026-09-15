@@ -14,7 +14,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/netresearch/go-cron v0.16.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/valkey-io/valkey-go v1.0.77
+	github.com/valkey-io/valkey-go v1.0.78
 	go.opentelemetry.io/contrib/bridges/otellogr v0.20.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.71.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
