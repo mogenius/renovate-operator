@@ -290,6 +290,22 @@ func resolveEffectiveAccess(job *api.RenovateJob, defaults AccessDefaults) effec
 	return eff
 }
 
+// anyEffectiveAnonymousRead returns true when the global defaults or at least
+// one job in the provided list allows anonymous read access. Used to decide
+// whether an unauthenticated request to the jobs list endpoint should proceed
+// or receive a 401.
+func anyEffectiveAnonymousRead(jobs []api.RenovateJob, defaults AccessDefaults) bool {
+	if defaults.AnonymousRead {
+		return true
+	}
+	for i := range jobs {
+		if resolveEffectiveAccess(&jobs[i], defaults).anonymousRead {
+			return true
+		}
+	}
+	return false
+}
+
 // conflictingAccessLogged remembers the jobs whose conflicting access
 // configuration has already been reported, keyed by namespace/name. Entries are
 // never removed: the set is bounded by the number of RenovateJobs, and a job that
