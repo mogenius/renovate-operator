@@ -36,7 +36,7 @@ spec:
   schedule: "0 * * * *"
   discoveryFilters:
     - "Group1/*"
-  image: renovate/renovate:43.104.1
+  image: renovate/renovate:43.104.11
   secretRef: "renovate-secret"
   parallelism: 1
   webhook:
@@ -82,7 +82,7 @@ spec:
   schedule: "0 * * * *"
   discoveryFilters:
     - "Group1/*"
-  image: renovate/renovate:43.104.1
+  image: renovate/renovate:43.104.11
   secretRef: "renovate-secret"
   parallelism: 1
   webhook:
