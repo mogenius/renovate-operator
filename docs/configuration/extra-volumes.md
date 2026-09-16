@@ -66,7 +66,7 @@ metadata:
   namespace: renovate-operator
 spec:
   schedule: "0 * * * *"
-  image: renovate/renovate:43.104.1
+  image: renovate/renovate:43.104.11
   secretRef: "renovate-secret"
   parallelism: 1
   extraVolumes:

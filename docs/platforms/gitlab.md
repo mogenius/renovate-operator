@@ -10,7 +10,7 @@ spec:
   schedule: "0 * * * *"
   discoveryFilters: 
     - "Group1/*"
-  image: renovate/renovate:43.104.1 # renovate
+  image: renovate/renovate:43.104.11 # renovate
   secretRef: "renovate-secret"
   provider:
     name: gitlab
