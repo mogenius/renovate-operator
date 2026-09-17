@@ -1,6 +1,12 @@
 package renovate
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -839,4 +845,78 @@ func expectPriorityClassName(t *testing.T, job *batchv1.Job, expectedPriorityCla
 	if job.Spec.Template.Spec.PriorityClassName != expectedPriorityClassName {
 		t.Fatalf("expected priority class name %q, got %q", expectedPriorityClassName, job.Spec.Template.Spec.PriorityClassName)
 	}
+}
+
+func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+	})
+
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh available to exercise the discovery command")
+	}
+
+	const (
+		reposJSON       = `["org/repo"]`
+		renovateLogLine = "renovate stub log line"
+	)
+
+	job := &api.RenovateJob{
+		Name: "rj", Namespace: "ns",
+		Spec: api.RenovateJobSpec{Image: "img"},
+	}
+	container := expectContainer(t, newDiscoveryJob(job))
+	if len(container.Args) != 1 {
+		t.Fatalf("expected a single discovery arg, got %v", container.Args)
+	}
+	discoveryCmd := container.Args[0]
+
+	runDiscovery := func(t *testing.T, renovateExit int) (int, string) {
+		t.Helper()
+		baseDir, binDir := t.TempDir(), t.TempDir()
+
+		stub := fmt.Sprintf("#!/bin/sh\necho %q >&2\nprintf '%%s' %q > \"$RENOVATE_BASE_DIR/repos.json\"\nexit %d\n",
+			renovateLogLine, reposJSON, renovateExit)
+		if err := os.WriteFile(filepath.Join(binDir, "renovate"), []byte(stub), 0o755); err != nil {
+			t.Fatalf("writing renovate stub: %v", err)
+		}
+
+		cmd := exec.Command("/bin/sh", "-c", discoveryCmd)
+		cmd.Env = append(os.Environ(),
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"RENOVATE_BASE_DIR="+baseDir,
+		)
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+
+		err := cmd.Run()
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode(), strings.TrimSpace(stdout.String())
+		}
+		if err != nil {
+			t.Fatalf("running discovery command: %v", err)
+		}
+		return 0, strings.TrimSpace(stdout.String())
+	}
+
+	t.Run("emits discovered repos when renovate succeeds", func(t *testing.T) {
+		code, stdout := runDiscovery(t, 0)
+		if code != 0 {
+			t.Fatalf("expected exit code 0, got %d", code)
+		}
+		if stdout != reposJSON {
+			t.Fatalf("expected stdout %q, got %q", reposJSON, stdout)
+		}
+	})
+
+	t.Run("propagates renovate's exit code on failure", func(t *testing.T) {
+		code, stdout := runDiscovery(t, 3)
+		if code != 3 {
+			t.Fatalf("expected exit code 3, got %d", code)
+		}
+		if stdout != renovateLogLine {
+			t.Fatalf("expected stdout %q, got %q", renovateLogLine, stdout)
+		}
+	})
 }
