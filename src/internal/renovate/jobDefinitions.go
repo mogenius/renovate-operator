@@ -87,7 +87,10 @@ func newDiscoveryJob(job *api.RenovateJob, opts ...jobBuildOpt) *batchv1.Job {
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
-	discoveryCmd := `BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`
+	discoveryCmd := `BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"
+renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 ||
+  { rc=$?; cat "$BASE_DIR/logs.json"; exit $rc; }
+cat "$BASE_DIR/repos.json"`
 
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
