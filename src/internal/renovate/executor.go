@@ -281,10 +281,11 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		metricStore.IncJobFailure(ctx, jobId.Namespace, jobId.Name, "executor", jobFailureReason(k8sJob))
 	}
 
-	// Log issue counts (Group L).
+	// Log issue counts (Group E).
 	if newProjectStatus.LogIssues != nil {
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "warn", newProjectStatus.LogIssues.WarnCount)
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "error", newProjectStatus.LogIssues.ErrorCount)
+		metricStore.SetConfigMigrationNeeded(jobId.Namespace, jobId.Name, project, newProjectStatus.LogIssues.HasConfigMigration)
 	}
 
 	// Pull request activity (Group E/L). A nil PRActivity means the run yielded no

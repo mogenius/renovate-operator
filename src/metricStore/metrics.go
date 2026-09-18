@@ -184,6 +184,13 @@ var (
 			Help: "Count of WARN/ERROR log entries in the last run, by level",
 		},
 		[]string{labelNamespace, labelJob, labelProject, labelLevel})
+
+	configMigrationNeeded = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_config_migration_needed",
+			Help: "Whether the last run detected that the Renovate config needs migration (1=needed, 0=clean)",
+		},
+		[]string{labelNamespace, labelJob, labelProject})
 )
 
 // Prometheus metrics — Results & outcomes (Group L).
@@ -345,6 +352,7 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		scheduleNextRun,
 		// Group E
 		logIssues,
+		configMigrationNeeded,
 		// Group L
 		openPullRequests,
 		repositoriesByStatus,
@@ -539,6 +547,17 @@ func SetLogIssues(namespace, job, project, level string, count int) {
 	logIssues.WithLabelValues(namespace, job, project, level).Set(float64(count))
 }
 
+// SetConfigMigrationNeeded sets the config-migration-needed gauge for a project (1=needed, 0=clean).
+// A nil value means the run had no debug logs, so the state is unknown; the metric is deleted
+// rather than set to a potentially misleading value.
+func SetConfigMigrationNeeded(namespace, job, project string, found *bool) {
+	if found == nil {
+		configMigrationNeeded.DeleteLabelValues(namespace, job, project)
+		return
+	}
+	configMigrationNeeded.WithLabelValues(namespace, job, project).Set(boolToFloat(*found))
+}
+
 // ---------------------------------------------------------------------------
 // Group L — results & outcomes
 // ---------------------------------------------------------------------------
@@ -689,6 +708,7 @@ func RehydrateMetrics(namespace, job string, projects map[string]api.RenovatePro
 		if project.LogIssues != nil {
 			SetLogIssues(namespace, job, name, "warn", project.LogIssues.WarnCount)
 			SetLogIssues(namespace, job, name, "error", project.LogIssues.ErrorCount)
+			SetConfigMigrationNeeded(namespace, job, name, project.LogIssues.HasConfigMigration)
 		}
 
 		if project.PRActivity != nil {
@@ -733,6 +753,7 @@ func DeleteProjectMetrics(namespace, job, project string) {
 	lastExecutionDuration.DeleteLabelValues(namespace, job, project)
 	logIssues.DeleteLabelValues(namespace, job, project, "warn")
 	logIssues.DeleteLabelValues(namespace, job, project, "error")
+	configMigrationNeeded.DeleteLabelValues(namespace, job, project)
 	// Note: projectRuns counter has an additional "status" label, so we delete both possible values
 	projectRuns.DeleteLabelValues(namespace, job, project, "completed")
 	projectRuns.DeleteLabelValues(namespace, job, project, "failed")

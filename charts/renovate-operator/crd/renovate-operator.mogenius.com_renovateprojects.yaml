@@ -87,6 +87,8 @@ spec:
                 properties:
                   errorCount:
                     type: integer
+                  hasConfigMigration:
+                    type: boolean
                   issues:
                     items:
                       description: LogIssue represents a single warning or error from

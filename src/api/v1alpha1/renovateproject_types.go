@@ -43,10 +43,11 @@ type LogIssue struct {
 
 // LogIssues contains aggregate counts and individual issue messages from a Renovate run.
 type LogIssues struct {
-	WarnCount  int        `json:"warnCount"`
-	ErrorCount int        `json:"errorCount"`
-	Issues     []LogIssue `json:"issues,omitempty"`
-	Truncated  bool       `json:"truncated,omitempty"`
+	WarnCount          int        `json:"warnCount"`
+	ErrorCount         int        `json:"errorCount"`
+	HasConfigMigration *bool      `json:"hasConfigMigration,omitempty"`
+	Issues             []LogIssue `json:"issues,omitempty"`
+	Truncated          bool       `json:"truncated,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -136,6 +137,10 @@ func (in *RenovateProject) DeepCopyInto(out *RenovateProject) {
 	if in.Status.LogIssues != nil {
 		out.Status.LogIssues = new(LogIssues)
 		*out.Status.LogIssues = *in.Status.LogIssues
+		if in.Status.LogIssues.HasConfigMigration != nil {
+			out.Status.LogIssues.HasConfigMigration = new(bool)
+			*out.Status.LogIssues.HasConfigMigration = *in.Status.LogIssues.HasConfigMigration
+		}
 		if in.Status.LogIssues.Issues != nil {
 			out.Status.LogIssues.Issues = make([]LogIssue, len(in.Status.LogIssues.Issues))
 			copy(out.Status.LogIssues.Issues, in.Status.LogIssues.Issues)

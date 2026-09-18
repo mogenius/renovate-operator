@@ -136,6 +136,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 
 	// Issue accumulation
 	var warnCount, errorCount int
+	var hasConfigMigration, hasDebugLog bool
 	var issues []api.LogIssue
 	seenMessages := make(map[string]bool)
 	issuesTruncated := false
@@ -175,6 +176,17 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 				} else {
 					issuesTruncated = true
 				}
+			}
+		}
+
+		// Config migration detection: Renovate emits these at debug level (20) only.
+		// Track whether debug logs are present at all so callers can distinguish
+		// "clean" from "unknown" when debug logging was disabled.
+		if entry.Level == 20 {
+			hasDebugLog = true
+			if entry.Msg == "Config migration necessary" ||
+				strings.HasPrefix(entry.Msg, "Config migration needed but") {
+				hasConfigMigration = true
 			}
 		}
 
@@ -298,12 +310,16 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		if result.RenovateResultStatus == nil || *result.RenovateResultStatus != renovateResultRepositoryChanged {
 			result.PRActivity = buildPRActivity(branchMap)
 		}
-		result.LogIssues = &api.LogIssues{
+		logIssues := &api.LogIssues{
 			WarnCount:  warnCount,
 			ErrorCount: errorCount,
 			Issues:     issues,
 			Truncated:  issuesTruncated,
 		}
+		if hasDebugLog {
+			logIssues.HasConfigMigration = &hasConfigMigration
+		}
+		result.LogIssues = logIssues
 	}
 
 	return result
