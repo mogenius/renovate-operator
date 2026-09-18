@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test-ui:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     # Ships Chromium and its OS libraries pre-baked. Keep the tag in lockstep with
     # @playwright/test in tests/ui/package.json — a mismatch fails at startup.
     container:
