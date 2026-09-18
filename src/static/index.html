@@ -48,6 +48,7 @@
     <script type="text/babel" src="components/StatBadge.js"></script>
     <script type="text/babel" src="components/StickyToolbar.js"></script>
     <script type="text/babel" src="components/Footer.js"></script>
+    <script type="text/babel" src="components/ShortcutsModal.js"></script>
 
     <link rel="stylesheet" href="css/styles.css" />
   </head>
@@ -499,6 +500,19 @@
           ? "Sign in with an account that has admin access to use this"
           : "Requires admin access";
 
+      const DASHBOARD_SHORTCUTS = [
+        [['j', 'k'], 'Navigate job cards'],
+        [['Space'], 'Expand / collapse focused card'],
+        [['↑', '↓'], 'Navigate projects in card'],
+        [['t'], 'Trigger focused project'],
+        [['e'], 'Expand all cards'],
+        [['c'], 'Collapse all cards'],
+        [['r'], 'Refresh'],
+        [['/'], 'Focus search'],
+        [['Esc'], 'Clear active filter'],
+        [['?'], 'Toggle this panel'],
+      ];
+
       function App() {
         const [jobs, setJobs] = useState([]);
         const [loading, setLoading] = useState(true);
@@ -592,6 +606,12 @@
           setSelectedStatFilter(null);
           persistStatFilter(null);
         }, []);
+
+        const [showShortcuts, setShowShortcuts] = useState(false);
+        const [focusedJobIndex, setFocusedJobIndex] = useState(null);
+        const [focusedProjectName, setFocusedProjectName] = useState(null);
+        const [focusedCardProjects, setFocusedCardProjects] = useState([]);
+        const jobCardRefsRef = useRef([]);
 
         // Job cards open according to JOB_CARDS_EXPANDED_BY_DEFAULT. This Set holds
         // the jobs the user toggled *away* from that default -- not the expanded
@@ -1044,6 +1064,112 @@
           return () => clearInterval(interval);
         }, [loadJobs]);
 
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable;
+            if (e.key === '?' && !inInput) {
+              setShowShortcuts((s) => !s);
+              return;
+            }
+            if (showShortcuts) return;
+            if (inInput) return;
+            switch (e.key) {
+              case '/':
+                e.preventDefault();
+                document.getElementById('project-search')?.focus();
+                break;
+              case 'Escape':
+                if (selectedStatFilter) clearStatFilter();
+                setFocusedJobIndex(null);
+                setFocusedProjectName(null);
+                break;
+              case 'j':
+                e.preventDefault();
+                setFocusedJobIndex((prev) => {
+                  if (searchFilteredJobs.length === 0) return null;
+                  return prev === null ? 0 : Math.min(prev + 1, searchFilteredJobs.length - 1);
+                });
+                break;
+              case 'k':
+                e.preventDefault();
+                setFocusedJobIndex((prev) => {
+                  if (searchFilteredJobs.length === 0) return null;
+                  return prev === null ? 0 : Math.max(prev - 1, 0);
+                });
+                break;
+              case ' ':
+                if (focusedJobIndex !== null) {
+                  e.preventDefault();
+                  const job = searchFilteredJobs[focusedJobIndex];
+                  if (job) toggleJobCardExpansion(jobStorageKey(job));
+                }
+                break;
+              case 'ArrowDown': {
+                e.preventDefault();
+                if (focusedJobIndex === null) break;
+                const job = searchFilteredJobs[focusedJobIndex];
+                if (!job) break;
+                if (!isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))) {
+                  toggleJobCardExpansion(jobStorageKey(job));
+                }
+                if (focusedCardProjects.length === 0) break;
+                setFocusedProjectName((prev) => {
+                  const idx = focusedCardProjects.findIndex((p) => p.name === prev);
+                  return focusedCardProjects[idx === -1 ? 0 : Math.min(idx + 1, focusedCardProjects.length - 1)].name;
+                });
+                break;
+              }
+              case 'ArrowUp': {
+                e.preventDefault();
+                if (focusedJobIndex === null || focusedCardProjects.length === 0) break;
+                setFocusedProjectName((prev) => {
+                  const idx = focusedCardProjects.findIndex((p) => p.name === prev);
+                  return focusedCardProjects[idx <= 0 ? 0 : idx - 1].name;
+                });
+                break;
+              }
+              case 't': {
+                e.preventDefault();
+                if (focusedJobIndex === null || !focusedProjectName) break;
+                const job = searchFilteredJobs[focusedJobIndex];
+                if (!job || !can(job, 'trigger')) break;
+                const project = (job.projects || []).find((p) => p.name === focusedProjectName);
+                if (project) triggerRenovate(job, project);
+                break;
+              }
+              case 'e':
+                e.preventDefault();
+                expandAllJobs();
+                break;
+              case 'c':
+                e.preventDefault();
+                collapseAllJobs();
+                break;
+              case 'r':
+                e.preventDefault();
+                loadJobs();
+                break;
+            }
+          };
+          document.addEventListener('keydown', handleKeyDown);
+          return () => document.removeEventListener('keydown', handleKeyDown);
+        }, [showShortcuts, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
+
+        useEffect(() => {
+          if (focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex]) {
+            jobCardRefsRef.current[focusedJobIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }, [focusedJobIndex]);
+
+        useEffect(() => {
+          setFocusedProjectName(null);
+        }, [focusedJobIndex]);
+
+        useEffect(() => {
+          setFocusedJobIndex(null);
+        }, [searchFilteredJobs]);
+
         // A fresh install (no jobs at all) is sent to the dedicated /setup
         // page outright; once jobs exist the dashboard stays usable and a
         // slim banner links back until setup is finished. The
@@ -1067,6 +1193,7 @@
         return (
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
+            {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} shortcuts={DASHBOARD_SHORTCUTS} />}
 
             {/* Brand strip only — everything the user filters and searches with
                 lives in the sticky toolbar below, so it stays reachable while
@@ -1159,7 +1286,7 @@
                       type="search"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Escape") clearSearch(); }}
+                      onKeyDown={(e) => { if (e.key === "Escape") { clearSearch(); e.target.blur(); } }}
                       placeholder="Search projects…"
                       className="block w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-1.5 pl-9 pr-9 text-sm text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                       aria-label="Search projects by name"
@@ -1203,6 +1330,15 @@
                       </button>
                     </div>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setShowShortcuts(true)}
+                    className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
+                    aria-label="Keyboard shortcuts"
+                    title="Keyboard shortcuts (?)"
+                  >
+                    ?
+                  </button>
                 </div>
               )}
 
@@ -1393,10 +1529,14 @@
 
               {(!loading || jobs.length > 0) && (
                 <div className="space-y-6">
-                  {searchFilteredJobs.map((job) => (
+                  {searchFilteredJobs.map((job, idx) => (
                     <JobCard
                       key={`${job.name}-${job.namespace}`}
                       job={job}
+                      focused={focusedJobIndex === idx}
+                      innerRef={(el) => { jobCardRefsRef.current[idx] = el; }}
+                      focusedProjectName={focusedJobIndex === idx ? focusedProjectName : null}
+                      onSortedProjectsChange={focusedJobIndex === idx ? setFocusedCardProjects : undefined}
                       expanded={isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))}
                       onToggleExpanded={toggleJobCardExpansion}
                       onRunDiscovery={runDiscovery}
@@ -1965,7 +2105,7 @@
         );
       }
 
-      function JobCard({ job, expanded, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
+      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
@@ -2084,6 +2224,18 @@
           });
         };
         const [expandedIssues, setExpandedIssues] = useState(() => new Set());
+        const projectRowRefsRef = useRef({});
+
+        useEffect(() => {
+          if (onSortedProjectsChange) onSortedProjectsChange(sortedProjects);
+        }, [sortedProjects, onSortedProjectsChange]);
+
+        useEffect(() => {
+          if (focusedProjectName && projectRowRefsRef.current[focusedProjectName]) {
+            projectRowRefsRef.current[focusedProjectName].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }, [focusedProjectName]);
+
         const toggleIssueExpanded = (name) => {
           setExpandedIssues((prev) => {
             const next = new Set(prev);
@@ -2158,7 +2310,7 @@
         };
 
         return (
-          <div className="relative bg-white dark:bg-slate-800 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200">
+          <div ref={innerRef} className={`relative bg-white dark:bg-slate-800 rounded-lg overflow-hidden border shadow-sm hover:shadow-md transition-all duration-200 ${focused ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 dark:border-slate-700'}`}>
             <div
               className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
               onClick={toggleOpen}
@@ -2557,9 +2709,9 @@
                             return (
                               <>
                                 <tr
-                                  ref={containerRef}
+                                  ref={(el) => { containerRef.current = el; projectRowRefsRef.current[project.name] = el; }}
                                   {...tooltipProps}
-                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
+                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${focusedProjectName === project.name ? 'ring-2 ring-inset ring-primary/40 bg-primary/5 dark:bg-primary/10' : ''} ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
                                 >
                                   <td className="px-3 xl:px-6 py-3">
                               <div className="flex items-center gap-2 w-full justify-between">
