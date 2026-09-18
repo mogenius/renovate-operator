@@ -910,14 +910,15 @@ func TestParseRenovateLogsNeedsApprovalGolden(t *testing.T) {
 
 func TestParseRenovateLogsLogIssues(t *testing.T) {
 	tests := []struct {
-		name           string
-		logs           string
-		wantNil        bool
-		wantWarnCount  int
-		wantErrorCount int
-		wantIssueCount int
-		wantTruncated  bool
-		checkIssues    func(t *testing.T, issues []api.LogIssue)
+		name                   string
+		logs                   string
+		wantNil                bool
+		wantWarnCount          int
+		wantErrorCount         int
+		wantIssueCount         int
+		wantTruncated          bool
+		wantHasConfigMigration *bool
+		checkIssues            func(t *testing.T, issues []api.LogIssue)
 	}{
 		{
 			name:    "empty logs - nil LogIssues",
@@ -1044,6 +1045,48 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:                   "config migration necessary",
+			logs:                   `{"level":20,"msg":"Config migration necessary","repository":"foo/bar"}`,
+			wantWarnCount:          0,
+			wantErrorCount:         0,
+			wantIssueCount:         0,
+			wantHasConfigMigration: new(true),
+		},
+		{
+			name:                   "config migration needed but disabled",
+			logs:                   `{"level":20,"msg":"Config migration needed but config migration is disabled and checkbox not checked or not present.","repository":"foo/bar"}`,
+			wantWarnCount:          0,
+			wantErrorCount:         0,
+			wantIssueCount:         0,
+			wantHasConfigMigration: new(true),
+		},
+		{
+			name: "config migration combined with other warnings",
+			logs: `{"level":20,"msg":"Config migration necessary"}` + "\n" +
+				`{"level":40,"msg":"Unrelated warning"}`,
+			wantWarnCount:          1,
+			wantErrorCount:         0,
+			wantIssueCount:         1,
+			wantHasConfigMigration: new(true),
+		},
+		{
+			name: "no config migration in normal run - no debug logs so nil",
+			logs: `{"level":40,"msg":"Config validation issue"}` + "\n" +
+				`{"level":50,"msg":"Failed to fetch package"}`,
+			wantWarnCount:          1,
+			wantErrorCount:         1,
+			wantIssueCount:         2,
+			wantHasConfigMigration: nil,
+		},
+		{
+			name:                   "checkConfigMigrationBranch message does not set flag",
+			logs:                   `{"level":20,"msg":"checkConfigMigrationBranch()","repository":"foo/bar"}`,
+			wantWarnCount:          0,
+			wantErrorCount:         0,
+			wantIssueCount:         0,
+			wantHasConfigMigration: new(false),
+		},
 	}
 
 	for _, tt := range tests {
@@ -1066,6 +1109,10 @@ func TestParseRenovateLogsLogIssues(t *testing.T) {
 			}
 			if result.LogIssues.ErrorCount != tt.wantErrorCount {
 				t.Errorf("ErrorCount = %d, want %d", result.LogIssues.ErrorCount, tt.wantErrorCount)
+			}
+			got := result.LogIssues.HasConfigMigration
+			if (got == nil) != (tt.wantHasConfigMigration == nil) || (got != nil && *got != *tt.wantHasConfigMigration) {
+				t.Errorf("HasConfigMigration = %v, want %v", got, tt.wantHasConfigMigration)
 			}
 			if len(result.LogIssues.Issues) != tt.wantIssueCount {
 				t.Errorf("len(Issues) = %d, want %d", len(result.LogIssues.Issues), tt.wantIssueCount)
