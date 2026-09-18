@@ -37,6 +37,12 @@ const (
 	// ReasonPolicyDisabled marks a job accepted only because enforcement is off, so
 	// `kubectl get renovatejobs` shows that the guard rails are not in play.
 	ReasonPolicyDisabled = "PolicyDisabled"
+	// ReasonTemplateNotFound marks a job whose spec.templateRef does not resolve, so
+	// its inherited configuration is unknown and nothing may run.
+	ReasonTemplateNotFound = "TemplateNotFound"
+	// ReasonIncompleteSpec marks a job still missing a required field after its
+	// template is merged in.
+	ReasonIncompleteSpec = "IncompleteSpec"
 )
 
 // Violation is a policy refusal. It carries the reason as a code so callers can

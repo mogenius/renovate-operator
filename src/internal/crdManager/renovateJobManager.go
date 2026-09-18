@@ -46,8 +46,23 @@ type RenovateJobManager interface {
 	ListRenovateJobs(ctx context.Context) ([]RenovateJobIdentifier, error)
 	// ListRenovateJobsFull lists all RenovateJob CRDs in the cluster with full object data.
 	ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
-	// GetRenovateJob retrieves a specific RenovateJob CRD by name and namespace.
+	// ListEffectiveRenovateJobsFull lists all RenovateJob CRDs with their templates
+	// merged in, so access, provider and schedule reflect what the job actually runs
+	// with. A job whose templateRef does not resolve is returned as stored, so it
+	// stays visible and its access falls closed.
+	ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
+	// GetRenovateJob retrieves a RenovateJob by name and namespace with its template
+	// merged in. A dangling templateRef returns the underlying (IsNotFound) error.
+	// Callers that write the object back to the API server must use GetRawRenovateJob
+	// instead, so an inherited spec is never persisted.
 	GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error)
+	// GetRawRenovateJob retrieves a RenovateJob exactly as stored, without its
+	// template merged in.
+	GetRawRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error)
+	// ResolveEffective returns a copy of an already-loaded RenovateJob with its
+	// template merged in. A job without a templateRef is copied unchanged; a dangling
+	// ref returns the underlying error.
+	ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error)
 	// GetProjectsForRenovateJob retrieves all projects associated with a specific RenovateJob CRD.
 	GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error)
 	// UpdateProjectStatus updates the status of a specific project within a RenovateJob CRD.
@@ -83,7 +98,9 @@ type RenovateJobManager interface {
 	IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
 	// SetAcceptedCondition records whether the RenovateJob satisfies the operator's
 	// policy, so a refusal is visible on the resource rather than only in the log.
-	SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) error
+	// Reports whether the condition actually changed, so callers can log only on a
+	// transition rather than on every reconcile tick.
+	SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error)
 	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
 	// transitions its CRD status to cancelled, freeing the slot for the next dispatch.
 	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
@@ -146,7 +163,31 @@ func (r *renovateJobManager) globalManagerLock(readonly bool) func() {
 func (r *renovateJobManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
 	defer r.globalManagerLock(true)()
 
+	renovateJob, err := loadRenovateJob(ctx, name, namespace, r.client)
+	if err != nil {
+		return nil, err
+	}
+	return resolveEffectiveJob(ctx, renovateJob, r.client)
+}
+
+func (r *renovateJobManager) GetRawRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
+	defer r.globalManagerLock(true)()
+
 	return loadRenovateJob(ctx, name, namespace, r.client)
+}
+
+func (r *renovateJobManager) ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	defer r.globalManagerLock(true)()
+
+	return resolveEffectiveJob(ctx, job, r.client)
+}
+
+func (r *renovateJobManager) loadEffectiveJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+	job, err := loadRenovateJob(ctx, name, namespace, r.client)
+	if err != nil {
+		return nil, err
+	}
+	return resolveEffectiveJob(ctx, job, r.client)
 }
 
 // toRenovateProjectStatus converts a RenovateProject CRD object into the internal DTO.
@@ -226,6 +267,29 @@ func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 	}
 
 	return renovateJobs.Items, nil
+}
+
+func (r *renovateJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	defer r.globalManagerLock(true)()
+
+	var renovateJobs api.RenovateJobList
+	if err := r.client.List(ctx, &renovateJobs); err != nil {
+		return nil, err
+	}
+
+	effective := make([]api.RenovateJob, 0, len(renovateJobs.Items))
+	for i := range renovateJobs.Items {
+		resolved, err := resolveEffectiveJob(ctx, &renovateJobs.Items[i], r.client)
+		if err != nil {
+			// Keep it visible; its access falls closed.
+			r.logger.V(1).Info("listing RenovateJob with unresolved templateRef as stored",
+				"job", renovateJobs.Items[i].Name, "namespace", renovateJobs.Items[i].Namespace, "error", err.Error())
+			effective = append(effective, renovateJobs.Items[i])
+			continue
+		}
+		effective = append(effective, *resolved)
+	}
+	return effective, nil
 }
 
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -320,12 +384,12 @@ func buildRenovateProject(job *api.RenovateJob, project string) *api.RenovatePro
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
 
-	if (renovateJob.Spec.SkipForks || renovateJob.Spec.SkipPendingDeletion) && r.gitProviderClientFactory != nil {
+	if (renovateJob.Spec.GetSkipForks() || renovateJob.Spec.GetSkipPendingDeletion()) && r.gitProviderClientFactory != nil {
 		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
 		if err != nil {
 			r.logger.Error(err, "Failed to create git provider client for project filtering")
 		} else {
-			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.SkipForks, renovateJob.Spec.SkipPendingDeletion)
+			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.GetSkipForks(), renovateJob.Spec.GetSkipPendingDeletion())
 			if err != nil {
 				r.logger.Error(err, "Failed to filter discovered repositories")
 			} else {
@@ -396,7 +460,7 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 
 func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
 	unlock := r.globalManagerLock(true)
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	var projectList api.RenovateProjectList
 	var listErr error
 	if err == nil {
@@ -439,7 +503,7 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 
 func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
 	unlock := r.globalManagerLock(true)
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	var projectList api.RenovateProjectList
 	var listErr error
 	if err == nil {
@@ -628,7 +692,7 @@ func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.
 func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error) {
 	defer r.globalManagerLock(true)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
 	}
@@ -653,7 +717,7 @@ func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job Renova
 func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error) {
 	defer r.globalManagerLock(true)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
 	}
@@ -690,7 +754,7 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 func (r *renovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	defer r.globalManagerLock(true)()
 
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
 	}
@@ -748,7 +812,7 @@ func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project strin
 	})
 }
 
-func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) error {
+func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
 	defer r.globalManagerLock(false)()
 
 	status := v1.ConditionTrue
@@ -756,7 +820,8 @@ func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job Renov
 		status = v1.ConditionFalse
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	changed := false
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
 		if err != nil {
 			return err
@@ -774,10 +839,16 @@ func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job Renov
 		// would rewrite the status and bump resourceVersion on every tick forever.
 		// SetStatusCondition reports whether anything actually changed.
 		if !meta.SetStatusCondition(&renovateJob.Status.Conditions, condition) {
+			changed = false
 			return nil
 		}
-		return r.client.Status().Update(ctx, renovateJob)
+		if err := r.client.Status().Update(ctx, renovateJob); err != nil {
+			return err
+		}
+		changed = true
+		return nil
 	})
+	return changed, err
 }
 
 func computeHMAC256(message []byte, secret string) string {

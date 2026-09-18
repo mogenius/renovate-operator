@@ -11,6 +11,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdManager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 
 	"renovate-operator/internal/types"
@@ -34,6 +35,8 @@ import (
 type fakeManager struct {
 	acceptedCalls                []acceptedCall
 	getFn                        func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	getRawFn                     func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	resolveEffectiveFn           func(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
@@ -45,11 +48,26 @@ func (f *fakeManager) ListRenovateJobs(ctx context.Context) ([]crdManager.Renova
 func (f *fakeManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (f *fakeManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 func (f *fakeManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
 	if f.getFn != nil {
 		return f.getFn(ctx, name, namespace)
 	}
 	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeManager) GetRawRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
+	if f.getRawFn != nil {
+		return f.getRawFn(ctx, name, namespace)
+	}
+	return f.GetRenovateJob(ctx, name, namespace)
+}
+func (f *fakeManager) ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	if f.resolveEffectiveFn != nil {
+		return f.resolveEffectiveFn(ctx, job)
+	}
+	return job, nil
 }
 func (f *fakeManager) GetProjectsForRenovateJob(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
@@ -70,9 +88,9 @@ type acceptedCall struct {
 	message  string
 }
 
-func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
+func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
 	m.acceptedCalls = append(m.acceptedCalls, acceptedCall{accepted: accepted, reason: reason, message: message})
-	return nil
+	return true, nil
 }
 func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil
@@ -306,7 +324,12 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 		return &api.RenovateJob{
 			Name: name, Namespace: namespace,
-			Spec: api.RenovateJobSpec{Schedule: "*/5 * * * *"},
+			Spec: api.RenovateJobSpec{
+				Schedule:    "*/5 * * * *",
+				Image:       "renovate/renovate",
+				Parallelism: 1,
+				Provider:    &api.RenovateProvider{Name: "github"},
+			},
 		}, nil
 	}
 
@@ -318,6 +341,8 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 		Discovery: &fakeDiscovery{},
 		GithubApp: &fakeGithubAppToken{},
 		K8sClient: buildFakeK8sClient(t),
+		// This test exercises scheduling, not policy; keep the guard rails out of it.
+		Policy: policy.Policy{Disabled: true},
 	}
 
 	req := ctrl.Request{Name: "test", Namespace: "default"}
@@ -410,7 +435,7 @@ func TestHandleAnnotationTriggers_Discovery(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t, renovateJob),
 	}
 
-	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
 
 	if !discoveryTriggered {
 		t.Fatal("expected CreateDiscoveryJob to be called")
@@ -449,7 +474,7 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t, renovateJob),
 	}
 
-	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
 
 	// org/b is Running and must be excluded; org/a and org/c must be scheduled
 	if len(scheduled) != 2 {
@@ -495,7 +520,7 @@ func TestHandleAnnotationTriggers_Schedule(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t, renovateJob),
 	}
 
-	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob)
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
 
 	if len(scheduled) != 1 || scheduled[0] != "org/p1" {
 		t.Fatalf("expected only org/p1 to be scheduled, got %v", scheduled)
@@ -529,6 +554,9 @@ func TestReconcile_ReturnsErrorOnManagerFailure(t *testing.T) {
 
 func syncEnabledJob(name, namespace string) *api.RenovateJob {
 	job := makeRenovateJob(name, namespace, nil)
+	job.Spec.Image = "ghcr.io/renovatebot/renovate:38.0.0"
+	job.Spec.Provider = &api.RenovateProvider{Name: "github"}
+	job.Spec.Parallelism = 1
 	job.Spec.Webhook = &api.RenovateWebhook{
 		Enabled: true,
 		Sync:    &api.RenovateWebhookSync{Enabled: true},
@@ -548,7 +576,7 @@ func TestReconcileAddsFinalizerWhenSyncEnabled(t *testing.T) {
 		return current, nil
 	}}
 
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}, Policy: policy.Policy{Disabled: true}}
 	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "with-sync", Namespace: "default"}); err != nil {
 		t.Fatalf("unexpected reconcile error: %v", err)
 	}
@@ -564,6 +592,9 @@ func TestReconcileAddsFinalizerWhenSyncEnabled(t *testing.T) {
 
 func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 	job := makeRenovateJob("no-sync", "default", nil)
+	job.Spec.Image = "ghcr.io/renovatebot/renovate:38.0.0"
+	job.Spec.Provider = &api.RenovateProvider{Name: "github"}
+	job.Spec.Parallelism = 1
 	job.Finalizers = []string{api.FinalizerWebhookCleanup}
 	cl := buildFakeK8sClient(t, job)
 
@@ -575,7 +606,7 @@ func TestReconcileRemovesFinalizerWhenSyncDisabled(t *testing.T) {
 		return current, nil
 	}}
 
-	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}}
+	reconciler := &RenovateJobReconciler{Manager: mgr, Scheduler: &fakeScheduler{}, Discovery: &fakeDiscovery{}, K8sClient: cl, GithubApp: &fakeGithubAppToken{}, Policy: policy.Policy{Disabled: true}}
 	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "no-sync", Namespace: "default"}); err != nil {
 		t.Fatalf("unexpected reconcile error: %v", err)
 	}
