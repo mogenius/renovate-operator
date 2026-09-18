@@ -39,6 +39,7 @@
   <script type="text/babel" src="components/StatBadge.js"></script>
   <script type="text/babel" src="components/StickyToolbar.js"></script>
   <script type="text/babel" src="components/Footer.js"></script>
+  <script type="text/babel" src="components/ShortcutsModal.js"></script>
 
   <link rel="stylesheet" href="css/styles.css" />
 </head>
@@ -70,7 +71,7 @@
       );
     }
 
-    function LogRow({ entry, searchQuery }) {
+    function LogRow({ entry, searchQuery, focused, innerRef }) {
       const level = entry.level;
       const { label, color } = levelInfo(level);
       const q = searchQuery ? searchQuery.trim() : "";
@@ -113,7 +114,8 @@
 
       return (
         <div
-          className={`${rowClass} px-3 py-1.5 font-mono text-xs leading-relaxed cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-all`}
+          ref={innerRef}
+          className={`${rowClass} px-3 py-1.5 font-mono text-xs leading-relaxed cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-all${focused ? ' ring-2 ring-inset ring-primary/60' : ''}`}
           onClick={handleClick}
         >
           <div className="flex items-baseline gap-2 min-w-0">
@@ -131,6 +133,18 @@
       );
     }
 
+      const LOGS_SHORTCUTS = [
+        [['j', 'k'], 'Navigate log entries'],
+        [['Enter'], 'Expand / collapse entry'],
+        [['g'], 'Scroll to top'],
+        [['G'], 'Scroll to bottom'],
+        [['/'], 'Focus search'],
+        [['Esc'], 'Clear search'],
+        [['c'], 'Copy logs'],
+        [['d'], 'Download logs'],
+        [['?'], 'Toggle this panel'],
+      ];
+
     function App() {
       const params = new URLSearchParams(window.location.search);
       const namespace = params.get("namespace") || "";
@@ -145,6 +159,10 @@
       const [authInfo, setAuthInfo] = useState(null);
       const [copied, setCopied] = useState(false);
       const [searchQuery, setSearchQuery] = useState("");
+      const [showShortcuts, setShowShortcuts] = useState(false);
+      const [focusedRow, setFocusedRow] = useState(null);
+      const searchRef = useRef(null);
+      const logRowRefsRef = useRef([]);
 
       const BASE = window.__BASE_PATH__ || "";
       const withBase = (url) => (url.startsWith("/") ? BASE + url : url);
@@ -333,8 +351,79 @@
         URL.revokeObjectURL(url);
       }, [filteredLogs, project]);
 
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (e.ctrlKey || e.altKey || e.metaKey) return;
+          const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable;
+          if (e.key === '?' && !inInput) {
+            setShowShortcuts((s) => !s);
+            return;
+          }
+          if (showShortcuts) return;
+          if (inInput) {
+            if (e.key === 'Escape') { setSearchQuery(''); e.target.blur(); }
+            return;
+          }
+          const rowCount = filteredLogs ? filteredLogs.length : 0;
+          switch (e.key) {
+            case '/':
+              e.preventDefault();
+              searchRef.current?.focus();
+              break;
+            case 'Escape':
+              setSearchQuery('');
+              break;
+            case 'g':
+              e.preventDefault();
+              scrollToTop();
+              break;
+            case 'G':
+              e.preventDefault();
+              scrollToBottom();
+              break;
+            case 'j':
+              e.preventDefault();
+              setFocusedRow((prev) => {
+                if (rowCount === 0) return null;
+                return prev === null ? 0 : Math.min(prev + 1, rowCount - 1);
+              });
+              break;
+            case 'k':
+              e.preventDefault();
+              setFocusedRow((prev) => {
+                if (rowCount === 0) return null;
+                return prev === null ? 0 : Math.max(prev - 1, 0);
+              });
+              break;
+            case 'Enter':
+              if (focusedRow !== null && logRowRefsRef.current[focusedRow]) {
+                e.preventDefault();
+                logRowRefsRef.current[focusedRow].click();
+              }
+              break;
+            case 'c':
+              e.preventDefault();
+              handleCopy();
+              break;
+            case 'd':
+              e.preventDefault();
+              handleDownload();
+              break;
+          }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+      }, [showShortcuts, filteredLogs, focusedRow, scrollToTop, scrollToBottom, handleCopy, handleDownload]);
+
+      useEffect(() => {
+        if (focusedRow !== null && logRowRefsRef.current[focusedRow]) {
+          logRowRefsRef.current[focusedRow].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }, [focusedRow]);
+
       return (
         <div className="min-h-screen flex flex-col">
+          {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} shortcuts={LOGS_SHORTCUTS} />}
           {/* Brand strip only — the counters and every control live in the sticky
               toolbar below, so they stay reachable while reading the log. */}
           <SiteHeader version={version} authInfo={authInfo} hasBottomMargin={false} />
@@ -373,6 +462,7 @@
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z" />
                   </svg>
                   <input
+                    ref={searchRef}
                     type="text"
                     placeholder="Search logs…"
                     value={searchQuery}
@@ -457,6 +547,14 @@
                     </svg>
                     <span className="hidden sm:inline">Download</span>
                   </button>
+                  <button
+                    onClick={() => setShowShortcuts(true)}
+                    aria-label="Keyboard shortcuts"
+                    title="Keyboard shortcuts (?)"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-sm font-medium text-gray-700 dark:text-slate-200"
+                  >
+                    ?
+                  </button>
                 </div>
               </div>
             )}
@@ -500,7 +598,13 @@
             {!loading && !error && filteredLogs && filteredLogs.length > 0 && (
               <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-700/50">
                 {filteredLogs.map((entry, i) => (
-                  <LogRow key={i} entry={entry} searchQuery={searchQuery} />
+                  <LogRow
+                    key={i}
+                    entry={entry}
+                    searchQuery={searchQuery}
+                    focused={focusedRow === i}
+                    innerRef={(el) => { logRowRefsRef.current[i] = el; }}
+                  />
                 ))}
                 <div ref={bottomSentinelRef} />
               </div>
