@@ -17,8 +17,10 @@ func gateJob(endpoint string) *api.RenovateJob {
 	job := &api.RenovateJob{}
 	job.ObjectMeta = metav1.ObjectMeta{Name: "test", Namespace: "default"}
 	job.Spec = api.RenovateJobSpec{
-		Schedule: "*/5 * * * *",
-		Provider: &api.RenovateProvider{Name: "github", Endpoint: endpoint},
+		Schedule:    "*/5 * * * *",
+		Image:       "renovate/renovate",
+		Parallelism: 1,
+		Provider:    &api.RenovateProvider{Name: "github", Endpoint: endpoint},
 	}
 	return job
 }
@@ -36,7 +38,7 @@ func gateReconciler(t *testing.T, job *api.RenovateJob, allowedHosts ...string) 
 		Discovery: &fakeDiscovery{},
 		GithubApp: &fakeGithubAppToken{},
 		K8sClient: buildFakeK8sClient(t),
-		Policy:    policy.Policy{AllowedHosts: allowedHosts},
+		Policy:    policy.Policy{AllowedHosts: allowedHosts, AllowedImages: []string{"renovate/renovate"}},
 	}, mgr, sched
 }
 

@@ -22,13 +22,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	apitypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	crdManager "renovate-operator/internal/crdManager"
 )
+
+// templateRefIndexKey indexes RenovateJobs by the "<kind>/<name>" of their
+// spec.templateRef, so a template change can be mapped back to its dependents.
+const templateRefIndexKey = ".spec.templateRef"
 
 var reconcilerTracer = otel.Tracer("renovate-operator/reconciler")
 
@@ -56,14 +63,20 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	defer span.End()
 
 	logger := log.FromContext(ctx)
-	renovateJob, err := r.Manager.GetRenovateJob(ctx, req.Name, req.Namespace)
+	// Raw object: written back below (finalizers, annotations), so it must never
+	// carry an inherited spec.
+	renovateJob, err := r.Manager.GetRawRenovateJob(ctx, req.Name, req.Namespace)
 
 	if err == nil {
 		if !renovateJob.DeletionTimestamp.IsZero() {
 			return r.handleDeletion(ctx, logger, renovateJob)
 		}
-		// renovatejob object read without problem -> create the schedule
-		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob)
+
+		// Merge the template in once. Every derived action (scheduling, token, config
+		// map, discovery) reads the effective spec; a dangling templateRef leaves
+		// effectiveJob nil and is reported by acceptJob.
+		effectiveJob, resolveErr := r.Manager.ResolveEffective(ctx, renovateJob)
+
 		jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 		if projects, projErr := r.Manager.GetProjectsForRenovateJob(ctx, jobId); projErr != nil {
 			logger.Error(projErr, "failed to get projects for metric rehydration")
@@ -76,19 +89,20 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		// Gate before anything is scheduled or created.
-		if !r.acceptJob(ctx, logger, renovateJob) {
+		if !r.acceptJob(ctx, logger, jobId, effectiveJob, resolveErr) {
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 
+		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob, effectiveJob)
 		r.resetOrphanedRunning(ctx, renovateJob)
-		createScheduler(logger, renovateJob, r)
-		if err := r.GithubApp.EnsureToken(ctx, renovateJob); err != nil {
+		createScheduler(logger, effectiveJob, r)
+		if err := r.GithubApp.EnsureToken(ctx, effectiveJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")
 		}
-		if err := renovate.EnsureRenovateConfigMap(ctx, r.K8sClient, renovateJob); err != nil {
+		if err := renovate.EnsureRenovateConfigMap(ctx, r.K8sClient, effectiveJob); err != nil {
 			logger.Error(err, "failed to ensure renovate config configmap")
 		}
-		r.handleAnnotationTriggers(ctx, logger, renovateJob)
+		r.handleAnnotationTriggers(ctx, logger, renovateJob, effectiveJob)
 		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
@@ -105,18 +119,26 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 }
 
-// acceptJob validates the RenovateJob against the operator's policy and records the
-// outcome as the Accepted condition. It returns false when the job must not run.
-func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) bool {
-	jobID := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+// acceptJob validates the effective RenovateJob against the operator's policy and
+// records the outcome as the Accepted condition. It returns false when the job must
+// not run: a dangling templateRef, a required field still missing after the
+// template is merged in, or a policy violation each fail the job closed.
+func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logger, jobID crdManager.RenovateJobIdentifier, effectiveJob *api.RenovateJob, resolveErr error) bool {
+	if resolveErr != nil {
+		return r.refuseJob(ctx, logger, jobID, policy.ReasonTemplateNotFound, resolveErr.Error())
+	}
 
-	err := r.Policy.ValidateJob(renovateJob)
+	if msg := missingRequiredSpecFields(effectiveJob.Spec); msg != "" {
+		return r.refuseJob(ctx, logger, jobID, policy.ReasonIncompleteSpec, msg)
+	}
+
+	err := r.Policy.ValidateJob(effectiveJob)
 	if err == nil {
 		message := "RenovateJob satisfies the operator's policy"
 		if r.Policy.Disabled {
 			message = "the policy engine is disabled, so this RenovateJob was not checked"
 		}
-		if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, true, r.Policy.AcceptedReason(), message); condErr != nil {
+		if _, condErr := r.Manager.SetAcceptedCondition(ctx, jobID, true, r.Policy.AcceptedReason(), message); condErr != nil {
 			logger.Error(condErr, "failed to record the Accepted condition")
 		}
 		return true
@@ -128,19 +150,57 @@ func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logge
 	}
 
 	metricStore.IncPolicyDenial(ctx, "destination")
-	logger.Error(err, "RenovateJob refused by policy, nothing will run for it until this is fixed",
-		"renovateJob", renovateJob.Name, "namespace", renovateJob.Namespace, "reason", reason)
+	return r.refuseJob(ctx, logger, jobID, reason, err.Error())
+}
 
-	r.Scheduler.RemoveSchedule(renovateJob.Namespace, renovateJob.Name)
+// refuseJob records an Accepted=False condition, removes the schedule and returns
+// false, so a refused job stops running until the cause is fixed.
+func (r *RenovateJobReconciler) refuseJob(ctx context.Context, logger logr.Logger, jobID crdManager.RenovateJobIdentifier, reason, message string) bool {
+	r.Scheduler.RemoveSchedule(jobID.Namespace, jobID.Name)
 
-	if condErr := r.Manager.SetAcceptedCondition(ctx, jobID, false, reason, err.Error()); condErr != nil {
+	// Log only when the refusal is new or its reason changed, not on every reconcile
+	// tick, or a persistently-refused job floods the log.
+	changed, condErr := r.Manager.SetAcceptedCondition(ctx, jobID, false, reason, message)
+	if condErr != nil {
 		logger.Error(condErr, "failed to record the Accepted condition")
+	} else if changed {
+		logger.Info("RenovateJob refused, nothing will run for it until this is fixed",
+			"renovateJob", jobID.Name, "namespace", jobID.Namespace, "reason", reason, "message", message)
 	}
 	return false
 }
 
-func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
-	webhook := renovateJob.Spec.Webhook
+// missingRequiredSpecFields reports the fields a RenovateJob must carry once its
+// template is merged in, or "" when the effective spec is complete. These are
+// enforced here, not by the CRD schema, because a template may supply them (so the
+// schema marks them optional).
+func missingRequiredSpecFields(spec api.RenovateJobSpec) string {
+	var missing []string
+	if spec.Schedule == "" {
+		missing = append(missing, "spec.schedule")
+	}
+	if spec.Image == "" {
+		missing = append(missing, "spec.image")
+	}
+	if spec.Provider == nil || spec.Provider.Name == "" {
+		missing = append(missing, "spec.provider.name")
+	}
+	if spec.Parallelism <= 0 {
+		missing = append(missing, "spec.parallelism")
+	}
+	if len(missing) == 0 {
+		return ""
+	}
+	return strings.Join(missing, ", ") + " must be set, on the RenovateJob or on the template it references"
+}
+
+func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob, effectiveJob *api.RenovateJob) {
+	// A dangling templateRef leaves the effective spec unknown; leave the finalizer
+	// as-is rather than guess whether webhook sync is configured.
+	if effectiveJob == nil {
+		return
+	}
+	webhook := effectiveJob.Spec.Webhook
 	syncEnabled := webhook != nil && webhook.Enabled && webhook.Sync != nil && webhook.Sync.Enabled
 
 	if syncEnabled == controllerutil.ContainsFinalizer(renovateJob, api.FinalizerWebhookCleanup) {
@@ -274,7 +334,9 @@ func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renova
 //
 // Each annotation is removed once its action succeeds, making triggers idempotent one-shots.
 // Note: these are annotations (not labels) because project names may contain slashes.
-func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+// effectiveJob carries the template-resolved spec discovery must run with; the raw
+// renovateJob carries the trigger annotations to read and remove.
+func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob, effectiveJob *api.RenovateJob) {
 	annotations := renovateJob.Annotations
 	if len(annotations) == 0 {
 		return
@@ -284,7 +346,7 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 
 	if annotations[api.TriggerDiscoveryAnnotationKey] == "true" {
-		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *renovateJob, renovate.DiscoveryJobOptions{}); err != nil {
+		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *effectiveJob, renovate.DiscoveryJobOptions{}); err != nil {
 			logger.Error(err, "failed to trigger discovery")
 		} else {
 			logger.V(1).Info("discovery triggered via annotation")
@@ -336,9 +398,63 @@ func parseAnnotationProjectList(s string) map[string]struct{} {
 	return result
 }
 
+// templateRefKey renders the index/lookup key for a templateRef, defaulting the
+// kind to the namespaced RenovateJobTemplate.
+func templateRefKey(kind, name string) string {
+	if kind == "" {
+		kind = api.KindRenovateJobTemplate
+	}
+	return kind + "/" + name
+}
+
 func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &api.RenovateJob{}, templateRefIndexKey,
+		func(obj client.Object) []string {
+			ref := obj.(*api.RenovateJob).Spec.TemplateRef
+			if ref == nil {
+				return nil
+			}
+			return []string{templateRefKey(ref.Kind, ref.Name)}
+		}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.RenovateJob{}).
 		Owns(&corev1.ConfigMap{}).
+		Watches(&api.RenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForNamespacedTemplate)).
+		Watches(&api.ClusterRenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForClusterTemplate)).
 		Complete(r)
+}
+
+// jobsForNamespacedTemplate enqueues every RenovateJob in the template's namespace
+// that references it, so an edit propagates immediately.
+func (r *RenovateJobReconciler) jobsForNamespacedTemplate(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.requestsForTemplateKey(ctx,
+		templateRefKey(api.KindRenovateJobTemplate, obj.GetName()),
+		client.InNamespace(obj.GetNamespace()))
+}
+
+// jobsForClusterTemplate enqueues every RenovateJob in any namespace that
+// references the changed cluster-scoped template.
+func (r *RenovateJobReconciler) jobsForClusterTemplate(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.requestsForTemplateKey(ctx,
+		templateRefKey(api.KindClusterRenovateJobTemplate, obj.GetName()))
+}
+
+func (r *RenovateJobReconciler) requestsForTemplateKey(ctx context.Context, key string, opts ...client.ListOption) []reconcile.Request {
+	var jobs api.RenovateJobList
+	listOpts := append([]client.ListOption{client.MatchingFields{templateRefIndexKey: key}}, opts...)
+	if err := r.K8sClient.List(ctx, &jobs, listOpts...); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list RenovateJobs for template change", "templateRef", key)
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(jobs.Items))
+	for i := range jobs.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: apitypes.NamespacedName{
+			Name:      jobs.Items[i].Name,
+			Namespace: jobs.Items[i].Namespace,
+		}})
+	}
+	return requests
 }

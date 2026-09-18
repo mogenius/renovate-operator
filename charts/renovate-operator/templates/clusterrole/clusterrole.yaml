@@ -12,6 +12,10 @@ rules:
     resources: ["renovateprojects", "renovateprojects/status", "renovateprojects/finalizers"]
     verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
 
+  - apiGroups: ["renovate-operator.mogenius.com"]
+    resources: ["renovatejobtemplates", "clusterrenovatejobtemplates"]
+    verbs: ["get", "list", "watch"]
+
   # Allow create, get, list, update, delete on pods
   - apiGroups: [""]
     resources: ["pods"]

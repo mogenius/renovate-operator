@@ -86,7 +86,7 @@ func (s *Server) accessEnforceable(ctx context.Context) *AccessMisconfiguration 
 		return verdict
 	}
 
-	jobs, err := s.manager.ListRenovateJobsFull(ctx)
+	jobs, err := s.manager.ListEffectiveRenovateJobsFull(ctx)
 	if err != nil {
 		// Cannot prove the configuration is unenforceable, so do not treat it as
 		// such: the per-job resolution still fails closed.
@@ -272,7 +272,7 @@ func (s *Server) lockedOutJobsWarning(ctx context.Context) *AccessMisconfigurati
 		return verdict
 	}
 
-	jobs, err := s.manager.ListRenovateJobsFull(ctx)
+	jobs, err := s.manager.ListEffectiveRenovateJobsFull(ctx)
 	if err != nil {
 		// No list, no verdict — an API blip must not fabricate or clear a warning.
 		s.logger.Error(err, "failed to list renovatejobs to check for locked-out jobs, continuing")
@@ -293,7 +293,7 @@ func (s *Server) lockedOutJobsWarning(ctx context.Context) *AccessMisconfigurati
 }
 
 func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
-	renovateJobs, err := s.manager.ListRenovateJobsFull(r.Context())
+	renovateJobs, err := s.manager.ListEffectiveRenovateJobsFull(r.Context())
 	if err != nil {
 		internalServerError(w, err, "failed to load renovatejobs")
 		return

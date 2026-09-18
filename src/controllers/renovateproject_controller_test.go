@@ -178,8 +178,17 @@ func (f *fakeProjectManager) ListRenovateJobs(_ context.Context) ([]crdManager.R
 func (f *fakeProjectManager) ListRenovateJobsFull(_ context.Context) ([]api.RenovateJob, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (f *fakeProjectManager) ListEffectiveRenovateJobsFull(_ context.Context) ([]api.RenovateJob, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 func (f *fakeProjectManager) GetRenovateJob(_ context.Context, _, _ string) (*api.RenovateJob, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeProjectManager) GetRawRenovateJob(_ context.Context, _, _ string) (*api.RenovateJob, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeProjectManager) ResolveEffective(_ context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	return job, nil
 }
 func (f *fakeProjectManager) GetProjectsForRenovateJob(_ context.Context, _ crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
@@ -211,8 +220,8 @@ func (f *fakeProjectManager) IsWebhookSignatureValid(_ context.Context, _ crdMan
 func (f *fakeProjectManager) IsWebhookStandardSignatureValid(_ context.Context, _ crdManager.RenovateJobIdentifier, _, _, _ string, _ []byte) (bool, error) {
 	return false, fmt.Errorf("not implemented")
 }
-func (f *fakeProjectManager) SetAcceptedCondition(_ context.Context, _ crdManager.RenovateJobIdentifier, _ bool, _, _ string) error {
-	return fmt.Errorf("not implemented")
+func (f *fakeProjectManager) SetAcceptedCondition(_ context.Context, _ crdManager.RenovateJobIdentifier, _ bool, _, _ string) (bool, error) {
+	return false, fmt.Errorf("not implemented")
 }
 func (f *fakeProjectManager) CancelProjectJob(_ context.Context, _ string, _ crdManager.RenovateJobIdentifier) error {
 	return fmt.Errorf("not implemented")

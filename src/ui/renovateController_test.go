@@ -28,15 +28,16 @@ import (
 
 // Mock RenovateJobManager
 type mockRenovateJobManager struct {
-	listRenovateJobsFunc           func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
-	listRenovateJobsFullFunc       func(ctx context.Context) ([]api.RenovateJob, error)
-	getProjectsForRenovateJobFunc  func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
-	streamLogsForProjectFunc       func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error)
-	updateProjectStatusFunc        func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
-	getRenovateJobFunc             func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
-	reconcileProjectsFunc          func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
-	cancelProjectJobFunc           func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
-	updateProjectStatusBatchedFunc func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	listRenovateJobsFunc              func(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error)
+	listRenovateJobsFullFunc          func(ctx context.Context) ([]api.RenovateJob, error)
+	listEffectiveRenovateJobsFullFunc func(ctx context.Context) ([]api.RenovateJob, error)
+	getProjectsForRenovateJobFunc     func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
+	streamLogsForProjectFunc          func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, project string) (io.ReadCloser, error)
+	updateProjectStatusFunc           func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	getRenovateJobFunc                func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
+	reconcileProjectsFunc             func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
+	cancelProjectJobFunc              func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
+	updateProjectStatusBatchedFunc    func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -51,6 +52,13 @@ func (m *mockRenovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]ap
 		return m.listRenovateJobsFullFunc(ctx)
 	}
 	return nil, nil
+}
+
+func (m *mockRenovateJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	if m.listEffectiveRenovateJobsFullFunc != nil {
+		return m.listEffectiveRenovateJobsFullFunc(ctx)
+	}
+	return m.ListRenovateJobsFull(ctx)
 }
 
 func (m *mockRenovateJobManager) GetProjectsForRenovateJob(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error) {
@@ -79,6 +87,14 @@ func (m *mockRenovateJobManager) GetRenovateJob(ctx context.Context, name, names
 		return m.getRenovateJobFunc(ctx, name, namespace)
 	}
 	return nil, nil
+}
+
+func (m *mockRenovateJobManager) GetRawRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+	return m.GetRenovateJob(ctx, name, namespace)
+}
+
+func (m *mockRenovateJobManager) ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	return job, nil
 }
 
 func (m *mockRenovateJobManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {
@@ -130,8 +146,8 @@ func (r *mockRenovateJobManager) IsWebhookStandardSignatureValid(ctx context.Con
 	return true, nil
 }
 
-func (m *mockRenovateJobManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
-	return nil
+func (m *mockRenovateJobManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
+	return true, nil
 }
 func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
 	if m.cancelProjectJobFunc != nil {

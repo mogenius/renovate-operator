@@ -20,7 +20,8 @@ var ErrAuthenticationFailed = errors.New("authentication failed")
 type AuthChecker func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) (bool, error)
 
 type jobLister interface {
-	ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
+	// Effective specs: a job's webhook block may be inherited from a template.
+	ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error)
 	GetProjectsForRenovateJob(ctx context.Context, job crdmanager.RenovateJobIdentifier) ([]crdmanager.RenovateProjectStatus, error)
 }
 
@@ -47,7 +48,7 @@ func FindAndAuthenticateJob(
 	project string,
 	checker AuthChecker,
 ) (crdmanager.RenovateJobIdentifier, error) {
-	jobs, err := manager.ListRenovateJobsFull(ctx)
+	jobs, err := manager.ListEffectiveRenovateJobsFull(ctx)
 	if err != nil {
 		return crdmanager.RenovateJobIdentifier{}, err
 	}

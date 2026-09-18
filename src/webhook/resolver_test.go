@@ -23,7 +23,7 @@ type mockJobLister struct {
 	err     error
 }
 
-func (m *mockJobLister) ListRenovateJobsFull(_ context.Context) ([]api.RenovateJob, error) {
+func (m *mockJobLister) ListEffectiveRenovateJobsFull(_ context.Context) ([]api.RenovateJob, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
