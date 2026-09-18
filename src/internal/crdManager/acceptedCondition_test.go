@@ -87,7 +87,7 @@ func TestSetAcceptedConditionRecordsRefusal(t *testing.T) {
 	mgr, writes := conditionManager(t, job)
 	id := RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 
-	err := mgr.SetAcceptedCondition(context.Background(), id, false,
+	_, err := mgr.SetAcceptedCondition(context.Background(), id, false,
 		policy.ReasonDestinationNotAllowed, `spec.provider.endpoint: host "attacker.example.net" is not allowed`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -121,9 +121,15 @@ func TestSetAcceptedConditionIsIdempotent(t *testing.T) {
 	id := RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 	ctx := context.Background()
 
-	for range 5 {
-		if err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "same message"); err != nil {
+	for i := range 5 {
+		changed, err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "same message")
+		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		// changed drives whether the controller logs; it must be true only on the
+		// first, transitioning call.
+		if want := i == 0; changed != want {
+			t.Errorf("call %d: expected changed=%v, got %v", i, want, changed)
 		}
 	}
 
@@ -138,10 +144,10 @@ func TestSetAcceptedConditionFlipsBackToAccepted(t *testing.T) {
 	id := RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 	ctx := context.Background()
 
-	if err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "denied"); err != nil {
+	if _, err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "denied"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := mgr.SetAcceptedCondition(ctx, id, true, policy.ReasonPolicySatisfied, "ok now"); err != nil {
+	if _, err := mgr.SetAcceptedCondition(ctx, id, true, policy.ReasonPolicySatisfied, "ok now"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -165,10 +171,10 @@ func TestSetAcceptedConditionPersistsMessageChange(t *testing.T) {
 	id := RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 	ctx := context.Background()
 
-	if err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "host a.example.net is not allowed"); err != nil {
+	if _, err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "host a.example.net is not allowed"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "host b.example.net is not allowed"); err != nil {
+	if _, err := mgr.SetAcceptedCondition(ctx, id, false, policy.ReasonDestinationNotAllowed, "host b.example.net is not allowed"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

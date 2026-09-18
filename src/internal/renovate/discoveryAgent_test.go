@@ -36,6 +36,12 @@ func (f *fakeJobManager) GetRenovateJob(ctx context.Context, name, namespace str
 	}
 	return &api.RenovateJob{}, nil
 }
+func (f *fakeJobManager) GetRawRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+	return f.GetRenovateJob(ctx, name, namespace)
+}
+func (f *fakeJobManager) ResolveEffective(_ context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	return job, nil
+}
 func (f *fakeJobManager) ReconcileProjects(ctx context.Context, job *api.RenovateJob, projects []string) ([]string, error) {
 	if f.reconcileProjectsFn != nil {
 		return nil, f.reconcileProjectsFn(ctx, job, projects)
@@ -60,6 +66,9 @@ func (f *fakeJobManager) ListRenovateJobs(ctx context.Context) ([]crdManager.Ren
 }
 func (f *fakeJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return f.ListRenovateJobsFull(ctx)
 }
 func (f *fakeJobManager) GetProjectsForRenovateJob(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
@@ -88,8 +97,8 @@ func (f *fakeJobManager) IsWebhookSignatureValid(ctx context.Context, job crdMan
 func (f *fakeJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job crdManager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
 	return true, nil
 }
-func (f *fakeJobManager) SetAcceptedCondition(ctx context.Context, job crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
-	return nil
+func (f *fakeJobManager) SetAcceptedCondition(ctx context.Context, job crdManager.RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
+	return true, nil
 }
 func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil

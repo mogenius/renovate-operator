@@ -26,6 +26,10 @@ func (m *mockWebhookManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 	return nil, nil
 }
 
+func (m *mockWebhookManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	return m.ListRenovateJobsFull(ctx)
+}
+
 func (m *mockWebhookManager) UpdateProjectStatus(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	if m.updateProjectStatusFunc != nil {
 		return m.updateProjectStatusFunc(ctx, project, jobId, status)
@@ -54,8 +58,8 @@ func (m *mockWebhookManager) IsWebhookStandardSignatureValid(ctx context.Context
 	return true, nil
 }
 
-func (m *mockWebhookManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) error {
-	return nil
+func (m *mockWebhookManager) SetAcceptedCondition(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
+	return true, nil
 }
 func (m *mockWebhookManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
 	return nil
@@ -91,6 +95,14 @@ func (m *mockWebhookManager) StreamLogsForProject(ctx context.Context, jobId crd
 
 func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
 	return nil, nil
+}
+
+func (m *mockWebhookManager) GetRawRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+	return nil, nil
+}
+
+func (m *mockWebhookManager) ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
+	return job, nil
 }
 
 func (m *mockWebhookManager) SyncWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier, removedProjects []string) error {

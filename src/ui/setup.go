@@ -230,7 +230,7 @@ func (s *Server) setupSecretNamespaceAllowed(ctx context.Context, namespace stri
 }
 
 func (s *Server) computeSetupStatus(ctx context.Context) SetupStatus {
-	jobs, err := s.manager.ListRenovateJobsFull(ctx)
+	jobs, err := s.manager.ListEffectiveRenovateJobsFull(ctx)
 	if err != nil {
 		// Without the list every claim below would be a guess. Hide the guide
 		// for this cache period; the dashboard's own job fetch surfaces the error.

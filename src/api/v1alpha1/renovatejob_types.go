@@ -4,6 +4,7 @@
 package v1alpha1
 
 import (
+	"maps"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,20 +16,37 @@ import (
 // RenovateJobSpec defines the desired state of RenovateJob
 // +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 type RenovateJobSpec struct {
-	// Cron schedule in standard cron format
-	Schedule string `json:"schedule"`
-	// Renovate Docker image to use
-	Image string `json:"image"`
-	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container
-	Provider *RenovateProvider `json:"provider"`
+	// TemplateRef inherits shared configuration from a RenovateJobTemplate (in the
+	// same namespace) or a cluster-scoped ClusterRenovateJobTemplate. Fields set on
+	// this RenovateJob override the template's per field; fields left unset are
+	// inherited. A templateRef set on a template itself is ignored: templates do not
+	// nest.
+	// +optional
+	TemplateRef *RenovateJobTemplateRef `json:"templateRef,omitempty"`
+	// Cron schedule in standard cron format. Required, but may be inherited from
+	// templateRef, so it can be left unset here.
+	// +optional
+	Schedule string `json:"schedule,omitempty"`
+	// Renovate Docker image to use. Required, but may be inherited from templateRef,
+	// so it can be left unset here.
+	// +optional
+	Image string `json:"image,omitempty"`
+	// Renovate Provider Information to fill "RENOVATE_ENDPOINT" and "RENOVATE_PLATFORM" environment variables in the renovate container.
+	// Required, but may be inherited from templateRef, so it can be left unset here.
+	// +optional
+	Provider *RenovateProvider `json:"provider,omitempty"`
 	// Filter to select which projects to process, will be concatenated using , separator
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	// Topics to discover projects from, will be concatenated using , separator
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
-	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
-	SkipForks bool `json:"skipForks,omitempty"`
+	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API.
+	// A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
+	// +optional
+	SkipForks *bool `json:"skipForks,omitempty"`
 	// If true, repositories marked for delayed deletion (pending deletion) will be excluded by querying the platform API. Only GitLab exposes this state.
-	SkipPendingDeletion bool `json:"skipPendingDeletion,omitempty"`
+	// A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
+	// +optional
+	SkipPendingDeletion *bool `json:"skipPendingDeletion,omitempty"`
 	// Reference to the secret containing the renovate config
 	SecretRef string `json:"secretRef,omitempty"`
 	// Renovate configuration file for the job pods
@@ -38,8 +56,10 @@ type RenovateJobSpec struct {
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
 	// Additional environment variable sources to set in the renovate container
 	ExtraEnvFrom []corev1.EnvFromSource `json:"extraEnvFrom,omitempty"`
-	// Maximum number of projects to process in parallel
-	Parallelism int32 `json:"parallelism"`
+	// Maximum number of projects to process in parallel. Required, but may be
+	// inherited from templateRef, so it can be left unset here.
+	// +optional
+	Parallelism int32 `json:"parallelism,omitempty"`
 	// Resource requirements for the renovate container
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 	// Node selector for scheduling the resulting pod
@@ -343,41 +363,196 @@ func (in *RenovateJobAccess) DeepCopyInto(out *RenovateJobAccess) {
 	}
 }
 
-// DeepCopyInto deep copies a RenovateJob into out.
-func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
+// DeepCopyInto deep copies a RenovateJobSpec into out. Shared by RenovateJob and
+// the template types.
+func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	*out = *in
-	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	if in.Spec.AllowedGroups != nil {
-		out.Spec.AllowedGroups = make([]string, len(in.Spec.AllowedGroups))
-		copy(out.Spec.AllowedGroups, in.Spec.AllowedGroups)
+	if in.TemplateRef != nil {
+		out.TemplateRef = new(RenovateJobTemplateRef)
+		*out.TemplateRef = *in.TemplateRef
 	}
-	if in.Spec.Access != nil {
-		out.Spec.Access = new(RenovateJobAccess)
-		in.Spec.Access.DeepCopyInto(out.Spec.Access)
+	if in.Provider != nil {
+		out.Provider = new(RenovateProvider)
+		*out.Provider = *in.Provider
 	}
-	if in.Spec.ScratchVolume != nil {
-		out.Spec.ScratchVolume = new(RenovateJobScratchVolume)
-		in.Spec.ScratchVolume.DeepCopyInto(out.Spec.ScratchVolume)
+	if in.DiscoveryFilters != nil {
+		out.DiscoveryFilters = make([]string, len(in.DiscoveryFilters))
+		copy(out.DiscoveryFilters, in.DiscoveryFilters)
 	}
-	if in.Spec.RuntimeClassName != nil {
-		out.Spec.RuntimeClassName = new(string)
-		*out.Spec.RuntimeClassName = *in.Spec.RuntimeClassName
+	if in.DiscoverTopics != nil {
+		out.DiscoverTopics = make([]string, len(in.DiscoverTopics))
+		copy(out.DiscoverTopics, in.DiscoverTopics)
 	}
-	if in.Spec.RenovateConfig != nil {
-		out.Spec.RenovateConfig = new(RenovateJobConfig)
-		*out.Spec.RenovateConfig = *in.Spec.RenovateConfig
-		if in.Spec.RenovateConfig.ConfigMapRef != nil {
-			out.Spec.RenovateConfig.ConfigMapRef = new(RenovateConfigMapKeyReference)
-			*out.Spec.RenovateConfig.ConfigMapRef = *in.Spec.RenovateConfig.ConfigMapRef
+	if in.SkipForks != nil {
+		out.SkipForks = new(bool)
+		*out.SkipForks = *in.SkipForks
+	}
+	if in.SkipPendingDeletion != nil {
+		out.SkipPendingDeletion = new(bool)
+		*out.SkipPendingDeletion = *in.SkipPendingDeletion
+	}
+	if in.RenovateConfig != nil {
+		out.RenovateConfig = new(RenovateJobConfig)
+		*out.RenovateConfig = *in.RenovateConfig
+		if in.RenovateConfig.ConfigMapRef != nil {
+			out.RenovateConfig.ConfigMapRef = new(RenovateConfigMapKeyReference)
+			*out.RenovateConfig.ConfigMapRef = *in.RenovateConfig.ConfigMapRef
 		}
 	}
-	if in.Status.Conditions != nil {
-		out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))
-		copy(out.Status.Conditions, in.Status.Conditions)
+	if in.ExtraEnv != nil {
+		out.ExtraEnv = make([]corev1.EnvVar, len(in.ExtraEnv))
+		for i := range in.ExtraEnv {
+			in.ExtraEnv[i].DeepCopyInto(&out.ExtraEnv[i])
+		}
+	}
+	if in.ExtraEnvFrom != nil {
+		out.ExtraEnvFrom = make([]corev1.EnvFromSource, len(in.ExtraEnvFrom))
+		for i := range in.ExtraEnvFrom {
+			in.ExtraEnvFrom[i].DeepCopyInto(&out.ExtraEnvFrom[i])
+		}
+	}
+	in.Resources.DeepCopyInto(&out.Resources)
+	if in.NodeSelector != nil {
+		out.NodeSelector = make(map[string]string, len(in.NodeSelector))
+		maps.Copy(out.NodeSelector, in.NodeSelector)
+	}
+	if in.Affinity != nil {
+		out.Affinity = new(corev1.Affinity)
+		in.Affinity.DeepCopyInto(out.Affinity)
+	}
+	if in.Tolerations != nil {
+		out.Tolerations = make([]corev1.Toleration, len(in.Tolerations))
+		for i := range in.Tolerations {
+			in.Tolerations[i].DeepCopyInto(&out.Tolerations[i])
+		}
+	}
+	if in.TopologySpreadConstraints != nil {
+		out.TopologySpreadConstraints = make([]corev1.TopologySpreadConstraint, len(in.TopologySpreadConstraints))
+		for i := range in.TopologySpreadConstraints {
+			in.TopologySpreadConstraints[i].DeepCopyInto(&out.TopologySpreadConstraints[i])
+		}
+	}
+	if in.ServiceAccount != nil {
+		out.ServiceAccount = new(RenovateJobServiceAccount)
+		*out.ServiceAccount = *in.ServiceAccount
+		if in.ServiceAccount.AutomountServiceAccountToken != nil {
+			out.ServiceAccount.AutomountServiceAccountToken = new(bool)
+			*out.ServiceAccount.AutomountServiceAccountToken = *in.ServiceAccount.AutomountServiceAccountToken
+		}
+	}
+	if in.Metadata != nil {
+		out.Metadata = new(RenovateJobMetadata)
+		*out.Metadata = *in.Metadata
+		if in.Metadata.Labels != nil {
+			out.Metadata.Labels = make(map[string]string, len(in.Metadata.Labels))
+			maps.Copy(out.Metadata.Labels, in.Metadata.Labels)
+		}
+		if in.Metadata.Annotations != nil {
+			out.Metadata.Annotations = make(map[string]string, len(in.Metadata.Annotations))
+			maps.Copy(out.Metadata.Annotations, in.Metadata.Annotations)
+		}
+	}
+	if in.SecurityContext != nil {
+		out.SecurityContext = new(RenovateJobSecurityContext)
+		if in.SecurityContext.Pod != nil {
+			out.SecurityContext.Pod = new(corev1.PodSecurityContext)
+			in.SecurityContext.Pod.DeepCopyInto(out.SecurityContext.Pod)
+		}
+		if in.SecurityContext.Container != nil {
+			out.SecurityContext.Container = new(corev1.SecurityContext)
+			in.SecurityContext.Container.DeepCopyInto(out.SecurityContext.Container)
+		}
+	}
+	if in.Webhook != nil {
+		out.Webhook = new(RenovateWebhook)
+		*out.Webhook = *in.Webhook
+		if in.Webhook.Authentication != nil {
+			out.Webhook.Authentication = new(RenovateWebhookAuth)
+			*out.Webhook.Authentication = *in.Webhook.Authentication
+			if in.Webhook.Authentication.SecretRef != nil {
+				out.Webhook.Authentication.SecretRef = new(RenovateSecretKeyReference)
+				*out.Webhook.Authentication.SecretRef = *in.Webhook.Authentication.SecretRef
+			}
+		}
+		if in.Webhook.Sync != nil {
+			out.Webhook.Sync = new(RenovateWebhookSync)
+			*out.Webhook.Sync = *in.Webhook.Sync
+			if in.Webhook.Sync.SecretRef != nil {
+				out.Webhook.Sync.SecretRef = new(RenovateSecretKeyReference)
+				*out.Webhook.Sync.SecretRef = *in.Webhook.Sync.SecretRef
+			}
+		}
+	}
+	if in.ExtraVolumes != nil {
+		out.ExtraVolumes = make([]corev1.Volume, len(in.ExtraVolumes))
+		for i := range in.ExtraVolumes {
+			in.ExtraVolumes[i].DeepCopyInto(&out.ExtraVolumes[i])
+		}
+	}
+	if in.ExtraVolumeMounts != nil {
+		out.ExtraVolumeMounts = make([]corev1.VolumeMount, len(in.ExtraVolumeMounts))
+		for i := range in.ExtraVolumeMounts {
+			in.ExtraVolumeMounts[i].DeepCopyInto(&out.ExtraVolumeMounts[i])
+		}
+	}
+	if in.ImagePullSecrets != nil {
+		out.ImagePullSecrets = make([]corev1.LocalObjectReference, len(in.ImagePullSecrets))
+		copy(out.ImagePullSecrets, in.ImagePullSecrets)
+	}
+	if in.AllowedGroups != nil {
+		out.AllowedGroups = make([]string, len(in.AllowedGroups))
+		copy(out.AllowedGroups, in.AllowedGroups)
+	}
+	if in.Access != nil {
+		out.Access = new(RenovateJobAccess)
+		in.Access.DeepCopyInto(out.Access)
+	}
+	if in.ScratchVolume != nil {
+		out.ScratchVolume = new(RenovateJobScratchVolume)
+		in.ScratchVolume.DeepCopyInto(out.ScratchVolume)
+	}
+	if in.GithubAppReference != nil {
+		out.GithubAppReference = new(GithubAppReference)
+		*out.GithubAppReference = *in.GithubAppReference
+	}
+	if in.RuntimeClassName != nil {
+		out.RuntimeClassName = new(string)
+		*out.RuntimeClassName = *in.RuntimeClassName
 	}
 }
 
-func (in *RenovateJob) DeepCopyObject() runtime.Object {
+// DeepCopy returns a deep copy of the RenovateJobSpec.
+func (in *RenovateJobSpec) DeepCopy() *RenovateJobSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(RenovateJobSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto deep copies a RenovateJobStatus into out.
+func (in *RenovateJobStatus) DeepCopyInto(out *RenovateJobStatus) {
+	*out = *in
+	if in.Conditions != nil {
+		out.Conditions = make([]metav1.Condition, len(in.Conditions))
+		for i := range in.Conditions {
+			in.Conditions[i].DeepCopyInto(&out.Conditions[i])
+		}
+	}
+}
+
+// DeepCopyInto deep copies a RenovateJob into out.
+func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	in.Spec.DeepCopyInto(&out.Spec)
+	in.Status.DeepCopyInto(&out.Status)
+}
+
+// DeepCopy returns a deep copy of the RenovateJob.
+func (in *RenovateJob) DeepCopy() *RenovateJob {
 	if in == nil {
 		return nil
 	}
@@ -386,13 +561,33 @@ func (in *RenovateJob) DeepCopyObject() runtime.Object {
 	return out
 }
 
+func (in *RenovateJob) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	return in.DeepCopy()
+}
+
 // unique name for a renovatejob ${name}-${namespace}
 func (in *RenovateJob) Fullname() string {
 	return in.Name + "-" + in.Namespace
 }
 
 func (in *RenovateProvider) Is(provider string) bool {
+	if in == nil {
+		return false
+	}
 	return strings.EqualFold(in.Name, provider)
+}
+
+// GetSkipForks reports the resolved SkipForks value, treating an unset pointer as false.
+func (in *RenovateJobSpec) GetSkipForks() bool {
+	return in.SkipForks != nil && *in.SkipForks
+}
+
+// GetSkipPendingDeletion reports the resolved SkipPendingDeletion value, treating an unset pointer as false.
+func (in *RenovateJobSpec) GetSkipPendingDeletion() bool {
+	return in.SkipPendingDeletion != nil && *in.SkipPendingDeletion
 }
 
 type RenovateJobList struct {

@@ -126,7 +126,7 @@ func (e *renovateExecutor) execute(ctx context.Context, options executionOptions
 		log.FromContext(ctx).V(2).Info("Executed renovate executor loop", "duration", duration)
 	}()
 
-	renovateJobs, err := e.manager.ListRenovateJobsFull(ctx)
+	renovateJobs, err := e.manager.ListEffectiveRenovateJobsFull(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
