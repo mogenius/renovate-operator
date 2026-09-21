@@ -129,3 +129,7 @@ func equalSlices(a, b []string) bool {
 	}
 	return true
 }
+
+func (m *mockGitProviderClient) ListRepositoriesByProperty(context.Context, string, []string) ([]string, error) {
+	return nil, ErrCustomPropertiesUnsupported
+}

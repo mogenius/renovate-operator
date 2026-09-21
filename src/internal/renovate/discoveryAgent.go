@@ -5,6 +5,7 @@ import (
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
+	gitProviderClientFactory "renovate-operator/gitProviderClients/factory"
 	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/podLogs"
 	"renovate-operator/internal/policy"
@@ -53,9 +54,10 @@ type discoveryAgent struct {
 	syncer    sync.Map // key: job.Fullname() → *sync.RWMutex
 	logReader podLogs.PodLogReader
 	policy    policy.Policy
+	providers gitProviderClientFactory.GitProviderClientFactory
 }
 
-func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader, p policy.Policy) DiscoveryAgent {
+func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr.Logger, manager crdManager.RenovateJobManager, lr podLogs.PodLogReader, p policy.Policy, providers gitProviderClientFactory.GitProviderClientFactory) DiscoveryAgent {
 	return &discoveryAgent{
 		client:    client,
 		logger:    logger,
@@ -63,7 +65,47 @@ func NewDiscoveryAgent(scheme *runtime.Scheme, client client.Client, logger logr
 		manager:   manager,
 		logReader: lr,
 		policy:    p,
+		providers: providers,
 	}
+}
+
+// resolveDiscoveryProperties turns spec.discoveryProperties into the
+// repositories that currently carry a matching property, so the discovery
+// job can pass them as its autodiscover filter. Runs right before every
+// discovery, which is what makes property changes take effect without
+// touching the RenovateJob. It never lets a job run unfiltered: when the
+// properties are the job's only selection and resolve to nothing, discovery
+// is refused rather than widened to the whole platform.
+func (e *discoveryAgent) resolveDiscoveryProperties(ctx context.Context, job *api.RenovateJob) ([]string, error) {
+	if len(job.Spec.DiscoveryProperties) == 0 {
+		return nil, nil
+	}
+	if e.providers == nil {
+		return nil, fmt.Errorf("discoveryProperties set but no platform client factory is configured")
+	}
+	providerClient, err := e.providers.NewClient(ctx, job)
+	if err != nil {
+		return nil, fmt.Errorf("discoveryProperties: creating platform client: %w", err)
+	}
+	seen := map[string]struct{}{}
+	var resolved []string
+	for _, prop := range job.Spec.DiscoveryProperties {
+		repos, err := providerClient.ListRepositoriesByProperty(ctx, prop.Name, prop.Values)
+		if err != nil {
+			return nil, fmt.Errorf("discoveryProperties: resolving %q: %w", prop.Name, err)
+		}
+		for _, repo := range repos {
+			if _, dup := seen[repo]; !dup {
+				seen[repo] = struct{}{}
+				resolved = append(resolved, repo)
+			}
+		}
+	}
+	if len(resolved) == 0 && len(job.Spec.DiscoveryFilters) == 0 {
+		return nil, fmt.Errorf("discoveryProperties resolved to no repositories and no discoveryFilters are set; refusing to run discovery unfiltered")
+	}
+	log.FromContext(ctx).Info("resolved discovery properties", "renovateJob", job.Fullname(), "repositories", len(resolved))
+	return resolved, nil
 }
 
 // GetDiscoveryJobStatus implements DiscoveryAgent.
@@ -217,9 +259,14 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		redisSecretName = redisSecret.Name
 	}
 
+	resolvedProjects, err := e.resolveDiscoveryProperties(ctx, &renovateJob)
+	if err != nil {
+		return "", err
+	}
+
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
-	discoveryJob := newDiscoveryJob(&renovateJob, withCarrier(carrier), withRedisSecret(redisSecretName))
+	discoveryJob := newDiscoveryJob(&renovateJob, withCarrier(carrier), withRedisSecret(redisSecretName), withResolvedProjects(resolvedProjects))
 	if options.TriggerAllProjects {
 		if discoveryJob.Annotations == nil {
 			discoveryJob.Annotations = make(map[string]string)

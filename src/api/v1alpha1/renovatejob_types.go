@@ -12,6 +12,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// DiscoveryProperty selects repositories by a platform custom property.
+type DiscoveryProperty struct {
+	// Name of the custom property, e.g. owning-team
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Accepted values. A repository matches when its property equals one of
+	// them; a multi-select property matches when any selected value is listed.
+	// +kubebuilder:validation:MinItems=1
+	Values []string `json:"values"`
+}
+
 // RenovateJobSpec defines the desired state of RenovateJob
 // +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 type RenovateJobSpec struct {
@@ -25,6 +36,13 @@ type RenovateJobSpec struct {
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	// Topics to discover projects from, will be concatenated using , separator
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
+	// Discover projects by platform custom property (GitHub repository custom
+	// properties): every repository the platform token can see whose property
+	// matches one of the listed values is added to the autodiscover filter.
+	// Resolved by the operator right before each discovery run, so a repository
+	// joins or leaves the job by changing its property, without editing this
+	// resource. Combined with discoveryFilters (union). GitHub only.
+	DiscoveryProperties []DiscoveryProperty `json:"discoveryProperties,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API
 	SkipForks bool `json:"skipForks,omitempty"`
 	// If true, repositories marked for delayed deletion (pending deletion) will be excluded by querying the platform API. Only GitLab exposes this state.
@@ -350,6 +368,12 @@ func (in *RenovateJob) DeepCopyInto(out *RenovateJob) {
 	if in.Spec.AllowedGroups != nil {
 		out.Spec.AllowedGroups = make([]string, len(in.Spec.AllowedGroups))
 		copy(out.Spec.AllowedGroups, in.Spec.AllowedGroups)
+	}
+	if in.Spec.DiscoveryProperties != nil {
+		out.Spec.DiscoveryProperties = make([]DiscoveryProperty, len(in.Spec.DiscoveryProperties))
+		for i, prop := range in.Spec.DiscoveryProperties {
+			out.Spec.DiscoveryProperties[i] = DiscoveryProperty{Name: prop.Name, Values: append([]string(nil), prop.Values...)}
+		}
 	}
 	if in.Spec.Access != nil {
 		out.Spec.Access = new(RenovateJobAccess)

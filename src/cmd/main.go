@@ -827,6 +827,7 @@ func main() {
 		jobMgr,
 		podLogReader,
 		guardRails,
+		gitProviderClientFactory,
 	)
 
 	cronManager := scheduler.NewScheduler(ctrl.Log.WithName("scheduler"), health)

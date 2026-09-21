@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"renovate-operator/gitProviderClients"
@@ -135,5 +137,79 @@ func TestDeleteRepoWebhook(t *testing.T) {
 	err := newTestClient(srv.URL).DeleteRepoWebhook(context.Background(), "org/repo1", "42")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestListRepositoriesByProperty_InstallationToken(t *testing.T) {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/installation/repositories", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("page") {
+		case "1":
+			// a full page forces a second request
+			repos := make([]string, 0, 100)
+			for i := 0; i < 98; i++ {
+				repos = append(repos, `{"full_name":"org/filler-`+strconv.Itoa(i)+`","custom_properties":{"owning-team":"other"}}`)
+			}
+			repos = append(repos,
+				`{"full_name":"org/platform","custom_properties":{"owning-team":"software-platform"}}`,
+				`{"full_name":"org/archived","archived":true,"custom_properties":{"owning-team":"software-platform"}}`)
+			_, _ = w.Write([]byte(`{"total_count":101,"repositories":[` + strings.Join(repos, ",") + `]}`))
+		default:
+			_, _ = w.Write([]byte(`{"total_count":101,"repositories":[
+				{"full_name":"org/multi","custom_properties":{"owning-team":["ground","software-platform"]}},
+				{"full_name":"org/unset","custom_properties":{"owning-team":null}},
+				{"full_name":"org/noprops"}
+			]}`))
+		}
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	repos, err := newTestClient(srv.URL).ListRepositoriesByProperty(context.Background(), "owning-team", []string{"software-platform"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"org/multi", "org/platform"}
+	if len(repos) != len(want) {
+		t.Fatalf("expected %v, got %v", want, repos)
+	}
+	for i := range want {
+		if repos[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, repos)
+		}
+	}
+}
+
+func TestListRepositoriesByProperty_FallsBackToUserRepos(t *testing.T) {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/installation/repositories", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Resource not accessible by personal access token"}`))
+	})
+	handler.HandleFunc("/user/repos", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"full_name":"org/mine","custom_properties":{"owning-team":"gnc"}},{"full_name":"org/theirs","custom_properties":{"owning-team":"fpga"}}]`))
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	repos, err := newTestClient(srv.URL).ListRepositoriesByProperty(context.Background(), "owning-team", []string{"gnc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repos) != 1 || repos[0] != "org/mine" {
+		t.Fatalf("expected [org/mine], got %v", repos)
+	}
+}
+
+func TestListRepositoriesByProperty_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if _, err := newTestClient(srv.URL).ListRepositoriesByProperty(context.Background(), "owning-team", []string{"gnc"}); err == nil {
+		t.Fatal("expected an error on 500")
 	}
 }

@@ -920,3 +920,20 @@ func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
 		}
 	})
 }
+
+func TestNewDiscoveryJob_ResolvedProjectsJoinTheFilter(t *testing.T) {
+	job := &api.RenovateJob{
+		Name: "rj", Namespace: "ns",
+		Spec: api.RenovateJobSpec{
+			Image:            "img",
+			Provider:         &api.RenovateProvider{Name: "github", Endpoint: "https://ghe.example.com/api/v3"},
+			DiscoveryFilters: []string{"org/explicit"},
+		},
+	}
+	dj := newDiscoveryJob(job, withResolvedProjects([]string{"org/by-property", "org/another"}))
+	expectEnvVar(t, &dj.Spec.Template.Spec.Containers[0], "RENOVATE_AUTODISCOVER_FILTER", "org/explicit,org/by-property,org/another")
+
+	onlyResolved := newDiscoveryJob(&api.RenovateJob{Name: "rj", Namespace: "ns", Spec: api.RenovateJobSpec{Image: "img", Provider: job.Spec.Provider}},
+		withResolvedProjects([]string{"org/by-property"}))
+	expectEnvVar(t, &onlyResolved.Spec.Template.Spec.Containers[0], "RENOVATE_AUTODISCOVER_FILTER", "org/by-property")
+}

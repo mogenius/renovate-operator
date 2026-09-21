@@ -64,7 +64,7 @@ func policyJob(name, endpoint string) api.RenovateJob {
 func TestCreateDiscoveryJobRefusesForeignEndpoint(t *testing.T) {
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, gatePolicy())
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, gatePolicy(), nil)
 
 	job := policyJob("job1", "https://attacker.example.net")
 	_, err := da.CreateDiscoveryJob(context.Background(), job, DiscoveryJobOptions{})

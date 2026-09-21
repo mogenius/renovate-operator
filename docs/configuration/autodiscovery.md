@@ -62,6 +62,46 @@ In this example, projects tagged with `renovate` will be discovered.
 
 Refer to [Renovate's documentation](https://docs.renovatebot.com/self-hosted-configuration/#autodiscovertopics) for detailed syntax.
 
+### Using Discovery Properties (GitHub custom properties)
+
+The `discoveryProperties` field selects repositories by a GitHub **repository
+custom property**, the org-level metadata GitHub lets organizations require on
+every repository (for example an `owning-team` property). Right before each
+discovery run the operator lists the repositories the platform token can see
+and adds every one whose property matches to the autodiscover filter, so a
+repository joins or leaves the job by changing its property - the
+`RenovateJob` never needs a repository list. This is how one operator can run
+one job per team across an entire organization.
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-platform-team
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  discoveryProperties:
+    - name: owning-team
+      values: ["software-platform", "software-test"]
+  ...
+```
+
+Rules:
+
+- Several entries and `discoveryFilters` combine as a union: a repository is
+  discovered if any of them selects it.
+- Single-select and text properties match on equality; a multi-select property
+  matches when any selected value is listed. Archived repositories are skipped.
+- With a GitHub App installation token the operator lists
+  `/installation/repositories` (so the installation's repository selection
+  bounds discovery); other tokens list `/user/repos`.
+- Fail closed: if the properties are the job's only selection and resolve to
+  no repository, the discovery run is refused instead of falling back to an
+  unfiltered run. Combine with `discoveryFilters` if you want a floor.
+- GitHub only. Other platforms have no custom properties and reject the field
+  at discovery time.
+
 ### Excluding Forked Repositories
 
 When using autodiscovery, forked repositories are included by default. This can lead to unnecessary

@@ -1,6 +1,9 @@
 package gitProviderClients
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // GitProviderClient provides platform-specific repository operations.
 type GitProviderClient interface {
@@ -8,6 +11,11 @@ type GitProviderClient interface {
 	// metadata is fetched in a single platform API call so that fork and
 	// pending-deletion filtering do not each incur their own request.
 	GetRepositoryInfo(ctx context.Context, project string) (RepositoryInfo, error)
+
+	// ListRepositoriesByProperty returns the full names of the repositories
+	// visible to the token whose custom property `name` has one of `values`.
+	// Platforms without custom properties return ErrCustomPropertiesUnsupported.
+	ListRepositoriesByProperty(ctx context.Context, name string, values []string) ([]string, error)
 
 	ListRepoWebhooks(ctx context.Context, project string) ([]Webhook, error)
 	CreateRepoWebhook(ctx context.Context, project string, opts CreateWebhookOptions) (*Webhook, error)
@@ -59,3 +67,7 @@ type CreateWebhookOptions struct {
 	AuthToken string
 	Active    bool
 }
+
+// ErrCustomPropertiesUnsupported is returned by providers that have no
+// repository custom properties; discoveryProperties cannot be used with them.
+var ErrCustomPropertiesUnsupported = errors.New("custom properties are not supported by this platform")

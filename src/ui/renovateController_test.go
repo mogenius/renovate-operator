@@ -794,7 +794,7 @@ func TestGetRenovateJobs_ManyMissingDiscoveryJobsReturnsQuickly(t *testing.T) {
 	server := &Server{
 		manager:   mockManager,
 		logger:    logr.Discard(),
-		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil, policy.Policy{}),
+		discovery: renovate.NewDiscoveryAgent(scheme, fake.NewClientBuilder().WithScheme(scheme).Build(), logr.Discard(), nil, nil, policy.Policy{}, nil),
 		scheduler: &mockScheduler{},
 	}
 

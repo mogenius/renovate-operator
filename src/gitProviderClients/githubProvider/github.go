@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"renovate-operator/gitProviderClients"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -212,6 +214,124 @@ func (c *GitHubClient) DeleteRepoWebhook(ctx context.Context, project string, ho
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// githubRepoWithProperties is the slice of the repository wire format the
+// property filter needs. custom_properties values are strings for
+// single-select/text properties and string arrays for multi-select.
+type githubRepoWithProperties struct {
+	FullName         string                     `json:"full_name"`
+	Archived         bool                       `json:"archived"`
+	CustomProperties map[string]json.RawMessage `json:"custom_properties"`
+}
+
+func (r githubRepoWithProperties) propertyMatches(name string, values []string) bool {
+	raw, ok := r.CustomProperties[name]
+	if !ok || len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return slices.Contains(values, single)
+	}
+	var multi []string
+	if err := json.Unmarshal(raw, &multi); err == nil {
+		for _, v := range multi {
+			if slices.Contains(values, v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ListRepositoriesByProperty pages through every repository the token can
+// see and keeps those whose custom property matches. An installation token
+// (GitHub App) lists /installation/repositories; any other token falls back
+// to /user/repos. Archived repositories are skipped, as Renovate would skip
+// them anyway.
+func (c *GitHubClient) ListRepositoriesByProperty(ctx context.Context, name string, values []string) ([]string, error) {
+	repos, err := c.listInstallationRepositories(ctx)
+	if err != nil {
+		var httpErr *githubStatusError
+		if !errors.As(err, &httpErr) || (httpErr.status != http.StatusForbidden && httpErr.status != http.StatusNotFound) {
+			return nil, fmt.Errorf("listing repositories for property %q: %w", name, err)
+		}
+		repos, err = c.listUserRepositories(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing repositories for property %q: %w", name, err)
+		}
+	}
+	var matches []string
+	for _, repo := range repos {
+		if repo.Archived || !repo.propertyMatches(name, values) {
+			continue
+		}
+		matches = append(matches, repo.FullName)
+	}
+	slices.Sort(matches)
+	return matches, nil
+}
+
+type githubStatusError struct {
+	status int
+	body   string
+}
+
+func (e *githubStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d: %s", e.status, e.body)
+}
+
+// listInstallationRepositories pages GET /installation/repositories, the
+// listing an App installation token is allowed to make.
+func (c *GitHubClient) listInstallationRepositories(ctx context.Context) ([]githubRepoWithProperties, error) {
+	var all []githubRepoWithProperties
+	for page := 1; ; page++ {
+		resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/installation/repositories?per_page=100&page=%d", page), nil)
+		if err != nil {
+			return nil, err
+		}
+		var body struct {
+			Repositories []githubRepoWithProperties `json:"repositories"`
+		}
+		if err := decodeResponseStatus(resp, &body); err != nil {
+			return nil, err
+		}
+		all = append(all, body.Repositories...)
+		if len(body.Repositories) < 100 {
+			return all, nil
+		}
+	}
+}
+
+// listUserRepositories pages GET /user/repos for non-installation tokens.
+func (c *GitHubClient) listUserRepositories(ctx context.Context) ([]githubRepoWithProperties, error) {
+	var all []githubRepoWithProperties
+	for page := 1; ; page++ {
+		resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/user/repos?per_page=100&page=%d&affiliation=owner,organization_member,collaborator", page), nil)
+		if err != nil {
+			return nil, err
+		}
+		var repos []githubRepoWithProperties
+		if err := decodeResponseStatus(resp, &repos); err != nil {
+			return nil, err
+		}
+		all = append(all, repos...)
+		if len(repos) < 100 {
+			return all, nil
+		}
+	}
+}
+
+// decodeResponseStatus is decodeResponse with a typed status error so callers
+// can branch on the HTTP status.
+func decodeResponseStatus(resp *http.Response, target any) error {
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return &githubStatusError{status: resp.StatusCode, body: string(body)}
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
 }
 
 func decodeResponse(resp *http.Response, target any) error {

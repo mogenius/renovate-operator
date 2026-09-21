@@ -1028,6 +1028,35 @@ spec:
                 items:
                   type: string
                 type: array
+              discoveryProperties:
+                description: |-
+                  Discover projects by platform custom property (GitHub repository custom
+                  properties): every repository the platform token can see whose property
+                  matches one of the listed values is added to the autodiscover filter.
+                  Resolved by the operator right before each discovery run, so a repository
+                  joins or leaves the job by changing its property, without editing this
+                  resource. Combined with discoveryFilters (union). GitHub only.
+                items:
+                  description: DiscoveryProperty selects repositories by a platform
+                    custom property.
+                  properties:
+                    name:
+                      description: Name of the custom property, e.g. owning-team
+                      minLength: 1
+                      type: string
+                    values:
+                      description: |-
+                        Accepted values. A repository matches when its property equals one of
+                        them; a multi-select property matches when any selected value is listed.
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - values
+                  type: object
+                type: array
               dnsPolicy:
                 description: DNS Policy for the renovate pods
                 type: string

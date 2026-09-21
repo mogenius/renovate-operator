@@ -21,6 +21,9 @@ type jobBuildConfig struct {
 	redisSecretName  string
 	carrier          propagation.MapCarrier
 	executionOptions *api.RenovateExecutionOptions
+	// resolvedProjects are repositories selected by spec.discoveryProperties,
+	// resolved by the discovery agent right before the job is built.
+	resolvedProjects []string
 }
 
 func withRedisSecret(name string) jobBuildOpt {
@@ -33,6 +36,10 @@ func withCarrier(carrier propagation.MapCarrier) jobBuildOpt {
 
 func withExecutionOptions(opts *api.RenovateExecutionOptions) jobBuildOpt {
 	return func(c *jobBuildConfig) { c.executionOptions = opts }
+}
+
+func withResolvedProjects(projects []string) jobBuildOpt {
+	return func(c *jobBuildConfig) { c.resolvedProjects = projects }
 }
 
 func applyJobBuildOpts(opts []jobBuildOpt) *jobBuildConfig {
@@ -50,11 +57,13 @@ func newDiscoveryJob(job *api.RenovateJob, opts ...jobBuildOpt) *batchv1.Job {
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(cfg.carrier)...)
 
-	if len(job.Spec.DiscoveryFilters) > 0 {
-		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
+	// Explicit filters and property-resolved repositories are one union: a
+	// repository is discovered if either selects it.
+	filters := append(append([]string{}, job.Spec.DiscoveryFilters...), cfg.resolvedProjects...)
+	if len(filters) > 0 {
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_AUTODISCOVER_FILTER",
-			Value: filter,
+			Value: strings.Join(filters, ","),
 		})
 	}
 	if len(job.Spec.DiscoverTopics) > 0 {
