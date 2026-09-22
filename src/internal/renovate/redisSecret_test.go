@@ -228,7 +228,7 @@ func TestCreateDiscoveryJobCreatesOwnedRedisSecret(t *testing.T) {
 	scheme := policyScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, gatePolicy())
+	da := NewDiscoveryAgent(scheme, c, testLogger, nil, nil, gatePolicy(), nil)
 	renovateJob := policyJob("job1", "")
 	if _, err := da.CreateDiscoveryJob(context.Background(), renovateJob, DiscoveryJobOptions{}); err != nil {
 		t.Fatalf("CreateDiscoveryJob returned error: %v", err)

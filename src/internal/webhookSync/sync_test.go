@@ -306,3 +306,7 @@ func TestSyncRemovalFailureDoesNotPanic(t *testing.T) {
 		t.Error("expected hook to remain when deletion fails")
 	}
 }
+
+func (f *fakeClient) ListRepositoriesByProperty(context.Context, string, []string) ([]string, error) {
+	return nil, gitProviderClients.ErrCustomPropertiesUnsupported
+}

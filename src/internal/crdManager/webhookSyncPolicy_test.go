@@ -217,3 +217,7 @@ func TestRunWebhookSyncRefusesWritesToForeignEnvBaseURL(t *testing.T) {
 		t.Errorf("expected no hook creation, created=%v", provider.created)
 	}
 }
+
+func (p *recordingProvider) ListRepositoriesByProperty(context.Context, string, []string) ([]string, error) {
+	return nil, gitProviderClients.ErrCustomPropertiesUnsupported
+}

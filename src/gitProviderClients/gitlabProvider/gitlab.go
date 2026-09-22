@@ -208,3 +208,8 @@ func decodeResponse(resp *http.Response, target any) error {
 
 	return json.NewDecoder(resp.Body).Decode(target)
 }
+
+// ListRepositoriesByProperty is not available: the platform has no repository custom properties.
+func (c *GitLabClient) ListRepositoriesByProperty(ctx context.Context, name string, values []string) ([]string, error) {
+	return nil, gitProviderClients.ErrCustomPropertiesUnsupported
+}
