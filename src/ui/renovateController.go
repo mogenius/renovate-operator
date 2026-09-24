@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
@@ -25,7 +26,7 @@ type RenovateJobInfo struct {
 	Name             string                             `json:"name"`
 	Namespace        string                             `json:"namespace"`
 	CronExpression   string                             `json:"cronExpression"`
-	NextSchedule     time.Time                          `json:"nextSchedule"`
+	NextSchedule     time.Time                          `json:"nextSchedule,omitzero"`
 	DiscoveryStatus  api.RenovateProjectStatus          `json:"discoveryStatus"`
 	Projects         []crdmanager.RenovateProjectStatus `json:"projects"`
 	Platform         string                             `json:"platform,omitempty"`
@@ -39,6 +40,9 @@ type RenovateJobInfo struct {
 	Permissions      []string `json:"permissions"`
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	DiscoverTopics   []string `json:"discoverTopics,omitempty"`
+	// Suspended mirrors spec.suspend: no new run starts, and triggers only queue
+	// projects. A suspended job has no NextSchedule.
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
@@ -334,12 +338,18 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 
 		accepted, acceptedMessage := acceptedState(renovateJob)
 
+		var nextSchedule time.Time
+		if !renovateJob.Spec.GetSuspend() {
+			nextSchedule = s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname())
+		}
+
 		result = append(result, RenovateJobInfo{
 			Name:             renovateJob.Name,
 			Namespace:        renovateJob.Namespace,
 			Accepted:         accepted,
 			AcceptedMessage:  acceptedMessage,
-			NextSchedule:     s.scheduler.GetNextRunOnSchedule(renovateJob.Spec.Schedule, renovateJob.Fullname()),
+			Suspended:        renovateJob.Spec.GetSuspend(),
+			NextSchedule:     nextSchedule,
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
 			DiscoveryStatus:  discoveryStatus,
@@ -634,7 +644,16 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, err := s.discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: false}); err != nil {
+	_, err = s.discovery.CreateDiscoveryJob(ctx, *job, renovate.DiscoveryJobOptions{TriggerAllProjects: false})
+	if stderrors.Is(err, renovate.ErrRenovateJobSuspended) {
+		writeError(w, HttpResultError{
+			Message:    "the RenovateJob is suspended, resume it to run a discovery",
+			StatusCode: http.StatusConflict,
+			Error:      err,
+		})
+		return
+	}
+	if err != nil {
 		s.logger.Error(err, "Failed to start discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 		internalServerError(w, err, "failed to create discovery job")
 		return

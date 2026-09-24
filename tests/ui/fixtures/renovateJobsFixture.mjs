@@ -432,14 +432,14 @@ export function buildRenovateJob({
   platformEndpoint = "https://api.github.com",
   debug = false,
   accepted = true,
+  suspended = false,
   role = "admin",
   permissions = ADMIN_PERMISSIONS,
 } = {}) {
-  return {
+  const job = {
     name,
     namespace,
     cronExpression,
-    nextSchedule: FIXED_NEXT_SCHEDULE,
     discoveryStatus,
     projects,
     platform,
@@ -449,6 +449,14 @@ export function buildRenovateJob({
     role,
     permissions,
   };
+  // Like the operator: `suspended` is only sent when true, and a suspended job
+  // has no next run to report.
+  if (suspended) {
+    job.suspended = true;
+  } else {
+    job.nextSchedule = FIXED_NEXT_SCHEDULE;
+  }
+  return job;
 }
 
 /**

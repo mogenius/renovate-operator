@@ -145,7 +145,9 @@ func (s *scheduler) RemoveSchedule(namespace, job string) {
 		delete(e.Scheduler, name)
 		return e
 	})
-
+	// A removed schedule has no next run; left in place, its last timestamp
+	// would soon read as an overdue one.
+	metricStore.DeleteScheduleNextRun(namespace, job)
 }
 
 func (s *scheduler) GetNextRunOnSchedule(schedule, key string) time.Time {

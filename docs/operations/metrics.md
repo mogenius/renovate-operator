@@ -56,6 +56,10 @@ metrics for free (`controller_runtime_reconcile_*`, workqueue depth/latency,
 |--------------------------------------------------------|---------|--------------------------------------------------|-------------------------------------------------|
 | renovate_operator_schedule_runs_total                  | Counter | Cron schedule firings executed by result (`success`/`error`) | `renovate_namespace`, `renovate_job`, `result` |
 | renovate_operator_schedule_next_run_timestamp_seconds  | Gauge   | Unix timestamp of the next planned scheduled run | `renovate_namespace`, `renovate_job`            |
+| renovate_operator_renovatejob_suspended                | Gauge   | Whether the RenovateJob is [suspended](./suspend.md) (1) or not (0) | `renovate_namespace`, `renovate_job` |
+
+A RenovateJob with no schedule (suspended, refused by the policy, or deleted) has no
+`renovate_operator_schedule_next_run_timestamp_seconds` series.
 
 ## Results and outcomes
 
@@ -165,6 +169,16 @@ groups:
         annotations:
           summary: "Renovate schedule overdue for {{ $labels.renovate_job }}"
           description: "The next planned run is more than an hour in the past."
+
+      # SRE: a job suspended for maintenance and never resumed.
+      - alert: RenovateJobSuspended
+        expr: renovate_operator_renovatejob_suspended == 1
+        for: 12h
+        labels:
+          severity: info
+        annotations:
+          summary: "Renovate job {{ $labels.renovate_job }} has been suspended for 12h"
+          description: "No new run starts while spec.suspend is true. Set it back to false once the reason for pausing is gone."
 
       # SecOps: sustained webhook HMAC signature failures - forged or misconfigured webhooks.
       - alert: RenovateWebhookSignatureFailures

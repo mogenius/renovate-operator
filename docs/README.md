@@ -64,6 +64,7 @@ Day-2 concerns: observability, storage, and cost allocation.
 | [Valkey / Redis](./operations/valkey.md)                   | Session storage, log storage, and caching  |
 | [S3 Object Storage](./operations/s3.md)                    | Log archival and Renovate cache forwarding |
 | [Pod Label Templates](./operations/pod-label-templates.md) | Templated labels for cost allocation       |
+| [Suspending a RenovateJob](./operations/suspend.md)        | Pausing runs without stopping the operator |
 
 ## Security
 
