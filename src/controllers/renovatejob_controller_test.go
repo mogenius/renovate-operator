@@ -167,11 +167,11 @@ type fakeScheduler struct {
 	addCalled    bool
 	removedNames []string
 	removeCalled bool
-	storedFn     func()
+	storedFn     func() error
 	addErr       error
 }
 
-func (f *fakeScheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fct func()) error {
+func (f *fakeScheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fct func() error) error {
 	f.addedExpr = expr
 	f.addedName = job + "-" + namespace
 	f.addCalled = true
@@ -186,7 +186,7 @@ func (f *fakeScheduler) RemoveSchedule(namespace, job string) {
 // implement remaining methods of scheduler.Scheduler as no-ops for tests
 func (f *fakeScheduler) Start() {}
 func (f *fakeScheduler) Stop()  {}
-func (f *fakeScheduler) AddSchedule(expr string, namespace, job string, fn func()) error {
+func (f *fakeScheduler) AddSchedule(expr string, namespace, job string, fn func() error) error {
 	// behave like AddScheduleReplaceExisting for tests
 	return f.AddScheduleReplaceExisting(expr, namespace, job, fn)
 }
@@ -223,7 +223,9 @@ func TestCreateScheduler_DiscoveryAndManagerInteraction(t *testing.T) {
 		t.Fatalf("expected stored schedule function to be set")
 	}
 
-	sched.storedFn()
+	if err := sched.storedFn(); err != nil {
+		t.Fatalf("expected the run to succeed, got %v", err)
+	}
 
 	if !calledCreate {
 		t.Fatalf("expected CreateDiscoveryJob to be called")
@@ -251,8 +253,10 @@ func TestCreateScheduler_DiscoveryErrorAborts(t *testing.T) {
 	if sched.storedFn == nil {
 		t.Fatalf("expected stored function to be set")
 	}
-	// should not panic
-	sched.storedFn()
+	// Returned rather than swallowed, so the scheduler counts the run as an error.
+	if err := sched.storedFn(); err == nil {
+		t.Fatal("expected the discovery error to be returned")
+	}
 }
 
 // Test: the scheduled function uses the freshly fetched RenovateJob, not the one captured at schedule-creation time

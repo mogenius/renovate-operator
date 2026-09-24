@@ -174,6 +174,13 @@ var (
 			Help: "Unix timestamp of the next planned scheduled run",
 		},
 		[]string{labelNamespace, labelJob})
+
+	renovateJobSuspended = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_renovatejob_suspended",
+			Help: "Whether the RenovateJob is suspended (1) or not (0)",
+		},
+		[]string{labelNamespace, labelJob})
 )
 
 // Prometheus metrics — SRE: log quality (Group E).
@@ -350,6 +357,7 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		// Group D
 		scheduleRuns,
 		scheduleNextRun,
+		renovateJobSuspended,
 		// Group E
 		logIssues,
 		configMigrationNeeded,
@@ -526,7 +534,7 @@ func AddRepositoriesFiltered(ctx context.Context, namespace, job, reason string,
 // Group D — scheduler
 // ---------------------------------------------------------------------------
 
-// IncScheduleRun counts a cron firing. result is "success" or "error".
+// IncScheduleRun counts a cron firing. result is "success", "error" or "skipped".
 func IncScheduleRun(ctx context.Context, namespace, job, result string) {
 	scheduleRuns.WithLabelValues(namespace, job, result).Inc()
 	addOtel(ctx, otelScheduleRuns, 1,
@@ -536,6 +544,27 @@ func IncScheduleRun(ctx context.Context, namespace, job, result string) {
 // SetScheduleNextRun sets the Unix timestamp (seconds) of the next planned run.
 func SetScheduleNextRun(namespace, job string, unixSeconds float64) {
 	scheduleNextRun.WithLabelValues(namespace, job).Set(unixSeconds)
+}
+
+// DeleteScheduleNextRun drops the next planned run of a removed schedule, so a
+// stale timestamp does not read as an overdue run.
+func DeleteScheduleNextRun(namespace, job string) {
+	scheduleNextRun.DeleteLabelValues(namespace, job)
+}
+
+// SetRenovateJobSuspended records whether a RenovateJob is suspended.
+func SetRenovateJobSuspended(namespace, job string, suspended bool) {
+	value := 0.0
+	if suspended {
+		value = 1
+	}
+	renovateJobSuspended.WithLabelValues(namespace, job).Set(value)
+}
+
+// DeleteRenovateJobSuspended drops the series of a RenovateJob that is deleted or
+// whose effective spec cannot be resolved.
+func DeleteRenovateJobSuspended(namespace, job string) {
+	renovateJobSuspended.DeleteLabelValues(namespace, job)
 }
 
 // ---------------------------------------------------------------------------

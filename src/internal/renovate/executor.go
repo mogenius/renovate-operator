@@ -341,7 +341,7 @@ type scheduledCandidate struct {
 // acceptedCandidates flattens the Scheduled projects of every RenovateJob that passes
 // the operator's policy into one candidate list, recording per-job oldest wait for the
 // fairness sort. A job the policy refuses is skipped on its own; its siblings still
-// dispatch.
+// dispatch. So is a suspended job, whose projects stay queued until it is resumed.
 func (e *renovateExecutor) acceptedCandidates(ctx context.Context, renovateJobs []api.RenovateJob) []scheduledCandidate {
 	var candidates []scheduledCandidate
 
@@ -352,6 +352,11 @@ func (e *renovateExecutor) acceptedCandidates(ctx context.Context, renovateJobs 
 			metricStore.IncPolicyDenial(ctx, "destination")
 			log.FromContext(ctx).Error(err, "skipping RenovateJob refused by policy",
 				"renovateJob", renovateJob.Name, "namespace", renovateJob.Namespace)
+			continue
+		}
+
+		// After the policy check, so suspending a job never hides its policy denials.
+		if renovateJob.Spec.GetSuspend() {
 			continue
 		}
 

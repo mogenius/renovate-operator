@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"renovate-operator/health"
 	"renovate-operator/metricStore"
 	"sync"
@@ -22,15 +23,21 @@ type Scheduler interface {
 	Stop()
 	// Adds a new schedule for the given RenovateJob (namespace/job identify it and
 	// label its metrics) with the given cron expression and function to execute.
-	AddSchedule(expr string, namespace, job string, fn func()) error
+	// fn's error decides how the run is counted: ErrSkipped as skipped, any other
+	// error as error, nil as success.
+	AddSchedule(expr string, namespace, job string, fn func() error) error
 	// Adds a new schedule, replacing any existing schedule for the same RenovateJob.
-	AddScheduleReplaceExisting(expr string, namespace, job string, fn func()) error
+	AddScheduleReplaceExisting(expr string, namespace, job string, fn func() error) error
 	// Removes a schedule for the given RenovateJob.
 	RemoveSchedule(namespace, job string)
 	// Gets the next run time for a cron schedule expression.
 	// key is used as a seed for Jenkins-style H expressions; pass an empty string for plain cron.
 	GetNextRunOnSchedule(schedule, key string) time.Time
 }
+
+// ErrSkipped is returned by a scheduled function that deliberately did nothing, so
+// the run is counted as skipped rather than as a success.
+var ErrSkipped = errors.New("scheduled run skipped")
 
 type scheduler struct {
 	cronManager *cron.Cron
@@ -83,7 +90,7 @@ func scheduleName(namespace, job string) string {
 }
 
 // Adds a new schedule, does NOT cleanly remove existing ones with the same name
-func (s *scheduler) AddSchedule(expr string, namespace, job string, fn func()) error {
+func (s *scheduler) AddSchedule(expr string, namespace, job string, fn func() error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	name := scheduleName(namespace, job)
@@ -118,7 +125,7 @@ func (s *scheduler) AddSchedule(expr string, namespace, job string, fn func()) e
 }
 
 // Adds a new schedule, if one with the same name already exists, it will be replaced
-func (s *scheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fn func()) error {
+func (s *scheduler) AddScheduleReplaceExisting(expr string, namespace, job string, fn func() error) error {
 	name := scheduleName(namespace, job)
 	s.mu.Lock()
 	entry, exists := s.entries[name]
@@ -145,7 +152,9 @@ func (s *scheduler) RemoveSchedule(namespace, job string) {
 		delete(e.Scheduler, name)
 		return e
 	})
-
+	// A removed schedule has no next run; left in place, its last timestamp
+	// would soon read as an overdue one.
+	metricStore.DeleteScheduleNextRun(namespace, job)
 }
 
 func (s *scheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
@@ -159,11 +168,9 @@ func (s *scheduler) GetNextRunOnSchedule(schedule, key string) time.Time {
 // execute the cron expression while also adapting the health status in this time.
 // key is the internal schedule/health key; ns and job are the RenovateJob's
 // namespace and name, used as metric labels.
-func (s *scheduler) execute(key string, schedule string, ns, job string, fn func()) func() {
+func (s *scheduler) execute(key string, schedule string, ns, job string, fn func() error) func() {
 	return func() {
-		// The scheduled function is a bare func() with no error return, so the only
-		// failure signal available without changing the public Scheduler signature is
-		// a panic. Treat a panic as an "error" run and everything else as "success".
+		// fn reports how the run went, see runResult; a panic counts as an error too.
 		ctx := context.Background()
 
 		s.health.SetSchedulerHealth(func(e *health.SchedulerHealth) *health.SchedulerHealth {
@@ -197,9 +204,21 @@ func (s *scheduler) execute(key string, schedule string, ns, job string, fn func
 				metricStore.IncScheduleRun(ctx, ns, job, "error")
 				panic(r) // preserve existing panic-propagation behavior
 			}
-			metricStore.IncScheduleRun(ctx, ns, job, "success")
 		}()
-		fn()
-		s.logger.Info("schedule executed", "schedule", key)
+		result := runResult(fn())
+		metricStore.IncScheduleRun(ctx, ns, job, result)
+		s.logger.Info("schedule executed", "schedule", key, "result", result)
+	}
+}
+
+// runResult maps a scheduled function's error to the result label of its run.
+func runResult(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrSkipped):
+		return "skipped"
+	default:
+		return "error"
 	}
 }

@@ -4246,6 +4246,14 @@ spec:
                   If true, repositories marked for delayed deletion (pending deletion) will be excluded by querying the platform API. Only GitLab exposes this state.
                   A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
                 type: boolean
+              suspend:
+                description: |-
+                  If true, the operator starts no new run for this RenovateJob: the schedule
+                  does not fire, discovery is refused and queued projects are not dispatched.
+                  Runs already in progress finish. Projects queued meanwhile, by webhooks,
+                  the UI or annotation triggers, stay Scheduled and run once it is resumed.
+                  A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
+                type: boolean
               templateRef:
                 description: |-
                   TemplateRef inherits shared configuration from a RenovateJobTemplate (in the

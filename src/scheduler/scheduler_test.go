@@ -1,11 +1,15 @@
 package scheduler
 
 import (
+	"errors"
+	"fmt"
 	"renovate-operator/health"
+	"renovate-operator/metricStore"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var testLogger = logr.Discard()
@@ -40,7 +44,7 @@ func TestAddSchedule(t *testing.T) {
 	s.Start()
 	defer s.Stop()
 
-	err := s.AddSchedule("* * * * *", "schedule", "test", func() {})
+	err := s.AddSchedule("* * * * *", "schedule", "test", func() error { return nil })
 
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
@@ -59,7 +63,7 @@ func TestAddScheduleInvalidCron(t *testing.T) {
 	s.Start()
 	defer s.Stop()
 
-	err := s.AddSchedule("invalid-cron", "invalid", "test", func() {})
+	err := s.AddSchedule("invalid-cron", "invalid", "test", func() error { return nil })
 	if err == nil {
 		t.Error("AddSchedule should return error for invalid cron expression")
 	}
@@ -72,19 +76,19 @@ func TestAddScheduleReplaceExisting(t *testing.T) {
 	defer s.Stop()
 
 	// Add initial schedule
-	err := s.AddSchedule("* * * * *", "replace", "test", func() {})
+	err := s.AddSchedule("* * * * *", "replace", "test", func() error { return nil })
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
 
 	// Replace with same schedule - should not error
-	err = s.AddScheduleReplaceExisting("* * * * *", "replace", "test", func() {})
+	err = s.AddScheduleReplaceExisting("* * * * *", "replace", "test", func() error { return nil })
 	if err != nil {
 		t.Fatalf("AddScheduleReplaceExisting returned error for same schedule: %v", err)
 	}
 
 	// Replace with different schedule
-	err = s.AddScheduleReplaceExisting("*/2 * * * *", "replace", "test", func() {})
+	err = s.AddScheduleReplaceExisting("*/2 * * * *", "replace", "test", func() error { return nil })
 	if err != nil {
 		t.Fatalf("AddScheduleReplaceExisting returned error: %v", err)
 	}
@@ -109,7 +113,7 @@ func TestRemoveSchedule(t *testing.T) {
 	defer s.Stop()
 
 	// Add a schedule
-	err := s.AddSchedule("* * * * *", "remove", "test", func() {})
+	err := s.AddSchedule("* * * * *", "remove", "test", func() error { return nil })
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
@@ -140,7 +144,7 @@ func TestGetNextRun(t *testing.T) {
 	defer s.Stop()
 
 	// Add a schedule
-	err := s.AddSchedule("* * * * *", "next", "test", func() {})
+	err := s.AddSchedule("* * * * *", "next", "test", func() error { return nil })
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
 	}
@@ -164,7 +168,7 @@ func TestScheduleExecution(t *testing.T) {
 	defer s.Stop()
 
 	// Schedule every minute (cron uses 5 fields by default)
-	err := s.AddSchedule("* * * * *", "exec", "test", func() {})
+	err := s.AddSchedule("* * * * *", "exec", "test", func() error { return nil })
 
 	if err != nil {
 		t.Fatalf("AddSchedule returned error: %v", err)
@@ -197,7 +201,7 @@ func TestAddScheduleHashedCron(t *testing.T) {
 			s.Start()
 			defer s.Stop()
 
-			err := s.AddSchedule(tt.expr, "default", "my-job", func() {})
+			err := s.AddSchedule(tt.expr, "default", "my-job", func() error { return nil })
 			if err != nil {
 				t.Fatalf("AddSchedule(%q) returned unexpected error: %v", tt.expr, err)
 			}
@@ -303,7 +307,7 @@ func TestAddScheduleReplaceExistingHashedCronSameExprNotReAdded(t *testing.T) {
 	defer s.Stop()
 
 	callCount := 0
-	add := func() { callCount++ }
+	add := func() error { callCount++; return nil }
 
 	if err := s.AddSchedule("H H * * *", "default", "hashed-job", add); err != nil {
 		t.Fatalf("AddSchedule: %v", err)
@@ -317,4 +321,92 @@ func TestAddScheduleReplaceExistingHashedCronSameExprNotReAdded(t *testing.T) {
 	if len(hc.Scheduler.Scheduler) != 1 {
 		t.Errorf("expected exactly 1 schedule entry, got %d", len(hc.Scheduler.Scheduler))
 	}
+}
+
+// Left behind, the last timestamp of a removed schedule reads as an overdue run to
+// anything alerting on it.
+func TestRemoveScheduleDropsNextRunMetric(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metricStore.Register(reg)
+
+	h := health.NewHealthCheck()
+	s := NewScheduler(testLogger, h)
+	s.Start()
+	defer s.Stop()
+
+	if err := s.AddSchedule("* * * * *", "metrics-ns", "metrics-job", func() error { return nil }); err != nil {
+		t.Fatalf("AddSchedule returned error: %v", err)
+	}
+	if !hasNextRunSeries(t, reg, "metrics-ns", "metrics-job") {
+		t.Fatal("expected a next-run series once scheduled")
+	}
+
+	s.RemoveSchedule("metrics-ns", "metrics-job")
+
+	if hasNextRunSeries(t, reg, "metrics-ns", "metrics-job") {
+		t.Error("expected the next-run series to go with the schedule")
+	}
+}
+
+func hasNextRunSeries(t *testing.T, reg prometheus.Gatherer, namespace, job string) bool {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != "renovate_operator_schedule_next_run_timestamp_seconds" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			labels := make(map[string]string, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["renovate_namespace"] == namespace && labels["renovate_job"] == job {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// A run that did nothing, or failed, must not be counted as a success.
+func TestExecuteCountsRunsByResult(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metricStore.Register(reg)
+
+	s := NewScheduler(testLogger, health.NewHealthCheck()).(*scheduler)
+	for _, err := range []error{nil, ErrSkipped, fmt.Errorf("suspended: %w", ErrSkipped), errors.New("boom")} {
+		s.execute("runs-job-runs-ns", "* * * * *", "runs-ns", "runs-job", func() error { return err })()
+	}
+
+	for result, want := range map[string]float64{"success": 1, "skipped": 2, "error": 1} {
+		if got := scheduleRuns(t, reg, "runs-ns", "runs-job", result); got != want {
+			t.Errorf("result=%s: got %v runs, want %v", result, got, want)
+		}
+	}
+}
+
+func scheduleRuns(t *testing.T, reg prometheus.Gatherer, namespace, job, result string) float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != "renovate_operator_schedule_runs_total" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			labels := make(map[string]string, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["renovate_namespace"] == namespace && labels["renovate_job"] == job && labels["result"] == result {
+				return m.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
 }

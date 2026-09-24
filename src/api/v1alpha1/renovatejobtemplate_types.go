@@ -103,6 +103,9 @@ func MergeTemplateSpec(base, overlay RenovateJobSpec) RenovateJobSpec {
 	if ov.SkipPendingDeletion != nil {
 		merged.SkipPendingDeletion = ov.SkipPendingDeletion
 	}
+	if ov.Suspend != nil {
+		merged.Suspend = ov.Suspend
+	}
 	if ov.SecretRef != "" {
 		merged.SecretRef = ov.SecretRef
 	}
