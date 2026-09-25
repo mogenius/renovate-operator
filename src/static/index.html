@@ -900,6 +900,49 @@
           }
         };
 
+        const toggleSuspend = async (job) => {
+          if (job.suspendToggling) return;
+          const suspend = !job.suspended;
+
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.name === job.name && j.namespace === job.namespace
+                ? { ...j, suspendToggling: true }
+                : j
+            )
+          );
+
+          try {
+            const response = await authFetch("/api/v1/renovatejob/suspend", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                renovateJob: job.name,
+                namespace: job.namespace,
+                suspend,
+              }),
+            });
+
+            if (response.ok) {
+              addToast(
+                "success",
+                suspend ? "Job Suspended" : "Job Resumed",
+                suspend
+                  ? `No new run starts for ${job.name} until it is resumed`
+                  : `${job.name} starts new runs again`
+              );
+            } else {
+              const errorText = await response.text();
+              throw new Error(errorText || "Failed to update the job");
+            }
+          } catch (err) {
+            console.error("Error changing suspend:", err);
+            addToast("error", suspend ? "Suspend Failed" : "Resume Failed", err.message);
+          } finally {
+            loadJobs();
+          }
+        };
+
         const triggerRenovate = async (job, project, executionOptions = {}) => {
           if (project.triggering) return;
 
@@ -1540,6 +1583,7 @@
                       expanded={isJobCardExpanded(toggledJobCardKeys, jobStorageKey(job))}
                       onToggleExpanded={toggleJobCardExpansion}
                       onRunDiscovery={runDiscovery}
+                      onToggleSuspend={toggleSuspend}
                       onTriggerRenovate={triggerRenovate}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
@@ -2105,7 +2149,7 @@
         );
       }
 
-      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
+      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
@@ -2123,6 +2167,7 @@
         const canTriggerAll = can(job, "triggerAll");
         const canCancel = can(job, "cancel");
         const canDiscovery = can(job, "discovery");
+        const canSuspend = can(job, "suspend");
         const canViewLogs = can(job, "logs");
         const readOnly = job.role === "reader";
         // A policy halt outranks a missing permission: it blocks everyone, so
@@ -2132,6 +2177,9 @@
         // when the job is resumed.
         const suspendedHint = job.suspended ? "Suspended: resume the job to run a discovery" : undefined;
         const discoveryBlocked = haltedHint || suspendedHint || (canDiscovery ? undefined : actionHint);
+        // Not blocked by a policy halt: pausing a refused job is harmless, and
+        // resuming it runs nothing while the policy still refuses it.
+        const suspendBlocked = canSuspend ? undefined : actionHint;
         const triggerAllBlocked = haltedHint || (canTriggerAll ? undefined : actionHint);
         const STATUS_FILTERS = ["Onboarding Closed", "Disabled", "No Config"];
         const jobKey = jobStorageKey(job);
@@ -2462,6 +2510,59 @@
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 ml-auto flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                {/* Resume is the way out of the banner below, so it takes the
+                    primary style; Suspend stays secondary next to the run buttons. */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSuspend(job);
+                  }}
+                  data-testid="suspend-toggle"
+                  disabled={job.suspendToggling || !!suspendBlocked}
+                  title={
+                    suspendBlocked ||
+                    (job.suspended ? "Let this job start new runs again" : "Stop new runs for this job until it is resumed")
+                  }
+                  className={`${
+                    job.suspended
+                      ? "bg-primary hover:bg-primary-hover text-white"
+                      : "bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600"
+                  } disabled:opacity-60 disabled:cursor-not-allowed px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5`}
+                  aria-label={
+                    suspendBlocked
+                      ? suspendBlocked
+                      : job.suspendToggling
+                        ? job.suspended ? "Resuming" : "Suspending"
+                        : job.suspended ? `Resume ${job.name}` : `Suspend ${job.name}`
+                  }
+                >
+                  {job.suspendToggling ? (
+                    <Spinner />
+                  ) : (
+                    <svg
+                      className="w-3.5 h-3.5 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d={
+                          job.suspended
+                            ? "M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                            : "M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        }
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">
+                    {job.suspendToggling
+                      ? job.suspended ? "Resuming..." : "Suspending..."
+                      : job.suspended ? "Resume" : "Suspend"}
+                  </span>
+                </button>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2683,8 +2784,7 @@
                       Suspended: no new run starts for this job
                     </p>
                     <p className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-slate-300 break-words">
-                      Runs in progress finish, and projects triggered meanwhile stay queued until{" "}
-                      <span className="font-mono">spec.suspend</span> is set back to false.
+                      Runs in progress finish, and projects triggered meanwhile stay queued until the job is resumed.
                     </p>
                   </div>
                 </div>

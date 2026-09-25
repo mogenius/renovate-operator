@@ -95,6 +95,9 @@ func (m *fakeManager) SetAcceptedCondition(ctx context.Context, jobId crdManager
 func (f *fakeManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
+func (f *fakeManager) SetSuspend(ctx context.Context, job crdManager.RenovateJobIdentifier, suspend bool) error {
+	return nil
+}
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }

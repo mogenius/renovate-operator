@@ -419,7 +419,7 @@ const REMAINING_VARIANT_KEYS = PROJECT_STATE_VARIANTS.map((variant) => variant.k
  * gets when auth is disabled. The UI gates each control on one of these strings
  * rather than on `role`, so a job payload without them renders read-only.
  */
-export const ADMIN_PERMISSIONS = ["logs", "trigger", "triggerAll", "cancel", "discovery"];
+export const ADMIN_PERMISSIONS = ["logs", "trigger", "triggerAll", "cancel", "discovery", "suspend"];
 export const READER_PERMISSIONS = ["logs"];
 
 export function buildRenovateJob({

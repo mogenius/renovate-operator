@@ -178,7 +178,7 @@ roles:
 | Role | May do |
 |---|---|
 | `reader` | view the job, its projects, statuses, PR activity and dependency issues; stream Renovate logs |
-| `admin` | everything a reader may do, plus trigger a project, trigger all projects, cancel a run, start discovery and change execution options |
+| `admin` | everything a reader may do, plus trigger a project, trigger all projects, cancel a run, start discovery, change execution options and [suspend or resume](../operations/suspend.md) the job |
 
 A job the request holds no role on is not listed and answers `404`, so its
 existence is not disclosed. A reader attempting a write gets `403`.

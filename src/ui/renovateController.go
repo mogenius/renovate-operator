@@ -232,6 +232,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
+	apiV1.HandleFunc("/renovatejob/suspend", s.setRenovateJobSuspend).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -661,6 +662,44 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
+}
+
+// setRenovateJobSuspend sets spec.suspend, pausing or resuming a whole RenovateJob.
+func (s *Server) setRenovateJobSuspend(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RenovateJob string `json:"renovateJob"`
+		Namespace   string `json:"namespace"`
+		// A pointer, so a request that leaves it out is refused instead of resuming.
+		Suspend *bool `json:"suspend"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		badRequestError(w, err, "failed to parse request body")
+		return
+	}
+
+	if body.RenovateJob == "" || body.Namespace == "" || body.Suspend == nil {
+		badRequestError(w, nil, "Missing parameters")
+		return
+	}
+
+	if _, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permSuspend); !ok {
+		return
+	}
+
+	jobId := crdmanager.RenovateJobIdentifier{Name: body.RenovateJob, Namespace: body.Namespace}
+	if err := s.manager.SetSuspend(r.Context(), jobId, *body.Suspend); err != nil {
+		s.logger.Error(err, "Failed to set suspend on RenovateJob", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend)
+		internalServerError(w, err, "failed to update the RenovateJob")
+		return
+	}
+
+	// Pausing or resuming every run of a job is worth an audit line at the default level.
+	s.logger.Info("RenovateJob suspend set from the UI", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend, "user", sessionEmail(r))
+	message := "RenovateJob resumed"
+	if *body.Suspend {
+		message = "RenovateJob suspended"
+	}
+	writeSuccess(w, SuccessResult{Message: message})
 }
 
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {

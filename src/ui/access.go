@@ -90,6 +90,7 @@ const (
 	permTriggerAll = "triggerAll"
 	permCancel     = "cancel"
 	permDiscovery  = "discovery"
+	permSuspend    = "suspend"
 )
 
 // AccessDefaults are the operator-wide fallbacks for jobs that leave parts of
@@ -218,12 +219,12 @@ func (d accessDecision) canWrite() bool { return d.Role == roleAdmin }
 
 // permissions lists the actions this decision allows, for the UI to gate on.
 func (d accessDecision) permissions() []string {
-	perms := make([]string, 0, 5)
+	perms := make([]string, 0, 6)
 	if d.CanViewLogs {
 		perms = append(perms, permLogs)
 	}
 	if d.canWrite() {
-		perms = append(perms, permTrigger, permTriggerAll, permCancel, permDiscovery)
+		perms = append(perms, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend)
 	}
 	return perms
 }

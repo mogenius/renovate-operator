@@ -8,6 +8,8 @@ kubectl patch renovatejob <name> -n <namespace> --type merge -p '{"spec":{"suspe
 
 `kubectl get renovatejobs` shows the state in its `SUSPEND` column, and the UI marks the job as suspended.
 
+Admins of a job can also flip it from the UI with the job card's **Suspend** and **Resume** button. It writes the smallest change that gets there: the job's own `suspend` is cleared when its template, or the default, already gives the wanted state, and set explicitly only to override a template. Readers see the button disabled. Every change is logged with the user who made it.
+
 ## What stops
 
 While a RenovateJob is suspended, the operator starts no Kubernetes Job for it:
@@ -39,7 +41,7 @@ kubectl get renovatejobs -n <namespace> -o name \
 
 Jobs that share a [template](../configuration/shared-templates.md) can be paused together by setting `suspend: true` on the template: every job using it is suspended, except one that sets `suspend: false` itself. The `SUSPEND` column only shows the job's own value, so a job suspended through its template shows it empty there, while the UI and the metric below report the effective state.
 
-If the RenovateJobs are managed by a GitOps tool, a live patch is drift: set `suspend` in the source instead, or expect the next sync to resume them.
+If the RenovateJobs are managed by a GitOps tool, a live patch, or the UI button, is drift: set `suspend` in the source instead, or expect the next sync to resume them.
 
 ## Monitoring
 
