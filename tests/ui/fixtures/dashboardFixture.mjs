@@ -27,6 +27,8 @@ class DashboardPage {
     this.page = page;
     /** Bodies the page POSTed to /api/v1/renovate/all, oldest first. */
     this.triggerAllRequests = [];
+    /** Bodies the page POSTed to /api/v1/renovatejob/suspend, oldest first. */
+    this.suspendRequests = [];
   }
 
   async stubApi(renovateJobs) {
@@ -45,6 +47,10 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovate/all", (route) => {
       this.triggerAllRequests.push(JSON.parse(route.request().postData() || "{}"));
       return route.fulfill({ json: { message: "All projects triggered" } });
+    });
+    await this.page.route("**/api/v1/renovatejob/suspend", (route) => {
+      this.suspendRequests.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({ json: { message: "ok" } });
     });
   }
 
@@ -260,6 +266,21 @@ class DashboardPage {
     return this.jobCard(jobName)
       .locator('table tbody [data-testid="project-name"]')
       .allTextContents();
+  }
+
+  /** The Suspend / Resume button in a job card's title row. */
+  suspendToggle(jobName) {
+    return this.jobCardHeader(jobName).getByTestId("suspend-toggle");
+  }
+
+  /** Clicks it and resolves once the page has posted, like triggerAll. */
+  async toggleSuspend(jobName) {
+    const sent = this.page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes("/api/v1/renovatejob/suspend"),
+    );
+    await this.suspendToggle(jobName).click();
+    await sent;
   }
 
   /** The main half of the split trigger button in a job card's title row. */

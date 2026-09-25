@@ -189,6 +189,7 @@ func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
 		AnonymousRead:         config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ") == "true",
 		AnonymousReadLogs:     config.GetValue("AUTHORIZATION_DEFAULT_ANONYMOUS_READ_LOGS") == "true",
 		AuthorizationDisabled: config.GetValue("AUTHORIZATION_ENABLED") == "false",
+		SuspendFromUI:         config.GetValue("AUTHORIZATION_SUSPEND_FROM_UI") == "true",
 	}
 
 	// The deprecated DEFAULT_ALLOWED_GROUPS granted what is now admin access.
@@ -205,7 +206,8 @@ func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
 		"readerUsers", defaults.ReaderUsers,
 		"adminUsers", defaults.AdminUsers,
 		"anonymousRead", defaults.AnonymousRead,
-		"anonymousReadLogs", defaults.AnonymousReadLogs)
+		"anonymousReadLogs", defaults.AnonymousReadLogs,
+		"suspendFromUI", defaults.SuspendFromUI)
 
 	return defaults
 }
@@ -461,6 +463,17 @@ func main() {
 			Validate: func(value string) error {
 				if value != "true" && value != "false" {
 					return fmt.Errorf("'AUTHORIZATION_ENABLED' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "AUTHORIZATION_SUSPEND_FROM_UI",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'AUTHORIZATION_SUSPEND_FROM_UI' must be 'true' or 'false'")
 				}
 				return nil
 			},

@@ -38,6 +38,7 @@ type mockRenovateJobManager struct {
 	reconcileProjectsFunc             func(ctx context.Context, jobId *api.RenovateJob, projects []string) error
 	cancelProjectJobFunc              func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error
 	updateProjectStatusBatchedFunc    func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	setSuspendFunc                    func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error
 }
 
 func (m *mockRenovateJobManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
@@ -152,6 +153,12 @@ func (m *mockRenovateJobManager) SetAcceptedCondition(ctx context.Context, jobId
 func (m *mockRenovateJobManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
 	if m.cancelProjectJobFunc != nil {
 		return m.cancelProjectJobFunc(ctx, project, jobId)
+	}
+	return nil
+}
+func (m *mockRenovateJobManager) SetSuspend(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error {
+	if m.setSuspendFunc != nil {
+		return m.setSuspendFunc(ctx, jobId, suspend)
 	}
 	return nil
 }

@@ -290,6 +290,10 @@
           "description": "whether to enforce per-job access rules; when false every authenticated user holds admin access and all group and user rules are ignored (anonymous read still applies)",
           "type": "boolean"
         },
+        "suspendFromUI": {
+          "description": "whether admins may suspend and resume a RenovateJob from the UI, which writes spec.suspend on the live object",
+          "type": "boolean"
+        },
         "defaults": {
           "description": "default access rules for RenovateJobs that leave the matching field in spec.access unset",
           "type": "object",

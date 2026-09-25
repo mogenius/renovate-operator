@@ -178,7 +178,7 @@ roles:
 | Role | May do |
 |---|---|
 | `reader` | view the job, its projects, statuses, PR activity and dependency issues; stream Renovate logs |
-| `admin` | everything a reader may do, plus trigger a project, trigger all projects, cancel a run, start discovery and change execution options |
+| `admin` | everything a reader may do, plus trigger a project, trigger all projects, cancel a run, start discovery, change execution options and, where the operator [allows it](#suspending-from-the-ui), suspend or resume the job |
 
 A job the request holds no role on is not listed and answers `404`, so its
 existence is not disclosed. A reader attempting a write gets `403`.
@@ -361,6 +361,21 @@ With this set:
 
 It has no effect when no authentication provider is configured, since every
 request is already an admin in that case.
+
+### Suspending from the UI
+
+The job card's **Suspend** and **Resume** button is off unless the operator
+enables it:
+
+```yaml
+authorization:
+  suspendFromUI: true   # AUTHORIZATION_SUSPEND_FROM_UI
+```
+
+Admins of a job then get the `suspend` permission and the button, readers see it
+disabled. It writes `spec.suspend` on the live RenovateJob, which a GitOps sync
+can undo, so read [Suspending a RenovateJob](../operations/suspend.md#gitops)
+before turning it on.
 
 ### GitHub org and team groups
 

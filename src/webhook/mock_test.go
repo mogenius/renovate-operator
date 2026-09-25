@@ -64,6 +64,9 @@ func (m *mockWebhookManager) SetAcceptedCondition(ctx context.Context, jobId crd
 func (m *mockWebhookManager) CancelProjectJob(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier) error {
 	return nil
 }
+func (m *mockWebhookManager) SetSuspend(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error {
+	return nil
+}
 
 func (m *mockWebhookManager) ListRenovateJobs(ctx context.Context) ([]crdmanager.RenovateJobIdentifier, error) {
 	return nil, nil

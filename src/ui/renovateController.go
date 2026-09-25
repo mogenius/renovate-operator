@@ -43,13 +43,19 @@ type RenovateJobInfo struct {
 	// Suspended mirrors spec.suspend: no new run starts, and triggers only queue
 	// projects. A suspended job has no NextSchedule.
 	Suspended bool `json:"suspended,omitempty"`
+	// SuspendFromUI reports that this operator offers the suspend button at all,
+	// so the UI hides it instead of disabling it for admins who can never use it.
+	SuspendFromUI bool `json:"suspendFromUI,omitempty"`
 }
 
 func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
-	if s.auth == nil {
-		return adminDecision()
+	decision := adminDecision()
+	if s.auth != nil {
+		decision = resolveAccess(job, getSessionFromContext(r), s.accessDefaults, s.logger)
 	}
-	return resolveAccess(job, getSessionFromContext(r), s.accessDefaults, s.logger)
+	// Whatever grants admin, the suspend button also needs the install to opt in.
+	decision.CanSuspend = decision.canWrite() && s.accessDefaults.SuspendFromUI
+	return decision
 }
 
 // checkAccessEnforceable reports whether the configured access rules can be
@@ -232,6 +238,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
+	apiV1.HandleFunc("/renovatejob/suspend", s.setRenovateJobSuspend).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +356,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			Accepted:         accepted,
 			AcceptedMessage:  acceptedMessage,
 			Suspended:        renovateJob.Spec.GetSuspend(),
+			SuspendFromUI:    s.accessDefaults.SuspendFromUI,
 			NextSchedule:     nextSchedule,
 			Projects:         projects,
 			CronExpression:   renovateJob.Spec.Schedule,
@@ -661,6 +669,51 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 
 	writeSuccess(w, SuccessResult{Message: "discovery job started"})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
+}
+
+// setRenovateJobSuspend sets spec.suspend, pausing or resuming a whole RenovateJob.
+func (s *Server) setRenovateJobSuspend(w http.ResponseWriter, r *http.Request) {
+	// Said plainly, rather than as the missing permission it also is, so an admin
+	// calling the API learns which setting turns it on.
+	if !s.accessDefaults.SuspendFromUI {
+		http.Error(w, "suspending from the UI is not enabled on this operator (authorization.suspendFromUI)", http.StatusForbidden)
+		return
+	}
+
+	var body struct {
+		RenovateJob string `json:"renovateJob"`
+		Namespace   string `json:"namespace"`
+		// A pointer, so a request that leaves it out is refused instead of resuming.
+		Suspend *bool `json:"suspend"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		badRequestError(w, err, "failed to parse request body")
+		return
+	}
+
+	if body.RenovateJob == "" || body.Namespace == "" || body.Suspend == nil {
+		badRequestError(w, nil, "Missing parameters")
+		return
+	}
+
+	if _, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permSuspend); !ok {
+		return
+	}
+
+	jobId := crdmanager.RenovateJobIdentifier{Name: body.RenovateJob, Namespace: body.Namespace}
+	if err := s.manager.SetSuspend(r.Context(), jobId, *body.Suspend); err != nil {
+		s.logger.Error(err, "Failed to set suspend on RenovateJob", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend)
+		internalServerError(w, err, "failed to update the RenovateJob")
+		return
+	}
+
+	// Pausing or resuming every run of a job is worth an audit line at the default level.
+	s.logger.Info("RenovateJob suspend set from the UI", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend, "user", sessionEmail(r))
+	message := "RenovateJob resumed"
+	if *body.Suspend {
+		message = "RenovateJob suspended"
+	}
+	writeSuccess(w, SuccessResult{Message: message})
 }
 
 func (s *Server) discoveryStatusForProject(w http.ResponseWriter, r *http.Request) {

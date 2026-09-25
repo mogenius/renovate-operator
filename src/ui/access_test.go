@@ -288,11 +288,12 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 				return job, nil
 			},
 		},
-		logger:    logr.Discard(),
-		discovery: &mockDiscoveryAgent{},
-		scheduler: &mockScheduler{},
-		auth:      &OIDCAuth{},
-		Router:    mux.NewRouter(),
+		logger:         logr.Discard(),
+		discovery:      &mockDiscoveryAgent{},
+		scheduler:      &mockScheduler{},
+		auth:           &OIDCAuth{},
+		accessDefaults: AccessDefaults{SuspendFromUI: true},
+		Router:         mux.NewRouter(),
 	}
 	server.registerApiV1Routes(server.Router)
 
@@ -318,6 +319,7 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 		"/api/v1/renovate/all",
 		"/api/v1/renovate/cancel",
 		"/api/v1/discovery/start",
+		"/api/v1/renovatejob/suspend",
 	}
 	slices.Sort(postPaths)
 	slices.Sort(wantPaths)
@@ -325,7 +327,8 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 		t.Fatalf("mutating routes = %v, want %v -- a new write route needs a permission and a case here", postPaths, wantPaths)
 	}
 
-	body := `{"renovateJob":"job1","namespace":"default","project":"proj"}`
+	// One body for every route, so it carries each route's required fields.
+	body := `{"renovateJob":"job1","namespace":"default","project":"proj","suspend":true}`
 	for _, path := range postPaths {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))

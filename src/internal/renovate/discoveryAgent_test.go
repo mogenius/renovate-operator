@@ -103,6 +103,9 @@ func (f *fakeJobManager) SetAcceptedCondition(ctx context.Context, job crdManage
 func (f *fakeJobManager) CancelProjectJob(ctx context.Context, project string, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }
+func (f *fakeJobManager) SetSuspend(ctx context.Context, job crdManager.RenovateJobIdentifier, suspend bool) error {
+	return nil
+}
 
 type fakePodLogReader struct {
 	getSucceededJobLogFn func(ctx context.Context, job *batchv1.Job) (string, error)
