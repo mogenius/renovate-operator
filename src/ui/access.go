@@ -90,6 +90,7 @@ const (
 	permTriggerAll = "triggerAll"
 	permCancel     = "cancel"
 	permDiscovery  = "discovery"
+	permSuspend    = "suspend"
 )
 
 // AccessDefaults are the operator-wide fallbacks for jobs that leave parts of
@@ -106,6 +107,10 @@ type AccessDefaults struct {
 	// negatively, like policy.Disabled, so the zero value enforces and a test
 	// constructing AccessDefaults{} cannot silently void authorization.
 	AuthorizationDisabled bool
+	// SuspendFromUI offers admins the job card's Suspend and Resume button. The
+	// button writes spec.suspend on the live object, which a GitOps sync can put
+	// back, so an install opts in and the zero value keeps it off.
+	SuspendFromUI bool
 }
 
 // hasGroups reports whether any group-based rule is configured operator-wide.
@@ -211,6 +216,9 @@ func jobConfiguresGroups(job *api.RenovateJob) bool {
 type accessDecision struct {
 	Role        accessRole
 	CanViewLogs bool
+	// CanSuspend is admin access on an install that offers the suspend button,
+	// see Server.decideJobAccess.
+	CanSuspend bool
 }
 
 func (d accessDecision) canRead() bool  { return d.Role != roleNone }
@@ -218,12 +226,15 @@ func (d accessDecision) canWrite() bool { return d.Role == roleAdmin }
 
 // permissions lists the actions this decision allows, for the UI to gate on.
 func (d accessDecision) permissions() []string {
-	perms := make([]string, 0, 5)
+	perms := make([]string, 0, 6)
 	if d.CanViewLogs {
 		perms = append(perms, permLogs)
 	}
 	if d.canWrite() {
 		perms = append(perms, permTrigger, permTriggerAll, permCancel, permDiscovery)
+	}
+	if d.CanSuspend {
+		perms = append(perms, permSuspend)
 	}
 	return perms
 }

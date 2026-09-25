@@ -8,6 +8,8 @@ kubectl patch renovatejob <name> -n <namespace> --type merge -p '{"spec":{"suspe
 
 `kubectl get renovatejobs` shows the state in its `SUSPEND` column, and the UI marks the job as suspended.
 
+Where the operator enables it with `authorization.suspendFromUI: true` (`AUTHORIZATION_SUSPEND_FROM_UI`), admins of a job can also flip it from the UI with the job card's **Suspend** and **Resume** button. It writes the smallest change that gets there: the job's own `suspend` is cleared when its template, or the default, already gives the wanted state, and set explicitly only to override a template. Readers see the button disabled. Every change is logged with the user who made it. The button is off by default because it changes the live object, which a sync can undo: see [GitOps](#gitops).
+
 ## What stops
 
 While a RenovateJob is suspended, the operator starts no Kubernetes Job for it:
@@ -39,7 +41,27 @@ kubectl get renovatejobs -n <namespace> -o name \
 
 Jobs that share a [template](../configuration/shared-templates.md) can be paused together by setting `suspend: true` on the template: every job using it is suspended, except one that sets `suspend: false` itself. The `SUSPEND` column only shows the job's own value, so a job suspended through its template shows it empty there, while the UI and the metric below report the effective state.
 
-If the RenovateJobs are managed by a GitOps tool, a live patch is drift: set `suspend` in the source instead, or expect the next sync to resume them.
+## GitOps
+
+If a GitOps tool manages the RenovateJobs, pause them in the source where you can, on the jobs or on their template. A live change, from `kubectl` or the UI button, lasts only as long as the sync leaves `spec.suspend` alone:
+
+- a sync that applies only the fields the source sets, like Argo CD's default apply or a server-side apply, keeps a live `suspend` the source does not set;
+- a source that sets `suspend` itself puts its value back on the next sync, or at once with self-heal;
+- a sync that replaces the whole object, like Argo CD's `Replace=true`, drops it.
+
+To keep a live value in Argo CD where the source sets `suspend`, ignore the field and make the sync respect that:
+
+```yaml
+spec:
+  ignoreDifferences:
+    - group: renovate-operator.mogenius.com
+      kind: RenovateJob
+      jsonPointers:
+        - /spec/suspend
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
+```
 
 ## Monitoring
 

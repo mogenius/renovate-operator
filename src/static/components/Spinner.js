@@ -1,5 +1,5 @@
 // The one spinner in the UI. Every button that stays disabled while an
-// operation runs — discovery, trigger, trigger-all, cancel — renders this in
+// operation runs — discovery, trigger, trigger-all, cancel, suspend — renders this in
 // place of its idle icon, so "busy" looks the same everywhere.
 //
 // currentColor and a caller-supplied size keep it usable inside a button

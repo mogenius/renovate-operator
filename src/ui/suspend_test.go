@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/go-logr/logr"
 
 	api "renovate-operator/api/v1alpha1"
+	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/renovate"
 )
 
@@ -88,5 +91,134 @@ func TestRunDiscoveryForProjectRefusesSuspendedJob(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Errorf("expected status %d, got %d", http.StatusConflict, w.Code)
+	}
+}
+
+// suspendServer answers as an admin, since with no auth provider every request is
+// one, on an install that offers the suspend button.
+func suspendServer(setSuspend func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error) *Server {
+	return &Server{
+		manager: &mockRenovateJobManager{
+			getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+				return &api.RenovateJob{Name: name, Namespace: namespace}, nil
+			},
+			setSuspendFunc: setSuspend,
+		},
+		discovery:      &mockDiscoveryAgent{},
+		logger:         logr.Discard(),
+		accessDefaults: AccessDefaults{SuspendFromUI: true},
+	}
+}
+
+func postSuspend(t *testing.T, server *Server, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/renovatejob/suspend", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.setRenovateJobSuspend(w, req)
+	return w
+}
+
+func TestSetRenovateJobSuspendSetsTheRequestedState(t *testing.T) {
+	for _, suspend := range []bool{true, false} {
+		var got *bool
+		var gotJob crdmanager.RenovateJobIdentifier
+		server := suspendServer(func(_ context.Context, jobId crdmanager.RenovateJobIdentifier, s bool) error {
+			got, gotJob = &s, jobId
+			return nil
+		})
+
+		body, _ := json.Marshal(map[string]any{"renovateJob": "job1", "namespace": "default", "suspend": suspend})
+		w := postSuspend(t, server, string(body))
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("suspend=%v: expected status %d, got %d", suspend, http.StatusOK, w.Code)
+		}
+		if got == nil || *got != suspend {
+			t.Errorf("suspend=%v: manager got %v", suspend, got)
+		}
+		if gotJob.Name != "job1" || gotJob.Namespace != "default" {
+			t.Errorf("suspend=%v: manager got job %+v", suspend, gotJob)
+		}
+	}
+}
+
+// Leaving the field out must not read as false and resume a suspended job.
+func TestSetRenovateJobSuspendRequiresTheField(t *testing.T) {
+	called := false
+	server := suspendServer(func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ bool) error {
+		called = true
+		return nil
+	})
+
+	w := postSuspend(t, server, `{"renovateJob":"job1","namespace":"default"}`)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+	if called {
+		t.Error("the manager must not be called without an explicit suspend value")
+	}
+}
+
+func TestSetRenovateJobSuspendReportsAFailedUpdate(t *testing.T) {
+	server := suspendServer(func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ bool) error {
+		return errors.New("conflict")
+	})
+
+	w := postSuspend(t, server, `{"renovateJob":"job1","namespace":"default","suspend":true}`)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+// The button writes spec.suspend on the live object, which a GitOps sync can put
+// back, so an install that did not opt in refuses it even to an admin.
+func TestSetRenovateJobSuspendIsOffUnlessEnabled(t *testing.T) {
+	called := false
+	server := suspendServer(func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ bool) error {
+		called = true
+		return nil
+	})
+	server.accessDefaults.SuspendFromUI = false
+
+	w := postSuspend(t, server, `{"renovateJob":"job1","namespace":"default","suspend":true}`)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected status %d, got %d", http.StatusForbidden, w.Code)
+	}
+	if called {
+		t.Error("the manager must not be called while the button is off")
+	}
+}
+
+func TestGetRenovateJobsOffersSuspendOnlyWhenEnabled(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		server := &Server{
+			manager: &mockRenovateJobManager{
+				listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+					return []api.RenovateJob{{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 * * * *"}}}, nil
+				},
+			},
+			logger:         logr.Discard(),
+			discovery:      &mockDiscoveryAgent{},
+			scheduler:      &mockScheduler{},
+			accessDefaults: AccessDefaults{SuspendFromUI: enabled},
+		}
+
+		w := httptest.NewRecorder()
+		server.getRenovateJobs(w, httptest.NewRequest(http.MethodGet, "/api/v1/renovatejobs", nil))
+
+		var result []RenovateJobInfo
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil || len(result) != 1 {
+			t.Fatalf("enabled=%v: failed to decode one job: %v", enabled, err)
+		}
+		if got := slices.Contains(result[0].Permissions, permSuspend); got != enabled {
+			t.Errorf("enabled=%v: an admin holds the suspend permission: %v", enabled, got)
+		}
+		if result[0].SuspendFromUI != enabled {
+			t.Errorf("enabled=%v: suspendFromUI = %v", enabled, result[0].SuspendFromUI)
+		}
 	}
 }

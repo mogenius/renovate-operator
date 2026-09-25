@@ -313,6 +313,11 @@ authorization:
   # -- unaffected. Has no effect when no authentication provider is configured, since every
   # -- request is an admin in that case.
   enabled: true
+  # -- whether admins may suspend and resume a RenovateJob from the UI. The button writes
+  # -- spec.suspend on the live object, so leave it off when a GitOps tool sets spec.suspend
+  # -- or replaces whole objects on sync: the next sync would undo the change without a word.
+  # -- See docs/operations/suspend.md.
+  suspendFromUI: false
   # -- default access rules. Each field applies to RenovateJobs that leave the matching field in
   # -- spec.access unset. A field the job does set replaces the default for that field instead of
   # -- adding to it, so a per-job spec.access can narrow access as well as widen it.

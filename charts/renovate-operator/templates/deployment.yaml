@@ -294,6 +294,8 @@ spec:
               value: {{ join "," .Values.policy.allowedImages | quote }}
             - name: AUTHORIZATION_ENABLED
               value: {{ dig "enabled" true .Values.authorization | quote }}
+            - name: AUTHORIZATION_SUSPEND_FROM_UI
+              value: {{ dig "suspendFromUI" false .Values.authorization | quote }}
             {{- with .Values.authorization.defaults }}
             {{- with .readerGroups }}
             - name: AUTHORIZATION_DEFAULT_READER_GROUPS

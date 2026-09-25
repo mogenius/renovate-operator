@@ -470,3 +470,22 @@ tests:
       content:
         name: AUTHORIZATION_ENABLED
         value: "false"
+
+- it: Keeps the UI suspend button off by default
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_SUSPEND_FROM_UI
+        value: "false"
+
+- it: Offers the UI suspend button when authorization.suspendFromUI is true
+  set:
+    authorization:
+      suspendFromUI: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: AUTHORIZATION_SUSPEND_FROM_UI
+        value: "true"
