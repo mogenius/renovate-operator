@@ -29,6 +29,7 @@ RenovateJob and Operator Settings to customize your experience.
 | [Extra Volumes](./configuration/extra-volumes.md)             | Mounting ConfigMaps, Secrets, and ephemeral scratch volumes |
 | [Image Pull Secrets](./configuration/image-pull-secrets.md)   | Private registry authentication                             |
 | [Base Path](./configuration/base-path.md)                     | Serving the UI under a sub-path                             |
+| [Timezone](./configuration/timezone.md)                       | Per-schedule `CRON_TZ=` prefix and global `TZ` env var     |
 
 ## Self-Service
 
