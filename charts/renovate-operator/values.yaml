@@ -466,6 +466,8 @@ logging:
 externalKeyValueStore:
   # -- whether the connection should be made with TLS encryption enabled (rediss://)
   useTls: false
+  # -- whether to connect to a cluster (redis+cluster://). All usages then share database 0.
+  cluster: false
   # -- host for the connection; alternatively provide via existingSecret.hostKey
   host: ~
   # -- port for the connection; alternatively provide via existingSecret.portKey
@@ -479,6 +481,7 @@ externalKeyValueStore:
     # -- name of the secret containing connection and authentication information
     name: ~
     # -- key containing the full connection url (e.g. "rediss://user:password@valkey:6379/0").
+    # -- Use "redis+cluster://" or "rediss+cluster://" to connect to a cluster.
     # -- When set, all other keys and clear values are ignored.
     urlKey: ~
     # -- key containing the host for the connection

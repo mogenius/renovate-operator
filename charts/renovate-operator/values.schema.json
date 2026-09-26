@@ -404,6 +404,7 @@
       "additionalProperties": false,
       "properties": {
         "useTls": { "type": "boolean" },
+        "cluster": { "type": "boolean" },
         "host": { "type": ["string", "null"] },
         "port": { "type": ["integer", "string", "null"] },
         "username": { "type": ["string", "null"] },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
@@ -20,7 +21,8 @@ type valkeyKVStore struct {
 // The valkeyURL should include credentials and DB if needed
 // (e.g. "redis://:password@valkey:6379/0").
 func NewValkeyKVStore(valkeyURL string) (KVStore, error) {
-	opts, err := valkey.ParseURL(valkeyURL)
+	// valkey-go has no cluster scheme; it detects cluster mode on connect instead.
+	opts, err := valkey.ParseURL(strings.Replace(valkeyURL, "+cluster://", "://", 1))
 	if err != nil {
 		return nil, fmt.Errorf("invalid Valkey URL: %w", err)
 	}
