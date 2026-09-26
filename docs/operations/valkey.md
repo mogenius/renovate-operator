@@ -44,6 +44,7 @@ Valkey is configured via environment variables (or the equivalent Helm values):
 | `VALKEY_USERNAME`              | `externalKeyValueStore.username` or `.existingSecret.usernameKey` | `""` | Valkey ACL username. Used when `VALKEY_URL` is not set. Omit to authenticate as the `default` user. |
 | `VALKEY_PASSWORD`              | `externalKeyValueStore.existingSecret.passwordKey` | `""`  | Valkey password. Used when `VALKEY_URL` is not set. Only available via secret.                                    |
 | `VALKEY_TLS`                   | `externalKeyValueStore.useTls`                | `false`    | Connect with TLS (`rediss://`). Used when `VALKEY_URL` is not set; a URL carries its own scheme.                  |
+| `VALKEY_CLUSTER`               | `externalKeyValueStore.cluster`               | `false`    | Connect to a cluster (`redis+cluster://`). Used when `VALKEY_URL` is not set; a URL carries its own scheme.       |
 | `VALKEY_FORWARD_CACHE_TO_JOBS` | `config.forwardCacheToJobs`                   | `true`     | Forward the Renovate cache URL to executor jobs. Requires Valkey to be configured.                                |
 | `LOG_STORE_MODE`               | `config.logStorage.mode`                      | `disabled` | Log storage backend: `disabled`, `memory`, `valkey`, or `s3` (see [S3 Object Storage](./s3.md)).                  |
 
@@ -107,4 +108,11 @@ externalKeyValueStore:
 
 ## High availability
 
-The upstream Helm chart currently [does not support](https://github.com/valkey-io/valkey-helm/issues/18) Valkey clustering. Once this is delivered, we will have to update the protocol from `redis://` to `redis+cluster://`.
+To connect to a Valkey (or Redis) cluster, either set `externalKeyValueStore.cluster: true` alongside the host-based settings, or provide the URL via `urlKey` with the `redis+cluster://` scheme (`rediss+cluster://` for TLS):
+
+```yaml
+stringData:
+  valkey-url: "redis+cluster://user:yourpassword@valkey-cluster.example.com:6379"
+```
+
+Cluster mode only supports database `0`, so the [database assignment](#database-assignment) above doesn't apply: sessions, the Renovate cache and logs all share database `0`. Their key prefixes don't collide. The URL is forwarded to Renovate unchanged, and Renovate [supports](https://docs.renovatebot.com/self-hosted-configuration/#redisurl) the same scheme.

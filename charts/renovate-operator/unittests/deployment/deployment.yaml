@@ -239,6 +239,7 @@ tests:
   set:
     externalKeyValueStore:
       useTls: true
+      cluster: true
       existingSecret:
         name: my-kv-secret
         hostKey: SERVICEUSER_HOST
@@ -282,6 +283,11 @@ tests:
       path: spec.template.spec.containers[0].env
       content:
         name: VALKEY_TLS
+        value: "true"
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_CLUSTER
         value: "true"
 
 - it: External key value store clear values with secret keys taking precedence

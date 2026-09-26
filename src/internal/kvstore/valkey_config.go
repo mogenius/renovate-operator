@@ -17,6 +17,7 @@ type ValkeyConfig struct {
 	Username string
 	Password string
 	TLS      bool
+	Cluster  bool
 }
 
 func (cfg *ValkeyConfig) IsConfigured() bool {
@@ -34,6 +35,7 @@ func ConfigFromEnv(get func(key string) string) ValkeyConfig {
 		Username: get("VALKEY_USERNAME"),
 		Password: get("VALKEY_PASSWORD"),
 		TLS:      get("VALKEY_TLS") == "true",
+		Cluster:  get("VALKEY_CLUSTER") == "true",
 	}
 }
 
@@ -60,20 +62,36 @@ const (
 //   - Host-based (ValkeyConfig.Host set): usage value is the absolute database index.
 //     UsageSessionStore→0, UsageRenovateCache→1, UsageRenovateLogs→2.
 //
+//   - Cluster (URL with redis+cluster:// / rediss+cluster://, or Host with Cluster set):
+//     cluster mode only has database 0, so all usages share it; their key prefixes don't
+//     collide. A cluster URL is returned unchanged.
+//
 // Returns "" if neither URL nor Host is configured.
 func (cfg ValkeyConfig) URLForUsage(usage Usage) string {
+	if isClusterURL(cfg.URL) {
+		return cfg.URL
+	}
 	if cfg.URL != "" {
 		return offsetURLDB(cfg.URL, int(usage))
 	}
-	return BuildValkeyURL(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.TLS, int(usage))
+	return BuildValkeyURL(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.TLS, cfg.Cluster, int(usage))
+}
+
+// isClusterURL reports whether rawURL uses a cluster scheme (redis+cluster://,
+// rediss+cluster://), the convention Renovate uses for cluster connections.
+func isClusterURL(rawURL string) bool {
+	scheme, _, ok := strings.Cut(rawURL, "://")
+	return ok && strings.HasSuffix(scheme, "+cluster")
 }
 
 // BuildValkeyURL constructs a Valkey URL from host, port, credentials, and
 // database index. Returns "" if host is empty. Uses the redis:// scheme
 // (wire-compatible with Valkey), or rediss:// when useTLS is set.
+// When cluster is true, "+cluster" is appended to the scheme and db is forced
+// to 0 (cluster mode only has one logical database).
 // A username without a password is emitted as user@host (valid for ACL users
 // created with nopass).
-func BuildValkeyURL(host, port, username, password string, useTLS bool, db int) string {
+func BuildValkeyURL(host, port, username, password string, useTLS, cluster bool, db int) string {
 	if host == "" {
 		return ""
 	}
@@ -83,6 +101,10 @@ func BuildValkeyURL(host, port, username, password string, useTLS bool, db int) 
 	scheme := "redis"
 	if useTLS {
 		scheme = "rediss"
+	}
+	if cluster {
+		scheme += "+cluster"
+		db = 0
 	}
 	u := url.URL{
 		Scheme: scheme,
