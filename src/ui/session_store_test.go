@@ -654,6 +654,26 @@ func TestURLForUsage_HostBased_AbsoluteDB(t *testing.T) {
 	}
 }
 
+func TestURLForUsage_ClusterURL_NoDBOffset(t *testing.T) {
+	for _, url := range []string{"redis+cluster://valkey.example.com:6379", "rediss+cluster://u:p@valkey.example.com:6379"} {
+		cfg := kvstore.ValkeyConfig{URL: url}
+		for _, usage := range []kvstore.Usage{kvstore.UsageSessionStore, kvstore.UsageRenovateCache, kvstore.UsageRenovateLogs} {
+			if got := cfg.URLForUsage(usage); got != url {
+				t.Errorf("usage %d: cluster URL must be forwarded unchanged, got %q", usage, got)
+			}
+		}
+	}
+}
+
+func TestURLForUsage_HostBased_Cluster(t *testing.T) {
+	cfg := kvstore.ValkeyConfig{Host: "valkey.example.com", Port: "6379", Password: "s3cret", TLS: true, Cluster: true}
+	for _, usage := range []kvstore.Usage{kvstore.UsageSessionStore, kvstore.UsageRenovateCache, kvstore.UsageRenovateLogs} {
+		if got := cfg.URLForUsage(usage); got != "rediss+cluster://:s3cret@valkey.example.com:6379/0" {
+			t.Errorf("usage %d: got %q", usage, got)
+		}
+	}
+}
+
 func TestURLForUsage_URLBased_OffsetFromBase(t *testing.T) {
 	cfg := kvstore.ValkeyConfig{URL: "redis://valkey.example.com:6379/5"}
 	if got := cfg.URLForUsage(kvstore.UsageSessionStore); got != "redis://valkey.example.com:6379/5" {

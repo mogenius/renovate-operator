@@ -17,6 +17,7 @@ type ValkeyConfig struct {
 	Username string
 	Password string
 	TLS      bool
+	Cluster  bool
 }
 
 func (cfg *ValkeyConfig) IsConfigured() bool {
@@ -34,6 +35,7 @@ func ConfigFromEnv(get func(key string) string) ValkeyConfig {
 		Username: get("VALKEY_USERNAME"),
 		Password: get("VALKEY_PASSWORD"),
 		TLS:      get("VALKEY_TLS") == "true",
+		Cluster:  get("VALKEY_CLUSTER") == "true",
 	}
 }
 
@@ -60,12 +62,29 @@ const (
 //   - Host-based (ValkeyConfig.Host set): usage value is the absolute database index.
 //     UsageSessionStore→0, UsageRenovateCache→1, UsageRenovateLogs→2.
 //
+//   - Cluster (URL with redis+cluster:// / rediss+cluster://, or Host with Cluster set):
+//     cluster mode only has database 0, so all usages share it; their key prefixes don't
+//     collide. A cluster URL is returned unchanged.
+//
 // Returns "" if neither URL nor Host is configured.
 func (cfg ValkeyConfig) URLForUsage(usage Usage) string {
+	if isClusterURL(cfg.URL) {
+		return cfg.URL
+	}
 	if cfg.URL != "" {
 		return offsetURLDB(cfg.URL, int(usage))
 	}
+	if cfg.Cluster {
+		return strings.Replace(BuildValkeyURL(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.TLS, 0), "://", "+cluster://", 1)
+	}
 	return BuildValkeyURL(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.TLS, int(usage))
+}
+
+// isClusterURL reports whether rawURL uses a cluster scheme (redis+cluster://,
+// rediss+cluster://), the convention Renovate uses for cluster connections.
+func isClusterURL(rawURL string) bool {
+	scheme, _, ok := strings.Cut(rawURL, "://")
+	return ok && strings.HasSuffix(scheme, "+cluster")
 }
 
 // BuildValkeyURL constructs a Valkey URL from host, port, credentials, and

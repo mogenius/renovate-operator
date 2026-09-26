@@ -526,6 +526,11 @@ func main() {
 			Default:  "false",
 		},
 		{
+			Key:      "VALKEY_CLUSTER",
+			Optional: true,
+			Default:  "false",
+		},
+		{
 			Key:      "VALKEY_FORWARD_CACHE_TO_JOBS",
 			Optional: true,
 			Default:  "true",
