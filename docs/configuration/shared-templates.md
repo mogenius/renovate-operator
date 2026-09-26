@@ -79,8 +79,10 @@ Inheritance is resolved **per top-level field**:
 > The same holds for `securityContext` (setting `.container` drops an inherited
 > `.pod`), `renovateConfig`, `provider`, `webhook`, and every other object-valued
 > field. To combine values, repeat the inherited ones on the job.
-- `skipForks` and `skipPendingDeletion` are booleans that inherit when unset; set
-  either to `false` explicitly to override an inherited `true`.
+- `skipForks`, `skipPendingDeletion` and `suspend` are booleans that inherit when
+  unset; set any of them to `false` explicitly to override an inherited `true`.
+  A template's `suspend: true` therefore pauses every job using it, see
+  [Suspending a RenovateJob](../operations/suspend.md).
 - `access` and the deprecated `allowedGroups` are two spellings of the same access
   control. A job that sets **either** replaces the template's access control
   entirely, dropping the inherited spelling too, so the effective job never carries

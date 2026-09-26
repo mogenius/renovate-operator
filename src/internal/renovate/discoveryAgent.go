@@ -2,6 +2,7 @@ package renovate
 
 import (
 	context "context"
+	stderrors "errors"
 	"fmt"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
@@ -31,6 +32,7 @@ type DiscoveryAgent interface {
 	// scheduleAfterCompletion controls whether ProcessDiscoveryJobResult will schedule all
 	// non-running projects once the job completes (true for cron, false for UI-triggered).
 	// Completion is handled reactively by the job controller via ProcessDiscoveryJobResult.
+	// A suspended RenovateJob gets ErrRenovateJobSuspended and no job.
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error)
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
@@ -44,6 +46,10 @@ type DiscoveryJobOptions struct {
 	// Wether to trigger all projects once the discovery is fnished
 	TriggerAllProjects bool
 }
+
+// ErrRenovateJobSuspended is returned instead of starting a discovery for a
+// RenovateJob whose spec.suspend is true.
+var ErrRenovateJobSuspended = stderrors.New("the RenovateJob is suspended")
 
 type discoveryAgent struct {
 	client    client.Client
@@ -182,6 +188,11 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	if err := e.policy.ValidateJob(&renovateJob); err != nil {
 		metricStore.IncPolicyDenial(ctx, "destination")
 		return "", fmt.Errorf("refusing to run discovery: %w", err)
+	}
+	// Same reach as the policy check above: a suspended job has no schedule, but
+	// the UI and the annotation trigger can still ask.
+	if renovateJob.Spec.GetSuspend() {
+		return "", ErrRenovateJobSuspended
 	}
 
 	name := renovateJob.Fullname()

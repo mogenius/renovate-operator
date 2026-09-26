@@ -226,3 +226,6 @@ func (f *fakeProjectManager) SetAcceptedCondition(_ context.Context, _ crdManage
 func (f *fakeProjectManager) CancelProjectJob(_ context.Context, _ string, _ crdManager.RenovateJobIdentifier) error {
 	return fmt.Errorf("not implemented")
 }
+func (f *fakeProjectManager) SetSuspend(_ context.Context, _ crdManager.RenovateJobIdentifier, _ bool) error {
+	return fmt.Errorf("not implemented")
+}

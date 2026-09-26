@@ -291,3 +291,22 @@ func TestDeleteProjectMetricsRemovesNewSeries(t *testing.T) {
 		t.Errorf("logIssues should be empty after deletion, got %d series", v)
 	}
 }
+
+func TestSetRenovateJobSuspended(t *testing.T) {
+	ns, job := "suspend-ns", "suspend-job"
+
+	SetRenovateJobSuspended(ns, job, true)
+	if v := testutil.ToFloat64(renovateJobSuspended.WithLabelValues(ns, job)); v != 1 {
+		t.Errorf("expected 1 while suspended, got %v", v)
+	}
+
+	SetRenovateJobSuspended(ns, job, false)
+	if v := testutil.ToFloat64(renovateJobSuspended.WithLabelValues(ns, job)); v != 0 {
+		t.Errorf("expected 0 once resumed, got %v", v)
+	}
+
+	DeleteRenovateJobSuspended(ns, job)
+	if v := testutil.CollectAndCount(renovateJobSuspended); v != 0 {
+		t.Errorf("expected no series once the RenovateJob is deleted, got %d", v)
+	}
+}

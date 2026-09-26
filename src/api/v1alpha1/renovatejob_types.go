@@ -27,6 +27,13 @@ type RenovateJobSpec struct {
 	// templateRef, so it can be left unset here.
 	// +optional
 	Schedule string `json:"schedule,omitempty"`
+	// If true, the operator starts no new run for this RenovateJob: the schedule
+	// does not fire, discovery is refused and queued projects are not dispatched.
+	// Runs already in progress finish. Projects queued meanwhile, by webhooks,
+	// the UI or annotation triggers, stay Scheduled and run once it is resumed.
+	// A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
+	// +optional
+	Suspend *bool `json:"suspend,omitempty"`
 	// Renovate Docker image to use. Required, but may be inherited from templateRef,
 	// so it can be left unset here.
 	// +optional
@@ -310,6 +317,7 @@ const ConditionAccepted = "Accepted"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.spec.schedule`
+// +kubebuilder:printcolumn:name="Suspend",type=boolean,JSONPath=`.spec.suspend`
 // +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.provider.name`
 // +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
 // +kubebuilder:printcolumn:name="Reason",type=string,priority=1,JSONPath=`.status.conditions[?(@.type=="Accepted")].reason`
@@ -390,6 +398,10 @@ func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	if in.SkipPendingDeletion != nil {
 		out.SkipPendingDeletion = new(bool)
 		*out.SkipPendingDeletion = *in.SkipPendingDeletion
+	}
+	if in.Suspend != nil {
+		out.Suspend = new(bool)
+		*out.Suspend = *in.Suspend
 	}
 	if in.RenovateConfig != nil {
 		out.RenovateConfig = new(RenovateJobConfig)
@@ -588,6 +600,11 @@ func (in *RenovateJobSpec) GetSkipForks() bool {
 // GetSkipPendingDeletion reports the resolved SkipPendingDeletion value, treating an unset pointer as false.
 func (in *RenovateJobSpec) GetSkipPendingDeletion() bool {
 	return in.SkipPendingDeletion != nil && *in.SkipPendingDeletion
+}
+
+// GetSuspend reports the resolved Suspend value, treating an unset pointer as false.
+func (in *RenovateJobSpec) GetSuspend() bool {
+	return in.Suspend != nil && *in.Suspend
 }
 
 type RenovateJobList struct {

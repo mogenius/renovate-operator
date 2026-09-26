@@ -2,10 +2,12 @@ package scheduler
 
 import (
 	"renovate-operator/health"
+	"renovate-operator/metricStore"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var testLogger = logr.Discard()
@@ -317,4 +319,52 @@ func TestAddScheduleReplaceExistingHashedCronSameExprNotReAdded(t *testing.T) {
 	if len(hc.Scheduler.Scheduler) != 1 {
 		t.Errorf("expected exactly 1 schedule entry, got %d", len(hc.Scheduler.Scheduler))
 	}
+}
+
+// Left behind, the last timestamp of a removed schedule reads as an overdue run to
+// anything alerting on it.
+func TestRemoveScheduleDropsNextRunMetric(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metricStore.Register(reg)
+
+	h := health.NewHealthCheck()
+	s := NewScheduler(testLogger, h)
+	s.Start()
+	defer s.Stop()
+
+	if err := s.AddSchedule("* * * * *", "metrics-ns", "metrics-job", func() {}); err != nil {
+		t.Fatalf("AddSchedule returned error: %v", err)
+	}
+	if !hasNextRunSeries(t, reg, "metrics-ns", "metrics-job") {
+		t.Fatal("expected a next-run series once scheduled")
+	}
+
+	s.RemoveSchedule("metrics-ns", "metrics-job")
+
+	if hasNextRunSeries(t, reg, "metrics-ns", "metrics-job") {
+		t.Error("expected the next-run series to go with the schedule")
+	}
+}
+
+func hasNextRunSeries(t *testing.T, reg prometheus.Gatherer, namespace, job string) bool {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != "renovate_operator_schedule_next_run_timestamp_seconds" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			labels := make(map[string]string, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["renovate_namespace"] == namespace && labels["renovate_job"] == job {
+				return true
+			}
+		}
+	}
+	return false
 }

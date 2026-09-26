@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -104,6 +105,10 @@ type RenovateJobManager interface {
 	// CancelProjectJob deletes the running executor Kubernetes Job for the given project and
 	// transitions its CRD status to cancelled, freeing the slot for the next dispatch.
 	CancelProjectJob(ctx context.Context, project string, job RenovateJobIdentifier) error
+	// SetSuspend makes the RenovateJob's effective suspend equal to suspend, which stops
+	// or resumes its new runs. It writes the smallest override: the job's own value is
+	// cleared when its template, or the default, already gives the wanted state.
+	SetSuspend(ctx context.Context, job RenovateJobIdentifier, suspend bool) error
 }
 
 var ErrProjectNotFound = errors.New("project not found")
@@ -849,6 +854,45 @@ func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job Renov
 		return nil
 	})
 	return changed, err
+}
+
+func (r *renovateJobManager) SetSuspend(ctx context.Context, job RenovateJobIdentifier, suspend bool) error {
+	defer r.globalManagerLock(false)()
+
+	// The raw object: it is patched, so it must not carry an inherited spec.
+	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+	if err != nil {
+		return err
+	}
+
+	// An explicit value would pin the job against later changes to its
+	// template, so write one only when inheriting gives the wrong state. A
+	// template that cannot be resolved leaves the explicit value, which is safe
+	// either way.
+	want := &suspend
+	if inherited, err := r.inheritedSuspend(ctx, renovateJob); err == nil && inherited == suspend {
+		want = nil
+	}
+	if reflect.DeepEqual(renovateJob.Spec.Suspend, want) {
+		return nil
+	}
+
+	// A merge patch carries spec.suspend alone, so it cannot overwrite a
+	// concurrent change to the rest of the spec.
+	patch := client.MergeFrom(renovateJob.DeepCopy())
+	renovateJob.Spec.Suspend = want
+	return r.client.Patch(ctx, renovateJob, patch)
+}
+
+// inheritedSuspend is the suspend value the job would have with none of its own.
+func (r *renovateJobManager) inheritedSuspend(ctx context.Context, job *api.RenovateJob) (bool, error) {
+	bare := job.DeepCopy()
+	bare.Spec.Suspend = nil
+	effective, err := resolveEffectiveJob(ctx, bare, r.client)
+	if err != nil {
+		return false, err
+	}
+	return effective.Spec.GetSuspend(), nil
 }
 
 func computeHMAC256(message []byte, secret string) string {

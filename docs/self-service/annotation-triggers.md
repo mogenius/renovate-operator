@@ -47,7 +47,7 @@ kubectl annotate renovatejob <name> -n <namespace> \
   renovate-operator.mogenius.com/discovery=true
 ```
 
-The operator starts a discovery job, which runs Renovate in autodiscover mode and reconciles the resulting project list into the `RenovateJob` status. The annotation is removed once the job is created successfully.
+The operator starts a discovery job, which runs Renovate in autodiscover mode and reconciles the resulting project list into the `RenovateJob` status. The annotation is removed once the job is created successfully. While the `RenovateJob` is [suspended](../operations/suspend.md), the annotation is left in place and the discovery runs once the job is resumed.
 
 ## Schedule all projects immediately
 

@@ -341,12 +341,16 @@ type scheduledCandidate struct {
 // acceptedCandidates flattens the Scheduled projects of every RenovateJob that passes
 // the operator's policy into one candidate list, recording per-job oldest wait for the
 // fairness sort. A job the policy refuses is skipped on its own; its siblings still
-// dispatch.
+// dispatch. So is a suspended job, whose projects stay queued until it is resumed.
 func (e *renovateExecutor) acceptedCandidates(ctx context.Context, renovateJobs []api.RenovateJob) []scheduledCandidate {
 	var candidates []scheduledCandidate
 
 	for i := range renovateJobs {
 		renovateJob := &renovateJobs[i]
+
+		if renovateJob.Spec.GetSuspend() {
+			continue
+		}
 
 		if err := e.policy.ValidateJob(renovateJob); err != nil {
 			metricStore.IncPolicyDenial(ctx, "destination")

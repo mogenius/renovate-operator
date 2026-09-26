@@ -174,6 +174,13 @@ var (
 			Help: "Unix timestamp of the next planned scheduled run",
 		},
 		[]string{labelNamespace, labelJob})
+
+	renovateJobSuspended = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "renovate_operator_renovatejob_suspended",
+			Help: "Whether the RenovateJob is suspended (1) or not (0)",
+		},
+		[]string{labelNamespace, labelJob})
 )
 
 // Prometheus metrics — SRE: log quality (Group E).
@@ -350,6 +357,7 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 		// Group D
 		scheduleRuns,
 		scheduleNextRun,
+		renovateJobSuspended,
 		// Group E
 		logIssues,
 		configMigrationNeeded,
@@ -536,6 +544,26 @@ func IncScheduleRun(ctx context.Context, namespace, job, result string) {
 // SetScheduleNextRun sets the Unix timestamp (seconds) of the next planned run.
 func SetScheduleNextRun(namespace, job string, unixSeconds float64) {
 	scheduleNextRun.WithLabelValues(namespace, job).Set(unixSeconds)
+}
+
+// DeleteScheduleNextRun drops the next planned run of a removed schedule, so a
+// stale timestamp does not read as an overdue run.
+func DeleteScheduleNextRun(namespace, job string) {
+	scheduleNextRun.DeleteLabelValues(namespace, job)
+}
+
+// SetRenovateJobSuspended records whether a RenovateJob is suspended.
+func SetRenovateJobSuspended(namespace, job string, suspended bool) {
+	value := 0.0
+	if suspended {
+		value = 1
+	}
+	renovateJobSuspended.WithLabelValues(namespace, job).Set(value)
+}
+
+// DeleteRenovateJobSuspended drops the series of a deleted RenovateJob.
+func DeleteRenovateJobSuspended(namespace, job string) {
+	renovateJobSuspended.DeleteLabelValues(namespace, job)
 }
 
 // ---------------------------------------------------------------------------

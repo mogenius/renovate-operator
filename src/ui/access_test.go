@@ -37,7 +37,7 @@ func TestResolveAccess(t *testing.T) {
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}}},
 			session:         &sessionData{Groups: []string{"team-admin"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "reader group grants logs only",
@@ -70,7 +70,7 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Email: "nobody@example.com", Groups: []string{"team-unrelated"}},
 			defaults:        AccessDefaults{AuthorizationDisabled: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "authorization disabled grants a session admin on an unconfigured job",
@@ -78,7 +78,7 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Email: "nobody@example.com"},
 			defaults:        AccessDefaults{AuthorizationDisabled: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "authorization disabled still denies requests without a session",
@@ -103,14 +103,14 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Email: "nobody@example.com"},
 			defaults:        AccessDefaults{AuthorizationDisabled: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "admin user matched by email",
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"me@example.com"}}}},
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			// The homelab case: a personal GitHub account is in no org, so it has
@@ -119,14 +119,14 @@ func TestResolveAccess(t *testing.T) {
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"octocat"}}}},
 			session:         &sessionData{Email: "octocat@github", Username: "octocat", EmailVerified: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "user match is case-insensitive",
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"Me@Example.COM"}}}},
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "reader user grants logs only",
@@ -156,7 +156,7 @@ func TestResolveAccess(t *testing.T) {
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"octocat"}}}},
 			session:         &sessionData{Email: "spoofed@example.com", Username: "octocat", EmailVerified: false},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			// An empty identity must never match an empty configured entry.
@@ -172,7 +172,7 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true, Groups: nil},
 			defaults:        AccessDefaults{AdminUsers: []string{"other@example.com"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "default admin users apply when the job sets none",
@@ -180,14 +180,14 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true},
 			defaults:        AccessDefaults{AdminUsers: []string{"me@example.com"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "admin user outranks a reader group match",
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminUsers: []string{"me@example.com"}, ReaderGroups: []string{"team-reader"}}}},
 			session:         &sessionData{Email: "me@example.com", EmailVerified: true, Groups: []string{"team-reader"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name:            "operator defaults fill in unset job fields",
@@ -195,7 +195,7 @@ func TestResolveAccess(t *testing.T) {
 			session:         &sessionData{Groups: []string{"team-default-admin"}},
 			defaults:        AccessDefaults{AdminGroups: []string{"team-default-admin"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			// Inheritance is per field and REPLACES, it does not merge: a job that
@@ -237,7 +237,7 @@ func TestResolveAccess(t *testing.T) {
 			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
 			session:         &sessionData{Groups: []string{"team-legacy"}},
 			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
+			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery, permSuspend},
 		},
 		{
 			name: "deprecated allowedGroups next to access fails closed",
@@ -318,6 +318,7 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 		"/api/v1/renovate/all",
 		"/api/v1/renovate/cancel",
 		"/api/v1/discovery/start",
+		"/api/v1/renovatejob/suspend",
 	}
 	slices.Sort(postPaths)
 	slices.Sort(wantPaths)
@@ -325,7 +326,8 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 		t.Fatalf("mutating routes = %v, want %v -- a new write route needs a permission and a case here", postPaths, wantPaths)
 	}
 
-	body := `{"renovateJob":"job1","namespace":"default","project":"proj"}`
+	// One body for every route, so it carries each route's required fields.
+	body := `{"renovateJob":"job1","namespace":"default","project":"proj","suspend":true}`
 	for _, path := range postPaths {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))

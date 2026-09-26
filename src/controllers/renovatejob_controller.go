@@ -2,6 +2,7 @@ package controllers
 
 import (
 	context "context"
+	stderrors "errors"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
 	"renovate-operator/internal/policy"
@@ -87,6 +88,8 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 			metricStore.RehydrateMetrics(renovateJob.Namespace, renovateJob.Name, projectMap)
 		}
+		// The effective value, so a job suspended through its template reports it too.
+		metricStore.SetRenovateJobSuspended(renovateJob.Namespace, renovateJob.Name, effectiveJob != nil && effectiveJob.Spec.GetSuspend())
 
 		// Gate before anything is scheduled or created.
 		if !r.acceptJob(ctx, logger, jobId, effectiveJob, resolveErr) {
@@ -95,7 +98,13 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob, effectiveJob)
 		r.resetOrphanedRunning(ctx, renovateJob)
-		createScheduler(logger, effectiveJob, r)
+		if effectiveJob.Spec.GetSuspend() {
+			// The first reconcile after resuming registers it again. The token and
+			// config below stay current meanwhile, so the queue can start right away.
+			r.Scheduler.RemoveSchedule(renovateJob.Namespace, renovateJob.Name)
+		} else {
+			createScheduler(logger, effectiveJob, r)
+		}
 		if err := r.GithubApp.EnsureToken(ctx, effectiveJob); err != nil {
 			logger.Error(err, "failed to ensure github app token")
 		}
@@ -109,6 +118,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// renovatejob cannot be found -> delete the schedule
 		// the github app token secret is owned by the RenovateJob and cleaned up by Kubernetes GC
 		r.Scheduler.RemoveSchedule(req.Namespace, req.Name)
+		metricStore.DeleteRenovateJobSuspended(req.Namespace, req.Name)
 		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else {
@@ -262,6 +272,12 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 		}
 
 		_, err = reconciler.Discovery.CreateDiscoveryJob(ctx, *currentJob, renovate.DiscoveryJobOptions{TriggerAllProjects: true})
+		if stderrors.Is(err, renovate.ErrRenovateJobSuspended) {
+			// Suspended after this tick was already due; the reconcile removes the schedule.
+			span.SetStatus(codes.Ok, "")
+			logger.V(1).Info("RenovateJob is suspended, skipping its scheduled run")
+			return
+		}
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -346,9 +362,14 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
 
 	if annotations[api.TriggerDiscoveryAnnotationKey] == "true" {
-		if _, err := r.Discovery.CreateDiscoveryJob(ctx, *effectiveJob, renovate.DiscoveryJobOptions{}); err != nil {
+		_, err := r.Discovery.CreateDiscoveryJob(ctx, *effectiveJob, renovate.DiscoveryJobOptions{})
+		switch {
+		case stderrors.Is(err, renovate.ErrRenovateJobSuspended):
+			// Left in place, so the discovery runs once the job is resumed.
+			logger.V(1).Info("discovery trigger held while the RenovateJob is suspended")
+		case err != nil:
 			logger.Error(err, "failed to trigger discovery")
-		} else {
+		default:
 			logger.V(1).Info("discovery triggered via annotation")
 			toRemove = append(toRemove, api.TriggerDiscoveryAnnotationKey)
 		}
