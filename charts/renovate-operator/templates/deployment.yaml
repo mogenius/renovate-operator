@@ -250,6 +250,10 @@ spec:
             - name: VALKEY_TLS
               value: "true"
             {{- end }}
+            {{- if $ekv.cluster }}
+            - name: VALKEY_CLUSTER
+              value: "true"
+            {{- end }}
             {{- end }}
             {{- else if .Values.valkey.existingSecret }}
             - name: VALKEY_URL
