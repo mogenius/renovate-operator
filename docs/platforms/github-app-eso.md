@@ -25,7 +25,7 @@ spec:
   extraEnv: []
     # - name: ENV_NAME
     #   value: "EV_VALUE"
-  image: renovate/renovate:43.104.1
+  image: renovate/renovate:43.288.0
   parallelism: 5
   resources:
     requests:
