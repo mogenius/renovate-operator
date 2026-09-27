@@ -762,7 +762,7 @@ func expectActiveDeadlineSeconds(t *testing.T, job *batchv1.Job, expectedSeconds
 
 func expectTtlSecondsAfterFinished(t *testing.T, job *batchv1.Job, expectedSeconds *int32) {
 	if job.Spec.TTLSecondsAfterFinished != nil && expectedSeconds == nil {
-		t.Fatalf("expected no TTL seconds after finished %d, got %v", expectedSeconds, job.Spec.TTLSecondsAfterFinished)
+		t.Fatalf("expected no TTL seconds after finished, got %v", *job.Spec.TTLSecondsAfterFinished)
 	}
 	if job.Spec.TTLSecondsAfterFinished == nil && expectedSeconds != nil {
 		t.Fatalf("expected TTL seconds after finished %d, got nil", *expectedSeconds)
