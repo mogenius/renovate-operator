@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.5.0](https://github.com/mogenius/renovate-operator/compare/6.4.0...6.5.0) (2026-10-02)
+
+
+### Features
+
+* **operator:** add spec.suspend to pause a RenovateJob ([a020090](https://github.com/mogenius/renovate-operator/commit/a020090a0304e2d7726940b9ad77933c7587cbfe))
+* **ui:** let admins suspend and resume a RenovateJob from its card ([87e77e6](https://github.com/mogenius/renovate-operator/commit/87e77e6d8cf98ce1552107d5e72c106238f2206c))
+
 ## [6.4.0](https://github.com/mogenius/renovate-operator/compare/6.3.0...6.4.0) (2026-09-28)
 
 
