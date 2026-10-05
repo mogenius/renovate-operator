@@ -141,7 +141,7 @@ func TestWebhookEndpointPath(t *testing.T) {
 		{platform: "gitlab", path: "/webhook/v1/gitlab"},
 		{platform: "forgejo", path: "/webhook/v1/forgejo"},
 		{platform: "gitea", path: "/webhook/v1/gitea"},
-		{platform: "bitbucket", wantErr: true},
+		{platform: "bitbucket", path: "/webhook/v1/bitbucket"},
 		{platform: "", wantErr: true},
 	}
 

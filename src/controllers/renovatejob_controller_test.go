@@ -289,7 +289,9 @@ func TestCreateScheduler_UsesFreshRenovateJob(t *testing.T) {
 		Spec: api.RenovateJobSpec{Schedule: "*/1 * * * *", Image: "renovate/renovate:38"},
 	}
 	createScheduler(logger, originalJob, reconciler)
-	sched.storedFn()
+	if err := sched.storedFn(); err != nil {
+		t.Fatalf("unexpected error from storedFn: %v", err)
+	}
 
 	if discoveredJob == nil {
 		t.Fatalf("expected CreateDiscoveryJob to be called")
