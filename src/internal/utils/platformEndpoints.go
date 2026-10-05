@@ -45,6 +45,8 @@ func WebhookEndpointPath(platform string) (string, error) {
 		return "/webhook/v1/forgejo", nil
 	case "gitea":
 		return "/webhook/v1/gitea", nil
+	case "bitbucket":
+		return "/webhook/v1/bitbucket", nil
 	default:
 		return "", fmt.Errorf("no webhook endpoint for platform %q", platform)
 	}

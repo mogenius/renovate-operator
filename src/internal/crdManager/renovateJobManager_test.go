@@ -396,7 +396,7 @@ func TestWebhookURLForJobErrorsWithoutBaseURL(t *testing.T) {
 func TestWebhookURLForJobErrorsForUnsupportedPlatform(t *testing.T) {
 	setBaseURL(t, "https://hooks.example.com")
 
-	_, err := webhookURLForJob(syncJob("bitbucket"))
+	_, err := webhookURLForJob(syncJob("unsupported-platform"))
 	if err == nil {
 		t.Fatal("expected error for platform without webhook endpoint")
 	}
