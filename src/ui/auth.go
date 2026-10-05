@@ -43,6 +43,8 @@ type sessionData struct {
 	Expiry        int64    `json:"exp"`
 	AccessToken   string   `json:"at,omitempty"`
 	Groups        []string `json:"groups"`
+	// IDToken holds the raw OIDC ID token for RP-initiated logout (id_token_hint).
+	IDToken string `json:"idt,omitempty"`
 }
 
 // identities returns the values user-based access rules may match, normalized

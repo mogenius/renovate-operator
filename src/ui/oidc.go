@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"renovate-operator/internal/telemetry"
 	"slices"
@@ -316,6 +317,7 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		s.Groups = validatedGroups
 		s.Username = claims.PreferredUsername
 		s.EmailVerified = emailVerified
+		s.IDToken = rawIDToken
 	})
 	if err != nil {
 		o.logger.Error(err, "failed to build complete URL")
@@ -331,6 +333,9 @@ func (o *OIDCAuth) HandleComplete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	// Read the session before deleting so we can pass id_token_hint to the
+	// provider's end_session_endpoint (required by Okta, recommended by spec).
+	session, _ := o.getSession(r)
 	o.deleteSession(r)
 	o.clearSessionCookie(w)
 
@@ -338,6 +343,9 @@ func (o *OIDCAuth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		logoutURL := o.endSessionURL + "?client_id=" + o.oauth2Config.ClientID
 		if o.postLogoutRedirect != "" {
 			logoutURL += "&post_logout_redirect_uri=" + o.postLogoutRedirect
+		}
+		if session != nil && session.IDToken != "" {
+			logoutURL += "&id_token_hint=" + url.QueryEscape(session.IDToken)
 		}
 		http.Redirect(w, r, logoutURL, http.StatusFound)
 		return
