@@ -164,6 +164,8 @@ webhook:
   enabled: false
   # -- if set to true the ui host will be used for webhooks
   unifiedWebhookHost: false
+  # -- answer 200 "event ignored" instead of 401 when no RenovateJob manages the project, e.g. for an org/group-level hook that also fires for projects Renovate does not manage. Reveals which projects are managed to anyone who can reach the endpoint.
+  ignoreUnmatchedProjects: false
   port: 8082
   # -- optional: override the webhook base URL (WEBHOOK_BASE_URL), e.g. when the ingress or gateway is behind a proxy.
   baseUrl: ""

@@ -105,6 +105,9 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
 	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		if s.ignoreUnmatchedProject(ctx, w, provider, err) {
+			return
+		}
 		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Info("webhook resolve failed", "event", event, "project", project, "error", err)

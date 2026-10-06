@@ -111,6 +111,8 @@ spec:
               value: "true"
             - name: WEBHOOK_SERVER_UNIFIED_HOST
               value: {{ .Values.webhook.unifiedWebhookHost | quote }}
+            - name: WEBHOOK_IGNORE_UNMATCHED_PROJECTS
+              value: {{ .Values.webhook.ignoreUnmatchedProjects | quote }}
             {{- $webhookBaseUrl := include "renovate-operator.webhookBaseUrl" . }}
             {{- if $webhookBaseUrl }}
             - name: WEBHOOK_BASE_URL

@@ -214,6 +214,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "unifiedWebhookHost": { "type": "boolean" },
+        "ignoreUnmatchedProjects": { "type": "boolean" },
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "baseUrl": { "type": "string" },
         "baseUrlScheme": { "$ref": "#/$defs/scheme" },
