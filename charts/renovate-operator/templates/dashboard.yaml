@@ -57,6 +57,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
           "id": 6,
+          "description": "Repositories found by the last discovery run of each selected RenovateJob (renovate_operator_discovered_repositories).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -67,7 +68,7 @@ data:
           "targets": [
             {
               "editorMode": "code", "exemplar": false,
-              "expr": "count(group by(project) (renovate_operator_project_executions_total{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"}))",
+              "expr": "sum(renovate_operator_discovered_repositories{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"})",
               "instant": false, "legendFormat": "__auto", "range": true, "refId": "A"
             }
           ],
@@ -86,6 +87,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
           "id": 110,
+          "description": "Projects whose Renovate Job is running right now (renovate_operator_projects_running).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -115,6 +117,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
           "id": 111,
+          "description": "Projects waiting in the Scheduled state for a free parallelism slot (renovate_operator_projects_scheduled).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -144,6 +147,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
           "id": 112,
+          "description": "Renovate-managed pull requests left open after each project's last run; automerged PRs are excluded (renovate_operator_open_pull_requests).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -173,6 +177,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
           "id": 113,
+          "description": "Dependency updates waiting for approval on the Dependency Dashboard after each project's last run (renovate_operator_approvals_needed).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -202,6 +207,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
           "id": 7,
+          "description": "Projects whose last run failed (renovate_operator_run_failed == 1).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -213,7 +219,7 @@ data:
             {
               "editorMode": "code", "exemplar": false,
               "expr": "count(renovate_operator_run_failed{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"} == 1) or vector(0)",
-              "instant": true, "legendFormat": "__auto", "range": false, "refId": "A"
+              "instant": false, "legendFormat": "__auto", "range": true, "refId": "A"
             }
           ],
           "title": "Failing Projects",
@@ -231,6 +237,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
           "id": 8,
+          "description": "Projects whose last run logged WARN or ERROR entries (renovate_operator_dependency_issues == 1). The run itself may still have succeeded.",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -242,10 +249,10 @@ data:
             {
               "editorMode": "code", "exemplar": false,
               "expr": "count(renovate_operator_dependency_issues{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"} == 1) or vector(0)",
-              "instant": true, "legendFormat": "__auto", "range": false, "refId": "A"
+              "instant": false, "legendFormat": "__auto", "range": true, "refId": "A"
             }
           ],
-          "title": "Projects with Issues",
+          "title": "Projects with Log Warnings",
           "type": "stat"
         },
         {
@@ -261,6 +268,7 @@ data:
           },
           "gridPos": { "h": 4, "w": 3, "x": 21, "y": 1 },
           "id": 5,
+          "description": "Share of project runs in the selected time range that failed (increase of renovate_operator_project_executions_total).",
           "options": {
             "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto",
             "percentChangeColorMode": "standard",
@@ -271,7 +279,7 @@ data:
           "targets": [
             {
               "editorMode": "code", "exemplar": false,
-              "expr": "sum(renovate_operator_project_executions_total{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\", status=\"failed\"}) / clamp_min(sum(renovate_operator_project_executions_total{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"}), 1) * 100",
+              "expr": "sum(increase(renovate_operator_project_executions_total{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\", status=\"failed\"}[$__range])) / clamp_min(sum(increase(renovate_operator_project_executions_total{renovate_namespace=~\"$RenovateNamespace\", renovate_job=~\"$RenovateJob\"}[$__range])), 1) * 100",
               "instant": false, "legendFormat": "__auto", "range": true, "refId": "A"
             }
           ],
