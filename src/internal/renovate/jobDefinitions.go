@@ -495,6 +495,21 @@ func executionOptionEnvVars(executionOptions *api.RenovateExecutionOptions) []v1
 	if executionOptions.Debug {
 		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_LOG_LEVEL", Value: "debug"})
 	}
+	if executionOptions.DryRun {
+		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_DRY_RUN", Value: "full"})
+	}
+	if executionOptions.BaseBranch != "" {
+		// json.Marshal of a []string cannot fail
+		baseBranches, _ := json.Marshal([]string{executionOptions.BaseBranch})
+		envVars = append(envVars,
+			// Renovate renamed baseBranches to baseBranchPatterns; unknown RENOVATE_* vars are
+			// ignored, so setting both serves images from either side of the rename.
+			v1.EnvVar{Name: "RENOVATE_BASE_BRANCH_PATTERNS", Value: string(baseBranches)},
+			v1.EnvVar{Name: "RENOVATE_BASE_BRANCHES", Value: string(baseBranches)},
+			// read the Renovate config from the custom branch, which is what is being tested
+			v1.EnvVar{Name: "RENOVATE_USE_BASE_BRANCH_CONFIG", Value: "merge"},
+		)
+	}
 	return envVars
 }
 
