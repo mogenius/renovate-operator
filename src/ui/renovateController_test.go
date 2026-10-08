@@ -1230,3 +1230,102 @@ func TestRunRenovateForAllProjects_ProjectScope(t *testing.T) {
 		})
 	}
 }
+
+func TestRunRenovateForProject_CustomBranch(t *testing.T) {
+	tests := []struct {
+		name             string
+		executionOptions map[string]any
+		wantStatusCode   int
+		wantQueued       *api.RenovateExecutionOptions
+	}{
+		{
+			name:             "a valid branch is queued with the run",
+			executionOptions: map[string]any{"baseBranch": "test/renovate-config", "dryRun": true},
+			wantStatusCode:   http.StatusOK,
+			wantQueued:       &api.RenovateExecutionOptions{BaseBranch: "test/renovate-config", DryRun: true},
+		},
+		{
+			name:             "a branch pattern is rejected before anything is queued",
+			executionOptions: map[string]any{"baseBranch": "/^release-.*/"},
+			wantStatusCode:   http.StatusBadRequest,
+		},
+		{
+			name:             "a branch with a path traversal is rejected",
+			executionOptions: map[string]any{"baseBranch": "feature/../main"},
+			wantStatusCode:   http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var queued *types.RenovateStatusUpdate
+			mockManager := &mockRenovateJobManager{
+				updateProjectStatusFunc: func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+					queued = status
+					return nil
+				},
+				getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+					return &api.RenovateJob{}, nil
+				},
+			}
+			server := &Server{manager: mockManager, logger: logr.Discard()}
+
+			jsonBody, _ := json.Marshal(map[string]any{
+				"renovateJob":      "job1",
+				"namespace":        "default",
+				"project":          "org/repository",
+				"executionOptions": tt.executionOptions,
+			})
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/renovate", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.runRenovateForProject(w, req)
+
+			if w.Code != tt.wantStatusCode {
+				t.Fatalf("expected status %d, got %d: %s", tt.wantStatusCode, w.Code, w.Body.String())
+			}
+			if tt.wantQueued == nil {
+				if queued != nil {
+					t.Fatalf("expected nothing to be queued, got %+v", queued)
+				}
+				return
+			}
+			if queued == nil || queued.ExecutionOptions == nil || *queued.ExecutionOptions != *tt.wantQueued {
+				t.Fatalf("expected queued options %+v, got %+v", tt.wantQueued, queued)
+			}
+		})
+	}
+}
+
+func TestRunRenovateForAllProjects_RejectsCustomBranch(t *testing.T) {
+	batchedUpdateCalled := false
+	mockManager := &mockRenovateJobManager{
+		getRenovateJobFunc: func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+			return &api.RenovateJob{Name: "job1", Namespace: "default"}, nil
+		},
+		updateProjectStatusBatchedFunc: func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			batchedUpdateCalled = true
+			return nil
+		},
+	}
+	server := &Server{manager: mockManager, logger: logr.Discard()}
+
+	jsonBody, _ := json.Marshal(map[string]any{
+		"renovateJob":      "job1",
+		"namespace":        "default",
+		"executionOptions": map[string]any{"baseBranch": "test/renovate-config"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/renovate/all", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.runRenovateForAllProjects(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+	if batchedUpdateCalled {
+		t.Fatal("expected no project to be scheduled")
+	}
+}
