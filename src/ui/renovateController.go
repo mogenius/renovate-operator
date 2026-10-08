@@ -500,6 +500,11 @@ func (s *Server) runRenovateForProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateExecutionOptions(body.ExecutionOptions); err != nil {
+		badRequestError(w, err, "invalid execution options")
+		return
+	}
+
 	err := s.manager.UpdateProjectStatus(
 		r.Context(),
 		body.Project,
@@ -579,6 +584,13 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 	}
 
 	if _, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permTriggerAll); !ok {
+		return
+	}
+
+	// A custom base branch is a per-repository experiment; queueing it for a whole job
+	// would run every repository against a branch most of them do not have.
+	if body.ExecutionOptions != nil && body.ExecutionOptions.BaseBranch != "" {
+		badRequestError(w, nil, "baseBranch can only be set when triggering a single project")
 		return
 	}
 
