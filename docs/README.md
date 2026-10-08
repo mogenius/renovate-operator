@@ -68,6 +68,7 @@ Day-2 concerns: observability, storage, and cost allocation.
 | [Pod Label Templates](./operations/pod-label-templates.md) | Templated labels for cost allocation       |
 | [Suspending a RenovateJob](./operations/suspend.md)        | Pausing runs without stopping the operator |
 | [Personal Data](./operations/personal-data.md)             | What is stored where, and for how long     |
+| [Custom Branch Runs](./operations/custom-branch-runs.md)  | One-off run against a branch to test a config change |
 
 ## Security
 
