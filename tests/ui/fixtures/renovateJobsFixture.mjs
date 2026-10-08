@@ -60,8 +60,10 @@ export function buildProject({
   prActivity = null,
   logIssues = null,
   lastTransition = FIXED_LAST_TRANSITION,
+  executionOptions = null,
 } = {}) {
   const project = { name, status, lastTransition };
+  if (executionOptions) project.executionOptions = executionOptions;
   if (priority) project.priority = priority;
   if (renovateResultStatus) project.renovateResultStatus = renovateResultStatus;
   if (duration) project.duration = duration;
