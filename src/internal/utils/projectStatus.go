@@ -28,7 +28,11 @@ func validateProjectStatusScheduled(projectStatus *api.RenovateProjectState, des
 	if projectStatus.Status != api.JobStatusRunning {
 		projectStatus.Status = api.JobStatusScheduled
 		projectStatus.LastTransition = metav1.Now()
-		projectStatus.ExecutionOptions = desiredStatus.ExecutionOptions
+		// webhook, cron and annotation triggers carry no options; they must not turn a
+		// queued one-off run (debug, custom branch, dry run) into a plain one
+		if desiredStatus.ExecutionOptions != nil {
+			projectStatus.ExecutionOptions = desiredStatus.ExecutionOptions
+		}
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
 		}
