@@ -24,12 +24,16 @@ type Server struct {
 	manager crdmanager.RenovateJobManager
 	logger  logr.Logger
 	server  *http.Server
+	// ignoreUnmatchedProjects answers 200 instead of 401 when no RenovateJob owns the
+	// project, for org/group-level hooks that also fire for projects Renovate does not manage.
+	ignoreUnmatchedProjects bool
 }
 
 func NewWebookServer(manager crdmanager.RenovateJobManager, logger logr.Logger) *Server {
 	return &Server{
-		manager: manager,
-		logger:  logger,
+		manager:                 manager,
+		logger:                  logger,
+		ignoreUnmatchedProjects: config.GetValue("WEBHOOK_IGNORE_UNMATCHED_PROJECTS") == "true",
 	}
 }
 
@@ -94,6 +98,9 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
 	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
 	if err != nil {
+		if s.ignoreUnmatchedProject(ctx, w, provider, err) {
+			return
+		}
 		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.handleResolverError(w, err)
@@ -142,6 +149,18 @@ func (s *Server) recordResolverAuthFailure(ctx context.Context, provider string,
 	default:
 		metricStore.IncWebhookAuthFailure(ctx, provider, "secret_error")
 	}
+}
+
+// ignoreUnmatchedProject answers 200 "event ignored" and returns true when the resolver found
+// no RenovateJob for the project and WEBHOOK_IGNORE_UNMATCHED_PROJECTS is enabled. Failed
+// authentication against a matching job is never ignored.
+func (s *Server) ignoreUnmatchedProject(ctx context.Context, w http.ResponseWriter, provider string, err error) bool {
+	if !s.ignoreUnmatchedProjects || !errors.Is(err, ErrNoMatchingJob) {
+		return false
+	}
+	metricStore.IncWebhookRequest(ctx, provider, "ignored")
+	s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no renovate job manages this project"})
+	return true
 }
 
 func (s *Server) handleResolverError(w http.ResponseWriter, err error) {

@@ -122,7 +122,9 @@ All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`, `/gitea`) 
 4. If authentication is enabled on a job, validate the request credential against it.
 5. The first job that passes authentication (or has authentication disabled) is used.
 
-If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If no job contains the project at all, the request is rejected with `404 Not Found`.
+If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If no job contains the project at all, the request is also rejected with `401 Unauthorized`, so the response does not reveal which projects are managed.
+
+An organization- or group-level hook also fires for projects no RenovateJob manages, and each of those deliveries shows up as a `401` in the provider's hook history. Set `webhook.ignoreUnmatchedProjects: true` in the Helm values (`WEBHOOK_IGNORE_UNMATCHED_PROJECTS=true`) to answer them with `200` and `{"message": "event ignored"}` instead, counted as `result="ignored"`. Authentication failures against a matching job still return `401`. The trade-off: anyone who can reach the endpoint can tell managed projects (`401` without a valid credential) from unmanaged ones (`200`).
 
 Providing `namespace` and `job` narrows the search and is useful when multiple RenovateJobs could own the same project.
 
