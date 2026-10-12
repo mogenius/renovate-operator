@@ -97,6 +97,14 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			metricStore.DeleteRenovateJobSuspended(renovateJob.Namespace, renovateJob.Name)
 		}
 
+		// Refuse immediately if the job references a cluster template that is disabled
+		// on this operator instance (CLUSTER_TEMPLATES_ENABLED=false / ownNamespaceOnly).
+		if !r.ClusterTemplatesEnabled && renovateJob.Spec.TemplateRef.IsCluster() {
+			r.refuseJob(ctx, logger, jobId, policy.ReasonClusterTemplatesDisabled,
+				"ClusterRenovateJobTemplate support is disabled on this operator; use a namespaced RenovateJobTemplate instead")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		// Gate before anything is scheduled or created.
 		if !r.acceptJob(ctx, logger, jobId, effectiveJob, resolveErr) {
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
