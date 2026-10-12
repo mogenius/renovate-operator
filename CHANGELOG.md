@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.5.1](https://github.com/mogenius/renovate-operator/compare/6.5.0...6.5.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* disable ClusterRenovateJobTemplate watch and RBAC when ownNamespaceOnly is true ([92381fb](https://github.com/mogenius/renovate-operator/commit/92381fb314d015cf669c714d6691ffd0cf8677df)), closes [#723](https://github.com/mogenius/renovate-operator/issues/723)
+* refuse RenovateJobs referencing ClusterRenovateJobTemplate when cluster templates are disabled ([e09b207](https://github.com/mogenius/renovate-operator/commit/e09b2078feb56d3cf50d33a55ccdb1fe5656790f)), closes [#723](https://github.com/mogenius/renovate-operator/issues/723)
+
 ## [6.5.0](https://github.com/mogenius/renovate-operator/compare/6.4.0...6.5.0) (2026-10-12)
 
 
