@@ -94,6 +94,10 @@ spec:
             - name: BASE_PATH
               value: {{ $basePath | quote }}
             {{- end }}
+            {{- if .Values.rbac.ownNamespaceOnly }}
+            - name: CLUSTER_TEMPLATES_ENABLED
+              value: "false"
+            {{- end }}
             {{- if or .Values.rbac.ownNamespaceOnly .Values.rbac.watchNamespace }}
             - name: WATCH_NAMESPACE
               {{- if .Values.rbac.watchNamespace }}
