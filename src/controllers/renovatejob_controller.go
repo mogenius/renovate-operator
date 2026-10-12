@@ -45,12 +45,13 @@ Reconciler for RenovateJob resources
 Watching for create/update/delete events and managing the schedules accordingly
 */
 type RenovateJobReconciler struct {
-	Discovery renovate.DiscoveryAgent
-	Manager   crdManager.RenovateJobManager
-	Scheduler scheduler.Scheduler
-	K8sClient client.Client
-	GithubApp github.GithubAppToken
-	Policy    policy.Policy
+	Discovery               renovate.DiscoveryAgent
+	Manager                 crdManager.RenovateJobManager
+	Scheduler               scheduler.Scheduler
+	K8sClient               client.Client
+	GithubApp               github.GithubAppToken
+	Policy                  policy.Policy
+	ClusterTemplatesEnabled bool
 }
 
 func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -448,12 +449,14 @@ func (r *RenovateJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&api.RenovateJob{}).
 		Owns(&corev1.ConfigMap{}).
-		Watches(&api.RenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForNamespacedTemplate)).
-		Watches(&api.ClusterRenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForClusterTemplate)).
-		Complete(r)
+		Watches(&api.RenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForNamespacedTemplate))
+	if r.ClusterTemplatesEnabled {
+		b = b.Watches(&api.ClusterRenovateJobTemplate{}, handler.EnqueueRequestsFromMapFunc(r.jobsForClusterTemplate))
+	}
+	return b.Complete(r)
 }
 
 // jobsForNamespacedTemplate enqueues every RenovateJob in the template's namespace
