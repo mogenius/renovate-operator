@@ -1,6 +1,6 @@
 # renovate-operator
 
-![Version: 6.5.0](https://img.shields.io/badge/Version-6.5.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 6.5.0](https://img.shields.io/badge/AppVersion-6.5.0-informational?style=flat-square)
+![Version: 6.5.1](https://img.shields.io/badge/Version-6.5.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 6.5.1](https://img.shields.io/badge/AppVersion-6.5.1-informational?style=flat-square)
 
 Chart to deploy the renovate operator to your cluster
 
@@ -151,7 +151,7 @@ Kubernetes: `>=1.29.0-0`
 | policy.enabled | bool | `false` | API server regardless of this setting. |
 | policy.requireSecretRefOptIn | bool | `true` | key names, so it is not an arbitrary-key reference. |
 | priorityClassName | string | `""` | priorityClassName for the operator pod |
-| rbac.ownNamespaceOnly | bool | `false` | when enabled, the operator will only watch resources in the namespace it is deployed to |
+| rbac.ownNamespaceOnly | bool | `false` | support is disabled (no cluster-scoped RBAC, no watch). |
 | rbac.watchNamespace | string | `""` | optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true) |
 | replicaCount | int | `1` | number of operator replicas. Leader election is enabled automatically when > 1 |
 | resources | object | `{}` | resources for the operator pod |
