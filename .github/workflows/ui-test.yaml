@@ -23,7 +23,7 @@ jobs:
     # Ships Chromium and its OS libraries pre-baked. Keep the tag in lockstep with
     # @playwright/test in tests/ui/package.json — a mismatch fails at startup.
     container:
-      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
       # Containers default to a 64 MB /dev/shm, which Chromium can exhaust and
       # then hang on. Cheaper and narrower than Playwright's --ipc=host advice.
       options: --shm-size=1g
