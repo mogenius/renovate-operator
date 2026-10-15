@@ -222,3 +222,187 @@ func TestGetRenovateJobsOffersSuspendOnlyWhenEnabled(t *testing.T) {
 		}
 	}
 }
+
+// suspendAllServer lists jobs as an operator offering the suspend button, and
+// records the jobs SetSuspend was called for.
+func suspendAllServer(jobs []api.RenovateJob, setSuspend func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error) *Server {
+	return &Server{
+		manager: &mockRenovateJobManager{
+			listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+				return jobs, nil
+			},
+			setSuspendFunc: setSuspend,
+		},
+		logger:         logr.Discard(),
+		accessDefaults: AccessDefaults{SuspendFromUI: true},
+	}
+}
+
+func postSuspendAll(t *testing.T, server *Server, req *http.Request) (*httptest.ResponseRecorder, SuspendAllResult) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	server.setAllRenovateJobsSuspend(w, req)
+	var result SuspendAllResult
+	if w.Code != http.StatusForbidden && w.Code != http.StatusBadRequest {
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+	}
+	return w, result
+}
+
+func suspendAllRequest(body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/renovatejobs/suspend", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func TestSetAllRenovateJobsSuspendLeavesSuspendedJobsAlone(t *testing.T) {
+	jobs := []api.RenovateJob{
+		{Name: "active1", Namespace: "default"},
+		{Name: "paused", Namespace: "default", Spec: api.RenovateJobSpec{Suspend: new(true)}},
+		{Name: "active2", Namespace: "other"},
+	}
+	var got []string
+	server := suspendAllServer(jobs, func(_ context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error {
+		if !suspend {
+			t.Errorf("%s/%s: SetSuspend(false), want true", jobId.Namespace, jobId.Name)
+		}
+		got = append(got, jobId.Namespace+"/"+jobId.Name)
+		return nil
+	})
+
+	w, result := postSuspendAll(t, server, suspendAllRequest(`{"suspend":true}`))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	want := []string{"default/active1", "other/active2"}
+	if !slices.Equal(got, want) {
+		t.Errorf("SetSuspend called for %v, want %v", got, want)
+	}
+	if !slices.Equal(result.Changed, want) {
+		t.Errorf("changed = %v, want %v", result.Changed, want)
+	}
+	if !slices.Equal(result.Unchanged, []string{"default/paused"}) {
+		t.Errorf("unchanged = %v, want [default/paused]", result.Unchanged)
+	}
+}
+
+// An admin of some jobs suspends those, and neither touches nor names the jobs
+// it only reads or cannot see.
+func TestSetAllRenovateJobsSuspendSkipsJobsTheCallerCannotSuspend(t *testing.T) {
+	jobs := []api.RenovateJob{
+		{Name: "admin", Namespace: "default", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team"}}}},
+		{Name: "reader", Namespace: "default", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{ReaderGroups: []string{"team"}}}},
+		{Name: "hidden", Namespace: "default", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"someone-else"}}}},
+	}
+	var got []string
+	server := suspendAllServer(jobs, func(_ context.Context, jobId crdmanager.RenovateJobIdentifier, _ bool) error {
+		got = append(got, jobId.Name)
+		return nil
+	})
+	server.auth = &OIDCAuth{}
+
+	req := suspendAllRequest(`{"suspend":true}`)
+	req = req.WithContext(context.WithValue(req.Context(), sessionContextKey, &sessionData{Email: "admin@example.com", Groups: []string{"team"}}))
+	w, result := postSuspendAll(t, server, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !slices.Equal(got, []string{"admin"}) {
+		t.Errorf("SetSuspend called for %v, want [admin]", got)
+	}
+	if len(result.Unchanged) != 0 || len(result.Failed) != 0 {
+		t.Errorf("the response names jobs the caller cannot suspend: %+v", result)
+	}
+}
+
+func TestSetAllRenovateJobsSuspendRequiresTheField(t *testing.T) {
+	called := false
+	server := suspendAllServer([]api.RenovateJob{{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Suspend: new(true)}}},
+		func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ bool) error {
+			called = true
+			return nil
+		})
+
+	w, _ := postSuspendAll(t, server, suspendAllRequest(`{}`))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+	if called {
+		t.Error("the manager must not be called without an explicit suspend value")
+	}
+}
+
+func TestSetAllRenovateJobsSuspendIsOffUnlessEnabled(t *testing.T) {
+	called := false
+	server := suspendAllServer([]api.RenovateJob{{Name: "job1", Namespace: "default"}},
+		func(_ context.Context, _ crdmanager.RenovateJobIdentifier, _ bool) error {
+			called = true
+			return nil
+		})
+	server.accessDefaults.SuspendFromUI = false
+
+	w, _ := postSuspendAll(t, server, suspendAllRequest(`{"suspend":true}`))
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected status %d, got %d", http.StatusForbidden, w.Code)
+	}
+	if called {
+		t.Error("the manager must not be called while the button is off")
+	}
+}
+
+// One job failing must not stop the others, and the caller learns which failed.
+func TestSetAllRenovateJobsSuspendReportsFailedJobs(t *testing.T) {
+	jobs := []api.RenovateJob{
+		{Name: "broken", Namespace: "default"},
+		{Name: "fine", Namespace: "default"},
+	}
+	server := suspendAllServer(jobs, func(_ context.Context, jobId crdmanager.RenovateJobIdentifier, _ bool) error {
+		if jobId.Name == "broken" {
+			return errors.New("conflict")
+		}
+		return nil
+	})
+
+	w, result := postSuspendAll(t, server, suspendAllRequest(`{"suspend":true}`))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+	if !slices.Equal(result.Changed, []string{"default/fine"}) || !slices.Equal(result.Failed, []string{"default/broken"}) {
+		t.Errorf("changed = %v, failed = %v, want [default/fine] and [default/broken]", result.Changed, result.Failed)
+	}
+}
+
+// The button is pressed while the Git platform struggles, and the browser that
+// pressed it may die right after: the batch must not stop with the request.
+func TestSetAllRenovateJobsSuspendOutlivesItsRequest(t *testing.T) {
+	jobs := []api.RenovateJob{
+		{Name: "job1", Namespace: "default"},
+		{Name: "job2", Namespace: "default"},
+	}
+	var got []string
+	server := suspendAllServer(jobs, func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier, _ bool) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		got = append(got, jobId.Name)
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w, _ := postSuspendAll(t, server, suspendAllRequest(`{"suspend":true}`).WithContext(ctx))
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !slices.Equal(got, []string{"job1", "job2"}) {
+		t.Errorf("SetSuspend completed for %v, want both jobs", got)
+	}
+}

@@ -29,6 +29,8 @@ class DashboardPage {
     this.triggerAllRequests = [];
     /** Bodies the page POSTed to /api/v1/renovatejob/suspend, oldest first. */
     this.suspendRequests = [];
+    /** Bodies the page POSTed to /api/v1/renovatejobs/suspend, oldest first. */
+    this.suspendAllRequests = [];
   }
 
   async stubApi(renovateJobs) {
@@ -51,6 +53,12 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovatejob/suspend", (route) => {
       this.suspendRequests.push(JSON.parse(route.request().postData() || "{}"));
       return route.fulfill({ json: { message: "ok" } });
+    });
+    await this.page.route("**/api/v1/renovatejobs/suspend", (route) => {
+      this.suspendAllRequests.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({
+        json: { message: "ok", changed: [], unchanged: [], failed: [] },
+      });
     });
   }
 
@@ -280,6 +288,21 @@ class DashboardPage {
         request.method() === "POST" && request.url().includes("/api/v1/renovatejob/suspend"),
     );
     await this.suspendToggle(jobName).click();
+    await sent;
+  }
+
+  /** The toolbar's Suspend all button. */
+  get suspendAllButton() {
+    return this.toolbar.getByTestId("suspend-all");
+  }
+
+  /** Clicks it and resolves once the page has posted, like toggleSuspend. */
+  async suspendAll() {
+    const sent = this.page.waitForRequest(
+      (request) =>
+        request.method() === "POST" && request.url().includes("/api/v1/renovatejobs/suspend"),
+    );
+    await this.suspendAllButton.click();
     await sent;
   }
 

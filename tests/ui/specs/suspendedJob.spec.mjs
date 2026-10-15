@@ -4,7 +4,7 @@
 // refuses discovery, but triggering still queues projects for when it is resumed.
 // So the card says so, has no countdown to show, disables the discovery button,
 // and leaves the trigger button alone. Where the operator offers it, admins flip
-// the state from the card itself.
+// the state from the card itself, or suspend every job at once from the toolbar.
 
 import { test, expect } from "../fixtures/dashboardFixture.mjs";
 import {
@@ -103,5 +103,73 @@ test.describe("suspend toggle", () => {
     const toggle = dashboard.suspendToggle("job-read-only");
     await expect(toggle).toBeDisabled();
     await expect(toggle).toHaveAttribute("title", "Requires admin access");
+  });
+});
+
+test.describe("suspend all", () => {
+  test("is not offered unless the operator enables it", async ({ dashboard }) => {
+    await dashboard.open(buildDashboardWithSuspendedJob());
+
+    await expect(dashboard.suspendAllButton).toHaveCount(0);
+  });
+
+  test("an admin suspends every job with one request", async ({ dashboard }) => {
+    await dashboard.open(buildDashboardWithSuspendedJob({ suspendFromUI: true }));
+
+    await dashboard.suspendAll();
+
+    // The operator picks the jobs, so a tab dying mid-way cannot leave some running.
+    expect(dashboard.suspendAllRequests).toEqual([{ suspend: true }]);
+    expect(dashboard.suspendRequests).toEqual([]);
+  });
+
+  test("still applies to the jobs a search hides", async ({ dashboard }) => {
+    // Only the suspended job matches, but the active one still needs suspending.
+    await dashboard.open(buildDashboardWithSuspendedJob({ suspendFromUI: true }), {
+      search: "paused",
+      expectedJobCount: 1,
+    });
+
+    await expect(dashboard.suspendAllButton).toBeEnabled();
+    await expect(dashboard.suspendAllButton).toHaveAttribute(
+      "title",
+      "Stop new runs for 1 job, including any the filter hides, until each is resumed from its card",
+    );
+  });
+
+  test("is disabled once every job is suspended", async ({ dashboard }) => {
+    await dashboard.open(
+      ["job-a", "job-b"].map((name) =>
+        buildRenovateJob({
+          name,
+          suspended: true,
+          suspendFromUI: true,
+          projects: [buildProject({ name: `acme/${name}` })],
+        }),
+      ),
+    );
+
+    await expect(dashboard.suspendAllButton).toBeDisabled();
+    await expect(dashboard.suspendAllButton).toHaveAttribute(
+      "title",
+      "Every job you can suspend is already suspended",
+    );
+  });
+
+  test("a reader cannot suspend all jobs", async ({ dashboard }) => {
+    await dashboard.open(
+      ["job-a", "job-b"].map((name) =>
+        buildRenovateJob({
+          name,
+          suspendFromUI: true,
+          role: "reader",
+          permissions: READER_PERMISSIONS,
+          projects: [buildProject({ name: `acme/${name}` })],
+        }),
+      ),
+    );
+
+    await expect(dashboard.suspendAllButton).toBeDisabled();
+    await expect(dashboard.suspendAllButton).toHaveAttribute("title", "Requires admin access");
   });
 });

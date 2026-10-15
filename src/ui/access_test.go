@@ -287,6 +287,10 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 			getRenovateJobFunc: func(_ context.Context, _, _ string) (*api.RenovateJob, error) {
 				return job, nil
 			},
+			// For the routes acting on every job the caller may change.
+			listRenovateJobsFullFunc: func(_ context.Context) ([]api.RenovateJob, error) {
+				return []api.RenovateJob{*job}, nil
+			},
 		},
 		logger:         logr.Discard(),
 		discovery:      &mockDiscoveryAgent{},
@@ -320,6 +324,7 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 		"/api/v1/renovate/cancel",
 		"/api/v1/discovery/start",
 		"/api/v1/renovatejob/suspend",
+		"/api/v1/renovatejobs/suspend",
 	}
 	slices.Sort(postPaths)
 	slices.Sort(wantPaths)

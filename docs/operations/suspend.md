@@ -10,6 +10,8 @@ kubectl patch renovatejob <name> -n <namespace> --type merge -p '{"spec":{"suspe
 
 Where the operator enables it with `authorization.suspendFromUI: true` (`AUTHORIZATION_SUSPEND_FROM_UI`), admins of a job can also flip it from the UI with the job card's **Suspend** and **Resume** button. It writes the smallest change that gets there: the job's own `suspend` is cleared when its template, or the default, already gives the wanted state, and set explicitly only to override a template. Readers see the button disabled. Every change is logged with the user who made it. The button is off by default because it changes the live object, which a sync can undo: see [GitOps](#gitops).
 
+The same switch adds a **Suspend all** button to the dashboard toolbar, for when the Git platform needs relief at once. It suspends every RenovateJob the user is an admin of, including jobs the stat filter or search hides, and leaves the ones already suspended untouched. The operator works through the whole batch itself (`POST /api/v1/renovatejobs/suspend`), so it completes even if the browser dies after the click. There is no **Resume all**: a job paused for another reason would resume with the rest, so each job is resumed from its own card.
+
 ## What stops
 
 While a RenovateJob is suspended, the operator starts no Kubernetes Job for it:
