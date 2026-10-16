@@ -1,5 +1,36 @@
 # Changelog
 
+## [6.5.1](https://github.com/mogenius/renovate-operator/compare/6.5.0...6.5.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* disable ClusterRenovateJobTemplate watch and RBAC when ownNamespaceOnly is true ([92381fb](https://github.com/mogenius/renovate-operator/commit/92381fb314d015cf669c714d6691ffd0cf8677df)), closes [#723](https://github.com/mogenius/renovate-operator/issues/723)
+* refuse RenovateJobs referencing ClusterRenovateJobTemplate when cluster templates are disabled ([e09b207](https://github.com/mogenius/renovate-operator/commit/e09b2078feb56d3cf50d33a55ccdb1fe5656790f)), closes [#723](https://github.com/mogenius/renovate-operator/issues/723)
+
+## [6.5.0](https://github.com/mogenius/renovate-operator/compare/6.4.0...6.5.0) (2026-10-12)
+
+
+### Features
+
+* **operator:** add spec.suspend to pause a RenovateJob ([a020090](https://github.com/mogenius/renovate-operator/commit/a020090a0304e2d7726940b9ad77933c7587cbfe))
+* **ui:** let admins suspend and resume a RenovateJob from its card ([87e77e6](https://github.com/mogenius/renovate-operator/commit/87e77e6d8cf98ce1552107d5e72c106238f2206c))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([627e5b8](https://github.com/mogenius/renovate-operator/commit/627e5b8b9a459f35041a64baa03833fb2cfaf143))
+* **deps:** update aws-sdk-go-v2 monorepo ([9299e8b](https://github.com/mogenius/renovate-operator/commit/9299e8b46d0ecd73420d00a0acd1ffb0eb780d4f))
+* **deps:** update go module directive to v1.27.2 ([30902d8](https://github.com/mogenius/renovate-operator/commit/30902d87b331ebeffef2fd8ccf1105e4df1addc5))
+* **deps:** update golang docker tag to v1.27.2 ([fa6c512](https://github.com/mogenius/renovate-operator/commit/fa6c512af66ae763183a424fb8d4f7075f15cb1f))
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.40.0 ([5b7bd78](https://github.com/mogenius/renovate-operator/commit/5b7bd789bf5435400500e399e46cf908511032db))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.114.2 ([703c76f](https://github.com/mogenius/renovate-operator/commit/703c76fb8bb81f0b8f3c9866de91e0415d230c99))
+* **deps:** update module github.com/prometheus/client_golang to v1.25.0 ([ebdfdf5](https://github.com/mogenius/renovate-operator/commit/ebdfdf514b0d782ecb1efbf223a0f5359a4a59b8))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.2 ([636e89c](https://github.com/mogenius/renovate-operator/commit/636e89c3f80cb7a04270f81dfa0efbf7f0b750aa))
+* **deps:** update opentelemetry ([2feb3a3](https://github.com/mogenius/renovate-operator/commit/2feb3a31d401dac3dc68315efa14255405fc3158))
+* **oidc:** append id_token_hint to RP-initiated logout redirect ([e12f01d](https://github.com/mogenius/renovate-operator/commit/e12f01d55ee70a4efdde2b1728d8c93741b577eb)), closes [#691](https://github.com/mogenius/renovate-operator/issues/691)
+* **webhooks:** add missing bitbucket case to WebhookEndpointPath ([6b4850a](https://github.com/mogenius/renovate-operator/commit/6b4850a9f0f9dadc4bc23bc3230e83e82882bad1)), closes [#702](https://github.com/mogenius/renovate-operator/issues/702)
+
 ## [6.4.0](https://github.com/mogenius/renovate-operator/compare/6.3.0...6.4.0) (2026-09-28)
 
 

@@ -354,6 +354,11 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "CLUSTER_TEMPLATES_ENABLED",
+			Optional: true,
+			Default:  "true",
+		},
+		{
 			Key:      "POD_NAMESPACE",
 			Optional: true,
 		},
@@ -905,12 +910,13 @@ func main() {
 	assert.NoError(err, "failed to setup job manager")
 
 	err = (&controllers.RenovateJobReconciler{
-		Scheduler: cronManager,
-		Manager:   jobMgr,
-		Discovery: discovery,
-		K8sClient: mgr.GetClient(),
-		GithubApp: githubAppToken,
-		Policy:    guardRails,
+		Scheduler:               cronManager,
+		Manager:                 jobMgr,
+		Discovery:               discovery,
+		K8sClient:               mgr.GetClient(),
+		GithubApp:               githubAppToken,
+		Policy:                  guardRails,
+		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
