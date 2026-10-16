@@ -15,7 +15,7 @@ COPY src .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
     go build -tags timetzdata -trimpath -gcflags="all=-l" -ldflags="-s -w -X main.Version=${VERSION}" -o renovate-operator ./cmd/main.go
 
-FROM --platform=$BUILDPLATFORM node:24.21.0-alpine AS js-downloader
+FROM --platform=$BUILDPLATFORM node:24.22.0-alpine AS js-downloader
 WORKDIR /workspace
 RUN apk add --no-cache curl
 RUN mkdir -p src/static/js && \
@@ -25,7 +25,7 @@ RUN mkdir -p src/static/js && \
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js" && \
     echo "All JavaScript dependencies downloaded successfully!"
 RUN mkdir -p /bundle && \
-    npm install --prefix /bundle "react@19.3.0" "react-dom@19.3.0" esbuild --save=false && \
+    npm install --prefix /bundle "react@19.3.1" "react-dom@19.3.1" esbuild --save=false && \
     echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" \
         > /bundle/entry.mjs && \
     /bundle/node_modules/.bin/esbuild /bundle/entry.mjs \
