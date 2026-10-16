@@ -12,6 +12,7 @@ import (
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/metricStore"
@@ -21,15 +22,17 @@ import (
 )
 
 type Server struct {
-	manager crdmanager.RenovateJobManager
-	logger  logr.Logger
-	server  *http.Server
+	manager   crdmanager.RenovateJobManager
+	discovery renovate.DiscoveryAgent
+	logger    logr.Logger
+	server    *http.Server
 }
 
-func NewWebookServer(manager crdmanager.RenovateJobManager, logger logr.Logger) *Server {
+func NewWebookServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, logger logr.Logger) *Server {
 	return &Server{
-		manager: manager,
-		logger:  logger,
+		manager:   manager,
+		discovery: discovery,
+		logger:    logger,
 	}
 }
 

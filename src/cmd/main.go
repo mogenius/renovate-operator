@@ -868,7 +868,7 @@ func main() {
 	})
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
-		webhookServer := webhook.NewWebookServer(jobMgr, ctrl.Log.WithName("webhook"))
+		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook"))
 
 		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
 			webhookServer.Run()

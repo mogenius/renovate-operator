@@ -47,6 +47,15 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch r.Header.Get("X-GitHub-Event") {
+	case "repository":
+		s.githubRepositoryEvent(ctx, w, r, body)
+		return
+	case "installation":
+		s.githubInstallationEvent(ctx, w, r, body)
+		return
+	}
+
 	var payload GitHubEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
 		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
