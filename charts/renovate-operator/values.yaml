@@ -313,7 +313,8 @@ authorization:
   # -- unaffected. Has no effect when no authentication provider is configured, since every
   # -- request is an admin in that case.
   enabled: true
-  # -- whether admins may suspend and resume a RenovateJob from the UI. The button writes
+  # -- whether admins may suspend and resume a RenovateJob from the UI, from its card or all
+  # -- at once from the toolbar. The buttons write
   # -- spec.suspend on the live object, so leave it off when a GitOps tool sets spec.suspend
   # -- or replaces whole objects on sync: the next sync would undo the change without a word.
   # -- See docs/operations/suspend.md.
