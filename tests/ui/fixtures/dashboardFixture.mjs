@@ -29,8 +29,6 @@ class DashboardPage {
     this.triggerAllRequests = [];
     /** Bodies the page POSTed to /api/v1/renovatejob/suspend, oldest first. */
     this.suspendRequests = [];
-    /** Bodies the page POSTed to /api/v1/renovatejobs/suspend, oldest first. */
-    this.suspendAllRequests = [];
   }
 
   async stubApi(renovateJobs) {
@@ -53,12 +51,6 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovatejob/suspend", (route) => {
       this.suspendRequests.push(JSON.parse(route.request().postData() || "{}"));
       return route.fulfill({ json: { message: "ok" } });
-    });
-    await this.page.route("**/api/v1/renovatejobs/suspend", (route) => {
-      this.suspendAllRequests.push(JSON.parse(route.request().postData() || "{}"));
-      return route.fulfill({
-        json: { message: "ok", changed: [], unchanged: [], failed: [] },
-      });
     });
   }
 
@@ -283,11 +275,15 @@ class DashboardPage {
 
   /** Clicks it and resolves once the page has posted, like triggerAll. */
   async toggleSuspend(jobName) {
+    await this.#clickAndAwaitSuspend(this.suspendToggle(jobName));
+  }
+
+  async #clickAndAwaitSuspend(button) {
     const sent = this.page.waitForRequest(
       (request) =>
         request.method() === "POST" && request.url().includes("/api/v1/renovatejob/suspend"),
     );
-    await this.suspendToggle(jobName).click();
+    await button.click();
     await sent;
   }
 
@@ -303,21 +299,12 @@ class DashboardPage {
 
   /** Clicks Suspend all and resolves once the page has posted, like toggleSuspend. */
   async suspendAll() {
-    await this.#clickAndAwaitBulkSuspend(this.suspendAllButton);
+    await this.#clickAndAwaitSuspend(this.suspendAllButton);
   }
 
   /** Clicks Resume all and resolves once the page has posted. */
   async resumeAll() {
-    await this.#clickAndAwaitBulkSuspend(this.resumeAllButton);
-  }
-
-  async #clickAndAwaitBulkSuspend(button) {
-    const sent = this.page.waitForRequest(
-      (request) =>
-        request.method() === "POST" && request.url().includes("/api/v1/renovatejobs/suspend"),
-    );
-    await button.click();
-    await sent;
+    await this.#clickAndAwaitSuspend(this.resumeAllButton);
   }
 
   /** The main half of the split trigger button in a job card's title row. */

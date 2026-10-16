@@ -5,8 +5,8 @@
 // Playwright specs stub the API through page.route instead, which keeps each test
 // in control of its own data — this module exists for manual UI work.
 //
-// The dashboard calls eleven endpoints (see the fetch and authFetch calls in
-// index.html); the six POST ones only have their `ok` flag inspected, so an empty
+// The dashboard calls ten endpoints (see the fetch and authFetch calls in
+// index.html); the five POST ones only have their `ok` flag inspected, so an empty
 // 200 is enough to exercise the buttons without a backend. The logs page adds
 // /api/v1/logs, which is an event stream rather than a JSON document.
 
@@ -103,9 +103,9 @@ export function createMockOperatorApi({
       }
     }
 
-    // /renovate, /renovate/all, /renovate/cancel, /discovery/start,
-    // /renovatejob/suspend and /renovatejobs/suspend. Nothing is mutated: the
-    // mock covers layout and client-side state, not the operator's job lifecycle.
+    // /renovate, /renovate/all, /renovate/cancel, /discovery/start and
+    // /renovatejob/suspend. Nothing is mutated: the mock covers layout and
+    // client-side state, not the operator's job lifecycle.
     if (request.method === "POST") {
       await discardRequestBody(request);
       sendJson(response, {});

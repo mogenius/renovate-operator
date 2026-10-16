@@ -75,7 +75,7 @@ test.describe("suspend toggle", () => {
     await dashboard.toggleSuspend("job-active");
 
     expect(dashboard.suspendRequests).toEqual([
-      { renovateJob: "job-active", namespace: "renovate", suspend: true },
+      { renovateJobs: [{ name: "job-active", namespace: "renovate" }], suspend: true },
     ]);
   });
 
@@ -86,7 +86,7 @@ test.describe("suspend toggle", () => {
     await dashboard.toggleSuspend("job-suspended");
 
     expect(dashboard.suspendRequests).toEqual([
-      { renovateJob: "job-suspended", namespace: "renovate", suspend: false },
+      { renovateJobs: [{ name: "job-suspended", namespace: "renovate" }], suspend: false },
     ]);
   });
 
@@ -120,9 +120,11 @@ test.describe("suspend all", () => {
 
     await dashboard.suspendAll();
 
-    // The operator picks the jobs, so a tab dying mid-way cannot leave some running.
-    expect(dashboard.suspendAllRequests).toEqual([{ suspend: true }]);
-    expect(dashboard.suspendRequests).toEqual([]);
+    // One request naming them all, so a tab dying mid-way cannot leave some
+    // running; the job already suspended is left out.
+    expect(dashboard.suspendRequests).toEqual([
+      { renovateJobs: [{ name: "job-active", namespace: "renovate" }], suspend: true },
+    ]);
   });
 
   test("still applies to the jobs a search hides", async ({ dashboard }) => {
@@ -132,11 +134,15 @@ test.describe("suspend all", () => {
       expectedJobCount: 1,
     });
 
-    await expect(dashboard.suspendAllButton).toBeEnabled();
     await expect(dashboard.suspendAllButton).toHaveAttribute(
       "title",
       "Stop new runs for 1 job, including any the filter hides",
     );
+    await dashboard.suspendAll();
+
+    expect(dashboard.suspendRequests).toEqual([
+      { renovateJobs: [{ name: "job-active", namespace: "renovate" }], suspend: true },
+    ]);
   });
 
   test("is disabled once every job is suspended", async ({ dashboard }) => {
@@ -182,8 +188,9 @@ test.describe("resume all", () => {
 
     await dashboard.resumeAll();
 
-    expect(dashboard.suspendAllRequests).toEqual([{ suspend: false }]);
-    expect(dashboard.suspendRequests).toEqual([]);
+    expect(dashboard.suspendRequests).toEqual([
+      { renovateJobs: [{ name: "job-suspended", namespace: "renovate" }], suspend: false },
+    ]);
   });
 
   test("still applies to the jobs a search hides", async ({ dashboard }) => {
@@ -193,11 +200,15 @@ test.describe("resume all", () => {
       expectedJobCount: 1,
     });
 
-    await expect(dashboard.resumeAllButton).toBeEnabled();
     await expect(dashboard.resumeAllButton).toHaveAttribute(
       "title",
       "Resume 1 suspended job, including any the filter hides, whatever suspended it",
     );
+    await dashboard.resumeAll();
+
+    expect(dashboard.suspendRequests).toEqual([
+      { renovateJobs: [{ name: "job-suspended", namespace: "renovate" }], suspend: false },
+    ]);
   });
 
   test("is disabled while no job is suspended", async ({ dashboard }) => {

@@ -13,6 +13,7 @@ import (
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
 	"renovate-operator/internal/utils"
+	"slices"
 	"strings"
 	"time"
 
@@ -238,8 +239,7 @@ func (s *Server) registerApiV1Routes(router *mux.Router) {
 	apiV1.HandleFunc("/logs", s.getRenovateJobLogs).Methods("GET")
 	apiV1.HandleFunc("/discovery/start", s.runDiscoveryForProject).Methods("POST")
 	apiV1.HandleFunc("/discovery/status", s.discoveryStatusForProject).Methods("GET")
-	apiV1.HandleFunc("/renovatejob/suspend", s.setRenovateJobSuspend).Methods("POST")
-	apiV1.HandleFunc("/renovatejobs/suspend", s.setAllRenovateJobsSuspend).Methods("POST")
+	apiV1.HandleFunc("/renovatejob/suspend", s.setRenovateJobsSuspend).Methods("POST")
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -672,67 +672,19 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 }
 
-// refuseUnlessSuspendFromUI answers 403 and returns true when the operator does
-// not offer suspending from the UI. Said plainly, rather than as the missing
-// permission it also is, so an admin calling the API learns which setting turns
-// it on.
-func (s *Server) refuseUnlessSuspendFromUI(w http.ResponseWriter) bool {
-	if s.accessDefaults.SuspendFromUI {
-		return false
-	}
-	http.Error(w, "suspending from the UI is not enabled on this operator (authorization.suspendFromUI)", http.StatusForbidden)
-	return true
+// suspendTimeout bounds a suspend request once it no longer follows its
+// request, see setRenovateJobsSuspend.
+const suspendTimeout = time.Minute
+
+// suspendJobRef names one RenovateJob in a suspend request.
+type suspendJobRef struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
-// setRenovateJobSuspend sets spec.suspend, pausing or resuming a whole RenovateJob.
-func (s *Server) setRenovateJobSuspend(w http.ResponseWriter, r *http.Request) {
-	if s.refuseUnlessSuspendFromUI(w) {
-		return
-	}
-
-	var body struct {
-		RenovateJob string `json:"renovateJob"`
-		Namespace   string `json:"namespace"`
-		// A pointer, so a request that leaves it out is refused instead of resuming.
-		Suspend *bool `json:"suspend"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		badRequestError(w, err, "failed to parse request body")
-		return
-	}
-
-	if body.RenovateJob == "" || body.Namespace == "" || body.Suspend == nil {
-		badRequestError(w, nil, "Missing parameters")
-		return
-	}
-
-	if _, ok := s.requirePermission(w, r, body.Namespace, body.RenovateJob, permSuspend); !ok {
-		return
-	}
-
-	jobId := crdmanager.RenovateJobIdentifier{Name: body.RenovateJob, Namespace: body.Namespace}
-	if err := s.manager.SetSuspend(r.Context(), jobId, *body.Suspend); err != nil {
-		s.logger.Error(err, "Failed to set suspend on RenovateJob", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend)
-		internalServerError(w, err, "failed to update the RenovateJob")
-		return
-	}
-
-	// Pausing or resuming every run of a job is worth an audit line at the default level.
-	s.logger.Info("RenovateJob suspend set from the UI", "renovateJob", body.RenovateJob, "namespace", body.Namespace, "suspend", *body.Suspend, "user", sessionEmail(r))
-	message := "RenovateJob resumed"
-	if *body.Suspend {
-		message = "RenovateJob suspended"
-	}
-	writeSuccess(w, SuccessResult{Message: message})
-}
-
-// suspendAllTimeout bounds a bulk suspend once it no longer follows its request,
-// see setAllRenovateJobsSuspend.
-const suspendAllTimeout = time.Minute
-
-// SuspendAllResult says what a bulk suspend did to each RenovateJob the caller
-// may suspend, named "namespace/name".
-type SuspendAllResult struct {
+// SuspendResult says what a suspend request did to each RenovateJob it named,
+// as "namespace/name".
+type SuspendResult struct {
 	Message string `json:"message"`
 	// Changed lists the jobs this request suspended or resumed.
 	Changed []string `json:"changed"`
@@ -743,15 +695,23 @@ type SuspendAllResult struct {
 	Failed []string `json:"failed"`
 }
 
-// setAllRenovateJobsSuspend sets spec.suspend on every RenovateJob the caller may
-// suspend, for the dashboard's Suspend all and Resume all buttons. Jobs the caller
-// cannot suspend are skipped, not refused, so an admin of some jobs changes those.
-func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Request) {
-	if s.refuseUnlessSuspendFromUI(w) {
+// setRenovateJobsSuspend sets spec.suspend on the RenovateJobs a request names,
+// for a job card's Suspend and Resume button as for the toolbar's Suspend all
+// and Resume all, which name every job the dashboard lists.
+func (s *Server) setRenovateJobsSuspend(w http.ResponseWriter, r *http.Request) {
+	// Said plainly, rather than as the missing permission it also is, so an admin
+	// calling the API learns which setting turns it on.
+	if !s.accessDefaults.SuspendFromUI {
+		http.Error(w, "suspending from the UI is not enabled on this operator (authorization.suspendFromUI)", http.StatusForbidden)
 		return
 	}
 
 	var body struct {
+		RenovateJobs []suspendJobRef `json:"renovateJobs"`
+		// The single-job request shape that predates renovateJobs, still accepted
+		// so existing callers keep working.
+		RenovateJob string `json:"renovateJob"`
+		Namespace   string `json:"namespace"`
 		// A pointer, so a request that leaves it out is refused instead of resuming.
 		Suspend *bool `json:"suspend"`
 	}
@@ -759,7 +719,13 @@ func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Reques
 		badRequestError(w, err, "failed to parse request body")
 		return
 	}
-	if body.Suspend == nil {
+	requested := body.RenovateJobs
+	if body.RenovateJob != "" || body.Namespace != "" {
+		requested = append(requested, suspendJobRef{Name: body.RenovateJob, Namespace: body.Namespace})
+	}
+	if len(requested) == 0 || body.Suspend == nil || slices.ContainsFunc(requested, func(ref suspendJobRef) bool {
+		return ref.Name == "" || ref.Namespace == ""
+	}) {
 		badRequestError(w, nil, "Missing parameters")
 		return
 	}
@@ -773,18 +739,47 @@ func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	jobs, decisions := s.filterReadableJobs(r, jobs)
+	readable := make(map[string]int, len(jobs))
+	for i := range jobs {
+		readable[jobs[i].Namespace+"/"+jobs[i].Name] = i
+	}
 
-	// The batch outlives its request: the button is pressed while the Git
+	// Every named job is checked before any changes, so a request naming one the
+	// caller may not suspend changes nothing. Answers like requirePermission: a
+	// job the caller cannot read is not found, whether or not it exists.
+	targets := make([]int, 0, len(requested))
+	for _, ref := range requested {
+		i, ok := readable[ref.Namespace+"/"+ref.Name]
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if !decisions[i].has(permSuspend) {
+			s.logger.Info("Access denied: missing permission",
+				"user", sessionEmail(r),
+				"role", decisions[i].Role.String(),
+				"permission", permSuspend,
+				"resource", ref.Name,
+				"namespace", ref.Namespace,
+				"path", r.URL.Path,
+				"method", r.Method,
+				"remote_addr", r.RemoteAddr)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if !slices.Contains(targets, i) {
+			targets = append(targets, i)
+		}
+	}
+
+	// The batch outlives its request: Suspend all is pressed while the Git
 	// platform struggles, and a browser that dies after the click must not leave
 	// half the jobs running.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), suspendAllTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), suspendTimeout)
 	defer cancel()
 
-	result := SuspendAllResult{Changed: []string{}, Unchanged: []string{}, Failed: []string{}}
-	for i := range jobs {
-		if !decisions[i].CanSuspend {
-			continue
-		}
+	result := SuspendResult{Changed: []string{}, Unchanged: []string{}, Failed: []string{}}
+	for _, i := range targets {
 		job := &jobs[i]
 		name := job.Namespace + "/" + job.Name
 		if job.Spec.GetSuspend() == suspend {
@@ -798,19 +793,9 @@ func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Reques
 			result.Failed = append(result.Failed, name)
 			continue
 		}
-		s.logger.Info("RenovateJob suspend set from the UI", "renovateJob", job.Name, "namespace", job.Namespace, "suspend", suspend, "user", sessionEmail(r), "bulk", true)
+		// Pausing or resuming every run of a job is worth an audit line at the default level.
+		s.logger.Info("RenovateJob suspend set from the UI", "renovateJob", job.Name, "namespace", job.Namespace, "suspend", suspend, "user", sessionEmail(r))
 		result.Changed = append(result.Changed, name)
-	}
-
-	if len(result.Changed)+len(result.Unchanged)+len(result.Failed) == 0 {
-		s.logger.Info("Access denied: missing permission",
-			"user", sessionEmail(r),
-			"permission", permSuspend,
-			"path", r.URL.Path,
-			"method", r.Method,
-			"remote_addr", r.RemoteAddr)
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
 	}
 
 	verb := "resumed"
@@ -818,7 +803,7 @@ func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Reques
 		verb = "suspended"
 	}
 	status := http.StatusOK
-	result.Message = fmt.Sprintf("%d RenovateJobs %s", len(result.Changed), verb)
+	result.Message = fmt.Sprintf("%d of %d RenovateJobs %s", len(result.Changed), len(targets), verb)
 	if len(result.Failed) > 0 {
 		status = http.StatusInternalServerError
 		result.Message = fmt.Sprintf("%s, %d failed", result.Message, len(result.Failed))

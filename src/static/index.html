@@ -940,8 +940,7 @@
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                renovateJob: job.name,
-                namespace: job.namespace,
+                renovateJobs: [{ name: job.name, namespace: job.namespace }],
                 suspend,
               }),
             });
@@ -966,18 +965,21 @@
           }
         };
 
-        // One request for the whole batch rather than one per job, so the
-        // operator finishes it even if this tab dies right after the click.
+        // One request naming every job to change, rather than one per job, so the
+        // operator finishes the batch even if this tab dies right after the click.
         const setAllJobsSuspended = async (suspend) => {
           if (bulkSuspend !== null) return;
           setBulkSuspend(suspend);
           const verb = suspend ? "suspend" : "resume";
+          const renovateJobs = suspendableJobs
+            .filter((job) => !!job.suspended !== suspend)
+            .map((job) => ({ name: job.name, namespace: job.namespace }));
 
           try {
-            const response = await authFetch("/api/v1/renovatejobs/suspend", {
+            const response = await authFetch("/api/v1/renovatejob/suspend", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ suspend }),
+              body: JSON.stringify({ renovateJobs, suspend }),
             });
 
             // A refusal comes back as plain text, the outcome as JSON.
