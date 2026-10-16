@@ -43,6 +43,9 @@ const (
 	// ReasonIncompleteSpec marks a job still missing a required field after its
 	// template is merged in.
 	ReasonIncompleteSpec = "IncompleteSpec"
+	// ReasonClusterTemplatesDisabled marks a job that references a ClusterRenovateJobTemplate
+	// while cluster template support is disabled on this operator instance.
+	ReasonClusterTemplatesDisabled = "ClusterTemplatesDisabled"
 )
 
 // Violation is a policy refusal. It carries the reason as a code so callers can
