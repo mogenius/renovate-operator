@@ -306,6 +306,17 @@ func main() {
 			},
 		},
 		{
+			Key:      "WEBHOOK_IGNORE_UNMATCHED_PROJECTS",
+			Optional: true,
+			Default:  "false",
+			Validate: func(value string) error {
+				if value != "true" && value != "false" {
+					return fmt.Errorf("'WEBHOOK_IGNORE_UNMATCHED_PROJECTS' must be 'true' or 'false'")
+				}
+				return nil
+			},
+		},
+		{
 			Key:      "DELETE_SUCCESSFUL_JOBS",
 			Optional: true,
 			Default:  "false",
