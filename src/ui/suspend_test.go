@@ -406,3 +406,32 @@ func TestSetAllRenovateJobsSuspendOutlivesItsRequest(t *testing.T) {
 		t.Errorf("SetSuspend completed for %v, want both jobs", got)
 	}
 }
+
+// Resume all resumes the suspended jobs, through the same smallest-override
+// SetSuspend as the card, and leaves the running ones alone.
+func TestSetAllRenovateJobsSuspendResumesSuspendedJobs(t *testing.T) {
+	jobs := []api.RenovateJob{
+		{Name: "paused", Namespace: "default", Spec: api.RenovateJobSpec{Suspend: new(true)}},
+		{Name: "active", Namespace: "default"},
+	}
+	var got []string
+	server := suspendAllServer(jobs, func(_ context.Context, jobId crdmanager.RenovateJobIdentifier, suspend bool) error {
+		if suspend {
+			t.Errorf("%s: SetSuspend(true), want false", jobId.Name)
+		}
+		got = append(got, jobId.Name)
+		return nil
+	})
+
+	w, result := postSuspendAll(t, server, suspendAllRequest(`{"suspend":false}`))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !slices.Equal(got, []string{"paused"}) {
+		t.Errorf("SetSuspend called for %v, want [paused]", got)
+	}
+	if !slices.Equal(result.Unchanged, []string{"default/active"}) {
+		t.Errorf("unchanged = %v, want [default/active]", result.Unchanged)
+	}
+}

@@ -744,8 +744,8 @@ type SuspendAllResult struct {
 }
 
 // setAllRenovateJobsSuspend sets spec.suspend on every RenovateJob the caller may
-// suspend, for the dashboard's Suspend all button. Jobs the caller cannot suspend
-// are skipped, not refused, so an admin of some jobs pauses those.
+// suspend, for the dashboard's Suspend all and Resume all buttons. Jobs the caller
+// cannot suspend are skipped, not refused, so an admin of some jobs changes those.
 func (s *Server) setAllRenovateJobsSuspend(w http.ResponseWriter, r *http.Request) {
 	if s.refuseUnlessSuspendFromUI(w) {
 		return

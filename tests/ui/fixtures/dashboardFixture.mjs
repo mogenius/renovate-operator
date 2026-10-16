@@ -296,13 +296,27 @@ class DashboardPage {
     return this.toolbar.getByTestId("suspend-all");
   }
 
-  /** Clicks it and resolves once the page has posted, like toggleSuspend. */
+  /** The toolbar's Resume all button. */
+  get resumeAllButton() {
+    return this.toolbar.getByTestId("resume-all");
+  }
+
+  /** Clicks Suspend all and resolves once the page has posted, like toggleSuspend. */
   async suspendAll() {
+    await this.#clickAndAwaitBulkSuspend(this.suspendAllButton);
+  }
+
+  /** Clicks Resume all and resolves once the page has posted. */
+  async resumeAll() {
+    await this.#clickAndAwaitBulkSuspend(this.resumeAllButton);
+  }
+
+  async #clickAndAwaitBulkSuspend(button) {
     const sent = this.page.waitForRequest(
       (request) =>
         request.method() === "POST" && request.url().includes("/api/v1/renovatejobs/suspend"),
     );
-    await this.suspendAllButton.click();
+    await button.click();
     await sent;
   }
 
