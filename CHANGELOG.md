@@ -1,5 +1,15 @@
 # Changelog
 
+## [6.5.2](https://github.com/mogenius/renovate-operator/compare/6.5.1...6.5.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **dashboard:** correct the Overview stat panels ([#713](https://github.com/mogenius/renovate-operator/issues/713)) ([1bd0859](https://github.com/mogenius/renovate-operator/commit/1bd08599be29c7255100b89c771e87e268fe62af))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.79 ([516d3e5](https://github.com/mogenius/renovate-operator/commit/516d3e5628d3d4ea4f60b8d31b03484c62077a91))
+* **deps:** update node.js to v24.22.0 ([6d8048d](https://github.com/mogenius/renovate-operator/commit/6d8048d8f53e15d6ce1b5b956da7115be52e535b))
+* **deps:** update react monorepo to v19.3.1 ([5189dbd](https://github.com/mogenius/renovate-operator/commit/5189dbdb0b12fd747196f2aadbbaf5dedc97005f))
+
 ## [6.5.1](https://github.com/mogenius/renovate-operator/compare/6.5.0...6.5.1) (2026-10-12)
 
 
