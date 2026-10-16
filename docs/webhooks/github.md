@@ -49,3 +49,26 @@ https://your-webhook-host/webhook/v1/github?namespace=renovate-operator&job=my-r
 | :---------- | :------: | :-------------------------------------------------------------------------- |
 | `namespace` |    no    | Kubernetes namespace to restrict the job search to.                         |
 | `job`       |    no    | Name of the RenovateJob to restrict the job search to.                      |
+
+### Repository lifecycle events (automatic discovery)
+
+Besides pull request and issue interactions, the endpoint also responds to repository lifecycle
+events and starts a discovery run for the matching RenovateJob(s). Add these to the webhook's
+event subscriptions:
+
+- **Repositories** — `created` and `deleted` actions. A repository appearing or disappearing
+  changes what a job's autodiscovery would return, so a fresh discovery reconciles the project
+  list without waiting for the next scheduled run.
+- **Installation** (GitHub Apps) — the `created` action, sent when the App is installed.
+
+Matching differs from the checkbox events: a newly created repository is not yet part of any
+job's project status, so the operator matches on discovery intent instead. A job is a candidate
+when its webhook is enabled, its provider is `github`, and its `spec.discoveryFilters` match the
+repository's full name. Installation payloads match every embedded repository; payloads without
+a repository list fall back to matching the account as `<account>/*`. Jobs without
+`discoveryFilters` match every repository. The optional `namespace` and `job` query parameters
+and the configured webhook authentication apply as usual.
+
+The endpoint answers `202 Accepted` and lists the RenovateJobs whose discovery was started.
+Events that match no job, a job whose discovery is already running, or a suspended job are
+acknowledged with `200 OK` so GitHub does not mark the delivery as failed and retry it.
