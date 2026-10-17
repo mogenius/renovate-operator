@@ -65,8 +65,8 @@ function CustomBranchRunModal({ projectName, onSubmit, onClose }) {
             </svg>
           </button>
         </div>
-        <p className="text-xs text-gray-600 dark:text-slate-400 mb-4 break-all">
-          One run of <span className="font-mono">{projectName}</span> against this branch, using the Renovate config on it. Nothing is saved for later runs.
+        <p className="text-xs text-gray-600 dark:text-slate-400 mb-4">
+          One run of <span className="font-mono break-all">{projectName}</span> against this branch, using the Renovate config on it. Nothing is saved for later runs.
         </p>
 
         <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1" htmlFor="custom-branch-name">
