@@ -495,7 +495,9 @@ func executionOptionEnvVars(executionOptions *api.RenovateExecutionOptions) []v1
 	if executionOptions.Debug {
 		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_LOG_LEVEL", Value: "debug"})
 	}
-	if executionOptions.DryRun {
+	// a custom base branch run is always a dry run, even when the status was written without
+	// going through the API's validation
+	if executionOptions.DryRun || executionOptions.BaseBranch != "" {
 		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_DRY_RUN", Value: "full"})
 	}
 	if executionOptions.BaseBranch != "" {

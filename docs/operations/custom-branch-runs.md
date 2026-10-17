@@ -1,15 +1,10 @@
 # Running a repository against a custom branch
 
-A custom branch run is a one-off Renovate run of a single repository against a branch you name, using the Renovate config on that branch. It is meant for checking a config change against a real repository before you merge it into the base branch, without touching the config that every other run uses.
+A custom branch run is a one-off Renovate dry run of a single repository against a branch you name, using the Renovate config on that branch. It is meant for checking a config change against a real repository before you merge it into the base branch, without touching the config that every other run uses. Renovate only logs what it would change; the result is read in the project's logs.
 
 ## Starting a run
 
-In the dashboard, each project's action button has a branch icon next to the debug (bug) icon. Click it, enter the branch name and choose **Run**. The dialog has two optional checkboxes:
-
-| Option              | Effect                                                                             |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| **Dry run**         | Renovate only logs what it would change and opens no pull requests (`dryRun=full`) |
-| **Debug log level** | Same as the debug trigger (`RENOVATE_LOG_LEVEL=debug`)                             |
+In the dashboard, each project's action button has a branch icon next to the debug (bug) icon. Click it, enter the branch name and choose **Run**. Tick **Debug log level** for the same extended logs as the debug trigger (`RENOVATE_LOG_LEVEL=debug`).
 
 The run is queued with the same priority as any other dashboard trigger. While it is queued, the branch icon is highlighted and its tooltip names the branch. Once the Job starts, the options are cleared. Later runs, whether scheduled, triggered by a webhook or started from the dashboard, use the repository's normal configuration again.
 
@@ -19,11 +14,11 @@ Starting a custom branch run needs the `admin` role on the RenovateJob, just lik
 
 The operator adds these variables to the Renovate Job:
 
-| Variable                                                     | Value                      |
-| ------------------------------------------------------------ | -------------------------- |
-| `RENOVATE_BASE_BRANCH_PATTERNS` and `RENOVATE_BASE_BRANCHES` | `["<branch>"]`             |
-| `RENOVATE_USE_BASE_BRANCH_CONFIG`                            | `merge`                    |
-| `RENOVATE_DRY_RUN`                                           | `full` (only with dry run) |
+| Variable                                                     | Value          |
+| ------------------------------------------------------------ | -------------- |
+| `RENOVATE_BASE_BRANCH_PATTERNS` and `RENOVATE_BASE_BRANCHES` | `["<branch>"]` |
+| `RENOVATE_USE_BASE_BRANCH_CONFIG`                            | `merge`        |
+| `RENOVATE_DRY_RUN`                                           | `full`         |
 
 Two variables carry the branch because Renovate renamed `baseBranches` to `baseBranchPatterns`. Renovate ignores variables it does not recognise, so setting both works with images from before and after the rename.
 
@@ -31,8 +26,11 @@ Two variables carry the branch because Renovate renamed `baseBranches` to `baseB
 
 These variables take precedence over `spec.extraEnv` for this one run.
 
-> [!WARNING]
-> Without **Dry run**, this is a real Renovate run: it opens and updates pull requests that target the custom branch, using the bot's normal credentials. Use a dry run first if you only want to read the result in the logs.
+## Why it is always a dry run
+
+With a single base branch configured, Renovate does not include the base branch in the names of its branches. A real run against the custom branch would therefore reuse the branches and pull requests Renovate keeps for the default branch: it would push to them, rebase them onto the custom branch, and rewrite the repository's Dependency Dashboard, until the next normal run moved everything back. A dry run reports the same decisions (`DRY-RUN: Would create PR …`, `Would update PR …`) without touching the repository.
+
+The API rejects a custom branch run without `dryRun`, and the operator sets `RENOVATE_DRY_RUN=full` for every run with a custom branch, so this holds even for a RenovateProject status written directly.
 
 ## Branch names
 
