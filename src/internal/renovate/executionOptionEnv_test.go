@@ -14,7 +14,7 @@ func TestNewRenovateJob_CustomBranchExecutionOptions(t *testing.T) {
 		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
 	})
 
-	t.Run("base branch selects the branch and its config", func(t *testing.T) {
+	t.Run("base branch selects the branch and its config, always as a dry run", func(t *testing.T) {
 		job := &api.RenovateJob{Name: "rj", Namespace: "ns", Spec: api.RenovateJobSpec{Image: "img"}}
 
 		container := expectContainer(t, newRenovateJob(job, "org/repository",
@@ -23,7 +23,8 @@ func TestNewRenovateJob_CustomBranchExecutionOptions(t *testing.T) {
 		expectEnvVar(t, container, "RENOVATE_BASE_BRANCH_PATTERNS", `["test/renovate-config"]`)
 		expectEnvVar(t, container, "RENOVATE_BASE_BRANCHES", `["test/renovate-config"]`)
 		expectEnvVar(t, container, "RENOVATE_USE_BASE_BRANCH_CONFIG", "merge")
-		expectEnvVarAbsent(t, container, "RENOVATE_DRY_RUN")
+		// the status carries no dryRun here, as when written without the API's validation
+		expectEnvVar(t, container, "RENOVATE_DRY_RUN", "full")
 	})
 
 	t.Run("dry run is passed as full dry run", func(t *testing.T) {

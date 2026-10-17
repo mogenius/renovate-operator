@@ -16,7 +16,7 @@ func TestValidateExecutionOptions(t *testing.T) {
 		strings.Repeat("a", maxBaseBranchLength),
 	}
 	for _, branch := range validBranches {
-		if err := validateExecutionOptions(&api.RenovateExecutionOptions{BaseBranch: branch}); err != nil {
+		if err := validateExecutionOptions(&api.RenovateExecutionOptions{BaseBranch: branch, DryRun: true}); err != nil {
 			t.Errorf("expected %q to be accepted, got %v", branch, err)
 		}
 	}
@@ -41,8 +41,15 @@ func TestValidateExecutionOptions(t *testing.T) {
 		strings.Repeat("a", maxBaseBranchLength+1),
 	}
 	for _, branch := range invalidBranches {
-		if err := validateExecutionOptions(&api.RenovateExecutionOptions{BaseBranch: branch}); err == nil {
+		if err := validateExecutionOptions(&api.RenovateExecutionOptions{BaseBranch: branch, DryRun: true}); err == nil {
 			t.Errorf("expected %q to be rejected", branch)
+		}
+	}
+
+	// a real run against a custom branch would take over the default branch's Renovate branches
+	for _, executionOptions := range []*api.RenovateExecutionOptions{{BaseBranch: "main"}, {BaseBranch: "main", Debug: true}} {
+		if err := validateExecutionOptions(executionOptions); err == nil {
+			t.Errorf("expected %+v without dryRun to be rejected", executionOptions)
 		}
 	}
 
