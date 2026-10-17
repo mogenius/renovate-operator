@@ -1994,7 +1994,7 @@
         const isDebugScheduled = isScheduled && !!project.executionOptions?.debug;
         const scheduledBaseBranch = isScheduled ? project.executionOptions?.baseBranch : undefined;
         const scheduledBaseBranchDescription = scheduledBaseBranch
-          ? `Queued against branch ${scheduledBaseBranch}${project.executionOptions?.dryRun ? " (dry run)" : ""}`
+          ? `Queued against branch ${scheduledBaseBranch} (dry run)`
           : undefined;
 
         if (isRunning) {

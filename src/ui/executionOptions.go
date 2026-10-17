@@ -20,6 +20,12 @@ func validateExecutionOptions(executionOptions *api.RenovateExecutionOptions) er
 	if executionOptions == nil || executionOptions.BaseBranch == "" {
 		return nil
 	}
+	// With a single base branch Renovate does not put the branch into its branch names, so a
+	// real run would push to and retarget the default branch's existing Renovate branches and
+	// rewrite its Dependency Dashboard. A custom branch run may therefore only be a dry run.
+	if !executionOptions.DryRun {
+		return fmt.Errorf("a run against a custom baseBranch must be a dry run (set dryRun)")
+	}
 	return validateBaseBranch(executionOptions.BaseBranch)
 }
 

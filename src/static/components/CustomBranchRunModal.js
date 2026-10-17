@@ -17,7 +17,6 @@ function customBranchNameProblem(branch) {
 function CustomBranchRunModal({ projectName, onSubmit, onClose }) {
   const { useEffect, useState } = React;
   const [branch, setBranch] = useState("");
-  const [dryRun, setDryRun] = useState(false);
   const [debug, setDebug] = useState(false);
 
   useEffect(() => {
@@ -33,8 +32,8 @@ function CustomBranchRunModal({ projectName, onSubmit, onClose }) {
   const submit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
-    const executionOptions = { baseBranch: trimmedBranch };
-    if (dryRun) executionOptions.dryRun = true;
+    // the operator only accepts custom branch runs as dry runs
+    const executionOptions = { baseBranch: trimmedBranch, dryRun: true };
     if (debug) executionOptions.debug = true;
     onSubmit(executionOptions);
   };
@@ -66,7 +65,7 @@ function CustomBranchRunModal({ projectName, onSubmit, onClose }) {
           </button>
         </div>
         <p className="text-xs text-gray-600 dark:text-slate-400 mb-4">
-          One run of <span className="font-mono break-all">{projectName}</span> against this branch, using the Renovate config on it. Nothing is saved for later runs.
+          One dry run of <span className="font-mono break-all">{projectName}</span> against this branch, using the Renovate config on it. Nothing is saved for later runs.
         </p>
 
         <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1" htmlFor="custom-branch-name">
@@ -90,18 +89,13 @@ function CustomBranchRunModal({ projectName, onSubmit, onClose }) {
         </p>
 
         <label className="flex items-start gap-2 mt-2 text-xs text-gray-700 dark:text-slate-300">
-          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} className="mt-0.5" />
-          <span>Dry run: only log what would change, open no pull requests</span>
-        </label>
-        <label className="flex items-start gap-2 mt-2 text-xs text-gray-700 dark:text-slate-300">
           <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} className="mt-0.5" />
           <span>Debug log level</span>
         </label>
-        {!dryRun && (
-          <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
-            Without dry run, Renovate opens and updates real pull requests that target this branch.
-          </p>
-        )}
+        <p className="mt-3 text-xs text-gray-600 dark:text-slate-400">
+          This is always a dry run: Renovate logs what it would change, but opens or updates no pull
+          requests and leaves the Dependency Dashboard alone. Read the result in the project's logs.
+        </p>
 
         <div className="flex justify-end gap-2 mt-4">
           <button
