@@ -1246,12 +1246,17 @@ func TestRunRenovateForProject_CustomBranch(t *testing.T) {
 		},
 		{
 			name:             "a branch pattern is rejected before anything is queued",
-			executionOptions: map[string]any{"baseBranch": "/^release-.*/"},
+			executionOptions: map[string]any{"baseBranch": "/^release-.*/", "dryRun": true},
 			wantStatusCode:   http.StatusBadRequest,
 		},
 		{
 			name:             "a branch with a path traversal is rejected",
-			executionOptions: map[string]any{"baseBranch": "feature/../main"},
+			executionOptions: map[string]any{"baseBranch": "feature/../main", "dryRun": true},
+			wantStatusCode:   http.StatusBadRequest,
+		},
+		{
+			name:             "a branch without dry run is rejected before anything is queued",
+			executionOptions: map[string]any{"baseBranch": "test/renovate-config"},
 			wantStatusCode:   http.StatusBadRequest,
 		},
 	}
