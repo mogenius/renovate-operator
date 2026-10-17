@@ -1,9 +1,10 @@
 // Covers the "Run with custom branch" action on a project row
 // (mogenius/renovate-operator#685).
 //
-// It queues one run of one repository against a branch the user names, so a Renovate
+// It queues one dry run of one repository against a branch the user names, so a Renovate
 // config change can be tried before it is merged. The branch only travels in that
-// trigger's executionOptions; nothing about the job or the project changes.
+// trigger's executionOptions; nothing about the job or the project changes. It is always a
+// dry run: a real run would take over the default branch's Renovate branches.
 
 import { test, expect } from "../fixtures/dashboardFixture.mjs";
 import {
@@ -24,13 +25,13 @@ function buildSingleProjectDashboard({ project = {}, job = {} } = {}) {
 }
 
 test.describe("run with custom branch", () => {
-  test("sends the branch and the chosen options with a single-project trigger", async ({ dashboard }) => {
+  test("sends the branch as a dry run with a single-project trigger", async ({ dashboard }) => {
     await dashboard.open(buildSingleProjectDashboard());
 
     await dashboard.customBranchRunButton("acme/api").click();
     const dialog = dashboard.customBranchRunDialog;
     await dialog.getByLabel("Branch", { exact: true }).fill("  test/renovate-config ");
-    await dialog.getByLabel(/Dry run/).check();
+    await dialog.getByLabel("Debug log level").check();
 
     const sent = dashboard.page.waitForRequest(
       (request) => request.method() === "POST" && /\/api\/v1\/renovate$/.test(request.url()),
@@ -44,7 +45,7 @@ test.describe("run with custom branch", () => {
         renovateJob: "team-platform",
         namespace: "renovate",
         project: "acme/api",
-        executionOptions: { baseBranch: "test/renovate-config", dryRun: true },
+        executionOptions: { baseBranch: "test/renovate-config", dryRun: true, debug: true },
       },
     ]);
   });
@@ -71,16 +72,16 @@ test.describe("run with custom branch", () => {
     expect(dashboard.triggerRequests).toEqual([]);
   });
 
-  test("warns that a run without dry run opens real pull requests", async ({ dashboard }) => {
+  test("offers no real run and says it is a dry run", async ({ dashboard }) => {
     await dashboard.open(buildSingleProjectDashboard());
 
     await dashboard.customBranchRunButton("acme/api").click();
     const dialog = dashboard.customBranchRunDialog;
-    const warning = dialog.getByText(/opens and updates real pull requests/);
 
-    await expect(warning).toBeVisible();
-    await dialog.getByLabel(/Dry run/).check();
-    await expect(warning).toBeHidden();
+    await expect(dialog.getByText(/This is always a dry run/)).toBeVisible();
+    // Debug is the only option left; there is nothing to switch the dry run off with.
+    await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+    await expect(dialog.getByRole("checkbox")).toHaveAccessibleName("Debug log level");
   });
 
   test("names the queued branch while the run waits", async ({ dashboard }) => {
