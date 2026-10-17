@@ -115,3 +115,38 @@ func TestGetUpdateStatusForProject_Priority(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduledExecutionOptions(t *testing.T) {
+	queuedCustomBranchRun := &api.RenovateExecutionOptions{BaseBranch: "test/renovate-config", DryRun: true}
+
+	t.Run("a trigger without options keeps the queued options", func(t *testing.T) {
+		proj := &api.RenovateProjectState{Status: api.JobStatusScheduled, ExecutionOptions: queuedCustomBranchRun}
+
+		result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 1})
+
+		if result.ExecutionOptions != queuedCustomBranchRun {
+			t.Fatalf("expected the queued options to survive a webhook trigger, got %+v", result.ExecutionOptions)
+		}
+	})
+
+	t.Run("a trigger with options replaces the queued options", func(t *testing.T) {
+		proj := &api.RenovateProjectState{Status: api.JobStatusScheduled, ExecutionOptions: queuedCustomBranchRun}
+		debugRun := &api.RenovateExecutionOptions{Debug: true}
+
+		result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 2, ExecutionOptions: debugRun})
+
+		if result.ExecutionOptions != debugRun {
+			t.Fatalf("expected the new options to replace the queued ones, got %+v", result.ExecutionOptions)
+		}
+	})
+
+	t.Run("starting the run clears the options", func(t *testing.T) {
+		proj := &api.RenovateProjectState{Status: api.JobStatusScheduled, ExecutionOptions: queuedCustomBranchRun}
+
+		result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: api.JobStatusRunning})
+
+		if result.ExecutionOptions != nil {
+			t.Fatalf("expected options to be cleared once the run starts, got %+v", result.ExecutionOptions)
+		}
+	})
+}
