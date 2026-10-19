@@ -751,6 +751,29 @@
           [setExpansionForVisibleJobs]
         );
 
+        // Unlike expand/collapse, Suspend all and Resume all act on every job the
+        // visitor may suspend, whatever the stat filter and search show: they narrow
+        // projects, while suspending pauses whole jobs, and a job left running
+        // because a filter hid it would defeat the button.
+        // The bulk change in flight: true suspends, false resumes, null is none.
+        const [bulkSuspend, setBulkSuspend] = useState(null);
+        const suspendFromUI = jobs.some((job) => job.suspendFromUI);
+        const suspendableJobs = useMemo(() => jobs.filter((job) => can(job, "suspend")), [jobs]);
+        const suspendedJobCount = suspendableJobs.filter((job) => job.suspended).length;
+        const activeSuspendableJobCount = suspendableJobs.length - suspendedJobCount;
+        const suspendAllBlocked =
+          suspendableJobs.length === 0
+            ? permissionHint(authInfo)
+            : activeSuspendableJobCount === 0
+              ? "Every job you can suspend is already suspended"
+              : undefined;
+        const resumeAllBlocked =
+          suspendableJobs.length === 0
+            ? permissionHint(authInfo)
+            : suspendedJobCount === 0
+              ? "No job you can resume is suspended"
+              : undefined;
+
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
             nextToastIdRef.current += 1;
@@ -917,8 +940,7 @@
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                renovateJob: job.name,
-                namespace: job.namespace,
+                renovateJobs: [{ name: job.name, namespace: job.namespace }],
                 suspend,
               }),
             });
@@ -939,6 +961,63 @@
             console.error("Error changing suspend:", err);
             addToast("error", suspend ? "Suspend Failed" : "Resume Failed", err.message);
           } finally {
+            loadJobs();
+          }
+        };
+
+        // One request naming every job to change, rather than one per job, so the
+        // operator finishes the batch even if this tab dies right after the click.
+        const setAllJobsSuspended = async (suspend) => {
+          if (bulkSuspend !== null) return;
+          setBulkSuspend(suspend);
+          const verb = suspend ? "suspend" : "resume";
+          const renovateJobs = suspendableJobs
+            .filter((job) => !!job.suspended !== suspend)
+            .map((job) => ({ name: job.name, namespace: job.namespace }));
+
+          try {
+            const response = await authFetch("/api/v1/renovatejob/suspend", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ renovateJobs, suspend }),
+            });
+
+            // A refusal comes back as plain text, the outcome as JSON.
+            const text = await response.text();
+            let result = null;
+            try {
+              result = JSON.parse(text);
+            } catch {}
+
+            if (response.ok && result) {
+              const count = result.changed?.length ?? 0;
+              let message;
+              if (count === 0) {
+                message = suspend
+                  ? "Every job you can suspend was already suspended"
+                  : "No job you can resume was suspended";
+              } else if (suspend) {
+                message = count === 1
+                  ? "No new run starts for 1 job until it is resumed"
+                  : `No new run starts for ${count} jobs until they are resumed`;
+              } else {
+                message = count === 1
+                  ? "1 job starts new runs again"
+                  : `${count} jobs start new runs again`;
+              }
+              addToast("success", suspend ? "All Jobs Suspended" : "All Jobs Resumed", message);
+            } else if (result?.failed?.length) {
+              throw new Error(
+                `${result.changed.length} ${verb}d, could not ${verb} ${result.failed.join(", ")}`
+              );
+            } else {
+              throw new Error(text || `Failed to ${verb} the jobs`);
+            }
+          } catch (err) {
+            console.error(`Error trying to ${verb} all jobs:`, err);
+            addToast("error", suspend ? "Suspend All Failed" : "Resume All Failed", err.message);
+          } finally {
+            setBulkSuspend(null);
             loadJobs();
           }
         };
@@ -1372,6 +1451,68 @@
                         <span className="hidden sm:inline">Collapse all</span>
                       </button>
                     </div>
+                  )}
+                  {/* Only where the operator offers suspending (authorization.suspendFromUI),
+                      and only with jobs to batch: a lone job has its card's button. Like
+                      the card's Resume, Resume all resumes a job whatever suspended it. */}
+                  {suspendFromUI && jobs.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAllJobsSuspended(true)}
+                        data-testid="suspend-all"
+                        disabled={bulkSuspend !== null || !!suspendAllBlocked}
+                        title={
+                          suspendAllBlocked ||
+                          `Stop new runs for ${activeSuspendableJobCount} job${activeSuspendableJobCount === 1 ? "" : "s"}${
+                            projectListIsFiltered ? ", including any the filter hides" : ""
+                          }`
+                        }
+                        className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
+                        aria-label={suspendAllBlocked || (bulkSuspend === true ? "Suspending all jobs" : "Suspend all jobs")}
+                      >
+                        {bulkSuspend === true ? (
+                          <Spinner />
+                        ) : (
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                        {/* Icon only on a phone, where the row shares one line with the search box. */}
+                        <span className="hidden sm:inline">{bulkSuspend === true ? "Suspending..." : "Suspend all"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAllJobsSuspended(false)}
+                        data-testid="resume-all"
+                        disabled={bulkSuspend !== null || !!resumeAllBlocked}
+                        title={
+                          resumeAllBlocked ||
+                          `Resume ${suspendedJobCount} suspended job${suspendedJobCount === 1 ? "" : "s"}${
+                            projectListIsFiltered ? ", including any the filter hides," : ""
+                          } whatever suspended ${suspendedJobCount === 1 ? "it" : "them"}`
+                        }
+                        className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
+                        aria-label={resumeAllBlocked || (bulkSuspend === false ? "Resuming all jobs" : "Resume all jobs")}
+                      >
+                        {bulkSuspend === false ? (
+                          <Spinner />
+                        ) : (
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                        <span className="hidden sm:inline">{bulkSuspend === false ? "Resuming..." : "Resume all"}</span>
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"

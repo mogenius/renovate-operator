@@ -287,6 +287,10 @@ func TestWriteRoutesRequireAdmin(t *testing.T) {
 			getRenovateJobFunc: func(_ context.Context, _, _ string) (*api.RenovateJob, error) {
 				return job, nil
 			},
+			// The suspend route checks access against the job list.
+			listRenovateJobsFullFunc: func(_ context.Context) ([]api.RenovateJob, error) {
+				return []api.RenovateJob{*job}, nil
+			},
 		},
 		logger:         logr.Discard(),
 		discovery:      &mockDiscoveryAgent{},
