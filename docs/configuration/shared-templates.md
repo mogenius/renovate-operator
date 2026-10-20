@@ -106,9 +106,11 @@ fields had been written on the `RenovateJob` directly.
 
 - Editing a template immediately re-reconciles every `RenovateJob` that references
   it — schedules, tokens and config maps are refreshed.
-- A `templateRef` that does not resolve, or an effective spec still missing a
-  required field, sets the job's `Accepted` condition to `False`
-  (`TemplateNotFound` / `IncompleteSpec`) and stops it running until fixed:
+- A `templateRef` that does not resolve, an effective spec still missing a
+  required field, or an effective spec whose fields contradict each other (e.g.
+  `githubAppReference` with a provider other than `github`) sets the job's
+  `Accepted` condition to `False` (`TemplateNotFound` / `IncompleteSpec` /
+  `InvalidSpec`) and stops it running until fixed:
 
   ```
   kubectl get renovatejob team-a -o jsonpath='{.status.conditions}'

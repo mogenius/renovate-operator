@@ -15,6 +15,7 @@ import (
 
 // RenovateJobSpec defines the desired state of RenovateJob
 // +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
+// +kubebuilder:validation:XValidation:rule="!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii() == 'github'",message="githubAppReference requires provider.name github"
 type RenovateJobSpec struct {
 	// TemplateRef inherits shared configuration from a RenovateJobTemplate (in the
 	// same namespace) or a cluster-scoped ClusterRenovateJobTemplate. Fields set on
