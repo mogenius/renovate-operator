@@ -110,3 +110,39 @@ tests:
   asserts:
   - hasDocuments:
       count: 0
+
+- it: ClusterRole lets GitHubAppInstallationSets manage RenovateJobs
+  templates:
+  - templates/clusterrole/clusterrole.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: ["renovate-operator.mogenius.com"]
+        resources: ["githubappinstallationsets", "githubappinstallationsets/status", "githubappinstallationsets/finalizers"]
+        verbs: ["get", "list", "watch", "update", "patch"]
+  - contains:
+      path: rules
+      content:
+        apiGroups: ["renovate-operator.mogenius.com"]
+        resources: ["renovatejobs", "renovatejobs/status", "renovatejobs/finalizers"]
+        verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+
+- it: Role lets GitHubAppInstallationSets manage RenovateJobs
+  set:
+    rbac.ownNamespaceOnly: true
+  templates:
+  - templates/role/role.yaml
+  asserts:
+  - contains:
+      path: rules
+      content:
+        apiGroups: ["renovate-operator.mogenius.com"]
+        resources: ["githubappinstallationsets", "githubappinstallationsets/status", "githubappinstallationsets/finalizers"]
+        verbs: ["get", "list", "watch", "update", "patch"]
+  - contains:
+      path: rules
+      content:
+        apiGroups: ["renovate-operator.mogenius.com"]
+        resources: ["renovatejobs", "renovatejobs/status", "renovatejobs/finalizers"]
+        verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]

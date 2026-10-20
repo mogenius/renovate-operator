@@ -12,6 +12,7 @@ import (
 	"renovate-operator/assert"
 	"renovate-operator/config"
 	crdmanager "renovate-operator/internal/crdManager"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/renovate"
 	"renovate-operator/internal/telemetry"
 	"renovate-operator/internal/types"
@@ -19,13 +20,16 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Server struct {
-	manager   crdmanager.RenovateJobManager
-	discovery renovate.DiscoveryAgent
-	logger    logr.Logger
-	server    *http.Server
+	manager          crdmanager.RenovateJobManager
+	discovery        renovate.DiscoveryAgent
+	logger           logr.Logger
+	server           *http.Server
+	installationSets client.Client
+	policy           policy.Policy
 }
 
 func NewWebookServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, logger logr.Logger) *Server {

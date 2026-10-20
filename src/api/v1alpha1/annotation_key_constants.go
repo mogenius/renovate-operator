@@ -38,3 +38,8 @@ const (
 // TokenExpiresAtAnnotationKey records an RFC3339 expiry on a Secret holding a
 // generated GitHub App token, so it can be renewed before it lapses.
 const TokenExpiresAtAnnotationKey = GroupName + "/token-expires-at"
+
+// TriggerResyncAnnotationKey makes a GitHubAppInstallationSet list its
+// installations again when set to "true". The operator removes it once the sync
+// has run.
+const TriggerResyncAnnotationKey = GroupName + "/resync"

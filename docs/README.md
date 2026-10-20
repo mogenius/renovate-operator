@@ -11,6 +11,7 @@ Platform-specific credential and provider setup.
 | [GitHub — PAT](./platforms/github-pat.md)                 | Personal access token setup                                        |
 | [GitHub — App (Native)](./platforms/github-app-native.md) | GitHub App with built-in token management                          |
 | [GitHub — App (ESO)](./platforms/github-app-eso.md)       | GitHub App with External Secrets Operator                          |
+| [GitHub — App (Every Installation)](./platforms/github-app-installation-set.md) | One RenovateJob per installation of a GitHub App |
 | [GitHub — App Setup](./platforms/github-app-setup.md)     | Creating a GitHub App                                              |
 | [GitLab](./platforms/gitlab.md)                           | PAT-based setup                                                    |
 | [Other platforms](./platforms/generic.md)                 | Azure DevOps, Bitbucket, Gitea, Forgejo, and others via `extraEnv` |
