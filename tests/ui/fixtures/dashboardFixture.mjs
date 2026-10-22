@@ -25,6 +25,8 @@ export { expect };
 class DashboardPage {
   constructor(page) {
     this.page = page;
+    /** Bodies the page POSTed to /api/v1/renovate (one project), oldest first. */
+    this.triggerRequests = [];
     /** Bodies the page POSTed to /api/v1/renovate/all, oldest first. */
     this.triggerAllRequests = [];
     /** Bodies the page POSTed to /api/v1/renovatejob/suspend, oldest first. */
@@ -47,6 +49,10 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovate/all", (route) => {
       this.triggerAllRequests.push(JSON.parse(route.request().postData() || "{}"));
       return route.fulfill({ json: { message: "All projects triggered" } });
+    });
+    await this.page.route("**/api/v1/renovate", (route) => {
+      this.triggerRequests.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({ json: { message: "Renovate job triggered for project" } });
     });
     await this.page.route("**/api/v1/renovatejob/suspend", (route) => {
       this.suspendRequests.push(JSON.parse(route.request().postData() || "{}"));
@@ -328,6 +334,22 @@ class DashboardPage {
     );
     await (debug ? this.triggerAllDebugButton(jobName) : this.triggerAllButton(jobName)).click();
     await sent;
+  }
+
+  /**
+   * The "Run with custom branch" button of a project row. Scoped to the table so the
+   * `lg:hidden` card layout, which stays in the DOM at this viewport, is not matched too.
+   */
+  customBranchRunButton(projectName) {
+    return this.page
+      .locator("table tbody tr", {
+        has: this.page.getByTestId("project-name").filter({ hasText: projectName }),
+      })
+      .getByTestId("trigger-custom-branch");
+  }
+
+  get customBranchRunDialog() {
+    return this.page.getByRole("dialog", { name: "Run with custom branch" });
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */

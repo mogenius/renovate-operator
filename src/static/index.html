@@ -49,6 +49,7 @@
     <script type="text/babel" src="components/StickyToolbar.js"></script>
     <script type="text/babel" src="components/Footer.js"></script>
     <script type="text/babel" src="components/ShortcutsModal.js"></script>
+    <script type="text/babel" src="components/CustomBranchRunModal.js"></script>
 
     <link rel="stylesheet" href="css/styles.css" />
   </head>
@@ -608,6 +609,8 @@
         }, []);
 
         const [showShortcuts, setShowShortcuts] = useState(false);
+        // { job, project } while the "Run with custom branch" dialog is open
+        const [customBranchRunTarget, setCustomBranchRunTarget] = useState(null);
         const [focusedJobIndex, setFocusedJobIndex] = useState(null);
         const [focusedProjectName, setFocusedProjectName] = useState(null);
         const [focusedCardProjects, setFocusedCardProjects] = useState([]);
@@ -1194,7 +1197,7 @@
               setShowShortcuts((s) => !s);
               return;
             }
-            if (showShortcuts) return;
+            if (showShortcuts || customBranchRunTarget) return;
             if (inInput) return;
             switch (e.key) {
               case '/':
@@ -1276,7 +1279,7 @@
           };
           document.addEventListener('keydown', handleKeyDown);
           return () => document.removeEventListener('keydown', handleKeyDown);
-        }, [showShortcuts, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
+        }, [showShortcuts, customBranchRunTarget, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
 
         useEffect(() => {
           if (focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex]) {
@@ -1316,6 +1319,16 @@
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
             {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} shortcuts={DASHBOARD_SHORTCUTS} />}
+            {customBranchRunTarget && (
+              <CustomBranchRunModal
+                projectName={customBranchRunTarget.project.name}
+                onClose={() => setCustomBranchRunTarget(null)}
+                onSubmit={(executionOptions) => {
+                  triggerRenovate(customBranchRunTarget.job, customBranchRunTarget.project, executionOptions);
+                  setCustomBranchRunTarget(null);
+                }}
+              />
+            )}
 
             {/* Brand strip only — everything the user filters and searches with
                 lives in the sticky toolbar below, so it stays reachable while
@@ -1726,6 +1739,7 @@
                       onRunDiscovery={runDiscovery}
                       onToggleSuspend={toggleSuspend}
                       onTriggerRenovate={triggerRenovate}
+                      onOpenCustomBranchRun={(job, project) => setCustomBranchRunTarget({ job, project })}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
                       projectListIsFiltered={projectListIsFiltered}
@@ -2101,13 +2115,28 @@
         );
       }
 
-      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
+      function GitBranchIcon({ className }) {
+        return (
+          <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="6" cy="5" r="2" />
+            <circle cx="6" cy="19" r="2" />
+            <circle cx="18" cy="7" r="2" />
+            <path d="M6 7v10M18 9c0 5-6 4-11.5 8.5" />
+          </svg>
+        );
+      }
+
+      function ActionButton({ project, onTrigger, onTriggerDebug, onTriggerCustomBranch, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
         const isRunning = project.status === "running";
         const isScheduled = project.status === "scheduled";
         const isPrioritized = isScheduled && (project.priority || 0) > 0;
         const isTriggering = !!project.triggering;
         const isCancelling = !!project.cancelling;
         const isDebugScheduled = isScheduled && !!project.executionOptions?.debug;
+        const scheduledBaseBranch = isScheduled ? project.executionOptions?.baseBranch : undefined;
+        const scheduledBaseBranchDescription = scheduledBaseBranch
+          ? `Queued against branch ${scheduledBaseBranch} (dry run)`
+          : undefined;
 
         if (isRunning) {
           return (
@@ -2170,6 +2199,16 @@
               aria-label={blocked || `Trigger ${project.name} in debug mode`}
             >
               <BugIcon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onTriggerCustomBranch}
+              disabled={isTriggering || !!blocked}
+              title={blocked || scheduledBaseBranchDescription || "Run with custom branch"}
+              data-testid="trigger-custom-branch"
+              className={`${scheduledBaseBranch ? "bg-sky-600 text-white" : "bg-gray-600 text-sky-300"} hover:bg-sky-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
+              aria-label={blocked || scheduledBaseBranchDescription || `Run ${project.name} with custom branch`}
+            >
+              <GitBranchIcon className="w-3.5 h-3.5" />
             </button>
           </div>
         );
@@ -2290,7 +2329,7 @@
         );
       }
 
-      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
+      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onOpenCustomBranchRun, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
@@ -3087,8 +3126,9 @@
                                   project={project}
                                   onTrigger={() => onTriggerRenovate(job, project)}
                                   onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
+                                  onTriggerCustomBranch={() => onOpenCustomBranchRun(job, project)}
                                   onCancel={() => onCancelRenovate(job, project)}
-                                  width="w-[130px]"
+                                  width="w-[160px]"
                                   jobAccepted={job.accepted !== false}
                                   canTrigger={canTrigger}
                                   canCancel={canCancel}
@@ -3260,8 +3300,9 @@
                             project={project}
                             onTrigger={() => onTriggerRenovate(job, project)}
                             onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
+                            onTriggerCustomBranch={() => onOpenCustomBranchRun(job, project)}
                             onCancel={() => onCancelRenovate(job, project)}
-                            width="w-[140px]"
+                            width="w-[170px]"
                             jobAccepted={job.accepted !== false}
                             canTrigger={canTrigger}
                             canCancel={canCancel}
