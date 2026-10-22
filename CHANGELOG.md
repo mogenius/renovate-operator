@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.6.0](https://github.com/mogenius/renovate-operator/compare/6.5.1...6.6.0) (2026-10-22)
+
+
+### Features
+
+* **ui:** suspend and resume every RenovateJob at once from the toolbar ([#733](https://github.com/mogenius/renovate-operator/issues/733)) ([bc4fe19](https://github.com/mogenius/renovate-operator/commit/bc4fe19f1f275b6ab36e2603649403399c7165e2))
+* **webhook:** start discovery from GitHub repository lifecycle events ([47901ab](https://github.com/mogenius/renovate-operator/commit/47901ab09a477bcb485383466bdc8263f4b170be)), closes [#467](https://github.com/mogenius/renovate-operator/issues/467)
+
+
+### Bug Fixes
+
+* **dashboard:** correct the Overview stat panels ([#713](https://github.com/mogenius/renovate-operator/issues/713)) ([1bd0859](https://github.com/mogenius/renovate-operator/commit/1bd08599be29c7255100b89c771e87e268fe62af))
+* **deps:** update golang docker tag to v1.27.3 ([659ed48](https://github.com/mogenius/renovate-operator/commit/659ed480f2a0e36cfc867043f60988d3d0cba618))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.114.4 ([d89fff7](https://github.com/mogenius/renovate-operator/commit/d89fff7ca9056e10ad437a9c545bdadbbd191f15))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.79 ([516d3e5](https://github.com/mogenius/renovate-operator/commit/516d3e5628d3d4ea4f60b8d31b03484c62077a91))
+* **deps:** update node.js to v24.22.0 ([6d8048d](https://github.com/mogenius/renovate-operator/commit/6d8048d8f53e15d6ce1b5b956da7115be52e535b))
+* **deps:** update node.js to v24.22.1 ([49fbd67](https://github.com/mogenius/renovate-operator/commit/49fbd672be5f1083fb6f513c9a768a7671e18e22))
+* **deps:** update react monorepo to v19.3.1 ([5189dbd](https://github.com/mogenius/renovate-operator/commit/5189dbdb0b12fd747196f2aadbbaf5dedc97005f))
+
 ## [6.5.1](https://github.com/mogenius/renovate-operator/compare/6.5.0...6.5.1) (2026-10-12)
 
 
