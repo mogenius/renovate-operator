@@ -489,3 +489,26 @@ tests:
       content:
         name: AUTHORIZATION_SUSPEND_FROM_UI
         value: "true"
+
+- it: Webhook ignoreUnmatchedProjects defaults to false
+  set:
+    webhook:
+      enabled: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_IGNORE_UNMATCHED_PROJECTS
+        value: "false"
+
+- it: Webhook ignoreUnmatchedProjects is passed to the operator
+  set:
+    webhook:
+      enabled: true
+      ignoreUnmatchedProjects: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_IGNORE_UNMATCHED_PROJECTS
+        value: "true"
