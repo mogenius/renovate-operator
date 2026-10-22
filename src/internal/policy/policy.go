@@ -33,7 +33,9 @@ const (
 	ReasonRootUserNotAllowed       = "RootUserNotAllowed"
 	ReasonImageNotAllowed          = "ImageNotAllowed"
 	ReasonPolicySatisfied          = "PolicySatisfied"
-	ReasonInvalidSpec              = "InvalidSpec"
+	// ReasonInvalidSpec marks a job whose fields contradict each other once its
+	// template is merged in.
+	ReasonInvalidSpec = "InvalidSpec"
 	// ReasonPolicyDisabled marks a job accepted only because enforcement is off, so
 	// `kubectl get renovatejobs` shows that the guard rails are not in play.
 	ReasonPolicyDisabled = "PolicyDisabled"
@@ -160,10 +162,6 @@ func (p Policy) ValidateJobSpec(spec api.RenovateJobSpec) error {
 		if err := checkNonRoot("spec.securityContext.container", container.RunAsUser, container.RunAsNonRoot); err != nil {
 			return err
 		}
-	}
-
-	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
-		return violationf(ReasonInvalidSpec, "spec.githubAppReference can only be set if spec.provider.name == 'github'")
 	}
 	return nil
 }

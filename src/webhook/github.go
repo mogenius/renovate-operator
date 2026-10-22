@@ -47,12 +47,12 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Header.Get("X-GitHub-Event") {
+	switch event := r.Header.Get("X-GitHub-Event"); event {
 	case "repository":
 		s.githubRepositoryEvent(ctx, w, r, body)
 		return
-	case "installation":
-		s.githubInstallationEvent(ctx, w, r, body)
+	case githubEventInstallation, githubEventInstallationRepositories:
+		s.githubInstallationWebhook(w, r, body, event)
 		return
 	}
 

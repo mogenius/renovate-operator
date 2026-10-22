@@ -88,7 +88,7 @@ A RenovateJob with no schedule (suspended, refused by the policy, or deleted) ha
 | renovate_operator_webhook_auth_failures_total                   | Counter | Webhook auth failures by `error_type` (`no_matching_job`/`auth_failed`/`secret_error`) | `provider`, `error_type` |
 | renovate_operator_webhook_payload_decode_failures_total         | Counter | Webhook payloads that failed to decode                       | `provider`                   |
 
-`provider` is one of `github`, `gitlab`, `forgejo`, `schedule`.
+`provider` is one of `github`, `github_app`, `gitlab`, `forgejo`, `schedule`. `github_app` counts GitHub App installation events.
 
 ## Credentials
 
