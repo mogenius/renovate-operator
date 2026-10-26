@@ -373,9 +373,10 @@ authorization:
 ```
 
 Admins of a job then get the `suspend` permission and the button, readers see it
-disabled. It writes `spec.suspend` on the live RenovateJob, which a GitOps sync
-can undo, so read [Suspending a RenovateJob](../operations/suspend.md#gitops)
-before turning it on.
+disabled. The toolbar's **Suspend all** and **Resume all** buttons act on every
+job the user holds `suspend` on and skip the others. All of them write
+`spec.suspend` on the live RenovateJob, which a GitOps sync can undo, so read
+[Suspending a RenovateJob](../operations/suspend.md#gitops) before turning it on.
 
 ### GitHub org and team groups
 

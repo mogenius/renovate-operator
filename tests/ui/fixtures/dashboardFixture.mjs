@@ -281,12 +281,36 @@ class DashboardPage {
 
   /** Clicks it and resolves once the page has posted, like triggerAll. */
   async toggleSuspend(jobName) {
+    await this.#clickAndAwaitSuspend(this.suspendToggle(jobName));
+  }
+
+  async #clickAndAwaitSuspend(button) {
     const sent = this.page.waitForRequest(
       (request) =>
         request.method() === "POST" && request.url().includes("/api/v1/renovatejob/suspend"),
     );
-    await this.suspendToggle(jobName).click();
+    await button.click();
     await sent;
+  }
+
+  /** The toolbar's Suspend all button. */
+  get suspendAllButton() {
+    return this.toolbar.getByTestId("suspend-all");
+  }
+
+  /** The toolbar's Resume all button. */
+  get resumeAllButton() {
+    return this.toolbar.getByTestId("resume-all");
+  }
+
+  /** Clicks Suspend all and resolves once the page has posted, like toggleSuspend. */
+  async suspendAll() {
+    await this.#clickAndAwaitSuspend(this.suspendAllButton);
+  }
+
+  /** Clicks Resume all and resolves once the page has posted. */
+  async resumeAll() {
+    await this.#clickAndAwaitSuspend(this.resumeAllButton);
   }
 
   /** The main half of the split trigger button in a job card's title row. */
