@@ -76,6 +76,46 @@ func TestNewRenovateJob_CustomBranchExecutionOptions(t *testing.T) {
 	})
 }
 
+func TestNewRenovateJob_DryRunAnnotation(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "10"},
+	})
+
+	tests := []struct {
+		name             string
+		executionOptions *api.RenovateExecutionOptions
+		wantDryRun       bool
+	}{
+		{name: "no options", executionOptions: nil, wantDryRun: false},
+		{name: "debug only", executionOptions: &api.RenovateExecutionOptions{Debug: true}, wantDryRun: false},
+		{name: "dry run", executionOptions: &api.RenovateExecutionOptions{DryRun: true}, wantDryRun: true},
+		{name: "custom branch without dryRun in the status", executionOptions: &api.RenovateExecutionOptions{BaseBranch: "feature"}, wantDryRun: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			specAnnotations := map[string]string{"team": "platform"}
+			job := &api.RenovateJob{Name: "rj", Namespace: "ns", Spec: api.RenovateJobSpec{
+				Image:    "img",
+				Metadata: &api.RenovateJobMetadata{Annotations: specAnnotations},
+			}}
+
+			batchJob := newRenovateJob(job, "org/repository", withExecutionOptions(tt.executionOptions))
+
+			_, marked := batchJob.Annotations[api.DryRunAnnotationKey]
+			if marked != tt.wantDryRun {
+				t.Errorf("dry-run annotation present = %v, want %v", marked, tt.wantDryRun)
+			}
+			if batchJob.Annotations["team"] != "platform" {
+				t.Errorf("expected the spec's annotations on the Job, got %v", batchJob.Annotations)
+			}
+			// the Job builder must not write into the RenovateJob spec's own map
+			if _, leaked := specAnnotations[api.DryRunAnnotationKey]; leaked {
+				t.Error("dry-run annotation was written into the RenovateJob spec's annotations")
+			}
+		})
+	}
+}
+
 func expectEnvVarAbsent(t *testing.T, container *v1.Container, name string) {
 	t.Helper()
 	expectEnvVarCount(t, container, name, 0)
