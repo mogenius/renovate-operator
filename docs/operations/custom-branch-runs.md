@@ -28,9 +28,15 @@ These variables take precedence over `spec.extraEnv` for this one run.
 
 ## Why it is always a dry run
 
-With a single base branch configured, Renovate does not include the base branch in the names of its branches. A real run against the custom branch would therefore reuse the branches and pull requests Renovate keeps for the default branch: it would push to them, rebase them onto the custom branch, and rewrite the repository's Dependency Dashboard, until the next normal run moved everything back. A dry run reports the same decisions (`DRY-RUN: Would create PR …`, `Would update PR …`) without touching the repository.
+With a single base branch configured, Renovate does not include the base branch in the names of its branches. A real run against the custom branch would therefore reuse the branches and pull requests Renovate keeps for the default branch: it would push to them, rebase them onto the custom branch, close the ones the tested config no longer wants, and rewrite the repository's Dependency Dashboard, until the next normal run moved everything back. A dry run reports the same decisions (`DRY-RUN: Would update PR …`, `Would autoclose PR`, …) without touching the repository.
 
 The API rejects a custom branch run without `dryRun`, and the operator sets `RENOVATE_DRY_RUN=full` for every run with a custom branch, so this holds even for a RenovateProject status written directly.
+
+## Where to read the result
+
+The run's full Renovate log is in the project's **Logs**, like any other run; tick **Debug log level** to see the merged config there. Look for `DRY-RUN: Would …` lines, such as `Would create PR`, `Would update PR` or `Would autoclose PR`.
+
+A custom branch run does not change what the dashboard and the metrics say about the project. Its result, pull request activity and log issues, and the per-project metrics (open pull requests, approvals, failed and issue flags, PR counters), keep describing the last normal run, because the dry run's numbers are what Renovate would do on another branch, not what happened. Only the project's state (back to completed or failed) and the run duration come from the dry run. The Job is marked with the `renovate-operator.mogenius.com/dry-run` annotation.
 
 ## Branch names
 
@@ -40,4 +46,3 @@ The branch name must start with a letter or digit. It may contain only letters, 
 
 - **Repository config wins over the operator's settings.** If the repository's own config on its default branch sets `baseBranchPatterns` (or the older `baseBranches`), Renovate's repository config takes precedence over the operator-provided value. The custom branch is then ignored for that repository.
 - **A webhook or schedule does not cancel a queued custom run.** If a push webhook or the cron schedule queues the same project while a custom branch run is waiting, the custom branch run still happens. The repository's normal run follows on the next trigger.
-- **Results are kept as the project's latest run.** The dashboard shows a project's latest result, so the status, PR activity and log issues from a custom branch run replace those of the previous normal run until the next one.

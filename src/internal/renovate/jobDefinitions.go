@@ -3,6 +3,7 @@ package renovate
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/github"
@@ -223,7 +224,22 @@ func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *
 		batchJob.Labels = job.Spec.Metadata.Labels
 		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 	}
+	if isDryRun(cfg.executionOptions) {
+		// a copy, since the map may be the RenovateJob spec's own
+		annotations := maps.Clone(batchJob.Annotations)
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
+		annotations[api.DryRunAnnotationKey] = "true"
+		batchJob.Annotations = annotations
+	}
 	return batchJob
+}
+
+// isDryRun reports whether a run with these options is a Renovate dry run. A custom base
+// branch run is always one, even when the status was written without the API's validation.
+func isDryRun(executionOptions *api.RenovateExecutionOptions) bool {
+	return executionOptions != nil && (executionOptions.DryRun || executionOptions.BaseBranch != "")
 }
 
 func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar {
@@ -495,9 +511,7 @@ func executionOptionEnvVars(executionOptions *api.RenovateExecutionOptions) []v1
 	if executionOptions.Debug {
 		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_LOG_LEVEL", Value: "debug"})
 	}
-	// a custom base branch run is always a dry run, even when the status was written without
-	// going through the API's validation
-	if executionOptions.DryRun || executionOptions.BaseBranch != "" {
+	if isDryRun(executionOptions) {
 		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_DRY_RUN", Value: "full"})
 	}
 	if executionOptions.BaseBranch != "" {
