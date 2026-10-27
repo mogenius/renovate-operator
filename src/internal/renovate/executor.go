@@ -258,6 +258,13 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 	hasIssues := false
 	if k8sJob != nil {
 		if logs, err := e.logReader.GetLastJobLog(ctx, k8sJob); err == nil {
+			if requested := k8sJob.Annotations[api.BaseBranchAnnotationKey]; requested != "" {
+				var processed []string
+				if logs, processed = checkCustomBaseBranch(logs, requested, time.Now()); processed != nil {
+					log.FromContext(ctx).Info("custom branch run did not process the requested branch; the repository's config overrides it",
+						"project", project, "requestedBaseBranch", requested, "processedBaseBranches", processed)
+				}
+			}
 			e.logStore.Save(jobId.Namespace, jobId.Name, project, logs)
 			if !dryRun {
 				parseResult := parser.ParseRenovateLogs(logs)
