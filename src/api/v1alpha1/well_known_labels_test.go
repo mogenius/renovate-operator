@@ -19,6 +19,7 @@ var ownedKeys = map[string]string{
 	"ScheduleAfterDiscoveryAnnotationKey": ScheduleAfterDiscoveryAnnotationKey,
 	"ProcessedAnnotationKey":              ProcessedAnnotationKey,
 	"DryRunAnnotationKey":                 DryRunAnnotationKey,
+	"BaseBranchAnnotationKey":             BaseBranchAnnotationKey,
 	"TriggerDiscoveryAnnotationKey":       TriggerDiscoveryAnnotationKey,
 	"TriggerScheduleAllAnnotationKey":     TriggerScheduleAllAnnotationKey,
 	"TriggerScheduleAnnotationKey":        TriggerScheduleAnnotationKey,
