@@ -231,6 +231,9 @@ func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *
 			annotations = map[string]string{}
 		}
 		annotations[api.DryRunAnnotationKey] = "true"
+		if cfg.executionOptions.BaseBranch != "" {
+			annotations[api.BaseBranchAnnotationKey] = cfg.executionOptions.BaseBranch
+		}
 		batchJob.Annotations = annotations
 	}
 	return batchJob
