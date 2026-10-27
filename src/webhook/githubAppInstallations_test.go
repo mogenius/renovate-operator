@@ -12,6 +12,7 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/policy"
+	"renovate-operator/internal/renovate"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -20,11 +21,20 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const installationWebhookSecret = "app-webhook-secret"
 
 func installationWebhookServer(t *testing.T, objs ...crclient.Object) (*Server, crclient.Client) {
+	t.Helper()
+	server, c, _ := countingInstallationWebhookServer(t, objs...)
+	return server, c
+}
+
+// countingInstallationWebhookServer also returns the number of Secret reads,
+// which go to the API server uncached in the operator.
+func countingInstallationWebhookServer(t *testing.T, objs ...crclient.Object) (*Server, crclient.Client, *int) {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {
@@ -33,9 +43,18 @@ func installationWebhookServer(t *testing.T, objs ...crclient.Object) (*Server, 
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add core scheme: %v", err)
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+	secretReads := 0
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, c crclient.WithWatch, key crclient.ObjectKey, obj crclient.Object, opts ...crclient.GetOption) error {
+				if _, ok := obj.(*corev1.Secret); ok {
+					secretReads++
+				}
+				return c.Get(ctx, key, obj, opts...)
+			},
+		}).Build()
 	server := (&Server{manager: &mockWebhookManager{}, logger: logr.Discard()}).WithInstallationSets(c, policy.Policy{Disabled: true})
-	return server, c
+	return server, c, &secretReads
 }
 
 func installationSetWithWebhook(name string) *api.GitHubAppInstallationSet {
@@ -79,19 +98,20 @@ func TestInstallationEventTriggersResync(t *testing.T) {
 	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: "club", Namespace: "renovate"}, set); err != nil {
 		t.Fatalf("failed to get set: %v", err)
 	}
-	if set.Annotations[api.TriggerResyncAnnotationKey] != "true" {
+	if set.Annotations[api.TriggerResyncAnnotationKey] == "" {
 		t.Error("a verified installation event must mark the set for resync")
 	}
 }
 
-func TestInstallationEventWithWrongSignatureIsRejected(t *testing.T) {
+// The event may come from another App sharing the URL, so it is not rejected.
+func TestInstallationEventWithWrongSignatureIsIgnored(t *testing.T) {
 	server, c := installationWebhookServer(t, installationSetWithWebhook("club"), installationWebhookSecretObject())
 
 	rec := httptest.NewRecorder()
 	server.githubWebhook(rec, signedInstallationRequest("installation", `{"action":"created","installation":{"id":7}}`, "wrong"))
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	set := &api.GitHubAppInstallationSet{}
 	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: "club", Namespace: "renovate"}, set); err != nil {
@@ -110,8 +130,82 @@ func TestInstallationEventIgnoredForSetWithoutWebhook(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.githubWebhook(rec, signedInstallationRequest("installation", `{"action":"created","installation":{"id":7}}`, installationWebhookSecret))
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 when no set accepts installation events, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when no set accepts installation events, got %d", rec.Code)
+	}
+}
+
+func TestInstallationRepositoriesEventIgnoredWithoutVerifyingSet(t *testing.T) {
+	server, _ := installationWebhookServer(t)
+
+	rec := httptest.NewRecorder()
+	server.githubWebhook(rec, signedInstallationRequest("installation_repositories", `{"action":"added","installation":{"id":7}}`, installationWebhookSecret))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// RenovateJobs outside any set may autodiscover the new installation's
+// repositories, so a set verifying the event must not swallow their discovery.
+func TestVerifiedInstallationEventAlsoStartsDiscovery(t *testing.T) {
+	server, c := installationWebhookServer(t, installationSetWithWebhook("club"), installationWebhookSecretObject())
+	var discovered []string
+	server.manager = &mockWebhookManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return []api.RenovateJob{makeGitHubRenovateJob("renovate", "org-wide", "alice/*")}, nil
+		},
+	}
+	server.discovery = &fakeDiscoveryAgent{
+		createFunc: func(ctx context.Context, job api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
+			discovered = append(discovered, job.Name)
+			return "discovery", nil
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	server.githubWebhook(rec, signedInstallationRequest("installation", `{"action":"created","installation":{"id":7,"account":{"login":"alice"}}}`, installationWebhookSecret))
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(discovered) != 1 || discovered[0] != "org-wide" {
+		t.Errorf("expected discovery for org-wide, got %v", discovered)
+	}
+	set := &api.GitHubAppInstallationSet{}
+	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: "club", Namespace: "renovate"}, set); err != nil {
+		t.Fatalf("failed to get set: %v", err)
+	}
+	if set.Annotations[api.TriggerResyncAnnotationKey] == "" {
+		t.Error("the verifying set must still be marked for resync")
+	}
+}
+
+func TestInstallationEventReadsSharedWebhookSecretOnce(t *testing.T) {
+	server, _, secretReads := countingInstallationWebhookServer(t,
+		installationSetWithWebhook("club"), installationSetWithWebhook("guild"), installationWebhookSecretObject())
+
+	rec := httptest.NewRecorder()
+	server.githubWebhook(rec, signedInstallationRequest("installation", `{"action":"created","installation":{"id":7}}`, installationWebhookSecret))
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if *secretReads != 1 {
+		t.Errorf("expected one read of the shared webhook secret, got %d", *secretReads)
+	}
+}
+
+func TestInstallationEventWithMalformedSignatureReadsNoSecret(t *testing.T) {
+	server, _, secretReads := countingInstallationWebhookServer(t, installationSetWithWebhook("club"), installationWebhookSecretObject())
+
+	req := signedInstallationRequest("installation", `{"action":"created","installation":{"id":7}}`, installationWebhookSecret)
+	req.Header.Set("X-Hub-Signature-256", "sha256=not-hex")
+	rec := httptest.NewRecorder()
+	server.githubWebhook(rec, req)
+
+	if *secretReads != 0 {
+		t.Errorf("a malformed signature must not cost a secret read, got %d", *secretReads)
 	}
 }
 

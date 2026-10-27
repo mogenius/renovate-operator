@@ -121,10 +121,25 @@ func (p Policy) ValidateJob(job *api.RenovateJob) error {
 	if job == nil {
 		return nil
 	}
+	if err := ValidateSpecConsistency(job.Spec); err != nil {
+		return err
+	}
 	if err := p.ValidateJobDestinations(job); err != nil {
 		return err
 	}
 	return p.ValidateJobSpec(job.Spec)
+}
+
+// ValidateSpecConsistency reports fields of an effective spec that contradict
+// each other. It is not a guard rail, so it applies with the policy engine
+// disabled too. The CRD schema rejects the same contradiction within a single
+// object; this catches it when a RenovateJob and its template each supply one
+// side.
+func ValidateSpecConsistency(spec api.RenovateJobSpec) error {
+	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
+		return violationf(ReasonInvalidSpec, "spec.githubAppReference requires spec.provider.name github, on the RenovateJob or on the template it references")
+	}
+	return nil
 }
 
 // ValidateJobSpec checks what the resulting pod is allowed to be. The absolute

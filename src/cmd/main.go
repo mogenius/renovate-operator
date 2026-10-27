@@ -922,10 +922,15 @@ func main() {
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
+	// Bounded, so a stalled GitHub endpoint cannot block the reconcile worker.
+	installationsHTTPClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: telemetry.WrapTransport(http.DefaultTransport),
+	}
 	err = (&controllers.GitHubAppInstallationSetReconciler{
 		K8sClient:               mgr.GetClient(),
 		APIReader:               mgr.GetAPIReader(),
-		Installations:           github.NewInstallationLister(http.DefaultClient),
+		Installations:           github.NewInstallationLister(installationsHTTPClient),
 		Policy:                  guardRails,
 		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
 	}).SetupWithManager(mgr)

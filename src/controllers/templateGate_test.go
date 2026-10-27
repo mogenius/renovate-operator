@@ -103,25 +103,3 @@ func TestReconcileRefusesGithubAppReferenceWithOtherProviderAfterMerge(t *testin
 		t.Errorf("expected reason %q, got %q", policy.ReasonInvalidSpec, mgr.acceptedCalls[0].reason)
 	}
 }
-
-func TestInconsistentSpecFields(t *testing.T) {
-	ref := &api.GithubAppReference{SecretName: "app"}
-	tests := []struct {
-		name  string
-		spec  api.RenovateJobSpec
-		valid bool
-	}{
-		{name: "no githubAppReference", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}}, valid: true},
-		{name: "github provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "github"}, GithubAppReference: ref}, valid: true},
-		{name: "provider name is case-insensitive", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "GitHub"}, GithubAppReference: ref}, valid: true},
-		{name: "other provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}, GithubAppReference: ref}, valid: false},
-		{name: "no provider", spec: api.RenovateJobSpec{GithubAppReference: ref}, valid: false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := inconsistentSpecFields(tc.spec) == ""; got != tc.valid {
-				t.Errorf("expected valid=%v, got %v", tc.valid, got)
-			}
-		})
-	}
-}

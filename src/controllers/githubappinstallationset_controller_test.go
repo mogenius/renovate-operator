@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const testSetNamespace = "renovate"
@@ -66,6 +66,11 @@ func appCredentialsSecret(labelled bool) *corev1.Secret {
 
 func installationSetClient(t *testing.T, objs ...crclient.Object) crclient.Client {
 	t.Helper()
+	return installationSetClientWithInterceptor(t, interceptor.Funcs{}, objs...)
+}
+
+func installationSetClientWithInterceptor(t *testing.T, funcs interceptor.Funcs, objs ...crclient.Object) crclient.Client {
+	t.Helper()
 	scheme := runtime.NewScheme()
 	if err := api.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add scheme: %v", err)
@@ -77,6 +82,7 @@ func installationSetClient(t *testing.T, objs ...crclient.Object) crclient.Clien
 		WithScheme(scheme).
 		WithObjects(objs...).
 		WithStatusSubresource(&api.GitHubAppInstallationSet{}).
+		WithInterceptorFuncs(funcs).
 		Build()
 }
 
@@ -312,6 +318,99 @@ func TestInstallationSetSuspendsRenovateJobOfSuspendedInstallation(t *testing.T)
 	}
 }
 
+func TestInstallationSetKeepsUserSuspendAcrossInstallationSuspend(t *testing.T) {
+	set := newInstallationSet("club")
+	c := installationSetClient(t, set, appCredentialsSecret(true))
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	r := installationSetReconciler(c, lister)
+	reconcileSet(t, r, "club")
+
+	job := getJob(t, c, "club-alice")
+	suspend := true
+	job.Spec.Suspend = &suspend
+	if err := c.Update(context.Background(), job); err != nil {
+		t.Fatalf("failed to suspend job: %v", err)
+	}
+
+	lister.installations[0].Suspended = true
+	setAnnotationForTest(t, c, "club", api.TriggerResyncAnnotationKey, "1")
+	reconcileSet(t, r, "club")
+	lister.installations[0].Suspended = false
+	setAnnotationForTest(t, c, "club", api.TriggerResyncAnnotationKey, "2")
+	reconcileSet(t, r, "club")
+
+	if !getJob(t, c, "club-alice").Spec.GetSuspend() {
+		t.Error("a suspend set by a user must survive the installation being suspended and unsuspended")
+	}
+}
+
+func TestInstallationSetRetriesReleasingSuspendAfterFailedPatch(t *testing.T) {
+	set := newInstallationSet("club")
+	failPatch := false
+	c := installationSetClientWithInterceptor(t, interceptor.Funcs{
+		Patch: func(ctx context.Context, c crclient.WithWatch, obj crclient.Object, patch crclient.Patch, opts ...crclient.PatchOption) error {
+			if _, ok := obj.(*api.RenovateJob); ok && failPatch {
+				failPatch = false
+				return errors.New("conflict")
+			}
+			return c.Patch(ctx, obj, patch, opts...)
+		},
+	}, set, appCredentialsSecret(true))
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser, Suspended: true},
+	}}
+	r := installationSetReconciler(c, lister)
+	reconcileSet(t, r, "club")
+
+	lister.installations[0].Suspended = false
+	setAnnotationForTest(t, c, "club", api.TriggerResyncAnnotationKey, "1")
+	failPatch = true
+	reconcileSet(t, r, "club")
+	if !getJob(t, c, "club-alice").Spec.GetSuspend() {
+		t.Fatal("test setup: the failed patch must leave the job suspended")
+	}
+
+	reconcileSet(t, r, "club")
+	if getJob(t, c, "club-alice").Spec.GetSuspend() {
+		t.Error("the suspend must be released on the retry after a failed patch")
+	}
+}
+
+// A request arriving before the status write makes that write conflict; one
+// arriving after it must make the annotation's removal conflict.
+func TestInstallationSetKeepsResyncRequestedDuringSync(t *testing.T) {
+	set := newInstallationSet("club")
+	var c crclient.Client
+	reannotate := false
+	c = installationSetClientWithInterceptor(t, interceptor.Funcs{
+		SubResourceUpdate: func(ctx context.Context, sc crclient.Client, subResourceName string, obj crclient.Object, opts ...crclient.SubResourceUpdateOption) error {
+			if err := sc.SubResource(subResourceName).Update(ctx, obj, opts...); err != nil {
+				return err
+			}
+			if reannotate {
+				reannotate = false
+				setAnnotationForTest(t, c, "club", api.TriggerResyncAnnotationKey, "2")
+			}
+			return nil
+		},
+	}, set, appCredentialsSecret(true))
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	r := installationSetReconciler(c, lister)
+	reconcileSet(t, r, "club")
+
+	setAnnotationForTest(t, c, "club", api.TriggerResyncAnnotationKey, "1")
+	reannotate = true
+	reconcileSet(t, r, "club")
+
+	if got := getSet(t, c, "club").Annotations[api.TriggerResyncAnnotationKey]; got != "2" {
+		t.Errorf("a resync requested during the sync must be kept, got annotation %q", got)
+	}
+}
+
 func TestInstallationSetRefusesUnlabelledCredentialsUnderPolicy(t *testing.T) {
 	set := newInstallationSet("club")
 	c := installationSetClient(t, set, appCredentialsSecret(false))
@@ -327,6 +426,58 @@ func TestInstallationSetRefusesUnlabelledCredentialsUnderPolicy(t *testing.T) {
 	cond := meta.FindStatusCondition(getSet(t, c, "club").Status.Conditions, api.ConditionReady)
 	if cond == nil || cond.Reason != policy.ReasonSecretRefNotOptedIn {
 		t.Errorf("expected Ready=False/%s, got %#v", policy.ReasonSecretRefNotOptedIn, cond)
+	}
+}
+
+func TestInstallationSetMirrorsAllowRefOfSourceSecret(t *testing.T) {
+	set := newInstallationSet("club")
+	c := installationSetClient(t, set, appCredentialsSecret(false))
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	reconcileSet(t, installationSetReconciler(c, lister), "club")
+
+	secret := &corev1.Secret{}
+	name := github.GetNameForGithubAppCredentialsSecret("club-alice")
+	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: name, Namespace: testSetNamespace}, secret); err != nil {
+		t.Fatalf("credentials secret missing: %v", err)
+	}
+	if _, ok := secret.Labels[api.LabelAllowRef]; ok {
+		t.Error("the copy of an unlabelled source secret must not be opted in")
+	}
+}
+
+func TestInstallationSetRevokesCredentialsWhenSourceIsRefused(t *testing.T) {
+	set := newInstallationSet("club")
+	source := appCredentialsSecret(true)
+	c := installationSetClient(t, set, source)
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	r := installationSetReconciler(c, lister)
+	r.Policy = policy.Policy{AllowedHosts: []string{"api.github.com"}}
+	reconcileSet(t, r, "club")
+
+	if err := c.Get(context.Background(), crclient.ObjectKeyFromObject(source), source); err != nil {
+		t.Fatalf("failed to get source secret: %v", err)
+	}
+	delete(source.Labels, api.LabelAllowRef)
+	if err := c.Update(context.Background(), source); err != nil {
+		t.Fatalf("failed to unlabel source secret: %v", err)
+	}
+	reconcileSet(t, r, "club")
+
+	getJob(t, c, "club-alice")
+	secret := &corev1.Secret{}
+	name := github.GetNameForGithubAppCredentialsSecret("club-alice")
+	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: name, Namespace: testSetNamespace}, secret); err != nil {
+		t.Fatalf("credentials secret missing: %v", err)
+	}
+	if len(secret.Data) != 0 {
+		t.Errorf("credentials must be revoked once the source is refused, got keys %v", secret.Data)
+	}
+	if _, ok := secret.Labels[api.LabelAllowRef]; ok {
+		t.Error("revoked credentials must no longer be opted in")
 	}
 }
 
@@ -371,16 +522,6 @@ func TestInstallationMatches(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestGeneratedJobNameFitsLabelValue(t *testing.T) {
-	name := generatedJobName("a-rather-long-installation-set-name", strings.Repeat("x", 39))
-	if len(name) > maxLabelValueLength {
-		t.Errorf("generated name %q is %d chars, want at most %d", name, len(name), maxLabelValueLength)
-	}
-	if generatedJobName("club", "Some.User") != "club-some-user" {
-		t.Errorf("unexpected sanitized name %q", generatedJobName("club", "Some.User"))
 	}
 }
 

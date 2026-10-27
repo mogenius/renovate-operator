@@ -147,6 +147,9 @@ regenerated.
 
 A suspended installation can't mint tokens, so its `RenovateJob` is
 [suspended](../operations/suspend.md) until the installation is unsuspended.
+The operator marks such a job with the
+`renovate-operator.mogenius.com/suspended-by-installation` annotation and only
+releases a suspend it set itself: a `RenovateJob` you suspended stays suspended.
 
 If listing installations fails, the set reports `Ready=False` with reason
 `ListInstallationsFailed` and keeps the existing `RenovateJob`s.
@@ -195,6 +198,12 @@ Once the [policy engine](../security/security.md) is enabled:
   `provider.publicEndpoint` must be listed in `policy.allowedHosts`. The App's
   private key is never sent anywhere else.
 
-The generated credentials Secrets are labelled `allow-ref` by the operator,
-since their source Secret already passed this check. Each generated
-`RenovateJob` then goes through the same acceptance check as any other.
+The generated credentials Secrets carry the `allow-ref` label exactly when their
+source Secret does. Each generated `RenovateJob` then goes through the same
+acceptance check as any other.
+
+If the source Secret is deleted, loses a key, or is refused by the policy, the
+operator empties the generated credentials Secrets and removes their `allow-ref`
+label, so the generated `RenovateJob`s can't mint new tokens. The
+`RenovateJob`s themselves are kept, and the credentials are written back once
+the source Secret is usable again.

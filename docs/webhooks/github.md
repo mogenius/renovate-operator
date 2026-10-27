@@ -37,7 +37,7 @@ spec:
    - **Issues** (for Dependency Dashboard interactions)
 7. Ensure **Active** is checked
 
-GitHub App `installation` and `installation_repositories` events sent to this endpoint go to `GitHubAppInstallationSet`s first, see [GitHub App — Every Installation](../platforms/github-app-installation-set.md#immediate-resync-via-webhook). An `installation` event no set verifies falls through to [repository lifecycle discovery](#repository-lifecycle-events-automatic-discovery).
+GitHub App `installation` and `installation_repositories` events sent to this endpoint go to `GitHubAppInstallationSet`s first, see [GitHub App — Every Installation](../platforms/github-app-installation-set.md#immediate-resync-via-webhook). An `installation` event also starts [repository lifecycle discovery](#repository-lifecycle-events-automatic-discovery), whether or not a set verifies it. An `installation_repositories` event no set verifies is answered `200` and ignored, since it may belong to another App sharing the URL.
 
 The operator automatically finds the RenovateJob that owns the repository by matching the incoming repository name against discovered projects. If you have multiple RenovateJobs and want to target a specific one, append `namespace` and/or `job` as query parameters:
 

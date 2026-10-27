@@ -2,6 +2,7 @@ package utils
 
 import (
 	api "renovate-operator/api/v1alpha1"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +102,15 @@ func TestRenovateJob_JobNames(t *testing.T) {
 				t.Errorf("DiscoveryJobName() = %v, want %v", gotDiscovery, tt.expectedDiscovery)
 			}
 		})
+	}
+}
+
+func TestInstallationSetJobNameFitsLabelValue(t *testing.T) {
+	name := InstallationSetJobName("a-rather-long-installation-set-name", strings.Repeat("x", 39))
+	if len(name) > 63 {
+		t.Errorf("generated name %q is %d chars, want at most 63", name, len(name))
+	}
+	if got := InstallationSetJobName("club", "Some.User"); got != "club-some-user" {
+		t.Errorf("unexpected sanitized name %q", got)
 	}
 }

@@ -3,7 +3,7 @@ package controllers
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -12,7 +12,6 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/github"
-	crdManager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/policy"
 	"renovate-operator/internal/utils"
 	"renovate-operator/metricStore"
@@ -52,9 +51,6 @@ const (
 	// installationRetryInterval paces retries after a failed sync, so a broken
 	// credential does not hammer the GitHub API.
 	installationRetryInterval = 1 * time.Minute
-	// maxLabelValueLength bounds generated RenovateJob names: the name is used
-	// as the value of api.LabelRenovateJob on every Job it runs.
-	maxLabelValueLength = 63
 )
 
 // GitHubAppInstallationSetReconciler generates one RenovateJob, plus a Secret
@@ -73,6 +69,9 @@ type GitHubAppInstallationSetReconciler struct {
 type appCredentials struct {
 	appID string
 	pem   string
+	// optedIn mirrors the source Secret's api.LabelAllowRef onto the generated
+	// credentials Secrets, so a copy is never opted in where its source is not.
+	optedIn bool
 }
 
 func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -90,8 +89,13 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		return r.markNotReady(ctx, set, reason, msg)
 	}
 
-	creds, reason, err := r.readCredentials(ctx, set)
+	creds, reason, withdrawn, err := r.readCredentials(ctx, set)
 	if err != nil {
+		if withdrawn {
+			if revokeErr := r.revokeCredentialsSecrets(ctx, set); revokeErr != nil {
+				logger.Error(revokeErr, "failed to revoke generated credentials of GitHubAppInstallationSet")
+			}
+		}
 		return r.markNotReady(ctx, set, reason, err.Error())
 	}
 
@@ -131,8 +135,10 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		}
 	}
 
-	if err := crdManager.RemoveAnnotation(ctx, r.K8sClient, set, api.TriggerResyncAnnotationKey); err != nil {
-		logger.Error(err, "failed to remove resync annotation from GitHubAppInstallationSet")
+	if err := removeResyncAnnotation(ctx, r.K8sClient, set); err != nil {
+		if !k8serrors.IsConflict(err) {
+			logger.Error(err, "failed to remove resync annotation from GitHubAppInstallationSet")
+		}
 	}
 
 	if len(failures) > 0 {
@@ -162,26 +168,71 @@ func (r *GitHubAppInstallationSetReconciler) validateSet(set *api.GitHubAppInsta
 	return "", ""
 }
 
-func (r *GitHubAppInstallationSetReconciler) readCredentials(ctx context.Context, set *api.GitHubAppInstallationSet) (*appCredentials, string, error) {
+// readCredentials reads the App credentials from the set's source Secret.
+// withdrawn reports a failure that is not transient: the Secret or one of its
+// keys is gone, or the policy no longer lets it be referenced.
+func (r *GitHubAppInstallationSetReconciler) readCredentials(ctx context.Context, set *api.GitHubAppInstallationSet) (creds *appCredentials, reason string, withdrawn bool, err error) {
 	ref := set.Spec.App
 	secret := &corev1.Secret{}
 	if err := r.K8sClient.Get(ctx, client.ObjectKey{Name: ref.SecretName, Namespace: set.Namespace}, secret); err != nil {
-		return nil, ReasonCredentialsUnavailable, fmt.Errorf("failed to get github app secret %s: %w", ref.SecretName, err)
+		return nil, ReasonCredentialsUnavailable, k8serrors.IsNotFound(err), fmt.Errorf("failed to get github app secret %s: %w", ref.SecretName, err)
 	}
 	if err := r.Policy.ValidateReferencedSecret(secret); err != nil {
 		metricStore.IncPolicyDenial(ctx, "secret_ref")
-		return nil, policy.ReasonSecretRefNotOptedIn, err
+		return nil, policy.ReasonSecretRefNotOptedIn, true, err
 	}
 
 	appID, ok := secret.Data[ref.AppIdSecretKey]
 	if !ok {
-		return nil, ReasonCredentialsUnavailable, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.AppIdSecretKey, ref.SecretName)
+		return nil, ReasonCredentialsUnavailable, true, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.AppIdSecretKey, ref.SecretName)
 	}
 	pem, ok := secret.Data[ref.PemSecretKey]
 	if !ok {
-		return nil, ReasonCredentialsUnavailable, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.PemSecretKey, ref.SecretName)
+		return nil, ReasonCredentialsUnavailable, true, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.PemSecretKey, ref.SecretName)
 	}
-	return &appCredentials{appID: string(appID), pem: string(pem)}, "", nil
+	return &appCredentials{
+		appID:   string(appID),
+		pem:     string(pem),
+		optedIn: secret.Labels[api.LabelAllowRef] == "true",
+	}, "", false, nil
+}
+
+// revokeCredentialsSecrets empties the generated credentials Secrets once the
+// source credentials are withdrawn, so the generated RenovateJobs stop minting
+// tokens. The Secrets are emptied rather than deleted, since the operator may
+// not delete Secrets. The RenovateJobs are kept, as on a failed listing, and the
+// next successful read writes the credentials back.
+func (r *GitHubAppInstallationSetReconciler) revokeCredentialsSecrets(ctx context.Context, set *api.GitHubAppInstallationSet) error {
+	owned, err := r.ownedRenovateJobs(ctx, set)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, job := range owned {
+		secret := &corev1.Secret{}
+		key := client.ObjectKey{Name: github.GetNameForGithubAppCredentialsSecret(job.Name), Namespace: set.Namespace}
+		if err := r.K8sClient.Get(ctx, key, secret); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("getting credentials secret %s: %w", key.Name, err))
+			}
+			continue
+		}
+		if !metav1.IsControlledBy(secret, job) {
+			continue
+		}
+		if _, optedIn := secret.Labels[api.LabelAllowRef]; !optedIn && len(secret.Data) == 0 {
+			continue
+		}
+		delete(secret.Labels, api.LabelAllowRef)
+		secret.Data = nil
+		if err := r.K8sClient.Update(ctx, secret); err != nil {
+			errs = append(errs, fmt.Errorf("revoking credentials secret %s: %w", key.Name, err))
+			continue
+		}
+		log.FromContext(ctx).Info("revoked credentials of generated RenovateJob", "renovateJob", job.Name, "secret", key.Name)
+	}
+	return errors.Join(errs...)
 }
 
 // ensureRenovateJobs converges the generated RenovateJobs on installations and
@@ -194,11 +245,6 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJobs(ctx context.Cont
 	owned, err := r.ownedRenovateJobs(ctx, set)
 	if err != nil {
 		return []string{err.Error()}
-	}
-
-	previouslySuspended := make(map[int64]bool, len(set.Status.Installations))
-	for _, inst := range set.Status.Installations {
-		previouslySuspended[inst.ID] = inst.Suspended
 	}
 
 	reserved := make(map[string]bool, len(owned))
@@ -226,7 +272,7 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJobs(ctx context.Cont
 			inst.RenovateJob = existing.Name
 		}
 
-		job, err := r.ensureRenovateJob(ctx, set, existing, inst, previouslySuspended[inst.ID])
+		job, err := r.ensureRenovateJob(ctx, set, existing, inst)
 		if err != nil {
 			if existing == nil {
 				inst.RenovateJob = ""
@@ -281,8 +327,8 @@ func (r *GitHubAppInstallationSetReconciler) ownedRenovateJobs(ctx context.Conte
 // and its project history.
 func (r *GitHubAppInstallationSetReconciler) chooseJobName(ctx context.Context, set *api.GitHubAppInstallationSet, inst *api.GitHubAppInstallationStatus, reserved map[string]bool) (string, error) {
 	candidates := []string{
-		generatedJobName(set.Name, inst.Account),
-		generatedJobName(set.Name, strconv.FormatInt(inst.ID, 10)),
+		utils.InstallationSetJobName(set.Name, inst.Account),
+		utils.InstallationSetJobName(set.Name, strconv.FormatInt(inst.ID, 10)),
 	}
 	for _, name := range candidates {
 		if reserved[name] {
@@ -300,20 +346,11 @@ func (r *GitHubAppInstallationSetReconciler) chooseJobName(ctx context.Context, 
 	return "", fmt.Errorf("RenovateJobs named %s already exist and are not owned by this GitHubAppInstallationSet", strings.Join(candidates, " and "))
 }
 
-func generatedJobName(setName, suffix string) string {
-	name := utils.KubernetesCompatibleName(setName + "-" + suffix)
-	if len(name) <= maxLabelValueLength {
-		return name
-	}
-	hash := sha256.Sum256([]byte(name))
-	return fmt.Sprintf("%s-%x", strings.TrimRight(name[:54], "-"), hash[:4])
-}
-
 // ensureRenovateJob creates the installation's RenovateJob named
 // inst.RenovateJob when existing is nil, and otherwise patches the fields the
 // set manages back onto existing. Fields the set does not manage are left to
 // the user.
-func (r *GitHubAppInstallationSetReconciler) ensureRenovateJob(ctx context.Context, set *api.GitHubAppInstallationSet, existing *api.RenovateJob, inst *api.GitHubAppInstallationStatus, wasSuspended bool) (*api.RenovateJob, error) {
+func (r *GitHubAppInstallationSetReconciler) ensureRenovateJob(ctx context.Context, set *api.GitHubAppInstallationSet, existing *api.RenovateJob, inst *api.GitHubAppInstallationStatus) (*api.RenovateJob, error) {
 	job := existing
 	if job == nil {
 		job = &api.RenovateJob{}
@@ -338,13 +375,22 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJob(ctx context.Conte
 		InstallationIdSecretKey: credentialsInstallationIDKey,
 		PemSecretKey:            credentialsPemKey,
 	}
-	// A suspended installation cannot mint tokens. Suspend is released only on
-	// the transition back, so a suspend set by a user stays untouched.
-	if inst.Suspended {
+	// A suspended installation cannot mint tokens. The annotation records that
+	// the set, not a user, suspended the job, so only that suspend is released
+	// once the installation is unsuspended. It is written in the same patch as
+	// the suspend, so a failed patch cannot lose the transition back.
+	_, suspendedBySet := job.Annotations[api.SuspendedByInstallationAnnotationKey]
+	switch {
+	case inst.Suspended && !job.Spec.GetSuspend():
 		suspend := true
 		job.Spec.Suspend = &suspend
-	} else if wasSuspended {
+		if job.Annotations == nil {
+			job.Annotations = map[string]string{}
+		}
+		job.Annotations[api.SuspendedByInstallationAnnotationKey] = "true"
+	case !inst.Suspended && suspendedBySet:
 		job.Spec.Suspend = nil
+		delete(job.Annotations, api.SuspendedByInstallationAnnotationKey)
 	}
 
 	if err := controllerutil.SetControllerReference(set, job, r.K8sClient.Scheme()); err != nil {
@@ -369,8 +415,8 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJob(ctx context.Conte
 }
 
 // ensureCredentialsSecret writes the App credentials and the installation id
-// the generated RenovateJob's githubAppReference points at. The source Secret
-// already passed ValidateReferencedSecret, so the copy is opted in as well.
+// the generated RenovateJob's githubAppReference points at. The copy is opted
+// in exactly when its source Secret is.
 func (r *GitHubAppInstallationSetReconciler) ensureCredentialsSecret(ctx context.Context, set *api.GitHubAppInstallationSet, job *api.RenovateJob, installationID int64, creds *appCredentials) error {
 	secret := &corev1.Secret{}
 	secret.Name = github.GetNameForGithubAppCredentialsSecret(job.Name)
@@ -379,7 +425,11 @@ func (r *GitHubAppInstallationSetReconciler) ensureCredentialsSecret(ctx context
 		if secret.Labels == nil {
 			secret.Labels = map[string]string{}
 		}
-		secret.Labels[api.LabelAllowRef] = "true"
+		if creds.optedIn {
+			secret.Labels[api.LabelAllowRef] = "true"
+		} else {
+			delete(secret.Labels, api.LabelAllowRef)
+		}
 		secret.Labels[api.LabelAppManagedBy] = api.LabelValueManagedBy
 		secret.Labels[api.LabelAppComponent] = api.LabelValueComponentGitHubAppCredentials
 		secret.Labels[api.LabelInstallationSet] = set.Name
@@ -439,10 +489,26 @@ func needsInstallationSync(set *api.GitHubAppInstallationSet, interval time.Dura
 	if set.Status.LastSyncTime == nil || set.Status.ObservedGeneration != set.Generation {
 		return true
 	}
-	if set.Annotations[api.TriggerResyncAnnotationKey] == "true" {
+	if set.Annotations[api.TriggerResyncAnnotationKey] != "" {
 		return true
 	}
 	return !now.Before(set.Status.LastSyncTime.Add(interval))
+}
+
+// removeResyncAnnotation removes the resync request this reconcile served. The
+// patch is optimistically locked: a webhook re-annotates the set with a fresh
+// value, so a request that arrived after the installations were listed makes
+// the patch conflict, and the annotation stays for the next reconcile.
+func removeResyncAnnotation(ctx context.Context, c client.Client, set *api.GitHubAppInstallationSet) error {
+	if _, ok := set.Annotations[api.TriggerResyncAnnotationKey]; !ok {
+		return nil
+	}
+	patch := client.MergeFromWithOptions(set.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	delete(set.Annotations, api.TriggerResyncAnnotationKey)
+	if err := c.Patch(ctx, set, patch); err != nil {
+		return fmt.Errorf("removing resync annotation: %w", err)
+	}
+	return nil
 }
 
 func filterInstallations(installations []github.AppInstallation, filter *api.GitHubAppInstallationFilter) []api.GitHubAppInstallationStatus {

@@ -156,8 +156,8 @@ func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logge
 		return r.refuseJob(ctx, logger, jobID, policy.ReasonIncompleteSpec, msg)
 	}
 
-	if msg := inconsistentSpecFields(effectiveJob.Spec); msg != "" {
-		return r.refuseJob(ctx, logger, jobID, policy.ReasonInvalidSpec, msg)
+	if err := policy.ValidateSpecConsistency(effectiveJob.Spec); err != nil {
+		return r.refuseJob(ctx, logger, jobID, policy.ReasonInvalidSpec, err.Error())
 	}
 
 	err := r.Policy.ValidateJob(effectiveJob)
@@ -220,17 +220,6 @@ func missingRequiredSpecFields(spec api.RenovateJobSpec) string {
 		return ""
 	}
 	return strings.Join(missing, ", ") + " must be set, on the RenovateJob or on the template it references"
-}
-
-// inconsistentSpecFields reports fields of the effective spec that contradict each
-// other, or "" when there are none. The CRD schema rejects the same contradiction
-// within a single object; this catches it when the RenovateJob and its template
-// each supply one side.
-func inconsistentSpecFields(spec api.RenovateJobSpec) string {
-	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
-		return "spec.githubAppReference requires spec.provider.name github, on the RenovateJob or on the template it references"
-	}
-	return ""
 }
 
 func (r *RenovateJobReconciler) ensureWebhookCleanupFinalizer(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob, effectiveJob *api.RenovateJob) {
