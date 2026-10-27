@@ -69,6 +69,12 @@ helm -n renovate-operator upgrade --install renovate-operator mogenius/renovate-
 - [Getting Started](./docs/getting-started.md) — install, first RenovateJob, platform setup
 - [Full documentation index](./docs/README.md)
 
+## Community
+
+Join our Slack community to ask questions, share feedback, and connect with other users and maintainers.
+
+[![Join us on Slack](https://img.shields.io/badge/Slack-Join%20the%20community-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/renovateoperator/shared_invite/zt-4el9v5c9g-uCzmX9m9xZi9AM1YDgVahA)
+
 ## Contributing
 
 <a href="https://github.com/mogenius/renovate-operator/graphs/contributors">
