@@ -105,6 +105,13 @@ func TestNewRenovateJob_DryRunAnnotation(t *testing.T) {
 			if marked != tt.wantDryRun {
 				t.Errorf("dry-run annotation present = %v, want %v", marked, tt.wantDryRun)
 			}
+			wantBaseBranch := ""
+			if tt.executionOptions != nil {
+				wantBaseBranch = tt.executionOptions.BaseBranch
+			}
+			if got := batchJob.Annotations[api.BaseBranchAnnotationKey]; got != wantBaseBranch {
+				t.Errorf("base-branch annotation = %q, want %q", got, wantBaseBranch)
+			}
 			if batchJob.Annotations["team"] != "platform" {
 				t.Errorf("expected the spec's annotations on the Job, got %v", batchJob.Annotations)
 			}

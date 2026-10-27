@@ -58,9 +58,9 @@ var dryRunLogs = strings.Join([]string{
 		`{"branchName":"renovate/frontend","result":"pr-edited","prNo":4}]}}}}`,
 }, "\n")
 
-// processFinishedRun feeds dryRunLogs through ProcessProjectJobResult for a completed
+// processFinishedRun feeds a Renovate log through ProcessProjectJobResult for a completed
 // Job with the given annotations, and returns the status update the executor persisted.
-func processFinishedRun(t *testing.T, jobName, project string, annotations map[string]string, store logStore.LogStore) *types.RenovateStatusUpdate {
+func processFinishedRun(t *testing.T, jobName, project string, annotations map[string]string, store logStore.LogStore, logs string) *types.RenovateStatusUpdate {
 	t.Helper()
 	const ns = "renovate-operator"
 
@@ -76,7 +76,7 @@ func processFinishedRun(t *testing.T, jobName, project string, annotations map[s
 	}
 	logReader := &fakePodLogReader{
 		getLastJobLogFn: func(ctx context.Context, job *batchv1.Job) (string, error) {
-			return dryRunLogs, nil
+			return logs, nil
 		},
 	}
 
@@ -127,7 +127,7 @@ func TestProcessProjectJobResultDryRunKeepsProjectDataAndMetrics(t *testing.T) {
 
 	t.Run("a dry run only saves its log and finishes the run", func(t *testing.T) {
 		savedLogs := &recordingLogStore{}
-		status := processFinishedRun(t, dryRunJob, project, map[string]string{api.DryRunAnnotationKey: "true"}, savedLogs)
+		status := processFinishedRun(t, dryRunJob, project, map[string]string{api.DryRunAnnotationKey: "true"}, savedLogs, dryRunLogs)
 
 		if status.Status != api.JobStatusCompleted {
 			t.Errorf("status = %q, want the run to finish as completed", status.Status)
@@ -159,7 +159,7 @@ func TestProcessProjectJobResultDryRunKeepsProjectDataAndMetrics(t *testing.T) {
 	// The same log from a Job without the annotation is processed as a real run, which is
 	// what the dry run case above is guarding against.
 	t.Run("the same log from a real run replaces the project's data", func(t *testing.T) {
-		status := processFinishedRun(t, realRunJob, project, nil, &recordingLogStore{})
+		status := processFinishedRun(t, realRunJob, project, nil, &recordingLogStore{}, dryRunLogs)
 
 		if status.PRActivity == nil || status.PRActivity.Updated != 2 {
 			t.Fatalf("PRActivity = %+v, want the 2 updated PRs from the report", status.PRActivity)
@@ -205,4 +205,45 @@ func counterValue(t *testing.T, reg *prometheus.Registry, name string, labels ma
 		}
 	}
 	return total
+}
+
+// A custom branch run whose repository config overrides the branch (live on atomic/portal
+// with "baseBranchPatterns": ["master"]) gets a warning appended to its saved log.
+func TestProcessProjectJobResultWarnsWhenTheCustomBranchWasNotProcessed(t *testing.T) {
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "DELETE_SUCCESSFUL_JOBS", Optional: true, Default: "false"},
+	})
+	reg := prometheus.NewRegistry()
+	metricStore.Register(reg)
+
+	overriddenLogs := strings.Join([]string{
+		`{"level":20,"msg":"Env config","config":{"baseBranchPatterns":["test/renovate-685"]}}`,
+		`{"level":20,"msg":"baseBranches","baseBranches":["master"]}`,
+		`{"level":20,"msg":"baseBranch: master","baseBranch":"master"}`,
+		`{"level":30,"msg":"Repository finished","result":"done"}`,
+	}, "\n")
+	annotations := map[string]string{api.DryRunAnnotationKey: "true", api.BaseBranchAnnotationKey: "test/renovate-685"}
+
+	t.Run("the branch was overridden", func(t *testing.T) {
+		savedLogs := &recordingLogStore{}
+		processFinishedRun(t, "override-job", "org/repo", annotations, savedLogs, overriddenLogs)
+
+		logs, _ := savedLogs.Get("renovate-operator", "override-job", "org/repo")
+		if !strings.HasPrefix(logs, overriddenLogs) {
+			t.Error("expected Renovate's own log to be saved unchanged in front of the warning")
+		}
+		if !strings.Contains(logs, `"requestedBaseBranch":"test/renovate-685"`) || !strings.Contains(logs, `"processedBaseBranches":["master"]`) {
+			t.Errorf("expected a warning naming both branches at the end of the saved log, got %q", logs[len(overriddenLogs):])
+		}
+	})
+
+	t.Run("the branch was processed", func(t *testing.T) {
+		savedLogs := &recordingLogStore{}
+		processedLogs := `{"level":30,"msg":"DRY-RUN: Would update PR #2","baseBranch":"test/renovate-685"}`
+		processFinishedRun(t, "processed-job", "org/repo", annotations, savedLogs, processedLogs)
+
+		if logs, _ := savedLogs.Get("renovate-operator", "processed-job", "org/repo"); logs != processedLogs {
+			t.Errorf("expected the log saved unchanged, got %q", logs)
+		}
+	})
 }
