@@ -177,3 +177,38 @@ func TestValidateJobCoversDestinationsAndSpec(t *testing.T) {
 		t.Errorf("expected the destination reason to be reported, got %q", got)
 	}
 }
+
+func TestValidateSpecConsistency(t *testing.T) {
+	ref := &api.GithubAppReference{SecretName: "app"}
+	tests := []struct {
+		name  string
+		spec  api.RenovateJobSpec
+		valid bool
+	}{
+		{name: "no githubAppReference", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}}, valid: true},
+		{name: "github provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "github"}, GithubAppReference: ref}, valid: true},
+		{name: "provider name is case-insensitive", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "GitHub"}, GithubAppReference: ref}, valid: true},
+		{name: "other provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}, GithubAppReference: ref}, valid: false},
+		{name: "no provider", spec: api.RenovateJobSpec{GithubAppReference: ref}, valid: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ValidateSpecConsistency(tc.spec) == nil; got != tc.valid {
+				t.Errorf("expected valid=%v, got %v", tc.valid, got)
+			}
+		})
+	}
+}
+
+// Discovery and the executor re-check jobs through ValidateJob at dispatch, so
+// the contradiction must be refused there too, with the policy engine disabled.
+func TestValidateJobRefusesInconsistentSpecWhenDisabled(t *testing.T) {
+	job := &api.RenovateJob{Spec: api.RenovateJobSpec{
+		Provider:           &api.RenovateProvider{Name: "gitlab"},
+		GithubAppReference: &api.GithubAppReference{SecretName: "app"},
+	}}
+	err := Policy{Disabled: true}.ValidateJob(job)
+	if ReasonFor(err) != ReasonInvalidSpec {
+		t.Errorf("expected reason %q, got %v", ReasonInvalidSpec, err)
+	}
+}

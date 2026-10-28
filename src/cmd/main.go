@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -868,7 +869,8 @@ func main() {
 	})
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
-		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook"))
+		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook")).
+			WithInstallationSets(mgr.GetClient(), guardRails)
 
 		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
 			webhookServer.Run()
@@ -919,6 +921,20 @@ func main() {
 		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
+
+	// Bounded, so a stalled GitHub endpoint cannot block the reconcile worker.
+	installationsHTTPClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: telemetry.WrapTransport(http.DefaultTransport),
+	}
+	err = (&controllers.GitHubAppInstallationSetReconciler{
+		K8sClient:               mgr.GetClient(),
+		APIReader:               mgr.GetAPIReader(),
+		Installations:           github.NewInstallationLister(installationsHTTPClient),
+		Policy:                  guardRails,
+		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
+	}).SetupWithManager(mgr)
+	assert.NoError(err, "failed to setup github app installation set reconciler")
 
 	err = (&controllers.RenovateProjectReconciler{
 		Manager:   jobMgr,

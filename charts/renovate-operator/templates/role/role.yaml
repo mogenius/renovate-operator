@@ -6,8 +6,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
 rules:
   # finalizers subresource required for blockOwnerDeletion on OKD/OpenShift.
+  # create/delete: GitHubAppInstallationSets generate one RenovateJob per installation.
   - apiGroups: ["renovate-operator.mogenius.com"]
     resources: ["renovatejobs", "renovatejobs/status", "renovatejobs/finalizers"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["renovate-operator.mogenius.com"]
+    resources: ["githubappinstallationsets", "githubappinstallationsets/status", "githubappinstallationsets/finalizers"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["renovate-operator.mogenius.com"]
     resources: ["renovateprojects", "renovateprojects/status", "renovateprojects/finalizers"]

@@ -4555,6 +4555,9 @@ spec:
             - message: allowedGroups and access are mutually exclusive; migrate allowedGroups
                 to access.adminGroups
               rule: '!(has(self.allowedGroups) && has(self.access))'
+            - message: githubAppReference requires provider.name github
+              rule: '!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii()
+                == ''github'''
         type: object
     served: true
     storage: true

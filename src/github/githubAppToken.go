@@ -165,37 +165,7 @@ func (g *githubappToken) CreateGithubAppToken(appID, installationID, pemString, 
 }
 
 func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pemString, githubApi string) (string, time.Time, error) {
-	pemString = strings.TrimSpace(pemString)
-
-	if !strings.HasPrefix(pemString, "-----BEGIN") {
-		return "", time.Time{}, fmt.Errorf("PEM data does not start with '-----BEGIN' marker")
-	}
-
-	block, _ := pem.Decode([]byte(pemString))
-	if block == nil {
-		return "", time.Time{}, fmt.Errorf("failed to parse PEM block")
-	}
-
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		var ok bool
-		privateKey, ok = key.(*rsa.PrivateKey)
-		if !ok {
-			return "", time.Time{}, fmt.Errorf("not an RSA private key")
-		}
-	}
-
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iat": time.Now().Unix() - 60,
-		"exp": time.Now().Unix() + (10 * 60),
-		"iss": appID,
-	})
-
-	signedJWT, err := jwtToken.SignedString(privateKey)
+	signedJWT, err := signAppJWT(appID, pemString)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -240,4 +210,40 @@ func (g *githubappToken) createGithubAppTokenDetailed(appID, installationID, pem
 	}
 
 	return tr.Token, tr.ExpiresAt, nil
+}
+
+// signAppJWT signs the short-lived JWT that authenticates as the GitHub App
+// itself, as opposed to one of its installations.
+func signAppJWT(appID, pemString string) (string, error) {
+	pemString = strings.TrimSpace(pemString)
+
+	if !strings.HasPrefix(pemString, "-----BEGIN") {
+		return "", fmt.Errorf("PEM data does not start with '-----BEGIN' marker")
+	}
+
+	block, _ := pem.Decode([]byte(pemString))
+	if block == nil {
+		return "", fmt.Errorf("failed to parse PEM block")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse private key: %w", err)
+		}
+		var ok bool
+		privateKey, ok = key.(*rsa.PrivateKey)
+		if !ok {
+			return "", fmt.Errorf("not an RSA private key")
+		}
+	}
+
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iat": time.Now().Unix() - 60,
+		"exp": time.Now().Unix() + (10 * 60),
+		"iss": appID,
+	})
+
+	return jwtToken.SignedString(privateKey)
 }
