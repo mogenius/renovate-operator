@@ -1,5 +1,22 @@
 # Changelog
 
+## [6.7.0](https://github.com/mogenius/renovate-operator/compare/6.6.0...6.7.0) (2026-10-28)
+
+
+### Features
+
+* add GitHubAppInstallationSet to generate a RenovateJob per installation ([a2634c5](https://github.com/mogenius/renovate-operator/commit/a2634c5bf0962e8dbd0098c49d07995b2cc9ad6a)), closes [#516](https://github.com/mogenius/renovate-operator/issues/516)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([632065a](https://github.com/mogenius/renovate-operator/commit/632065aa3643e04f0e5d401995204472ffad15f5))
+* **deps:** update go module directive to v1.27.3 ([b6def87](https://github.com/mogenius/renovate-operator/commit/b6def877dee0c2c5e1a042f566243e04e90ee30c))
+* **deps:** update helm release valkey to v0.12.1 ([5282bb0](https://github.com/mogenius/renovate-operator/commit/5282bb0730a3f6d00351eae8280af7f63ce8db74))
+* **deps:** update module github.com/netresearch/go-cron to v0.17.0 ([5efdc16](https://github.com/mogenius/renovate-operator/commit/5efdc167ff0cc4698b3fb1d5bca7e6d26373a6ba))
+* **deps:** update node.js to v26 ([dba95d8](https://github.com/mogenius/renovate-operator/commit/dba95d8648bc5e430c5ecb853ad5b358dfc81185))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.37.2 ([efb7660](https://github.com/mogenius/renovate-operator/commit/efb7660fcb3627b85348ff39e873162f53784eee))
+
 ## [6.6.0](https://github.com/mogenius/renovate-operator/compare/6.5.1...6.6.0) (2026-10-22)
 
 
