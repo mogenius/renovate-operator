@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@42a618fc6a3360f2856da4f3400ca63fd72caa74 # v1.10.1
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@e375ba30acf0eca00d70f355e3d11ed884c66b15 # v1.10.4
     secrets: inherit
     with:
       version: "main"
