@@ -243,6 +243,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              credentialsResourceVersion:
+                description: |-
+                  resourceVersion of the source credentials Secret last written to every
+                  generated credentials Secret.
+                type: string
               installations:
                 description: Installations matching the filter as of the last successful
                   sync.

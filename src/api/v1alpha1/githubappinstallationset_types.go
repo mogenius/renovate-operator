@@ -106,6 +106,10 @@ type GitHubAppInstallationSetStatus struct {
 	// Time of the last successful listing of installations.
 	// +optional
 	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
+	// resourceVersion of the source credentials Secret last written to every
+	// generated credentials Secret.
+	// +optional
+	CredentialsResourceVersion string `json:"credentialsResourceVersion,omitempty"`
 	// Installations matching the filter as of the last successful sync.
 	// +optional
 	// +listType=map

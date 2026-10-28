@@ -51,6 +51,10 @@ const (
 	// installationRetryInterval paces retries after a failed sync, so a broken
 	// credential does not hammer the GitHub API.
 	installationRetryInterval = 1 * time.Minute
+	// credentialsCheckInterval bounds how long a change to the source
+	// credentials Secret takes to reach the generated Secrets. The operator
+	// cannot watch Secrets, so the source is polled.
+	credentialsCheckInterval = 1 * time.Minute
 )
 
 // GitHubAppInstallationSetReconciler generates one RenovateJob, plus a Secret
@@ -71,7 +75,8 @@ type appCredentials struct {
 	pem   string
 	// optedIn mirrors the source Secret's api.LabelAllowRef onto the generated
 	// credentials Secrets, so a copy is never opted in where its source is not.
-	optedIn bool
+	optedIn         bool
+	resourceVersion string
 }
 
 func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -85,8 +90,11 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, nil
 	}
 
+	statusBefore := &api.GitHubAppInstallationSetStatus{}
+	set.Status.DeepCopyInto(statusBefore)
+
 	if reason, msg := r.validateSet(set); reason != "" {
-		return r.markNotReady(ctx, set, reason, msg)
+		return r.markNotReady(ctx, set, statusBefore, reason, msg)
 	}
 
 	creds, reason, withdrawn, err := r.readCredentials(ctx, set)
@@ -95,12 +103,14 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 			if revokeErr := r.revokeCredentialsSecrets(ctx, set); revokeErr != nil {
 				logger.Error(revokeErr, "failed to revoke generated credentials of GitHubAppInstallationSet")
 			}
+			// Forces every copy to be rewritten once the source is usable
+			// again, even when the source itself is unchanged, as when the
+			// policy starts allowing it.
+			set.Status.CredentialsResourceVersion = ""
 		}
-		return r.markNotReady(ctx, set, reason, err.Error())
+		return r.markNotReady(ctx, set, statusBefore, reason, err.Error())
 	}
 
-	statusBefore := &api.GitHubAppInstallationSetStatus{}
-	set.Status.DeepCopyInto(statusBefore)
 	interval := resyncInterval(set)
 	installations := slices.Clone(set.Status.Installations)
 	synced := needsInstallationSync(set, interval, time.Now())
@@ -110,12 +120,13 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		if err != nil {
 			// Generated RenovateJobs are kept: a GitHub outage must not wipe
 			// every installation's project history.
-			return r.markNotReady(ctx, set, ReasonListInstallationsError, err.Error())
+			return r.markNotReady(ctx, set, statusBefore, ReasonListInstallationsError, err.Error())
 		}
 		installations = filterInstallations(listed, set.Spec.Installations)
 	}
 
-	failures := r.ensureRenovateJobs(ctx, set, creds, installations)
+	refreshCredentials := synced || set.Status.CredentialsResourceVersion != creds.resourceVersion
+	failures := r.ensureRenovateJobs(ctx, set, creds, installations, refreshCredentials)
 
 	set.Status.Installations = installations
 	if synced {
@@ -124,6 +135,7 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		set.Status.ObservedGeneration = set.Generation
 	}
 	if len(failures) == 0 {
+		set.Status.CredentialsResourceVersion = creds.resourceVersion
 		setReadyCondition(set, metav1.ConditionTrue, ReasonInstallationsSynced,
 			fmt.Sprintf("%d installation(s) have a RenovateJob", len(installations)))
 	} else {
@@ -144,7 +156,8 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 	if len(failures) > 0 {
 		return ctrl.Result{RequeueAfter: installationRetryInterval}, nil
 	}
-	return ctrl.Result{RequeueAfter: time.Until(set.Status.LastSyncTime.Add(interval))}, nil
+	nextSync := time.Until(set.Status.LastSyncTime.Add(interval))
+	return ctrl.Result{RequeueAfter: min(nextSync, credentialsCheckInterval)}, nil
 }
 
 // validateSet applies the checks a RenovateJob's acceptance gate would apply to
@@ -191,17 +204,19 @@ func (r *GitHubAppInstallationSetReconciler) readCredentials(ctx context.Context
 		return nil, ReasonCredentialsUnavailable, true, fmt.Errorf("the given key does not exist in the secret: key=%s, secret=%s", ref.PemSecretKey, ref.SecretName)
 	}
 	return &appCredentials{
-		appID:   string(appID),
-		pem:     string(pem),
-		optedIn: secret.Labels[api.LabelAllowRef] == "true",
+		appID:           string(appID),
+		pem:             string(pem),
+		optedIn:         secret.Labels[api.LabelAllowRef] == "true",
+		resourceVersion: secret.ResourceVersion,
 	}, "", false, nil
 }
 
 // revokeCredentialsSecrets empties the generated credentials Secrets once the
 // source credentials are withdrawn, so the generated RenovateJobs stop minting
-// tokens. The Secrets are emptied rather than deleted, since the operator may
-// not delete Secrets. The RenovateJobs are kept, as on a failed listing, and the
-// next successful read writes the credentials back.
+// tokens, and empties their token Secrets, so already minted tokens stop
+// reaching new runs. The Secrets are emptied rather than deleted, since the
+// operator may not delete Secrets. The RenovateJobs are kept, as on a failed
+// listing, and the next successful read writes the credentials back.
 func (r *GitHubAppInstallationSetReconciler) revokeCredentialsSecrets(ctx context.Context, set *api.GitHubAppInstallationSet) error {
 	owned, err := r.ownedRenovateJobs(ctx, set)
 	if err != nil {
@@ -210,35 +225,52 @@ func (r *GitHubAppInstallationSetReconciler) revokeCredentialsSecrets(ctx contex
 
 	var errs []error
 	for _, job := range owned {
-		secret := &corev1.Secret{}
-		key := client.ObjectKey{Name: github.GetNameForGithubAppCredentialsSecret(job.Name), Namespace: set.Namespace}
-		if err := r.K8sClient.Get(ctx, key, secret); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				errs = append(errs, fmt.Errorf("getting credentials secret %s: %w", key.Name, err))
+		// Credentials first: a token renewal that read them before they were
+		// emptied may still write a token, which the next pass empties.
+		for _, name := range []string{
+			github.GetNameForGithubAppCredentialsSecret(job.Name),
+			github.GetNameForGithubAppSecret(job),
+		} {
+			if err := r.emptySecret(ctx, job, name); err != nil {
+				errs = append(errs, err)
 			}
-			continue
 		}
-		if !metav1.IsControlledBy(secret, job) {
-			continue
-		}
-		if _, optedIn := secret.Labels[api.LabelAllowRef]; !optedIn && len(secret.Data) == 0 {
-			continue
-		}
-		delete(secret.Labels, api.LabelAllowRef)
-		secret.Data = nil
-		if err := r.K8sClient.Update(ctx, secret); err != nil {
-			errs = append(errs, fmt.Errorf("revoking credentials secret %s: %w", key.Name, err))
-			continue
-		}
-		log.FromContext(ctx).Info("revoked credentials of generated RenovateJob", "renovateJob", job.Name, "secret", key.Name)
 	}
 	return errors.Join(errs...)
 }
 
+// emptySecret drops the data, allow-ref label and token expiry of a Secret job
+// controls. The expiry goes too, so the token is minted anew once credentials
+// are usable again.
+func (r *GitHubAppInstallationSetReconciler) emptySecret(ctx context.Context, job *api.RenovateJob, name string) error {
+	secret := &corev1.Secret{}
+	key := client.ObjectKey{Name: name, Namespace: job.Namespace}
+	if err := r.K8sClient.Get(ctx, key, secret); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if !metav1.IsControlledBy(secret, job) {
+		return nil
+	}
+	_, optedIn := secret.Labels[api.LabelAllowRef]
+	_, expiring := secret.Annotations[api.TokenExpiresAtAnnotationKey]
+	if !optedIn && !expiring && len(secret.Data) == 0 {
+		return nil
+	}
+	delete(secret.Labels, api.LabelAllowRef)
+	delete(secret.Annotations, api.TokenExpiresAtAnnotationKey)
+	secret.Data = nil
+	if err := r.K8sClient.Update(ctx, secret); err != nil {
+		return fmt.Errorf("revoking secret %s: %w", name, err)
+	}
+	log.FromContext(ctx).Info("revoked credentials of generated RenovateJob", "renovateJob", job.Name, "secret", name)
+	return nil
+}
+
 // ensureRenovateJobs converges the generated RenovateJobs on installations and
-// records each one's name in place. It returns one message per installation it
-// could not converge.
-func (r *GitHubAppInstallationSetReconciler) ensureRenovateJobs(ctx context.Context, set *api.GitHubAppInstallationSet, creds *appCredentials, installations []api.GitHubAppInstallationStatus) []string {
+// records each one's name in place. Credentials Secrets are written for new
+// RenovateJobs, and for all of them when refreshCredentials is set. It returns
+// one message per installation it could not converge.
+func (r *GitHubAppInstallationSetReconciler) ensureRenovateJobs(ctx context.Context, set *api.GitHubAppInstallationSet, creds *appCredentials, installations []api.GitHubAppInstallationStatus, refreshCredentials bool) []string {
 	logger := log.FromContext(ctx)
 	var failures []string
 
@@ -278,6 +310,9 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJobs(ctx context.Cont
 				inst.RenovateJob = ""
 			}
 			fail(err)
+			continue
+		}
+		if !refreshCredentials && existing != nil {
 			continue
 		}
 		if err := r.ensureCredentialsSecret(ctx, set, job, inst.ID, creds); err != nil {
@@ -447,10 +482,11 @@ func (r *GitHubAppInstallationSetReconciler) ensureCredentialsSecret(ctx context
 	return nil
 }
 
-func (r *GitHubAppInstallationSetReconciler) markNotReady(ctx context.Context, set *api.GitHubAppInstallationSet, reason, message string) (ctrl.Result, error) {
-	changed := setReadyCondition(set, metav1.ConditionFalse, reason, message)
-	if changed {
+func (r *GitHubAppInstallationSetReconciler) markNotReady(ctx context.Context, set *api.GitHubAppInstallationSet, statusBefore *api.GitHubAppInstallationSetStatus, reason, message string) (ctrl.Result, error) {
+	if setReadyCondition(set, metav1.ConditionFalse, reason, message) {
 		log.FromContext(ctx).Info("GitHubAppInstallationSet not ready", "reason", reason, "message", message)
+	}
+	if !equality.Semantic.DeepEqual(statusBefore, &set.Status) {
 		if err := r.K8sClient.Status().Update(ctx, set); err != nil {
 			return ctrl.Result{}, fmt.Errorf("updating GitHubAppInstallationSet status: %w", err)
 		}

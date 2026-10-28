@@ -21,6 +21,7 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const testSetNamespace = "renovate"
@@ -458,26 +459,111 @@ func TestInstallationSetRevokesCredentialsWhenSourceIsRefused(t *testing.T) {
 	r.Policy = policy.Policy{AllowedHosts: []string{"api.github.com"}}
 	reconcileSet(t, r, "club")
 
-	if err := c.Get(context.Background(), crclient.ObjectKeyFromObject(source), source); err != nil {
-		t.Fatalf("failed to get source secret: %v", err)
+	job := getJob(t, c, "club-alice")
+	token := &corev1.Secret{Data: map[string][]byte{"RENOVATE_TOKEN": []byte("ghs_token")}}
+	token.Name = github.GetNameForGithubAppSecret(job)
+	token.Namespace = testSetNamespace
+	token.Annotations = map[string]string{api.TokenExpiresAtAnnotationKey: time.Now().Add(time.Hour).Format(time.RFC3339)}
+	if err := controllerutil.SetControllerReference(job, token, c.Scheme()); err != nil {
+		t.Fatalf("failed to own token secret: %v", err)
 	}
-	delete(source.Labels, api.LabelAllowRef)
-	if err := c.Update(context.Background(), source); err != nil {
-		t.Fatalf("failed to unlabel source secret: %v", err)
+	if err := c.Create(context.Background(), token); err != nil {
+		t.Fatalf("failed to create token secret: %v", err)
 	}
+
+	unlabelSecret(t, c, source)
 	reconcileSet(t, r, "club")
 
 	getJob(t, c, "club-alice")
-	secret := &corev1.Secret{}
-	name := github.GetNameForGithubAppCredentialsSecret("club-alice")
-	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: name, Namespace: testSetNamespace}, secret); err != nil {
-		t.Fatalf("credentials secret missing: %v", err)
-	}
+	secret := getSecret(t, c, github.GetNameForGithubAppCredentialsSecret("club-alice"))
 	if len(secret.Data) != 0 {
 		t.Errorf("credentials must be revoked once the source is refused, got keys %v", secret.Data)
 	}
 	if _, ok := secret.Labels[api.LabelAllowRef]; ok {
 		t.Error("revoked credentials must no longer be opted in")
+	}
+	token = getSecret(t, c, token.Name)
+	if len(token.Data) != 0 {
+		t.Errorf("the minted token must be revoked once the source is refused, got keys %v", token.Data)
+	}
+	if _, ok := token.Annotations[api.TokenExpiresAtAnnotationKey]; ok {
+		t.Error("a revoked token must lose its expiry, so it is minted anew once credentials are usable")
+	}
+}
+
+func TestInstallationSetRestoresCredentialsWhenPolicyAllowsUnchangedSource(t *testing.T) {
+	set := newInstallationSet("club")
+	c := installationSetClient(t, set, appCredentialsSecret(false))
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	r := installationSetReconciler(c, lister)
+	reconcileSet(t, r, "club")
+
+	r.Policy = policy.Policy{AllowedHosts: []string{"api.github.com"}}
+	reconcileSet(t, r, "club")
+	if len(getSecret(t, c, github.GetNameForGithubAppCredentialsSecret("club-alice")).Data) != 0 {
+		t.Fatal("test setup: credentials must be revoked while the policy refuses the source")
+	}
+
+	r.Policy = policy.Policy{Disabled: true}
+	reconcileSet(t, r, "club")
+
+	if got := getSecret(t, c, github.GetNameForGithubAppCredentialsSecret("club-alice")); string(got.Data[credentialsPemKey]) != "pem-data" {
+		t.Errorf("credentials must be restored once the policy allows the unchanged source, got %v", got.Data)
+	}
+	if lister.calls != 1 {
+		t.Errorf("restoring credentials must not list installations, got %d calls", lister.calls)
+	}
+}
+
+func TestInstallationSetPropagatesRotatedCredentialsWithoutListing(t *testing.T) {
+	set := newInstallationSet("club")
+	source := appCredentialsSecret(true)
+	c := installationSetClient(t, set, source)
+	lister := &fakeInstallationLister{installations: []github.AppInstallation{
+		{ID: 1, Account: "alice", AccountType: api.GitHubAccountTypeUser},
+	}}
+	r := installationSetReconciler(c, lister)
+	reconcileSet(t, r, "club")
+
+	if err := c.Get(context.Background(), crclient.ObjectKeyFromObject(source), source); err != nil {
+		t.Fatalf("failed to get source secret: %v", err)
+	}
+	source.Data["PEM"] = []byte("rotated-pem")
+	if err := c.Update(context.Background(), source); err != nil {
+		t.Fatalf("failed to rotate source secret: %v", err)
+	}
+	res := reconcileSet(t, r, "club")
+
+	if got := getSecret(t, c, github.GetNameForGithubAppCredentialsSecret("club-alice")); string(got.Data[credentialsPemKey]) != "rotated-pem" {
+		t.Errorf("rotated credentials must reach the generated secret, got %q", got.Data[credentialsPemKey])
+	}
+	if lister.calls != 1 {
+		t.Errorf("propagating credentials must not list installations, got %d calls", lister.calls)
+	}
+	if res.RequeueAfter > credentialsCheckInterval {
+		t.Errorf("expected the source to be checked again within %s, got %s", credentialsCheckInterval, res.RequeueAfter)
+	}
+}
+
+func getSecret(t *testing.T, c crclient.Client, name string) *corev1.Secret {
+	t.Helper()
+	secret := &corev1.Secret{}
+	if err := c.Get(context.Background(), k8stypes.NamespacedName{Name: name, Namespace: testSetNamespace}, secret); err != nil {
+		t.Fatalf("failed to get secret %s: %v", name, err)
+	}
+	return secret
+}
+
+func unlabelSecret(t *testing.T, c crclient.Client, secret *corev1.Secret) {
+	t.Helper()
+	if err := c.Get(context.Background(), crclient.ObjectKeyFromObject(secret), secret); err != nil {
+		t.Fatalf("failed to get secret: %v", err)
+	}
+	delete(secret.Labels, api.LabelAllowRef)
+	if err := c.Update(context.Background(), secret); err != nil {
+		t.Fatalf("failed to unlabel secret: %v", err)
 	}
 }
 

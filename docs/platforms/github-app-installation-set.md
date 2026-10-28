@@ -202,8 +202,14 @@ The generated credentials Secrets carry the `allow-ref` label exactly when their
 source Secret does. Each generated `RenovateJob` then goes through the same
 acceptance check as any other.
 
+The operator checks the source Secret every minute, independently of
+`resyncInterval`, and without calling the GitHub API. A rotated key reaches the
+generated credentials Secrets within that minute.
+
 If the source Secret is deleted, loses a key, or is refused by the policy, the
 operator empties the generated credentials Secrets and removes their `allow-ref`
-label, so the generated `RenovateJob`s can't mint new tokens. The
-`RenovateJob`s themselves are kept, and the credentials are written back once
-the source Secret is usable again.
+label, so the generated `RenovateJob`s can't mint new tokens. It also empties
+their token Secrets, so runs started afterwards get no token. Runs already in
+progress keep the token they started with until it expires, at most an hour
+later. The `RenovateJob`s themselves are kept, and the credentials are written
+back once the source Secret is usable again.
