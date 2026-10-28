@@ -20,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// githubAppProvider labels the metrics of installation events once they reach
+// the GitHubAppInstallationSets. Events no set verifies keep the github label.
 const githubAppProvider = "github_app"
 
 // GitHub App events that change which installations or repositories exist.
@@ -43,11 +45,13 @@ func (s *Server) WithInstallationSets(c client.Client, p policy.Policy) *Server 
 // installation event goes to discovery whether or not a set verified it.
 func (s *Server) githubInstallationWebhook(w http.ResponseWriter, r *http.Request, body []byte, event string) {
 	ctx := r.Context()
+	const provider = "github"
 
 	var payload GitHubInstallationEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
-		metricStore.IncWebhookPayloadDecodeFailure(ctx, githubAppProvider)
-		metricStore.IncWebhookRequest(ctx, githubAppProvider, "rejected")
+		metricStore.IncWebhookPayloadDecodeFailure(ctx, provider)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.logger.Error(err, "failed to decode github installation webhook payload. Not processing.")
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to decode payload"})
 		return
 	}
@@ -68,7 +72,7 @@ func (s *Server) githubInstallationWebhook(w http.ResponseWriter, r *http.Reques
 			s.githubInstallationEvent(ctx, w, r, body)
 			return
 		}
-		metricStore.IncWebhookRequest(ctx, githubAppProvider, "ignored")
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no GitHubAppInstallationSet verified the event"})
 		return
 	}
