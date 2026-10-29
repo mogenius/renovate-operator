@@ -353,7 +353,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var freshCookie string
-	var logEmail, logName string
+	var logEmail string
 
 	if b.sessionStore == nil {
 		// Cookie-only mode: the URL param contains encrypted session data.
@@ -377,7 +377,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session too large for cookie storage, the operator requires a server-side session store", http.StatusInternalServerError)
 			return
 		}
-		logEmail, logName = session.Email, session.Name
+		logEmail = session.Email
 	} else {
 		// Server-side mode: decrypt the session ID, rotate it, save under new ID.
 		sessionID, err := b.decryptString(sessionValue)
@@ -419,7 +419,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		logEmail, logName = session.Email, session.Name
+		logEmail = session.Email
 	}
 
 	secure := isHTTPS(r)
@@ -443,7 +443,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	b.logger.Info("session cookie set via /auth/complete", "email", logEmail, "name", logName, "secure", secure, "cookieLen", len(freshCookie))
+	b.logger.Info("session cookie set via /auth/complete", "email", logEmail, "secure", secure, "cookieLen", len(freshCookie))
 
 	err := writeCallbackRedirect(w, withBase("/"))
 	if err != nil {

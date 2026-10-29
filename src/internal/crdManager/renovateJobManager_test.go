@@ -62,7 +62,7 @@ func TestListRenovateJobs(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -89,7 +89,7 @@ func TestListRenovateJobsFull(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j1, j2, rp1).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -130,7 +130,7 @@ func TestUpdateProjectStatus_AddAndUpdate(t *testing.T) {
 		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
 		Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -174,7 +174,7 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
 		Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -224,7 +224,7 @@ func TestReconcileProjects_AddsAndKeepsExisting(t *testing.T) {
 		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
 		Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
@@ -279,7 +279,7 @@ func TestGetProjectsFilters(t *testing.T) {
 	rp2 := makeProject("job1", "default", "b", api.JobStatusScheduled)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(j, rp1, rp2).Build()
 
-	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, "")
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
 	if err != nil {
 		t.Fatalf("failed to initialise logStore")
 	}
