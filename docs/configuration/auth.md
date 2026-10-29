@@ -130,11 +130,18 @@ The operator requests the `read:user` and `user:email` scopes, plus `read:org` w
 
 ## Session Security
 
-Sessions expire after **24 hours**. Two session storage modes are available:
+Sessions expire after **24 hours**. Three session storage modes are available:
 
-**Cookie-based** (default): the full session is AES-256-GCM encrypted and stored directly in the browser cookie. This is stateless — sessions survive pod restarts and require no external infrastructure. However, if users belong to many groups the encrypted cookie may exceed the ~4096 byte browser limit, causing authentication failures.
+**Cookie-based** (default, `auth.sessionStore: cookie`): the full session is AES-256-GCM encrypted and stored directly in the browser cookie. This is stateless: sessions survive pod restarts (given a static session secret) and require no external infrastructure. The cookie is bound by the ~4096 byte browser limit. With OIDC the session also holds the raw ID token, which is sent as `id_token_hint` on logout (required by Okta) and carries the provider's full, unfiltered groups claim, so users in many groups exceed the limit quickly. A session over the limit is rejected at login with an error and a log entry naming the cookie size.
 
-**Valkey** (opt-in): only an encrypted session ID (~100 bytes) is stored in the cookie; the full session data lives server-side in Valkey. This avoids cookie size limits regardless of group count, and sessions are shared across replicas. Recommended for multi-replica deployments or when users have many group memberships.
+**In-memory** (`auth.sessionStore: memory`): only an encrypted session ID is stored in the cookie; the session data lives in the operator process. This avoids cookie size limits without external infrastructure, but sessions are lost on every restart and are not shared across replicas, so the chart requires `replicaCount: 1`.
+
+**Valkey** (opt-in): only an encrypted session ID (~100 bytes) is stored in the cookie; the full session data lives server-side in Valkey. This avoids cookie size limits regardless of group count or token size, and sessions are shared across replicas and survive restarts. Valkey takes precedence over `auth.sessionStore` when configured. Recommended for OIDC, multi-replica deployments, or users with many group memberships.
+
+```yaml
+auth:
+  sessionStore: memory   # cookie (default) | memory; ignored when Valkey is configured
+```
 
 If you run multiple operator replicas, you **must** set a static session secret so all replicas can decrypt the session cookie. Set the session secret via `sessionSecretKey` pointing to a key in your existing secret, or the operator will auto-generate one per startup.
 

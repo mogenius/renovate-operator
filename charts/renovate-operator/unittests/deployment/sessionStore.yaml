@@ -1,0 +1,58 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Session store
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: Defaults to cookie sessions
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: SESSION_STORE
+        value: cookie
+
+- it: Renders memory sessions for a single replica
+  set:
+    auth:
+      sessionStore: memory
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: SESSION_STORE
+        value: memory
+
+- it: Rejects memory sessions with multiple replicas and no Valkey
+  set:
+    replicaCount: 2
+    auth:
+      sessionStore: memory
+  asserts:
+  - failedTemplate:
+      errorMessage: auth.sessionStore=memory does not share sessions across replicas; set replicaCount to 1 or configure Valkey
+
+- it: Allows memory sessions with multiple replicas when Valkey takes precedence
+  set:
+    replicaCount: 2
+    auth:
+      sessionStore: memory
+    externalKeyValueStore:
+      host: valkey.example.com
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: VALKEY_HOST
+        value: valkey.example.com
+
+- it: Rejects unknown session store values
+  set:
+    auth:
+      sessionStore: redis
+  asserts:
+  - failedTemplate: {}

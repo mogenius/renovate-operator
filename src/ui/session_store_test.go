@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"renovate-operator/internal/kvstore"
 	"slices"
@@ -266,6 +268,80 @@ func TestCookieOnlySession_RoundTrip(t *testing.T) {
 	}
 	if decrypted.AccessToken != session.AccessToken {
 		t.Errorf("AccessToken mismatch: got %s, want %s", decrypted.AccessToken, session.AccessToken)
+	}
+}
+
+// completeLogin runs a session through buildCompleteURL and handleComplete
+// and returns the recorded /auth/complete response.
+func completeLogin(t *testing.T, store SessionStore, idToken string) *httptest.ResponseRecorder {
+	t.Helper()
+	key, err := ComputeEncryptionKey("test-secret-key-with-32-chars!!!")
+	if err != nil {
+		t.Fatalf("ComputeEncryptionKey failed: %v", err)
+	}
+	base, err := newBaseAuth(key, logr.Discard(), store)
+	if err != nil {
+		t.Fatalf("Failed to create baseAuth: %v", err)
+	}
+
+	completeURL, err := base.buildCompleteURL(context.Background(), "user@example.com", "User",
+		func(s *sessionData) { s.IDToken = idToken })
+	if err != nil {
+		t.Fatalf("buildCompleteURL failed: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	base.handleComplete(w, httptest.NewRequest(http.MethodGet, completeURL, nil))
+	return w
+}
+
+func sessionCookie(w *httptest.ResponseRecorder) *http.Cookie {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			return c
+		}
+	}
+	return nil
+}
+
+func TestHandleComplete_CookieOnly_SetsCookieWithinLimit(t *testing.T) {
+	w := completeLogin(t, nil, strings.Repeat("a", 1000))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	c := sessionCookie(w)
+	if c == nil {
+		t.Fatal("session cookie not set")
+	}
+	if size := len(c.Name) + len(c.Value); size > maxCookieSize {
+		t.Errorf("cookie size %d exceeds limit %d", size, maxCookieSize)
+	}
+}
+
+func TestHandleComplete_CookieOnly_RejectsOversizedSession(t *testing.T) {
+	w := completeLogin(t, nil, strings.Repeat("a", 4000))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if c := sessionCookie(w); c != nil {
+		t.Errorf("oversized session cookie was set (%d bytes)", len(c.Value))
+	}
+}
+
+func TestHandleComplete_MemoryStore_AcceptsLargeSession(t *testing.T) {
+	w := completeLogin(t, NewMemorySessionStore(), strings.Repeat("a", 4000))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	c := sessionCookie(w)
+	if c == nil {
+		t.Fatal("session cookie not set")
+	}
+	if len(c.Value) > 200 {
+		t.Errorf("cookie value %d bytes, want only an encrypted session ID", len(c.Value))
 	}
 }
 

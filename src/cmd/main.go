@@ -107,11 +107,16 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 	sessionStore, storeErr := ui.NewSessionStore(kvStore, storeKey)
 	assert.NoError(storeErr, "failed to initialize session store")
 
-	if kvStore != nil {
+	switch {
+	case kvStore != nil:
 		log.Info("Using session store", "type", "valkey")
-	} else {
+	case config.GetValue("SESSION_STORE") == "memory":
+		sessionStore = ui.NewMemorySessionStore()
+		log.Info("Using session store", "type", "memory")
+		log.Info("In-memory sessions: sessions are lost on restart and not shared across replicas. Use Valkey for multi-replica deployments.")
+	default:
 		log.Info("Using session store", "type", "cookie")
-		log.Info("Cookie-based sessions: session data is stored in the browser cookie. If users belong to many groups, the cookie may exceed browser size limits; configure Valkey to avoid this. For multi-replica deployments, Valkey is recommended for session sharing across pods.")
+		log.Info("Cookie-based sessions: session data is stored in the browser cookie. If users belong to many groups or the OIDC ID token is large, the cookie may exceed browser size limits; configure the memory or Valkey session store to avoid this. For multi-replica deployments, Valkey is recommended for session sharing across pods.")
 	}
 
 	cleanup := func() {
@@ -526,6 +531,17 @@ func main() {
 			Key:      "OIDC_GROUPS_CLAIM",
 			Optional: true,
 			Default:  "groups",
+		},
+		{
+			Key:      "SESSION_STORE",
+			Optional: true,
+			Default:  "cookie",
+			Validate: func(value string) error {
+				if value != "cookie" && value != "memory" {
+					return fmt.Errorf("'SESSION_STORE' must be either 'cookie' or 'memory', got %q", value)
+				}
+				return nil
+			},
 		},
 		{
 			Key:      "VALKEY_URL",

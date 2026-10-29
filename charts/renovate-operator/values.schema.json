@@ -250,6 +250,11 @@
           "description": "DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
           "type": "string"
         },
+        "sessionStore": {
+          "description": "session storage when no Valkey is configured; Valkey takes precedence when configured",
+          "type": "string",
+          "enum": ["cookie", "memory"]
+        },
         "oidc": {
           "type": "object",
           "additionalProperties": false,
