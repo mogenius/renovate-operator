@@ -1,0 +1,103 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Operator probes
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: Renders default probes against the controller-runtime probe endpoint
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: HEALTH_PROBE_PORT
+        value: "8083"
+  - contains:
+      path: spec.template.spec.containers[0].ports
+      content:
+        containerPort: 8083
+        name: probes
+        protocol: TCP
+  - equal:
+      path: spec.template.spec.containers[0].livenessProbe
+      value:
+        httpGet:
+          path: /healthz
+          port: probes
+        initialDelaySeconds: 60
+        timeoutSeconds: 5
+  - equal:
+      path: spec.template.spec.containers[0].readinessProbe
+      value:
+        httpGet:
+          path: /readyz
+          port: probes
+        timeoutSeconds: 5
+
+- it: Uses custom probe port for env and container port
+  set:
+    probes:
+      port: 9090
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: HEALTH_PROBE_PORT
+        value: "9090"
+  - contains:
+      path: spec.template.spec.containers[0].ports
+      content:
+        containerPort: 9090
+        name: probes
+        protocol: TCP
+
+- it: Overrides probe timings
+  set:
+    probes:
+      liveness:
+        initialDelaySeconds: 180
+        failureThreshold: 6
+      readiness:
+        periodSeconds: 20
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[0].livenessProbe
+      value:
+        httpGet:
+          path: /healthz
+          port: probes
+        initialDelaySeconds: 180
+        failureThreshold: 6
+        timeoutSeconds: 5
+  - equal:
+      path: spec.template.spec.containers[0].readinessProbe
+      value:
+        httpGet:
+          path: /readyz
+          port: probes
+        periodSeconds: 20
+        timeoutSeconds: 5
+
+- it: Probe paths ignore basePath
+  set:
+    basePath: /renovate
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+      value: /healthz
+  - equal:
+      path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+      value: /readyz
+
+- it: Omits probes when disabled
+  set:
+    probes:
+      enabled: false
+  asserts:
+  - notExists:
+      path: spec.template.spec.containers[0].livenessProbe
+  - notExists:
+      path: spec.template.spec.containers[0].readinessProbe
