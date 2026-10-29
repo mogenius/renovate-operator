@@ -280,6 +280,12 @@ spec:
                   key: {{ .Values.valkey.auth.aclUsers.default.passwordKey | default "default-password" }}
             {{- end }}
             {{- end }}
+            {{- $valkeyConfigured := or $ekv.host $ekv.existingSecret.name .Values.valkey.existingSecret .Values.valkey.enabled }}
+            {{- if and (eq .Values.auth.sessionStore "memory") (not $valkeyConfigured) (gt (int .Values.replicaCount) 1) }}
+            {{- fail "auth.sessionStore=memory does not share sessions across replicas; set replicaCount to 1 or configure Valkey" }}
+            {{- end }}
+            - name: SESSION_STORE
+              value: {{ .Values.auth.sessionStore | quote }}
             - name: VALKEY_FORWARD_CACHE_TO_JOBS
               value: {{ .Values.config.forwardCacheToJobs | quote }}
             {{- if .Values.auth.defaultAllowedGroups }}

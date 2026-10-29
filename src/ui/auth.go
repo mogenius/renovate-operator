@@ -24,6 +24,9 @@ const (
 	stateCookieName     = "oauth_state"
 	authCompletedCookie = "auth_completed"
 	sessionDuration     = 24 * time.Hour
+	// maxCookieSize is the per-cookie limit browsers enforce on name plus
+	// value; larger cookies are silently discarded.
+	maxCookieSize = 4096
 )
 
 // currentSessionVersion is bumped whenever a field access control reads is added
@@ -366,6 +369,12 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			b.logger.Error(err, "failed to re-encrypt session for cookie")
 			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if size := len(sessionCookieName) + len(freshCookie); size > maxCookieSize {
+			b.logger.Error(nil, "session exceeds the browser cookie size limit; configure the memory or Valkey session store",
+				"groups", len(session.Groups), "cookieSize", size, "limit", maxCookieSize)
+			http.Error(w, "session too large for cookie storage, the operator requires a server-side session store", http.StatusInternalServerError)
 			return
 		}
 		logEmail, logName = session.Email, session.Name

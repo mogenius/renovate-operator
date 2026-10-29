@@ -256,6 +256,8 @@ webhook:
 auth:
   # -- DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration
   defaultAllowedGroups: ""
+  # -- session storage when no Valkey is configured: "cookie" keeps the encrypted session in the browser cookie (subject to the ~4 KB browser limit), "memory" keeps it in the operator process (lost on restart, requires replicaCount 1). Valkey takes precedence when configured.
+  sessionStore: cookie
   oidc:
     # -- whether to enable OIDC authentication for the UI
     enabled: false

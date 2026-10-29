@@ -6,7 +6,7 @@ The operator uses Valkey as an optional shared datastore. When configured, it en
 - **Renovate cache** — forwards a Redis-compatible cache URL to each Renovate executor job, allowing Renovate to reuse dependency metadata between runs
 - **Log storage** — retains the last run's log output per project, queryable through the UI (alternative to the in-memory store)
 
-Without Valkey, sessions are stored in cookies, no cache is forwarded to jobs, and log storage falls back to `memory` or `disabled`.
+Without Valkey, sessions are stored in cookies (or in process memory with `auth.sessionStore: memory`, see [Session Security](../configuration/auth.md#session-security)), no cache is forwarded to jobs, and log storage falls back to `memory` or `disabled`.
 
 ## Database assignment
 
