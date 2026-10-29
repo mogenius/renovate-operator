@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,24 +23,41 @@ type s3LogStore struct {
 	client *s3.Client
 	bucket string
 	prefix string
-	logger logr.Logger
+	// tagging is the URL-encoded tag set sent with every PutObject; nil sends none.
+	tagging *string
+	logger  logr.Logger
 }
 
-// newS3LogStore creates an s3LogStore from the given config and per-usage prefix.
-func newS3LogStore(ctx context.Context, cfg objectstore.S3Config, prefix string, logger logr.Logger) (*s3LogStore, error) {
+// newS3LogStore creates an s3LogStore from the given config and log options.
+func newS3LogStore(ctx context.Context, cfg objectstore.S3Config, opts S3LogOptions, logger logr.Logger) (*s3LogStore, error) {
 	client, err := objectstore.NewS3Client(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating S3 client: %w", err)
 	}
+	prefix := opts.Prefix
 	if prefix == "" {
 		prefix = "renovate-logs"
 	}
 	return &s3LogStore{
-		client: client,
-		bucket: cfg.Bucket,
-		prefix: strings.TrimSuffix(prefix, "/"),
-		logger: logger,
+		client:  client,
+		bucket:  cfg.Bucket,
+		prefix:  strings.TrimSuffix(prefix, "/"),
+		tagging: encodeTagging(opts.Tags),
+		logger:  logger,
 	}, nil
+}
+
+// encodeTagging renders tags in the URL query format S3 expects for x-amz-tagging.
+// A nil result omits the header, which keeps stores without tagging support working.
+func encodeTagging(tags map[string]string) *string {
+	if len(tags) == 0 {
+		return nil
+	}
+	values := url.Values{}
+	for k, v := range tags {
+		values.Set(k, v)
+	}
+	return aws.String(values.Encode())
 }
 
 func (s *s3LogStore) Save(namespace, renovateJob, project, logs string) {
@@ -51,6 +69,7 @@ func (s *s3LogStore) Save(namespace, renovateJob, project, logs string) {
 		Key:         aws.String(buildS3Key(s.prefix, namespace, renovateJob, project)),
 		Body:        bytes.NewReader([]byte(logs)),
 		ContentType: aws.String("text/plain; charset=utf-8"),
+		Tagging:     s.tagging,
 	})
 	if err != nil {
 		s.logger.Error(err, "failed to save logs to S3", "bucket", s.bucket)

@@ -188,6 +188,7 @@ Kubernetes: `>=1.29.0-0`
 | s3.endpoint | string | `""` | Custom S3-compatible endpoint URL for self-hosted object stores (e.g. RustFS); leave empty for AWS S3 |
 | s3.existingSecret | string | `""` | Name of an existing Secret containing S3 credentials (optional; uses the pod's IAM role when absent) The Secret must have keys: access-key-id and secret-access-key |
 | s3.forcePathStyle | bool | `false` | Enable path-style S3 addressing (required by some S3-compatible stores); leave false for AWS S3 |
+| s3.logObjectTags | object | `{}` | Tags attached to every object the operator log store writes, so a bucket lifecycle rule can expire logs of projects that stopped running. Requires s3:PutObjectTagging in addition to s3:PutObject. Example: { retention: renovate-logs } |
 | s3.logPrefix | string | `"renovate-logs"` | Object key prefix used by the operator log store (LOG_STORE_MODE=s3) |
 | s3.region | string | `"us-east-1"` | AWS region (defaults to us-east-1) |
 | securityContext | object | `{"container":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"privileged":false,"readOnlyRootFilesystem":true,"runAsGroup":1000,"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}},"pod":{"fsGroup":1000,"runAsGroup":1000,"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}}}` | security context for the pod and containers |

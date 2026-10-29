@@ -610,6 +610,18 @@ func main() {
 			Default:  "renovate-logs",
 		},
 		{
+			Key:      "S3_LOG_OBJECT_TAGS",
+			Optional: true,
+			Default:  "{}",
+			Validate: func(value string) error {
+				var tags map[string]string
+				if err := json.Unmarshal([]byte(value), &tags); err != nil {
+					return fmt.Errorf("'S3_LOG_OBJECT_TAGS' must be a JSON object of tag key to value: %w", err)
+				}
+				return nil
+			},
+		},
+		{
 			Key:      "S3_CACHE_PREFIX",
 			Optional: true,
 			Default:  "renovate-cache",
@@ -848,7 +860,11 @@ func main() {
 		SecretAccessKey: config.GetValue("S3_SECRET_ACCESS_KEY"),
 	}
 
-	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf, s3Cfg, config.GetValue("S3_LOG_PREFIX"))
+	var s3LogTags map[string]string
+	assert.NoError(json.Unmarshal([]byte(config.GetValue("S3_LOG_OBJECT_TAGS")), &s3LogTags), "failed to parse S3_LOG_OBJECT_TAGS")
+	s3LogOpts := logStore.S3LogOptions{Prefix: config.GetValue("S3_LOG_PREFIX"), Tags: s3LogTags}
+
+	ls, err := logStore.NewLogStore(ctrl.Log.WithName("logStore"), config.GetValue("LOG_STORE_MODE"), valkeyConf, s3Cfg, s3LogOpts)
 	assert.NoError(err, "failed to initialize logStore")
 
 	cp := clientProvider.StaticClientProvider()

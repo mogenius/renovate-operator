@@ -264,7 +264,6 @@ func (o *OIDCAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Log received groups for debugging
 	o.logger.V(1).Info("OIDC claims received",
 		"user", claims.Email,
-		"name", claims.Name,
 		"groups", claims.Groups)
 
 	idTokenGroups := claims.Groups
