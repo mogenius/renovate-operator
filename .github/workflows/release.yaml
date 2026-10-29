@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@42a618fc6a3360f2856da4f3400ca63fd72caa74 # v1.10.1
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@e375ba30acf0eca00d70f355e3d11ed884c66b15 # v1.10.4
     secrets: inherit
     with:
       version: ${{ github.ref_name }}
@@ -93,7 +93,7 @@ jobs:
           helm package -d /tmp/ ./charts/renovate-operator --version "${VERSION}" --app-version "${VERSION}"
 
       - name: Log in to Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}

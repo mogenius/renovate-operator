@@ -11,7 +11,7 @@ crd:
   image:
     registry: registry.k8s.io
     repository: kubectl
-    tag: v1.37.1
+    tag: v1.37.2
     pullPolicy: "IfNotPresent"
     # -- imagePullSecrets for the operator pod
     imagePullSecrets: []
@@ -56,6 +56,19 @@ deployment:
   podAnnotations: {}
   # -- revision history limit for the operator deployment
   revisionHistoryLimit: 10
+
+probes:
+  # -- enable liveness and readiness probes for the operator container
+  enabled: true
+  # -- port of the controller-runtime health probe server
+  port: 8083
+  # -- liveness probe timings; raise initialDelaySeconds if startup (valkey, OIDC discovery, S3) takes longer
+  liveness:
+    initialDelaySeconds: 60
+    timeoutSeconds: 5
+  # -- readiness probe timings
+  readiness:
+    timeoutSeconds: 5
 
 config:
   # -- default backoff limit for renovate jobs

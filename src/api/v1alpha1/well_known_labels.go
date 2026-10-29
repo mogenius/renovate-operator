@@ -15,6 +15,12 @@ const (
 	// LabelGeneration stamps the Unix timestamp of the dispatch that created a Job,
 	// so older generations can be collected.
 	LabelGeneration = GroupName + "/generation"
+	// LabelInstallationSet names the GitHubAppInstallationSet a RenovateJob or
+	// credentials Secret was generated for.
+	LabelInstallationSet = GroupName + "/installation-set"
+	// LabelInstallationID holds the GitHub App installation id a RenovateJob or
+	// credentials Secret was generated for.
+	LabelInstallationID = GroupName + "/installation-id"
 )
 
 // LabelAllowRef opts a Secret in to being dereferenced by a RenovateJob at a
@@ -35,6 +41,9 @@ const (
 	// LabelValueComponentRenovateConfig marks the generated ConfigMap holding a
 	// job's inline Renovate configuration.
 	LabelValueComponentRenovateConfig = "renovate-config"
+	// LabelValueComponentGitHubAppCredentials marks the generated Secret holding
+	// a GitHub App's credentials for one installation.
+	LabelValueComponentGitHubAppCredentials = "github-app-credentials"
 )
 
 // FinalizerWebhookCleanup marks RenovateJobs whose synced webhooks must be

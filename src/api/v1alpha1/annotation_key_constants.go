@@ -45,3 +45,13 @@ const (
 // TokenExpiresAtAnnotationKey records an RFC3339 expiry on a Secret holding a
 // generated GitHub App token, so it can be renewed before it lapses.
 const TokenExpiresAtAnnotationKey = GroupName + "/token-expires-at"
+
+// TriggerResyncAnnotationKey makes a GitHubAppInstallationSet list its
+// installations again when set to any non-empty value. The operator removes it
+// once the sync has run, unless it was set again during the sync.
+const TriggerResyncAnnotationKey = GroupName + "/resync"
+
+// SuspendedByInstallationAnnotationKey marks a RenovateJob a
+// GitHubAppInstallationSet suspended because its installation is suspended, so
+// only that suspend is released when the installation is unsuspended.
+const SuspendedByInstallationAnnotationKey = GroupName + "/suspended-by-installation"

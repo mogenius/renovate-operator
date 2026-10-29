@@ -93,6 +93,20 @@ func (s *Server) githubInstallationEvent(ctx context.Context, w http.ResponseWri
 		return
 	}
 
+	repositories := installationRepositories(payload)
+	if len(repositories) == 0 {
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no repository or account in payload"})
+		return
+	}
+
+	s.runDiscoveryForRepositories(ctx, w, r, body, repositories)
+}
+
+// installationRepositories returns the repositories an installation event is
+// matched against, or nil when the payload carries neither repositories nor
+// an account.
+func installationRepositories(payload GitHubInstallationEvent) []string {
 	repositories := make([]string, 0, len(payload.Repositories))
 	for _, repository := range payload.Repositories {
 		if repository.FullName != "" {
@@ -101,14 +115,17 @@ func (s *Server) githubInstallationEvent(ctx context.Context, w http.ResponseWri
 	}
 	if len(repositories) == 0 {
 		if payload.Installation.Account.Login == "" {
-			metricStore.IncWebhookRequest(ctx, provider, "ignored")
-			s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no repository or account in payload"})
-			return
+			return nil
 		}
 		repositories = append(repositories, payload.Installation.Account.Login+"/*")
 	}
+	return repositories
+}
 
-	s.runDiscoveryForRepositories(ctx, w, r, body, repositories)
+// discoveryOutcome counts what startDiscoveries did with the matching jobs.
+type discoveryOutcome struct {
+	matched, authenticated, started, running, suspended, failed int
+	startedJobs                                                 []string
 }
 
 // runDiscoveryForRepositories starts a discovery for every webhook-enabled
@@ -125,11 +142,7 @@ func (s *Server) runDiscoveryForRepositories(ctx context.Context, w http.Respons
 		return
 	}
 
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-
-	jobs, err := s.manager.ListEffectiveRenovateJobsFull(ctx)
+	outcome, err := s.startDiscoveries(ctx, r, body, repositories)
 	if err != nil {
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
 		s.logger.Error(err, "failed to list RenovateJobs for repository event")
@@ -137,14 +150,47 @@ func (s *Server) runDiscoveryForRepositories(ctx context.Context, w http.Respons
 		return
 	}
 
-	var matched, authenticated, started, running, suspended, failed int
-	startedJobs := make([]string, 0)
+	switch {
+	case outcome.matched == 0:
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
+		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no matching renovate job"})
+	case outcome.authenticated == 0:
+		s.recordResolverAuthFailure(ctx, provider, ErrAuthenticationFailed, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	case outcome.started == 0:
+		metricStore.IncWebhookRequest(ctx, provider, "ignored")
+		s.writeJSON(w, http.StatusOK, map[string]any{
+			"message":        "no discovery started",
+			"alreadyRunning": outcome.running,
+			"suspended":      outcome.suspended,
+			"failed":         outcome.failed,
+		})
+	default:
+		metricStore.IncWebhookRequest(ctx, provider, "accepted")
+		s.logger.Info("started discovery from repository webhook", "repositories", repositories, "renovateJobs", outcome.startedJobs)
+		s.writeJSON(w, http.StatusAccepted, map[string]any{"message": "discovery started", "renovateJobs": outcome.startedJobs})
+	}
+}
+
+// startDiscoveries starts a discovery for every matching job the request
+// authenticates against. It requires s.discovery.
+func (s *Server) startDiscoveries(ctx context.Context, r *http.Request, body []byte, repositories []string) (discoveryOutcome, error) {
+	namespace := r.URL.Query().Get("namespace")
+	jobName := r.URL.Query().Get("job")
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+
+	outcome := discoveryOutcome{startedJobs: make([]string, 0)}
+	jobs, err := s.manager.ListEffectiveRenovateJobsFull(ctx)
+	if err != nil {
+		return outcome, err
+	}
 
 	for _, job := range jobs {
 		if !jobMatchesRepositoryEvent(job, namespace, jobName, repositories) {
 			continue
 		}
-		matched++
+		outcome.matched++
 		id := crdmanager.RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 
 		if job.Spec.Webhook.Authentication != nil && job.Spec.Webhook.Authentication.Enabled {
@@ -156,48 +202,27 @@ func (s *Server) runDiscoveryForRepositories(ctx context.Context, w http.Respons
 				continue
 			}
 		}
-		authenticated++
+		outcome.authenticated++
 
 		status, err := s.discovery.GetDiscoveryJobStatus(ctx, &job)
 		if err == nil && status == api.JobStatusRunning {
-			running++
+			outcome.running++
 			continue
 		}
 
 		if _, err := s.discovery.CreateDiscoveryJob(ctx, job, renovate.DiscoveryJobOptions{TriggerAllProjects: false}); err != nil {
 			if errors.Is(err, renovate.ErrRenovateJobSuspended) {
-				suspended++
+				outcome.suspended++
 				continue
 			}
-			failed++
+			outcome.failed++
 			s.logger.Error(err, "failed to start discovery for RenovateJob", "renovateJob", job.Name, "namespace", job.Namespace)
 			continue
 		}
-		started++
-		startedJobs = append(startedJobs, job.Fullname())
+		outcome.started++
+		outcome.startedJobs = append(outcome.startedJobs, job.Fullname())
 	}
-
-	switch {
-	case matched == 0:
-		metricStore.IncWebhookRequest(ctx, provider, "ignored")
-		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no matching renovate job"})
-	case authenticated == 0:
-		s.recordResolverAuthFailure(ctx, provider, ErrAuthenticationFailed, signatureWasUsed(r))
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-	case started == 0:
-		metricStore.IncWebhookRequest(ctx, provider, "ignored")
-		s.writeJSON(w, http.StatusOK, map[string]any{
-			"message":        "no discovery started",
-			"alreadyRunning": running,
-			"suspended":      suspended,
-			"failed":         failed,
-		})
-	default:
-		metricStore.IncWebhookRequest(ctx, provider, "accepted")
-		s.logger.Info("started discovery from repository webhook", "repositories", repositories, "renovateJobs", startedJobs)
-		s.writeJSON(w, http.StatusAccepted, map[string]any{"message": "discovery started", "renovateJobs": startedJobs})
-	}
+	return outcome, nil
 }
 
 // jobMatchesRepositoryEvent reports whether a repository lifecycle event

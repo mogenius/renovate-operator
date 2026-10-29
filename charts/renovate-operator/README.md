@@ -1,6 +1,6 @@
 # renovate-operator
 
-![Version: 6.6.0](https://img.shields.io/badge/Version-6.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 6.6.0](https://img.shields.io/badge/AppVersion-6.6.0-informational?style=flat-square)
+![Version: 6.7.0](https://img.shields.io/badge/Version-6.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 6.7.0](https://img.shields.io/badge/AppVersion-6.7.0-informational?style=flat-square)
 
 Chart to deploy the renovate operator to your cluster
 
@@ -24,7 +24,7 @@ Kubernetes: `>=1.29.0-0`
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://valkey.io/valkey-helm/ | valkey | 0.12.0 |
+| https://valkey.io/valkey-helm/ | valkey | 0.12.1 |
 
 ## Values
 
@@ -82,7 +82,7 @@ Kubernetes: `>=1.29.0-0`
 | crd.image.pullPolicy | string | `"IfNotPresent"` |  |
 | crd.image.registry | string | `"registry.k8s.io"` |  |
 | crd.image.repository | string | `"kubectl"` |  |
-| crd.image.tag | string | `"v1.37.1"` |  |
+| crd.image.tag | string | `"v1.37.2"` |  |
 | crd.install | bool | `true` | whether to install the CRD or not, set to false if you want to install the CRD separately |
 | crd.mode | string | `"hook"` |  |
 | crd.securityContext.container.allowPrivilegeEscalation | bool | `false` |  |
@@ -151,6 +151,10 @@ Kubernetes: `>=1.29.0-0`
 | policy.enabled | bool | `false` | API server regardless of this setting. |
 | policy.requireSecretRefOptIn | bool | `true` | key names, so it is not an arbitrary-key reference. |
 | priorityClassName | string | `""` | priorityClassName for the operator pod |
+| probes.enabled | bool | `true` | enable liveness and readiness probes for the operator container |
+| probes.liveness | object | `{"initialDelaySeconds":60,"timeoutSeconds":5}` | liveness probe timings |
+| probes.port | int | `8083` | port of the controller-runtime health probe server |
+| probes.readiness | object | `{"timeoutSeconds":5}` | readiness probe timings |
 | rbac.ownNamespaceOnly | bool | `false` | support is disabled (no cluster-scoped RBAC, no watch). |
 | rbac.watchNamespace | string | `""` | optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true) |
 | replicaCount | int | `1` | number of operator replicas. Leader election is enabled automatically when > 1 |

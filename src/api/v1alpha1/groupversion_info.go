@@ -20,6 +20,7 @@ func AddToScheme(s *runtime.Scheme) error {
 		&RenovateProject{}, &RenovateProjectList{},
 		&RenovateJobTemplate{}, &RenovateJobTemplateList{},
 		&ClusterRenovateJobTemplate{}, &ClusterRenovateJobTemplateList{},
+		&GitHubAppInstallationSet{}, &GitHubAppInstallationSetList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

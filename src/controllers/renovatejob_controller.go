@@ -156,6 +156,10 @@ func (r *RenovateJobReconciler) acceptJob(ctx context.Context, logger logr.Logge
 		return r.refuseJob(ctx, logger, jobID, policy.ReasonIncompleteSpec, msg)
 	}
 
+	if err := policy.ValidateSpecConsistency(effectiveJob.Spec); err != nil {
+		return r.refuseJob(ctx, logger, jobID, policy.ReasonInvalidSpec, err.Error())
+	}
+
 	err := r.Policy.ValidateJob(effectiveJob)
 	if err == nil {
 		message := "RenovateJob satisfies the operator's policy"

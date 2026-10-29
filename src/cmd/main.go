@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	api "renovate-operator/api/v1alpha1"
@@ -264,6 +266,18 @@ func main() {
 				_, err := strconv.Atoi(value)
 				if err != nil {
 					return fmt.Errorf("'SERVER_PORT' needs to be an integer: %s", err.Error())
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "HEALTH_PROBE_PORT",
+			Optional: true,
+			Default:  "8083",
+			Validate: func(value string) error {
+				_, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("'HEALTH_PROBE_PORT' needs to be an integer: %s", err.Error())
 				}
 				return nil
 			},
@@ -764,6 +778,7 @@ func main() {
 		LeaderElectionID:              leaderElectionID,
 		LeaderElectionNamespace:       config.GetValue("POD_NAMESPACE"),
 		LeaderElectionReleaseOnCancel: true,
+		HealthProbeBindAddress:        ":" + config.GetValue("HEALTH_PROBE_PORT"),
 		Cache:                         cache.Options{DefaultNamespaces: map[string]cache.Config{watchNamespace: {}}},
 		// Secrets and ConfigMaps bypass the informer cache: a cached read needs
 		// list+watch on every one in the watched scope and keeps all of their
@@ -868,7 +883,8 @@ func main() {
 	})
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
-		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook"))
+		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook")).
+			WithInstallationSets(mgr.GetClient(), guardRails)
 
 		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
 			webhookServer.Run()
@@ -920,11 +936,30 @@ func main() {
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup manager")
 
+	// Bounded, so a stalled GitHub endpoint cannot block the reconcile worker.
+	installationsHTTPClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: telemetry.WrapTransport(http.DefaultTransport),
+	}
+	err = (&controllers.GitHubAppInstallationSetReconciler{
+		K8sClient:               mgr.GetClient(),
+		APIReader:               mgr.GetAPIReader(),
+		Installations:           github.NewInstallationLister(installationsHTTPClient),
+		Policy:                  guardRails,
+		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
+	}).SetupWithManager(mgr)
+	assert.NoError(err, "failed to setup github app installation set reconciler")
+
 	err = (&controllers.RenovateProjectReconciler{
 		Manager:   jobMgr,
 		K8sClient: mgr.GetClient(),
 	}).SetupWithManager(mgr)
 	assert.NoError(err, "failed to setup project reconciler")
+
+	err = mgr.AddHealthzCheck("ping", healthz.Ping)
+	assert.NoError(err, "failed to setup liveness check")
+	err = mgr.AddReadyzCheck("ping", healthz.Ping)
+	assert.NoError(err, "failed to setup readiness check")
 
 	err = mgr.Start(ctx)
 	assert.NoError(err, "failed to start manager")
