@@ -151,6 +151,10 @@ Kubernetes: `>=1.29.0-0`
 | policy.enabled | bool | `false` | API server regardless of this setting. |
 | policy.requireSecretRefOptIn | bool | `true` | key names, so it is not an arbitrary-key reference. |
 | priorityClassName | string | `""` | priorityClassName for the operator pod |
+| probes.enabled | bool | `true` | enable liveness and readiness probes for the operator container |
+| probes.liveness | object | `{"initialDelaySeconds":60,"timeoutSeconds":5}` | liveness probe timings |
+| probes.port | int | `8083` | port of the controller-runtime health probe server |
+| probes.readiness | object | `{"timeoutSeconds":5}` | readiness probe timings |
 | rbac.ownNamespaceOnly | bool | `false` | support is disabled (no cluster-scoped RBAC, no watch). |
 | rbac.watchNamespace | string | `""` | optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true) |
 | replicaCount | int | `1` | number of operator replicas. Leader election is enabled automatically when > 1 |

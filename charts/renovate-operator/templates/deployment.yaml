@@ -89,6 +89,8 @@ spec:
               value: {{ .Values.image.imagePullSecrets | toJson | quote }}
             - name: SERVER_PORT
               value: "8081"
+            - name: HEALTH_PROBE_PORT
+              value: {{ .Values.probes.port | quote }}
             {{- $basePath := include "renovate-operator.basePath" . }}
             {{- if $basePath }}
             - name: BASE_PATH
@@ -380,11 +382,30 @@ spec:
             - containerPort: 8080
               name: metrics
               protocol: TCP
+            - containerPort: {{ .Values.probes.port }}
+              name: probes
+              protocol: TCP
             {{- if .Values.webhook.enabled }}
             - containerPort: {{ .Values.webhook.port }}
               name: webhook
               protocol: TCP
             {{- end }}
+          {{- if .Values.probes.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            {{- with .Values.probes.liveness }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            {{- with .Values.probes.readiness }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
           {{- if or .Values.extraVolumeMounts (and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret) }}
           volumeMounts:
             {{- if and .Values.auth.oidc.enabled .Values.auth.oidc.caCert.existingSecret }}

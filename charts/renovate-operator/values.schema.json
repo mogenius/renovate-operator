@@ -31,6 +31,17 @@
       "type": ["array", "null"],
       "items": { "type": "object" }
     },
+    "probeTimings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "initialDelaySeconds": { "type": "integer", "minimum": 0 },
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "successThreshold": { "type": "integer", "minimum": 1 },
+        "failureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
     "image": {
       "type": "object",
       "additionalProperties": false,
@@ -168,6 +179,16 @@
         "podLabels": { "$ref": "#/$defs/stringMap" },
         "podAnnotations": { "$ref": "#/$defs/stringMap" },
         "revisionHistoryLimit": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "liveness": { "$ref": "#/$defs/probeTimings" },
+        "readiness": { "$ref": "#/$defs/probeTimings" }
       }
     },
     "config": {
