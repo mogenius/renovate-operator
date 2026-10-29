@@ -98,7 +98,7 @@ func (g *GitHubOAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch user info", http.StatusInternalServerError)
 		return
 	}
-	g.logger.Info("user info fetched", "email", email, "name", name, "login", login)
+	g.logger.Info("user info fetched", "email", email, "login", login)
 
 	var groups []string
 	if g.orgGroups {

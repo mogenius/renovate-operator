@@ -1,0 +1,33 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: S3 log object tags
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: Renders an empty tag set by default
+  set:
+    s3:
+      bucket: logs
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: S3_LOG_OBJECT_TAGS
+        value: "{}"
+
+- it: Renders configured tags as JSON
+  set:
+    s3:
+      bucket: logs
+      logObjectTags:
+        retention: renovate-logs
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: S3_LOG_OBJECT_TAGS
+        value: '{"retention":"renovate-logs"}'
