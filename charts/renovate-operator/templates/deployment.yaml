@@ -350,12 +350,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.s3.existingSecret }}
-                  key: access-key-id
+                  key: {{ .Values.s3.credentials.accessKeyId.key | default "access-key-id" }}
             - name: S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.s3.existingSecret }}
-                  key: secret-access-key
+                  key: {{ .Values.s3.credentials.secretAccessKey.key | default "secret-access-key" }}
             - name: S3_CREDENTIALS_SECRET_NAME
               value: {{ .Values.s3.existingSecret | quote }}
             {{- end }}
