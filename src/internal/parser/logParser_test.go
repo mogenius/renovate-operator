@@ -235,8 +235,31 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
+			name:        "Creating PR from PR worker reads prTitle",
+			logs:        `{"level":20,"msg":"Creating PR","branch":"renovate/golang-1.x","prTitle":"Update golang to v1.22"}`,
+			wantCreated: 1,
+			wantPRCount: 1,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				if prs[0].Title != "Update golang to v1.22" {
+					t.Errorf("title = %q, want %q", prs[0].Title, "Update golang to v1.22")
+				}
+			},
+		},
+		{
+			name: "Creating PR from PR worker and platform client keeps title",
+			logs: `{"level":20,"msg":"Creating PR","branch":"renovate/golang-1.x","prTitle":"Update golang to v1.22"}` + "\n" +
+				`{"level":20,"msg":"Creating PR","branch":"renovate/golang-1.x","title":"Update golang to v1.22","head":"renovate/golang-1.x","base":"main","draft":false}`,
+			wantCreated: 1,
+			wantPRCount: 1,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				if prs[0].Title != "Update golang to v1.22" {
+					t.Errorf("title = %q, want %q", prs[0].Title, "Update golang to v1.22")
+				}
+			},
+		},
+		{
 			name:        "single PR updated",
-			logs:        `{"level":30,"msg":"Updating PR","branch":"renovate/react-18.x","title":"Update react to v18.3"}`,
+			logs:        `{"level":30,"msg":"PR updated","branch":"renovate/react-18.x","pr":42,"prTitle":"Update react to v18.3"}`,
 			wantUpdated: 1,
 			wantPRCount: 1,
 			checkDetails: func(t *testing.T, prs []api.PRDetail) {
@@ -286,7 +309,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 		{
 			name: "mixed activity - multiple branches with different actions",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/foo","title":"Update foo"}` + "\n" +
-				`{"level":30,"msg":"Updating PR","branch":"renovate/bar","title":"Update bar"}` + "\n" +
+				`{"level":30,"msg":"PR updated","branch":"renovate/bar","pr":51,"prTitle":"Update bar"}` + "\n" +
 				`{"level":20,"msg":"Pull Request #50 does not need updating","branch":"renovate/baz"}` + "\n" +
 				`{"level":30,"msg":"Creating PR","branch":"renovate/qux","title":"Update qux"}`,
 			wantCreated:   2,
@@ -297,7 +320,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 		{
 			name: "duplicate branch - last-write-wins",
 			logs: `{"level":30,"msg":"Creating PR","branch":"renovate/dep-1.x","title":"Create dep v1"}` + "\n" +
-				`{"level":30,"msg":"Updating PR","branch":"renovate/dep-1.x","title":"Update dep v1"}`,
+				`{"level":30,"msg":"PR updated","branch":"renovate/dep-1.x","pr":60,"prTitle":"Update dep v1"}`,
 			wantCreated: 0,
 			wantUpdated: 1,
 			wantPRCount: 1,
@@ -376,7 +399,7 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			name: "truncated logs (OOMKilled) - returns partial data",
 			logs: `{"level":30,"msg":"Repository started"}` + "\n" +
 				`{"level":30,"msg":"Creating PR","branch":"renovate/dep-1","title":"Update dep-1"}` + "\n" +
-				`{"level":30,"msg":"Updating PR","branch":"renovate/dep-2","title":"Update dep-2"}`,
+				`{"level":30,"msg":"PR updated","branch":"renovate/dep-2","pr":2,"prTitle":"Update dep-2"}`,
 			// No "Repository finished" line - simulates truncated logs
 			wantCreated: 1,
 			wantUpdated: 1,
@@ -756,8 +779,8 @@ func TestParseRenovateLogsPRActivityGoldenFile(t *testing.T) {
 		`{"level":30,"msg":"Creating PR","branch":"renovate/helm-renovate-46.x","title":"Update registry.example.com/org/helm/renovate Docker tag to v46.99.0"}`,
 		`{"level":20,"msg":"git push","branch":"renovate/helm-renovate-46.x","result":{"remoteMessages":{"all":["Visit the existing pull request:","https://git.example.com/org/repo/pulls/901 merges into main"]}}}`,
 		// One PR updated
-		`{"level":30,"msg":"Updating PR","branch":"renovate/rook-ceph-1.x","title":"Update rook-ceph to v1.15.0"}`,
 		`{"level":20,"msg":"git push","branch":"renovate/rook-ceph-1.x","result":{"remoteMessages":{"all":["Visit the existing pull request:","https://git.example.com/org/repo/pulls/850 merges into main"]}}}`,
+		`{"level":30,"msg":"PR updated","branch":"renovate/rook-ceph-1.x","pr":850,"prTitle":"Update rook-ceph to v1.15.0"}`,
 		// Three unchanged PRs
 		`{"level":20,"msg":"Pull Request #800 does not need updating","branch":"renovate/traefik-30.x"}`,
 		`{"level":20,"msg":"Pull Request #810 does not need updating","branch":"renovate/cert-manager-1.x"}`,
@@ -1316,10 +1339,8 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 	})
 
 	t.Run("pr-edited branch without PR is excluded", func(t *testing.T) {
-		// Real-world case: a lock file maintenance branch was modified by someone
-		// other than Renovate and has no open PR. Renovate logs "Branch has been
-		// edited but found no PR - skipping" and reports result "pr-edited" with
-		// prNo=null. No PR exists, so it must not show up as an updated PR.
+		// An edited branch without an open PR yields "pr-edited" with prNo=null
+		// and produces no PR detail.
 		logs := strings.Join([]string{
 			`{"level":20,"msg":"Branch has been edited but found no PR - skipping","branch":"renovate/lock-file-maintenance"}`,
 			reportLine(`{"branchName":"renovate/lock-file-maintenance","prNo":null,"prTitle":"fix(deps): lock file maintenance","result":"pr-edited"}`),
