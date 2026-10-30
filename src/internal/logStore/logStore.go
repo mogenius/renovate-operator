@@ -21,12 +21,21 @@ type LogStore interface {
 	Get(namespace, renovateJob, project string) (string, bool)
 }
 
+// S3LogOptions configures the objects written by the S3 log store.
+type S3LogOptions struct {
+	// Prefix is the object key prefix; defaults to "renovate-logs".
+	Prefix string
+	// Tags are attached to every written object so bucket lifecycle rules can
+	// expire logs of projects that stopped running.
+	Tags map[string]string
+}
+
 // NewLogStore creates a LogStore based on the provided mode.
 // Supported modes: "disabled" (default, no-op), "memory" (in-memory store),
 // "valkey" (Valkey-backed; initialises its own KVStore on DB 1),
-// "s3" (S3-backed; s3Cfg.Bucket must be set, logPrefix sets the object key prefix).
-// valkeyCfg is ignored for non-valkey modes; s3Cfg and logPrefix are ignored for non-s3 modes.
-func NewLogStore(logger logr.Logger, mode string, valkeyCfg kvstore.ValkeyConfig, s3Cfg objectstore.S3Config, logPrefix string) (LogStore, error) {
+// "s3" (S3-backed; s3Cfg.Bucket must be set).
+// valkeyCfg is ignored for non-valkey modes; s3Cfg and s3Log are ignored for non-s3 modes.
+func NewLogStore(logger logr.Logger, mode string, valkeyCfg kvstore.ValkeyConfig, s3Cfg objectstore.S3Config, s3Log S3LogOptions) (LogStore, error) {
 	switch mode {
 	case "memory":
 		return &memoryLogStore{data: make(map[string]string)}, nil
@@ -37,7 +46,7 @@ func NewLogStore(logger logr.Logger, mode string, valkeyCfg kvstore.ValkeyConfig
 		}
 		return &valkeyLogStore{kv: kv, logger: logger}, nil
 	case "s3":
-		store, err := newS3LogStore(context.Background(), s3Cfg, logPrefix, logger)
+		store, err := newS3LogStore(context.Background(), s3Cfg, s3Log, logger)
 		if err != nil {
 			return nil, fmt.Errorf("initializing S3 log store: %w", err)
 		}
