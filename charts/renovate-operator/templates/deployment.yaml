@@ -349,15 +349,19 @@ spec:
             - name: S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.s3.existingSecret }}
-                  key: {{ .Values.s3.credentials.accessKeyId.key | default "access-key-id" }}
+                  name: {{ .Values.s3.existingSecret | quote }}
+                  key: {{ .Values.s3.accessKeyIdKey | default "access-key-id" | quote }}
             - name: S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.s3.existingSecret }}
-                  key: {{ .Values.s3.credentials.secretAccessKey.key | default "secret-access-key" }}
+                  name: {{ .Values.s3.existingSecret | quote }}
+                  key: {{ .Values.s3.secretAccessKeyKey | default "secret-access-key" | quote }}
             - name: S3_CREDENTIALS_SECRET_NAME
               value: {{ .Values.s3.existingSecret | quote }}
+            - name: S3_ACCESS_KEY_ID_SECRET_KEY
+              value: {{ .Values.s3.accessKeyIdKey | default "access-key-id" | quote }}
+            - name: S3_SECRET_ACCESS_KEY_SECRET_KEY
+              value: {{ .Values.s3.secretAccessKeyKey | default "secret-access-key" | quote }}
             {{- end }}
             {{- end }}
             {{- if .Values.telemetry.enabled }}

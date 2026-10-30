@@ -564,13 +564,10 @@ s3:
   cachePrefix: "renovate-cache"
   # -- Name of an existing Secret containing S3 credentials (optional; uses the pod's IAM role when absent)
   existingSecret: ""
-  credentials:
-    # -- Key in the existing Secret containing the S3 access key ID
-    accessKeyId:
-      key: "access-key-id"
-    # -- Key in the existing Secret containing the S3 secret access key
-    secretAccessKey:
-      key: "secret-access-key"
+  # -- Key in the existing Secret containing the S3 access key ID
+  accessKeyIdKey: "access-key-id"
+  # -- Key in the existing Secret containing the S3 secret access key
+  secretAccessKeyKey: "secret-access-key"
 
 metrics:
   enabled: false

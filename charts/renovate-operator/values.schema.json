@@ -475,22 +475,8 @@
         "existingSecret": {
           "type": "string"
         },
-        "credentials": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "accessKeyId": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": { "key": { "type": "string" } }
-            },
-            "secretAccessKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": { "key": { "type": "string" } }
-            }
-          }
-        }
+        "accessKeyIdKey": { "type": "string" },
+        "secretAccessKeyKey": { "type": "string" }
       }
     },
     "metrics": {
