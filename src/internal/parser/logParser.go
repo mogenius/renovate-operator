@@ -68,8 +68,8 @@ type gitPushEntry struct {
 	} `json:"result"`
 }
 
-// prCreatedEntry is a targeted partial-unmarshal struct for "PR created" / "PR automerged" messages (level 30)
-// which contain the PR number and title after the PR is created on the forge.
+// prCreatedEntry is a targeted partial-unmarshal struct for "PR created" / "PR updated" / "PR automerged"
+// messages (level 30) which contain the PR number and title after the PR is changed on the forge.
 type prCreatedEntry struct {
 	Msg     string `json:"msg"`
 	Branch  string `json:"branch"`
@@ -269,6 +269,17 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 				}
 			}
 
+		case entry.Msg == "PR updated":
+			var pu prCreatedEntry
+			if err := json.Unmarshal([]byte(line), &pu); err == nil && pu.Branch != "" && pu.PR > 0 {
+				detail := getOrCreateDetail(branchMap, pu.Branch)
+				detail.Number = pu.PR
+				detail.Action = api.PRActionUpdated
+				if pu.PRTitle != "" {
+					detail.Title = pu.PRTitle
+				}
+			}
+
 		case entry.Msg == "PR automerged":
 			var pc prCreatedEntry
 			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" {
@@ -337,6 +348,11 @@ func isActiveBranchResult(result string, prNo *int) bool {
 	switch result {
 	case "already-existed", "not-scheduled", "error", "pending", "no-work":
 		return false
+	case "pr-edited":
+		// The branch was modified by someone other than Renovate, so Renovate
+		// skipped it. Without a PR number there is no open PR (e.g. "Branch has
+		// been edited but found no PR - skipping").
+		return prNo != nil && *prNo > 0
 	}
 	return true
 }
@@ -369,7 +385,9 @@ func applyBranchSummary(branchMap map[string]*api.PRDetail, b branchSummaryItem,
 }
 
 // branchResultToAction maps a Renovate branch result string to a PRAction.
-// Unknown or empty results default to PRActionUnchanged.
+// Unknown or empty results default to PRActionUnchanged. "pr-edited" means the PR
+// was edited by a user and Renovate left it alone, so it is unchanged too; actual
+// Renovate updates are detected via the per-message "PR updated" log line.
 func branchResultToAction(result string) api.PRAction {
 	switch result {
 	case "needs-approval":
@@ -378,8 +396,6 @@ func branchResultToAction(result string) api.PRAction {
 		return api.PRActionAutomerged
 	case "pr-created":
 		return api.PRActionCreated
-	case "pr-edited":
-		return api.PRActionUpdated
 	default:
 		return api.PRActionUnchanged
 	}

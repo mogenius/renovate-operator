@@ -249,6 +249,24 @@ func TestParseRenovateLogsPRActivity(t *testing.T) {
 			},
 		},
 		{
+			name: "PR updated message overrides report result done",
+			logs: `{"level":30,"msg":"PR updated","branch":"renovate/react-18.x","pr":42,"prTitle":"Update react to v18.3"}` + "\n" +
+				`{"level":30,"msg":"Printing report","report":{"repositories":{"org/repo":{"branches":[{"branchName":"renovate/react-18.x","prNo":42,"prTitle":"Update react to v18.3","result":"done"}]}}}}`,
+			wantUpdated: 1,
+			wantPRCount: 1,
+			checkDetails: func(t *testing.T, prs []api.PRDetail) {
+				if prs[0].Action != api.PRActionUpdated {
+					t.Errorf("action = %q, want %q", prs[0].Action, api.PRActionUpdated)
+				}
+				if prs[0].Number != 42 {
+					t.Errorf("number = %d, want 42", prs[0].Number)
+				}
+				if prs[0].Title != "Update react to v18.3" {
+					t.Errorf("title = %q, want %q", prs[0].Title, "Update react to v18.3")
+				}
+			},
+		},
+		{
 			name:          "single PR unchanged",
 			logs:          `{"level":20,"msg":"Pull Request #101 does not need updating","branch":"renovate/rook-packages"}`,
 			wantUnchanged: 1,
@@ -1204,8 +1222,11 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 		if pa.Created != 1 {
 			t.Errorf("Created = %d, want 1 (pr-created)", pa.Created)
 		}
-		if pa.Updated != 1 {
-			t.Errorf("Updated = %d, want 1 (pr-edited)", pa.Updated)
+		if pa.Updated != 0 {
+			t.Errorf("Updated = %d, want 0 (pr-edited is skipped by Renovate, not updated)", pa.Updated)
+		}
+		if pa.Unchanged != 1 {
+			t.Errorf("Unchanged = %d, want 1 (pr-edited)", pa.Unchanged)
 		}
 		if len(pa.PRs) != 4 {
 			t.Errorf("len(PRs) = %d, want 4 (not-scheduled excluded)", len(pa.PRs))
@@ -1227,8 +1248,8 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 		if prsByBranch["renovate/new-pr"].Number != 20 {
 			t.Errorf("new-pr number = %d, want 20", prsByBranch["renovate/new-pr"].Number)
 		}
-		if prsByBranch["renovate/edited-pr"].Action != api.PRActionUpdated {
-			t.Errorf("edited-pr action = %q, want updated", prsByBranch["renovate/edited-pr"].Action)
+		if prsByBranch["renovate/edited-pr"].Action != api.PRActionUnchanged {
+			t.Errorf("edited-pr action = %q, want unchanged", prsByBranch["renovate/edited-pr"].Action)
 		}
 		if _, exists := prsByBranch["renovate/skipped"]; exists {
 			t.Error("not-scheduled branch should not appear in PRs")
@@ -1291,6 +1312,27 @@ func TestParseRenovateLogsPrintingReport(t *testing.T) {
 		}
 		if len(pa.PRs) != 0 {
 			t.Errorf("len(PRs) = %d, want 0", len(pa.PRs))
+		}
+	})
+
+	t.Run("pr-edited branch without PR is excluded", func(t *testing.T) {
+		// Real-world case: a lock file maintenance branch was modified by someone
+		// other than Renovate and has no open PR. Renovate logs "Branch has been
+		// edited but found no PR - skipping" and reports result "pr-edited" with
+		// prNo=null. No PR exists, so it must not show up as an updated PR.
+		logs := strings.Join([]string{
+			`{"level":20,"msg":"Branch has been edited but found no PR - skipping","branch":"renovate/lock-file-maintenance"}`,
+			reportLine(`{"branchName":"renovate/lock-file-maintenance","prNo":null,"prTitle":"fix(deps): lock file maintenance","result":"pr-edited"}`),
+		}, "\n")
+
+		result := ParseRenovateLogs(logs)
+
+		if result.PRActivity == nil {
+			t.Fatal("PRActivity = nil, want non-nil")
+		}
+		pa := result.PRActivity
+		if pa.Updated != 0 || pa.Unchanged != 0 || len(pa.PRs) != 0 {
+			t.Errorf("pr-edited branch without PR should not be tracked: %+v", pa)
 		}
 	})
 
