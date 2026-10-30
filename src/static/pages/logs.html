@@ -274,6 +274,10 @@
         });
       };
 
+      const toggleAllLevels = () => {
+        setSelectedLevels(prev => (prev.size === ALL_LEVELS.length ? new Set() : new Set(ALL_LEVELS)));
+      };
+
       const filteredLogs = useMemo(() => {
         if (!logs) return null;
         let result = logs;
@@ -503,6 +507,16 @@
                     </button>
                     {filterOpen && (
                       <div className="absolute right-0 mt-1 z-10 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg py-1 min-w-[130px]">
+                        <label className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 select-none">
+                          <input
+                            type="checkbox"
+                            checked={selectedLevels.size === ALL_LEVELS.length}
+                            onChange={toggleAllLevels}
+                            className="rounded"
+                          />
+                          <span className="text-xs font-bold text-gray-700 dark:text-slate-200">All</span>
+                        </label>
+                        <div className="border-t border-gray-200 dark:border-slate-600 my-1"></div>
                         {ALL_LEVELS.map(lvl => (
                           <label key={lvl} className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 select-none">
                             <input
