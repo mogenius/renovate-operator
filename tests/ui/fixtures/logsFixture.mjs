@@ -129,6 +129,16 @@ class LogsPage {
     await this.closeLevelFilter();
   }
 
+  /** Opens the level filter, flips the check-everything box, and closes it again. */
+  async toggleAllLevels(check) {
+    await this.levelFilterButton.click();
+    const allBox = this.page.getByRole("checkbox", { name: "All" });
+    if ((await allBox.isChecked()) !== check) {
+      await allBox.click();
+    }
+    await this.closeLevelFilter();
+  }
+
   /** The dropdown closes on a mousedown anywhere outside it. */
   async closeLevelFilter() {
     await this.page.mouse.click(5, 5);

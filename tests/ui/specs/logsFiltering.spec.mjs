@@ -60,6 +60,26 @@ test.describe("logs page", () => {
     await expect(logs.rowsAtLevel("ERROR")).toHaveCount(countEntriesWithLevel(entries, "ERROR"));
   });
 
+  test("the level filter can check and uncheck every level at once", async ({ logs }) => {
+    const entries = buildRenovateRunLog();
+
+    await logs.open(entries);
+
+    // Clearing everything empties the list instead of leaving the old rows up.
+    await logs.toggleAllLevels(false);
+    await expect(logs.rowsAtLevel("ERROR")).toHaveCount(0);
+    await expect(
+      logs.page.getByText("No log entries match the selected levels."),
+    ).toBeVisible();
+    expect(await logs.readStoredLevels()).toBe("");
+
+    // One click brings the whole run back, no box-by-box re-picking.
+    await logs.toggleAllLevels(true);
+    await expect(logs.rowsAtLevel("DEBUG")).toHaveCount(countEntriesWithLevel(entries, "DEBUG"));
+    await expect(logs.rowsAtLevel("ERROR")).toHaveCount(countEntriesWithLevel(entries, "ERROR"));
+    expect(await logs.readStoredLevels()).toBe("FATAL,ERROR,WARN,INFO,DEBUG");
+  });
+
   test("an explicit ?levels= overrides the remembered selection", async ({ logs }) => {
     const entries = buildRenovateRunLog();
 
