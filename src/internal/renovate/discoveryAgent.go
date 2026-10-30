@@ -219,14 +219,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", nil
 	}
 
-	redisSecret, err := createRedisURLSecret(ctx, e.client, renovateJob.Namespace, renovateJob.Name, "", string(crdManager.DiscoveryJobType))
-	if err != nil {
-		return "", fmt.Errorf("failed to create redis url secret: %w", err)
-	}
-	var redisSecretName string
-	if redisSecret != nil {
-		redisSecretName = redisSecret.Name
-	}
+	redisSecretName := newRedisURLSecretName()
 
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
@@ -250,9 +243,8 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", fmt.Errorf("failed to create discovery job: %w", err)
 	}
 
-	// Ownership failure leaves the secret behind until the next discovery; not worth failing over.
-	if err := ownRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName, discoveryJob); err != nil {
-		log.FromContext(ctx).Error(err, "failed to own redis url secret", "job", discoveryJob.Name)
+	if err := createRedisURLSecret(ctx, e.client, redisSecretName, renovateJob.Name, "", string(crdManager.DiscoveryJobType), discoveryJob); err != nil {
+		return "", fmt.Errorf("failed to create redis url secret: %w", err)
 	}
 
 	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")
