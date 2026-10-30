@@ -12,12 +12,12 @@ class S3CredentialSecretKeysTest(unittest.TestCase):
 
         self.assertRegex(
             template,
-            re.compile(r"key:\s*\{\{\s*\.Values\.s3\.credentials\.accessKeyId\.key\s*\|\s*default\s+\"access-key-id\"\s*\}\}"),
+            re.compile(r"key:\s*\{\{\s*\.Values\.s3\.accessKeyIdKey\s*\|\s*default\s+\"access-key-id\"\s*\|\s*quote\s*\}\}"),
             "custom S3 access key ID secret key is not configurable",
         )
         self.assertRegex(
             template,
-            re.compile(r"key:\s*\{\{\s*\.Values\.s3\.credentials\.secretAccessKey\.key\s*\|\s*default\s+\"secret-access-key\"\s*\}\}"),
+            re.compile(r"key:\s*\{\{\s*\.Values\.s3\.secretAccessKeyKey\s*\|\s*default\s+\"secret-access-key\"\s*\|\s*quote\s*\}\}"),
             "custom S3 secret access key secret key is not configurable",
         )
 
