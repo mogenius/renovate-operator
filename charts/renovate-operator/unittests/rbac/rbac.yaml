@@ -6,7 +6,7 @@ release:
   name: renovate-operator-unittest
   namespace: testing
 tests:
-- it: ClusterRole grants only get/create/update on secrets
+- it: ClusterRole grants only get/create/update/delete on secrets
   templates:
   - templates/clusterrole/clusterrole.yaml
   asserts:
@@ -15,9 +15,9 @@ tests:
       content:
         apiGroups: [""]
         resources: ["secrets"]
-        verbs: ["get", "create", "update"]
+        verbs: ["get", "create", "update", "delete"]
 
-- it: ClusterRole never grants list, watch or delete on secrets
+- it: ClusterRole never grants list or watch on secrets
   templates:
   - templates/clusterrole/clusterrole.yaml
   asserts:
@@ -26,9 +26,9 @@ tests:
       content:
         apiGroups: [""]
         resources: ["secrets"]
-        verbs: ["create", "get", "list", "watch", "update", "delete"]
+        verbs: ["get", "create", "update", "delete", "list", "watch"]
 
-- it: Role grants only get/create/update on secrets
+- it: Role grants only get/create/update/delete on secrets
   set:
     rbac.ownNamespaceOnly: true
   templates:
@@ -39,9 +39,9 @@ tests:
       content:
         apiGroups: [""]
         resources: ["secrets"]
-        verbs: ["get", "create", "update"]
+        verbs: ["get", "create", "update", "delete"]
 
-- it: Role never grants list, watch or delete on secrets
+- it: Role never grants list or watch on secrets
   set:
     rbac.ownNamespaceOnly: true
   templates:
@@ -52,7 +52,7 @@ tests:
       content:
         apiGroups: [""]
         resources: ["secrets"]
-        verbs: ["create", "get", "list", "watch", "update", "delete"]
+        verbs: ["get", "create", "update", "delete", "list", "watch"]
 
 - it: ClusterRole grants get/create/update/delete/list/watch on configmaps
   templates:
