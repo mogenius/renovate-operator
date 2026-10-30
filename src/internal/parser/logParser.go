@@ -44,11 +44,14 @@ type repositoryFinishedEntry struct {
 	Status string `json:"status,omitempty"`
 }
 
-// prCreateUpdateEntry is a targeted partial-unmarshal struct for "Creating PR" / "Updating PR" messages.
-type prCreateUpdateEntry struct {
-	Msg    string `json:"msg"`
-	Branch string `json:"branch"`
-	Title  string `json:"title"`
+// prCreatingEntry is a targeted partial-unmarshal struct for "Creating PR" messages.
+// Renovate's PR worker logs the title as "prTitle"; the GitHub and Bitbucket platform
+// clients log a second "Creating PR" line with "title".
+type prCreatingEntry struct {
+	Msg     string `json:"msg"`
+	Branch  string `json:"branch"`
+	PRTitle string `json:"prTitle"`
+	Title   string `json:"title"`
 }
 
 // prUnchangedEntry is a targeted partial-unmarshal struct for "does not need updating" messages.
@@ -68,9 +71,9 @@ type gitPushEntry struct {
 	} `json:"result"`
 }
 
-// prCreatedEntry is a targeted partial-unmarshal struct for "PR created" / "PR updated" / "PR automerged"
+// prResultEntry is a targeted partial-unmarshal struct for "PR created" / "PR updated" / "PR automerged"
 // messages (level 30) which contain the PR number and title after the PR is changed on the forge.
-type prCreatedEntry struct {
+type prResultEntry struct {
 	Msg     string `json:"msg"`
 	Branch  string `json:"branch"`
 	PR      int    `json:"pr"`
@@ -217,19 +220,15 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 
 		case entry.Msg == "Creating PR":
-			var pr prCreateUpdateEntry
+			var pr prCreatingEntry
 			if err := json.Unmarshal([]byte(line), &pr); err == nil && pr.Branch != "" {
 				detail := getOrCreateDetail(branchMap, pr.Branch)
 				detail.Action = api.PRActionCreated
-				detail.Title = pr.Title
-			}
-
-		case entry.Msg == "Updating PR":
-			var pr prCreateUpdateEntry
-			if err := json.Unmarshal([]byte(line), &pr); err == nil && pr.Branch != "" {
-				detail := getOrCreateDetail(branchMap, pr.Branch)
-				detail.Action = api.PRActionUpdated
-				detail.Title = pr.Title
+				if pr.PRTitle != "" {
+					detail.Title = pr.PRTitle
+				} else if pr.Title != "" {
+					detail.Title = pr.Title
+				}
 			}
 
 		case strings.Contains(entry.Msg, "does not need updating"):
@@ -259,7 +258,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 
 		case entry.Msg == "PR created":
-			var pc prCreatedEntry
+			var pc prResultEntry
 			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" && pc.PR > 0 {
 				detail := getOrCreateDetail(branchMap, pc.Branch)
 				detail.Number = pc.PR
@@ -270,7 +269,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 
 		case entry.Msg == "PR updated":
-			var pu prCreatedEntry
+			var pu prResultEntry
 			if err := json.Unmarshal([]byte(line), &pu); err == nil && pu.Branch != "" && pu.PR > 0 {
 				detail := getOrCreateDetail(branchMap, pu.Branch)
 				detail.Number = pu.PR
@@ -281,7 +280,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			}
 
 		case entry.Msg == "PR automerged":
-			var pc prCreatedEntry
+			var pc prResultEntry
 			if err := json.Unmarshal([]byte(line), &pc); err == nil && pc.Branch != "" {
 				detail := getOrCreateDetail(branchMap, pc.Branch)
 				detail.Action = api.PRActionAutomerged
