@@ -1,5 +1,23 @@
 # Changelog
 
+## [6.8.0](https://github.com/mogenius/renovate-operator/compare/6.7.0...6.8.0) (2026-10-31)
+
+
+### Features
+
+* **auth:** add in-memory session store and reject oversized session cookies ([f42b9f2](https://github.com/mogenius/renovate-operator/commit/f42b9f23771e6457a79cd4ee555d21e27457ce53)), closes [#745](https://github.com/mogenius/renovate-operator/issues/745)
+* rework readiness and liveness, add helm value for disabling those probes ([4585555](https://github.com/mogenius/renovate-operator/commit/4585555160ae702bfa51a9bc56aa3278fbf17fdd))
+* **ui:** add a check-all toggle to the log level filter ([6a75674](https://github.com/mogenius/renovate-operator/commit/6a7567431e7ffc85b17c72dbd1e45f9da0da9a83)), closes [#769](https://github.com/mogenius/renovate-operator/issues/769)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.37.2 ([f81d07d](https://github.com/mogenius/renovate-operator/commit/f81d07db493acd3ec29fa40c83911ec521ec30d3))
+* **deps:** update module github.com/netresearch/go-cron to v0.18.0 ([e54c80f](https://github.com/mogenius/renovate-operator/commit/e54c80f2fcedd5ce711188485917ff2e2e023f09))
+* **deps:** update node.js to v26.13.0 ([8f261eb](https://github.com/mogenius/renovate-operator/commit/8f261eb87730b550e89193d82bf557e764473296))
+* **parser:** do not report user-edited branches as updated PRs ([102dda3](https://github.com/mogenius/renovate-operator/commit/102dda32006ba1b648d74a7d583145ddb7bf3599))
+* **parser:** read PR title from Renovate's Creating PR log line ([3823780](https://github.com/mogenius/renovate-operator/commit/3823780ff68b75040650f673b52eb31022dcc460))
+
 ## [6.7.0](https://github.com/mogenius/renovate-operator/compare/6.6.0...6.7.0) (2026-10-28)
 
 
