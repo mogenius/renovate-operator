@@ -425,14 +425,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			continue
 		}
 
-		redisSecret, err := createRedisURLSecret(ctx, e.client, renovateJob.Namespace, renovateJob.Name, project.Name, string(crdManager.ExecutorJobType))
-		if err != nil {
-			return fmt.Errorf("failed to create redis url secret: %w", err)
-		}
-		var redisSecretName string
-		if redisSecret != nil {
-			redisSecretName = redisSecret.Name
-		}
+		redisSecretName := newRedisURLSecretName()
 
 		carrier := propagation.MapCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
@@ -453,7 +446,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
 
-		_, err = crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
+		_, err := crdManager.CreateJobWithGeneration(ctx, e.client, k8sJob, crdManager.JobSelector{
 			JobType:         crdManager.ExecutorJobType,
 			Namespace:       renovateJob.Namespace,
 			RenovateJobName: renovateJob.Name,
@@ -463,9 +456,8 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			return fmt.Errorf("failed to create RenovateJob for project %s: %w", project.Name, err)
 		}
 
-		// Ownership failure leaves the secret behind until the next dispatch; not worth failing over.
-		if err := ownRedisURLSecret(ctx, e.client, renovateJob.Namespace, redisSecretName, k8sJob); err != nil {
-			log.FromContext(ctx).Error(err, "failed to own redis url secret", "job", k8sJob.Name)
+		if err := createRedisURLSecret(ctx, e.client, redisSecretName, renovateJob.Name, project.Name, string(crdManager.ExecutorJobType), k8sJob); err != nil {
+			return fmt.Errorf("failed to create redis url secret for project %s: %w", project.Name, err)
 		}
 
 		metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "executor")

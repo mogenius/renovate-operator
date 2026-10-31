@@ -2,6 +2,7 @@ package renovate
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -12,6 +13,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -39,20 +41,61 @@ func listSecrets(t *testing.T, c client.Client) []corev1.Secret {
 	return list.Items
 }
 
-func TestCreateRedisURLSecretCreatesWithGenerateName(t *testing.T) {
+func TestNewRedisURLSecretName(t *testing.T) {
+	valkeyForwardConfig(t)
+	name := newRedisURLSecretName()
+	if !strings.HasPrefix(name, "redis-forward-secret-") {
+		t.Errorf("expected redis-forward-secret- prefix, got %q", name)
+	}
+	if other := newRedisURLSecretName(); other == name {
+		t.Errorf("expected unique names, got %q twice", name)
+	}
+}
+
+func TestNewRedisURLSecretNameEmptyWithoutForwardFlag(t *testing.T) {
+	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379/0"},
+		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "false"},
+	}); err != nil {
+		t.Fatalf("failed to init config: %v", err)
+	}
+	if name := newRedisURLSecretName(); name != "" {
+		t.Errorf("expected empty name when forwarding disabled, got %q", name)
+	}
+}
+
+func TestNewRedisURLSecretNameEmptyWithoutValkey(t *testing.T) {
+	t.Setenv("VALKEY_URL", "")
+	t.Setenv("VALKEY_HOST", "")
+	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "VALKEY_URL", Optional: true, Default: ""},
+		{Key: "VALKEY_HOST", Optional: true, Default: ""},
+		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "true"},
+	}); err != nil {
+		t.Fatalf("failed to init config: %v", err)
+	}
+	if name := newRedisURLSecretName(); name != "" {
+		t.Errorf("expected empty name when no valkey URL, got %q", name)
+	}
+}
+
+func redisTestJob() *batchv1.Job {
+	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "executor-job-abcde", Namespace: "ns", UID: "uid-123"}}
+}
+
+func TestCreateRedisURLSecretOwnedByJob(t *testing.T) {
 	valkeyForwardConfig(t)
 	scheme := policyScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	job := redisTestJob()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
 
-	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "org/project", string(crdManager.ExecutorJobType))
-	if err != nil {
+	if err := createRedisURLSecret(context.Background(), c, "redis-forward-secret-abcde", "rj", "org/project", string(crdManager.ExecutorJobType), job); err != nil {
 		t.Fatalf("createRedisURLSecret returned error: %v", err)
 	}
-	if secret == nil {
-		t.Fatal("expected secret to be returned, got nil")
-	}
-	if secret.Name == "" {
-		t.Error("expected generated name, got empty string")
+
+	secret := &corev1.Secret{}
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "redis-forward-secret-abcde", Namespace: "ns"}, secret); err != nil {
+		t.Fatalf("expected secret: %v", err)
 	}
 	if got := string(secret.Data["redis-url"]); got != "redis://redis.svc.cluster.local:6379/1" {
 		t.Errorf("expected redis-url with cache db offset, got %q", got)
@@ -72,87 +115,7 @@ func TestCreateRedisURLSecretCreatesWithGenerateName(t *testing.T) {
 	if got := secret.Labels[api.LabelJobType]; got != string(crdManager.ExecutorJobType) {
 		t.Errorf("expected job-type label %q, got %q", string(crdManager.ExecutorJobType), got)
 	}
-}
 
-func TestCreateRedisURLSecretDiscoveryOmitsProjectLabel(t *testing.T) {
-	valkeyForwardConfig(t)
-	scheme := policyScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "", string(crdManager.DiscoveryJobType))
-	if err != nil {
-		t.Fatalf("createRedisURLSecret returned error: %v", err)
-	}
-	if _, ok := secret.Labels[api.LabelProject]; ok {
-		t.Errorf("expected no project label on discovery secret, got %q", secret.Labels[api.LabelProject])
-	}
-}
-
-func TestCreateRedisURLSecretSkippedWithoutForwardFlag(t *testing.T) {
-	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
-		{Key: "VALKEY_URL", Optional: true, Default: "redis://redis.svc.cluster.local:6379/0"},
-		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "false"},
-	}); err != nil {
-		t.Fatalf("failed to init config: %v", err)
-	}
-	scheme := policyScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "proj", string(crdManager.ExecutorJobType))
-	if err != nil {
-		t.Fatalf("createRedisURLSecret returned error: %v", err)
-	}
-	if secret != nil {
-		t.Errorf("expected nil secret when forwarding disabled, got %+v", secret)
-	}
-	if secrets := listSecrets(t, c); len(secrets) != 0 {
-		t.Errorf("expected no secrets created, got %d", len(secrets))
-	}
-}
-
-func TestCreateRedisURLSecretSkippedWithoutValkey(t *testing.T) {
-	t.Setenv("VALKEY_URL", "")
-	t.Setenv("VALKEY_HOST", "")
-	if err := config.InitializeConfigModule([]config.ConfigItemDescription{
-		{Key: "VALKEY_URL", Optional: true, Default: ""},
-		{Key: "VALKEY_HOST", Optional: true, Default: ""},
-		{Key: "VALKEY_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "true"},
-	}); err != nil {
-		t.Fatalf("failed to init config: %v", err)
-	}
-	scheme := policyScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	secret, err := createRedisURLSecret(context.Background(), c, "ns", "rj", "proj", string(crdManager.ExecutorJobType))
-	if err != nil {
-		t.Fatalf("createRedisURLSecret returned error: %v", err)
-	}
-	if secret != nil {
-		t.Errorf("expected nil secret when no valkey URL, got %+v", secret)
-	}
-	if secrets := listSecrets(t, c); len(secrets) != 0 {
-		t.Errorf("expected no secrets created, got %d", len(secrets))
-	}
-}
-
-func TestOwnRedisURLSecret(t *testing.T) {
-	valkeyForwardConfig(t)
-	scheme := policyScheme(t)
-	stored := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "redis-forward-secret-abcde", Namespace: "ns"},
-		Data:       map[string][]byte{"redis-url": []byte("redis://redis.svc.cluster.local:6379/1")},
-	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(stored).Build()
-
-	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "executor-job-abcde", Namespace: "ns", UID: "uid-123"}}
-	if err := ownRedisURLSecret(context.Background(), c, "ns", "redis-forward-secret-abcde", job); err != nil {
-		t.Fatalf("ownRedisURLSecret returned error: %v", err)
-	}
-
-	secret := &corev1.Secret{}
-	if err := c.Get(context.Background(), client.ObjectKey{Name: "redis-forward-secret-abcde", Namespace: "ns"}, secret); err != nil {
-		t.Fatalf("expected secret: %v", err)
-	}
 	if len(secret.OwnerReferences) != 1 {
 		t.Fatalf("expected exactly one owner reference, got %+v", secret.OwnerReferences)
 	}
@@ -167,6 +130,52 @@ func TestOwnRedisURLSecret(t *testing.T) {
 	}
 	if owner.BlockOwnerDeletion != nil && *owner.BlockOwnerDeletion {
 		t.Errorf("expected blockOwnerDeletion to be unset")
+	}
+}
+
+func TestCreateRedisURLSecretDiscoveryOmitsProjectLabel(t *testing.T) {
+	valkeyForwardConfig(t)
+	scheme := policyScheme(t)
+	job := redisTestJob()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
+
+	if err := createRedisURLSecret(context.Background(), c, "redis-forward-secret-abcde", "rj", "", string(crdManager.DiscoveryJobType), job); err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
+	}
+	secrets := listSecrets(t, c)
+	if len(secrets) != 1 {
+		t.Fatalf("expected exactly one secret, got %d", len(secrets))
+	}
+	if _, ok := secrets[0].Labels[api.LabelProject]; ok {
+		t.Errorf("expected no project label on discovery secret, got %q", secrets[0].Labels[api.LabelProject])
+	}
+}
+
+func TestCreateRedisURLSecretSkippedWithoutName(t *testing.T) {
+	valkeyForwardConfig(t)
+	scheme := policyScheme(t)
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	if err := createRedisURLSecret(context.Background(), c, "", "rj", "proj", string(crdManager.ExecutorJobType), redisTestJob()); err != nil {
+		t.Fatalf("createRedisURLSecret returned error: %v", err)
+	}
+	if secrets := listSecrets(t, c); len(secrets) != 0 {
+		t.Errorf("expected no secrets created, got %d", len(secrets))
+	}
+}
+
+func TestCreateRedisURLSecretFailureDeletesJob(t *testing.T) {
+	valkeyForwardConfig(t)
+	scheme := policyScheme(t)
+	job := redisTestJob()
+	existing := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "redis-forward-secret-abcde", Namespace: "ns"}}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job, existing).Build()
+
+	if err := createRedisURLSecret(context.Background(), c, "redis-forward-secret-abcde", "rj", "proj", string(crdManager.ExecutorJobType), job); err == nil {
+		t.Fatal("expected error when the secret already exists")
+	}
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(job), &batchv1.Job{}); !apierrors.IsNotFound(err) {
+		t.Errorf("expected job to be deleted, got %v", err)
 	}
 }
 
