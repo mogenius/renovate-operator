@@ -14,6 +14,15 @@ helm -n renovate-operator upgrade --install renovate-operator \
   --create-namespace --wait
 ```
 
+To manage the CRDs yourself, set `crd.install=false` and apply the `crds.yaml`
+attached to each [GitHub release](https://github.com/mogenius/renovate-operator/releases).
+It holds every CRD of that chart version:
+
+```sh
+kubectl apply --server-side -f \
+  https://github.com/mogenius/renovate-operator/releases/download/<version>/crds.yaml
+```
+
 ## Open the UI
 
 The chart creates no ingress by default, so reach the UI with a port-forward:
