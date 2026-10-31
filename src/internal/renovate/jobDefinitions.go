@@ -313,7 +313,7 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
 							Name: secretName,
-							Key:  "access-key-id",
+							Key:  configuredSecretKey("S3_ACCESS_KEY_ID_SECRET_KEY", "access-key-id"),
 						},
 					},
 				},
@@ -322,7 +322,7 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
 							Name: secretName,
-							Key:  "secret-access-key",
+							Key:  configuredSecretKey("S3_SECRET_ACCESS_KEY_SECRET_KEY", "secret-access-key"),
 						},
 					},
 				},
@@ -331,6 +331,14 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 	}
 
 	return predefinedEnvVars
+}
+
+// configuredSecretKey returns the key name configured via envKey, or fallback when unset.
+func configuredSecretKey(envKey, fallback string) string {
+	if key := config.GetValue(envKey); key != "" {
+		return key
+	}
+	return fallback
 }
 
 func hardenedPodSecurityContext() *v1.PodSecurityContext {

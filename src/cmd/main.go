@@ -630,6 +630,16 @@ func main() {
 			Default:  "",
 		},
 		{
+			Key:      "S3_ACCESS_KEY_ID_SECRET_KEY",
+			Optional: true,
+			Default:  "access-key-id",
+		},
+		{
+			Key:      "S3_SECRET_ACCESS_KEY_SECRET_KEY",
+			Optional: true,
+			Default:  "secret-access-key",
+		},
+		{
 			Key:      "GLOBAL_PARALLELISM_LIMIT",
 			Optional: true,
 			Default:  "0",

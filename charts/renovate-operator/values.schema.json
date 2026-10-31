@@ -473,9 +473,10 @@
         "logPrefix": { "type": "string" },
         "cachePrefix": { "type": "string" },
         "existingSecret": {
-          "description": "Secret must contain the keys access-key-id and secret-access-key",
           "type": "string"
-        }
+        },
+        "accessKeyIdKey": { "type": "string" },
+        "secretAccessKeyKey": { "type": "string" }
       }
     },
     "metrics": {
