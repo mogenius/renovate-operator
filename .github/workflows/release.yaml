@@ -168,3 +168,13 @@ jobs:
           git commit -m "chore: update Chart.yaml and documentation for version ${VERSION} [skip ci]"
           git pull --rebase
           git push origin main
+
+      - name: Combine CRDs
+        run: cat charts/renovate-operator/crd/*.mogenius.com_*.yaml > /tmp/crds.yaml
+
+      - name: Upload combined CRDs to the release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: /tmp/crds.yaml
+          fail_on_unmatched_files: true
