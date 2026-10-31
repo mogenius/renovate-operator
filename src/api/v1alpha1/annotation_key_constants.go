@@ -16,6 +16,13 @@ const (
 	// ProcessedAnnotationKey is stamped on a Job once its result has been fully
 	// processed, so informer resyncs skip it instead of re-processing.
 	ProcessedAnnotationKey = GroupName + "/processed"
+	// DryRunAnnotationKey marks an executor Job that runs Renovate as a dry run. Its
+	// result is kept in the logs only and does not replace the project's status data
+	// or metrics, which describe the project's real runs.
+	DryRunAnnotationKey = GroupName + "/dry-run"
+	// BaseBranchAnnotationKey holds the custom base branch an executor Job was asked to
+	// run against, so the result can be checked against the branches Renovate processed.
+	BaseBranchAnnotationKey = GroupName + "/base-branch"
 )
 
 // RenovateConfigMapAnnotationKey marks a RenovateJob whose inline renovate config

@@ -251,29 +251,47 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		Status:   newStatus,
 		Duration: &durationStr,
 	}
+	// A dry run's result is what Renovate would do (on a custom branch, with another
+	// config), not what it did. It is kept in the logs only: the project's result, PR
+	// activity, log issues and per-project metrics keep describing its real runs.
+	dryRun := k8sJob != nil && k8sJob.Annotations[api.DryRunAnnotationKey] == "true"
 	hasIssues := false
 	if k8sJob != nil {
 		if logs, err := e.logReader.GetLastJobLog(ctx, k8sJob); err == nil {
+			if requested := k8sJob.Annotations[api.BaseBranchAnnotationKey]; requested != "" {
+				var processed []string
+				if logs, processed = checkCustomBaseBranch(logs, requested, time.Now()); processed != nil {
+					log.FromContext(ctx).Info("custom branch run did not process the requested branch; the repository's config overrides it",
+						"project", project, "requestedBaseBranch", requested, "processedBaseBranches", processed)
+				}
+			}
 			e.logStore.Save(jobId.Namespace, jobId.Name, project, logs)
-			parseResult := parser.ParseRenovateLogs(logs)
-			hasIssues = parseResult.HasIssues
-			newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
-			newProjectStatus.PRActivity = parseResult.PRActivity
-			newProjectStatus.LogIssues = parseResult.LogIssues
+			if !dryRun {
+				parseResult := parser.ParseRenovateLogs(logs)
+				hasIssues = parseResult.HasIssues
+				newProjectStatus.RenovateResultStatus = parseResult.RenovateResultStatus
+				newProjectStatus.PRActivity = parseResult.PRActivity
+				newProjectStatus.LogIssues = parseResult.LogIssues
+			}
 		} else {
 			log.FromContext(ctx).Error(err, "failed to get logs for metrics parsing", "project", project)
 		}
 	}
 
-	metricStore.SetRunFailed(jobId.Namespace, jobId.Name, project, newStatus == api.JobStatusFailed)
-	metricStore.SetDependencyIssues(jobId.Namespace, jobId.Name, project, hasIssues)
-	metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
+	if !dryRun {
+		metricStore.SetRunFailed(jobId.Namespace, jobId.Name, project, newStatus == api.JobStatusFailed)
+		metricStore.SetDependencyIssues(jobId.Namespace, jobId.Name, project, hasIssues)
+		metricStore.CaptureRenovateProjectExecution(ctx, jobId.Namespace, jobId.Name, project, newStatus)
+	}
 
 	// Execution duration (Group A/E). Only emit when the k8s Job reported a StartTime.
+	// The Job itself ran, so its duration counts even for a dry run.
 	if k8sJob != nil && k8sJob.Status.StartTime != nil {
 		seconds := duration.Seconds()
 		metricStore.ObserveJobDuration(ctx, jobId.Namespace, jobId.Name, "executor", newStatus, seconds)
-		metricStore.SetLastExecutionDuration(jobId.Namespace, jobId.Name, project, seconds)
+		if !dryRun {
+			metricStore.SetLastExecutionDuration(jobId.Namespace, jobId.Name, project, seconds)
+		}
 	}
 
 	// Failure breakdown by reason (Group A).

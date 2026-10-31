@@ -3,6 +3,7 @@ package renovate
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/github"
@@ -150,13 +151,6 @@ func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *
 	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
 	predefinedEnvVars = append(predefinedEnvVars, traceCarrierEnvVars(cfg.carrier)...)
 
-	if cfg.executionOptions != nil && cfg.executionOptions.Debug {
-		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
-			Name:  "RENOVATE_LOG_LEVEL",
-			Value: "debug",
-		})
-	}
-
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
 		envFromSecrets = append(envFromSecrets, v1.EnvFromSource{
@@ -198,7 +192,7 @@ func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *
 							Command:         command,
 							Args:            args,
 							Image:           job.Spec.Image,
-							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
+							Env:             mergeEnvVars(executionOptionEnvVars(cfg.executionOptions), mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars)),
 							EnvFrom:         envFromSecrets,
 							Resources:       job.Spec.Resources,
 							VolumeMounts:    volumeMounts,
@@ -230,7 +224,25 @@ func newRenovateJob(job *api.RenovateJob, project string, opts ...jobBuildOpt) *
 		batchJob.Labels = job.Spec.Metadata.Labels
 		batchJob.Spec.Template.Labels = job.Spec.Metadata.Labels
 	}
+	if isDryRun(cfg.executionOptions) {
+		// a copy, since the map may be the RenovateJob spec's own
+		annotations := maps.Clone(batchJob.Annotations)
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
+		annotations[api.DryRunAnnotationKey] = "true"
+		if cfg.executionOptions.BaseBranch != "" {
+			annotations[api.BaseBranchAnnotationKey] = cfg.executionOptions.BaseBranch
+		}
+		batchJob.Annotations = annotations
+	}
 	return batchJob
+}
+
+// isDryRun reports whether a run with these options is a Renovate dry run. A custom base
+// branch run is always one, even when the status was written without the API's validation.
+func isDryRun(executionOptions *api.RenovateExecutionOptions) bool {
+	return executionOptions != nil && (executionOptions.DryRun || executionOptions.BaseBranch != "")
 }
 
 func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar {
@@ -490,6 +502,34 @@ func getDNSPolicy(spec api.RenovateJobSpec) v1.DNSPolicy {
 	}
 
 	return v1.DNSClusterFirst
+}
+
+// executionOptionEnvVars translates the per-run options of a single trigger into env vars.
+// They are merged above spec.extraEnv, since a one-off request must win over the job's defaults.
+func executionOptionEnvVars(executionOptions *api.RenovateExecutionOptions) []v1.EnvVar {
+	if executionOptions == nil {
+		return nil
+	}
+	envVars := []v1.EnvVar{}
+	if executionOptions.Debug {
+		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_LOG_LEVEL", Value: "debug"})
+	}
+	if isDryRun(executionOptions) {
+		envVars = append(envVars, v1.EnvVar{Name: "RENOVATE_DRY_RUN", Value: "full"})
+	}
+	if executionOptions.BaseBranch != "" {
+		// json.Marshal of a []string cannot fail
+		baseBranches, _ := json.Marshal([]string{executionOptions.BaseBranch})
+		envVars = append(envVars,
+			// Renovate renamed baseBranches to baseBranchPatterns; unknown RENOVATE_* vars are
+			// ignored, so setting both serves images from either side of the rename.
+			v1.EnvVar{Name: "RENOVATE_BASE_BRANCH_PATTERNS", Value: string(baseBranches)},
+			v1.EnvVar{Name: "RENOVATE_BASE_BRANCHES", Value: string(baseBranches)},
+			// read the Renovate config from the custom branch, which is what is being tested
+			v1.EnvVar{Name: "RENOVATE_USE_BASE_BRANCH_CONFIG", Value: "merge"},
+		)
+	}
+	return envVars
 }
 
 // mergeEnvVars combines extraEnv and predefinedEnv, giving priority to extraEnv
