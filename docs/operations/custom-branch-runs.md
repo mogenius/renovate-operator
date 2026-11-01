@@ -1,12 +1,19 @@
 # Running a repository against a custom branch
 
-A custom branch run is a one-off Renovate dry run of a single repository against a branch you name, using the Renovate config on that branch. It is meant for checking a config change against a real repository before you merge it into the base branch, without touching the config that every other run uses. Renovate only logs what it would change; the result is read in the project's logs.
+A custom branch run is a debug run of a single repository against a branch you name: a one-off Renovate dry run that uses the Renovate config on that branch. It is meant for checking a config change against a real repository before you merge it into the base branch, without touching the config that every other run uses. Renovate only logs what it would change; the result is read in the project's logs.
 
 ## Starting a run
 
-In the dashboard, each project's action button has a branch icon next to the debug (bug) icon. Click it, enter the branch name and choose **Run**. Tick **Debug log level** for the same extended logs as the debug trigger (`RENOVATE_LOG_LEVEL=debug`).
+In the dashboard, the debug (bug) button next to a project's **Trigger** button opens the **Debug run** dialog. Hovering over it explains both options:
 
-The run is queued with the same priority as any other dashboard trigger. While it is queued, the branch icon is highlighted and its tooltip names the branch. Once the Job starts, the options are cleared. Later runs, whether scheduled, triggered by a webhook or started from the dashboard, use the repository's normal configuration again.
+| Branch                           | What runs                                                                        | Debug log level                                         |
+| -------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Default branch** (preselected) | a normal Renovate run with debug logging, like a scheduled run                   | always on; for a run without debug logs use **Trigger** |
+| **Specific branch**              | a dry run against the branch you enter, using the Renovate config on that branch | ticked by default, can be unticked                      |
+
+To test a config change, choose **Specific branch**, enter the branch name and choose **Run**. Debug logging (`RENOVATE_LOG_LEVEL=debug`) shows the merged config in the logs.
+
+The run is queued with the same priority as any other dashboard trigger. While it is queued, the debug button is highlighted and its tooltip says what is queued, for example _Queued: dry run against branch test/x with debug logs_. Once the Job starts, the options are cleared. Later runs, whether scheduled, triggered by a webhook or started from the dashboard, use the repository's normal configuration again.
 
 Starting a custom branch run needs the `admin` role on the RenovateJob, just like the regular trigger button. See [Authentication](../configuration/auth.md). The **Trigger all** action does not support custom branches.
 
