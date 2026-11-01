@@ -337,7 +337,7 @@ class DashboardPage {
   }
 
   /**
-   * The debug-run button of a project row, which opens the "Debug run" dialog. Scoped to
+   * The debug-run button of a project row, which opens the "Debug or dry run" dialog. Scoped to
    * the table so the `lg:hidden` card layout, which stays in the DOM at this viewport, is
    * not matched too.
    */
@@ -350,7 +350,7 @@ class DashboardPage {
   }
 
   get debugRunDialog() {
-    return this.page.getByRole("dialog", { name: "Debug run" });
+    return this.page.getByRole("dialog", { name: "Debug or dry run" });
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */

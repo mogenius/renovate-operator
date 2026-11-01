@@ -1,7 +1,7 @@
 // Covers the debug-run button on a project row and its dialog
 // (mogenius/renovate-operator#685).
 //
-// One button opens a "Debug run" dialog. On the default branch it queues a normal run with
+// One button opens a "Debug or dry run" dialog. On the default branch it queues a normal run with
 // debug logging. On a specific branch it queues one dry run of that branch, using the
 // Renovate config found on it, so a config change can be tried before it is merged. Debug
 // logging starts ticked; it can only be unticked for a specific branch, since a plain run of
@@ -30,7 +30,7 @@ async function submit(dashboard) {
   const sent = dashboard.page.waitForRequest(
     (request) => request.method() === "POST" && /\/api\/v1\/renovate$/.test(request.url()),
   );
-  await dashboard.debugRunDialog.getByRole("button", { name: "Run", exact: true }).click();
+  await dashboard.debugRunDialog.getByRole("button", { name: /^Start (debug|dry) run$/ }).click();
   await sent;
   await expect(dashboard.debugRunDialog).toBeHidden();
 }
@@ -42,11 +42,15 @@ test.describe("debug run", () => {
     await dashboard.debugRunButton("acme/api").click();
     const dialog = dashboard.debugRunDialog;
 
-    await expect(dialog.getByRole("radio", { name: /Default branch/ })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: /on the default branch/ })).toBeChecked();
     await expect(dialog.getByLabel("Branch name")).toHaveCount(0);
     const debug = dialog.getByRole("checkbox", { name: /Debug log level/ });
     await expect(debug).toBeChecked();
     await expect(debug).toBeDisabled();
+    // the dialog names what each option does, and the button what will start
+    await expect(dialog.getByRole("radio", { name: /on the default branch/ })).toHaveAccessibleName(/Debug run on the default branch/);
+    await expect(dialog.getByRole("radio", { name: /on a specific branch/ })).toHaveAccessibleName(/Dry run on a specific branch/);
+    await expect(dialog.getByRole("button", { name: "Start debug run" })).toBeVisible();
 
     await submit(dashboard);
     expect(dashboard.triggerRequests).toEqual([
@@ -59,11 +63,12 @@ test.describe("debug run", () => {
 
     await dashboard.debugRunButton("acme/api").click();
     const dialog = dashboard.debugRunDialog;
-    await dialog.getByRole("radio", { name: /Specific branch/ }).check();
+    await dialog.getByRole("radio", { name: /on a specific branch/ }).check();
     await dialog.getByLabel("Branch name").fill("  test/renovate-config ");
 
     await expect(dialog.getByText(/This is always a dry run/)).toBeVisible();
     await expect(dialog.getByRole("checkbox", { name: /Debug log level/ })).toBeChecked();
+    await expect(dialog.getByRole("button", { name: "Start dry run" })).toBeVisible();
 
     await submit(dashboard);
     expect(dashboard.triggerRequests).toEqual([
@@ -81,7 +86,7 @@ test.describe("debug run", () => {
 
     await dashboard.debugRunButton("acme/api").click();
     const dialog = dashboard.debugRunDialog;
-    await dialog.getByRole("radio", { name: /Specific branch/ }).check();
+    await dialog.getByRole("radio", { name: /on a specific branch/ }).check();
     await dialog.getByLabel("Branch name").fill("feature/x");
     const debug = dialog.getByRole("checkbox", { name: /Debug log level/ });
     await expect(debug).toBeEnabled();
@@ -96,8 +101,8 @@ test.describe("debug run", () => {
 
     await dashboard.debugRunButton("acme/api").click();
     const dialog = dashboard.debugRunDialog;
-    await dialog.getByRole("radio", { name: /Specific branch/ }).check();
-    const runButton = dialog.getByRole("button", { name: "Run", exact: true });
+    await dialog.getByRole("radio", { name: /on a specific branch/ }).check();
+    const runButton = dialog.getByRole("button", { name: "Start dry run" });
     const branchField = dialog.getByLabel("Branch name");
 
     await expect(runButton).toBeDisabled();
@@ -118,12 +123,12 @@ test.describe("debug run", () => {
   test("explains on hover that a branch can be chosen", async ({ dashboard }) => {
     await dashboard.open(buildSingleProjectDashboard());
 
-    const tooltip = dashboard.page.getByRole("tooltip").filter({ hasText: "Debug run" }).first();
+    const tooltip = dashboard.page.getByRole("tooltip").filter({ hasText: "Debug or dry run" }).first();
     await expect(tooltip).toBeHidden();
     await dashboard.debugRunButton("acme/api").hover();
     await expect(tooltip).toBeVisible();
-    await expect(tooltip).toContainText("specific branch");
-    await expect(tooltip).toContainText("dry run");
+    await expect(tooltip).toContainText("Debug run on the default branch");
+    await expect(tooltip).toContainText("Dry run on a specific branch");
   });
 
   test("says what is queued", async ({ dashboard }) => {
