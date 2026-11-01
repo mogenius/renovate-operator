@@ -337,19 +337,20 @@ class DashboardPage {
   }
 
   /**
-   * The "Run with custom branch" button of a project row. Scoped to the table so the
-   * `lg:hidden` card layout, which stays in the DOM at this viewport, is not matched too.
+   * The debug-run button of a project row, which opens the "Debug run" dialog. Scoped to
+   * the table so the `lg:hidden` card layout, which stays in the DOM at this viewport, is
+   * not matched too.
    */
-  customBranchRunButton(projectName) {
+  debugRunButton(projectName) {
     return this.page
       .locator("table tbody tr", {
         has: this.page.getByTestId("project-name").filter({ hasText: projectName }),
       })
-      .getByTestId("trigger-custom-branch");
+      .getByTestId("debug-run");
   }
 
-  get customBranchRunDialog() {
-    return this.page.getByRole("dialog", { name: "Run with custom branch" });
+  get debugRunDialog() {
+    return this.page.getByRole("dialog", { name: "Debug run" });
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */
