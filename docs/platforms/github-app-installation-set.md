@@ -43,7 +43,7 @@ metadata:
   name: installation-defaults
   namespace: renovate-operator
 spec:
-  image: renovate/renovate:43.104.11
+  image: renovate/renovate:43.288.0
   schedule: "H * * * *"
   parallelism: 2
 ```

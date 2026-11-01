@@ -24,7 +24,7 @@ metadata:
   name: default-settings
   namespace: renovate
 spec:
-  image: renovate/renovate:41
+  image: renovate/renovate:43
   parallelism: 2
   provider:
     name: github
