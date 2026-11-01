@@ -14,9 +14,10 @@ function customBranchNameProblem(branch) {
   return null;
 }
 
-// The dialog behind a project's debug button. A debug run on the default branch is a
-// normal run with debug logging; a run on a specific branch is the same idea pointed at
-// another branch, which the operator always runs as a dry run. Debug logging starts ticked
+// The dialog behind a project's debug button. It offers two different things and says so:
+// a debug run on the default branch (a real run with debug logging, like the old debug
+// button), or a dry run on a specific branch (to test the Renovate config on that branch
+// before merging it; the operator always runs it as a dry run). Debug logging starts ticked
 // in both cases. On the default branch it cannot be unticked, since a plain run of the
 // default branch is what the Trigger button already does.
 function DebugRunModal({ projectName, onSubmit, onClose }) {
@@ -55,12 +56,15 @@ function DebugRunModal({ projectName, onSubmit, onClose }) {
     onSubmit(executionOptions);
   };
 
-  const targetOption = (value, label, hint) => (
+  const targetOption = (value, kind, kindClass, where, hint) => (
     <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer text-xs ${target === value ? "border-primary bg-sky-50 dark:bg-slate-700/50" : "border-gray-200 dark:border-slate-600"}`}>
       <input type="radio" name="debug-run-target" value={value} checked={target === value} onChange={() => chooseTarget(value)} className="mt-0.5" />
       <span>
-        <span className="block font-medium text-gray-800 dark:text-slate-100">{label}</span>
-        <span className="block text-gray-500 dark:text-slate-400">{hint}</span>
+        <span className="flex items-center gap-1.5 font-medium text-gray-800 dark:text-slate-100">
+          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${kindClass}`}>{kind}</span>
+          <span>{where}</span>
+        </span>
+        <span className="block mt-0.5 text-gray-500 dark:text-slate-400">{hint}</span>
       </span>
     </label>
   );
@@ -76,15 +80,15 @@ function DebugRunModal({ projectName, onSubmit, onClose }) {
         onSubmit={submit}
         role="dialog"
         aria-modal="true"
-        aria-label="Debug run"
+        aria-label="Debug or dry run"
       >
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Debug run</h2>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Debug or dry run</h2>
           <button
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
-            aria-label="Close debug run"
+            aria-label="Close debug or dry run"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -92,13 +96,15 @@ function DebugRunModal({ projectName, onSubmit, onClose }) {
           </button>
         </div>
         <p className="text-xs text-gray-600 dark:text-slate-400 mb-4">
-          One run of <span className="font-mono break-all">{projectName}</span> with extended logs. Nothing is saved for later runs.
+          One run of <span className="font-mono break-all">{projectName}</span>. Nothing is saved for later runs.
         </p>
 
         <fieldset className="space-y-2">
-          <legend className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Branch</legend>
-          {targetOption("default", "Default branch", "A normal run with debug logging, as scheduled runs do it.")}
-          {targetOption("branch", "Specific branch", "Test the Renovate config on another branch before merging it. Always a dry run.")}
+          <legend className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">What to run</legend>
+          {targetOption("default", "Debug run", "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", "on the default branch",
+            "A real run with debug logging, like a scheduled run: Renovate opens and updates pull requests.")}
+          {targetOption("branch", "Dry run", "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300", "on a specific branch",
+            "Tests the Renovate config on another branch before merging it. Renovate only logs what it would do; nothing changes in the repository.")}
         </fieldset>
 
         {onSpecificBranch && (
@@ -159,7 +165,7 @@ function DebugRunModal({ projectName, onSubmit, onClose }) {
             disabled={!canSubmit}
             className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all"
           >
-            Run
+            {onSpecificBranch ? "Start dry run" : "Start debug run"}
           </button>
         </div>
       </form>

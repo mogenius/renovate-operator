@@ -4,14 +4,14 @@ A custom branch run is a debug run of a single repository against a branch you n
 
 ## Starting a run
 
-In the dashboard, the debug (bug) button next to a project's **Trigger** button opens the **Debug run** dialog. Hovering over it explains both options:
+In the dashboard, the debug (bug) button next to a project's **Trigger** button opens the **Debug or dry run** dialog. Hovering over it explains both options, and the dialog names each one:
 
-| Branch                           | What runs                                                                        | Debug log level                                         |
-| -------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **Default branch** (preselected) | a normal Renovate run with debug logging, like a scheduled run                   | always on; for a run without debug logs use **Trigger** |
-| **Specific branch**              | a dry run against the branch you enter, using the Renovate config on that branch | ticked by default, can be unticked                      |
+| Option                                            | What runs                                                                                             | Debug log level                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Debug run** on the default branch (preselected) | a **real** Renovate run with debug logging, like a scheduled run: it opens and updates pull requests  | always on; for a run without debug logs use **Trigger** |
+| **Dry run** on a specific branch                  | a **dry run** against the branch you enter, using the Renovate config on that branch; nothing changes | ticked by default, can be unticked                      |
 
-To test a config change, choose **Specific branch**, enter the branch name and choose **Run**. Debug logging (`RENOVATE_LOG_LEVEL=debug`) shows the merged config in the logs.
+The button at the bottom says which one starts: **Start debug run** or **Start dry run**. To test a config change, choose **Dry run on a specific branch**, enter the branch name and choose **Start dry run**. Debug logging (`RENOVATE_LOG_LEVEL=debug`) shows the merged config in the logs.
 
 The run is queued with the same priority as any other dashboard trigger. While it is queued, the debug button is highlighted and its tooltip says what is queued, for example _Queued: dry run against branch test/x with debug logs_. Once the Job starts, the options are cleared. Later runs, whether scheduled, triggered by a webhook or started from the dashboard, use the repository's normal configuration again.
 

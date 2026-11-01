@@ -2199,7 +2199,7 @@
                 onClick={onOpenDebugRun}
                 disabled={isTriggering || !!blocked}
                 data-testid="debug-run"
-                aria-label={blocked || queuedDebugRun || `Debug run for ${project.name}`}
+                aria-label={blocked || queuedDebugRun || `Debug or dry run for ${project.name}`}
                 aria-describedby={blocked ? undefined : debugRunTooltipId}
                 className={`${isDebugRunScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} rounded-r-lg hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
               >
@@ -2217,9 +2217,9 @@
                 ) : (
                   <>
                     {queuedDebugRun && <div className="font-semibold text-amber-300 mb-1.5">{queuedDebugRun}</div>}
-                    <div className="font-semibold mb-1">Debug run</div>
-                    <div className="text-gray-300">Run Renovate once with extended logs, on the default branch or on a specific branch.</div>
-                    <div className="text-gray-300 mt-1">A specific branch tests its Renovate config before merging, as a dry run.</div>
+                    <div className="font-semibold mb-1">Debug or dry run</div>
+                    <div className="text-gray-300"><span className="text-amber-300 font-medium">Debug run</span> on the default branch: a real run with debug logs.</div>
+                    <div className="text-gray-300 mt-1"><span className="text-teal-300 font-medium">Dry run</span> on a specific branch: tests its Renovate config before merging; nothing changes.</div>
                   </>
                 )}
               </div>
