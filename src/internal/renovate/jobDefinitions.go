@@ -7,6 +7,7 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/config"
 	"renovate-operator/github"
+	"renovate-operator/internal/policy"
 	"renovate-operator/internal/utils"
 	"strconv"
 	"strings"
@@ -14,6 +15,11 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+)
+
+const (
+	hostRulesVolumeName = "renovate-host-rules"
+	hostRulesMountPath  = "/etc/renovate-operator/host-rules"
 )
 
 type jobBuildOpt func(*jobBuildConfig)
@@ -268,6 +274,13 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
 			Name:  "RENOVATE_BASE_DIR",
 			Value: path,
+		})
+	}
+
+	if hostRulesSecretName(job) != "" {
+		predefinedEnvVars = append(predefinedEnvVars, v1.EnvVar{
+			Name:  policy.AdditionalConfigFileEnvVar,
+			Value: hostRulesMountPath + "/" + github.HostRulesConfigFileKey,
 		})
 	}
 
@@ -659,6 +672,23 @@ func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
 		})
 	}
 
+	if name := hostRulesSecretName(job); name != "" {
+		volumes = append(volumes, v1.Volume{
+			Name: hostRulesVolumeName,
+			VolumeSource: v1.VolumeSource{
+				Secret: &v1.SecretVolumeSource{
+					SecretName: name,
+					Items:      []v1.KeyToPath{{Key: github.HostRulesConfigFileKey, Path: github.HostRulesConfigFileKey}},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, v1.VolumeMount{
+			Name:      hostRulesVolumeName,
+			MountPath: hostRulesMountPath,
+			ReadOnly:  true,
+		})
+	}
+
 	if job.Spec.ExtraVolumes != nil {
 		volumes = append(volumes, job.Spec.ExtraVolumes...)
 	}
@@ -667,6 +697,15 @@ func getVolumeAndMounts(job *api.RenovateJob) ([]v1.Volume, []v1.VolumeMount) {
 	}
 
 	return volumes, volumeMounts
+}
+
+// hostRulesSecretName returns the Secret holding the job's shared hostRules
+// config file, or "" when the job has none.
+func hostRulesSecretName(job *api.RenovateJob) string {
+	if job.Spec.GithubAppReference == nil {
+		return ""
+	}
+	return job.Spec.GithubAppReference.HostRulesSecretName
 }
 
 func getScratchVolumePath(scratch *api.RenovateJobScratchVolume) string {

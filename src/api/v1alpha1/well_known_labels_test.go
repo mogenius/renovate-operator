@@ -19,6 +19,7 @@ var ownedKeys = map[string]string{
 	"LabelInstallationID":                  LabelInstallationID,
 	"TriggerResyncAnnotationKey":           TriggerResyncAnnotationKey,
 	"SuspendedByInstallationAnnotationKey": SuspendedByInstallationAnnotationKey,
+	"SharedInstallationsAnnotationKey":     SharedInstallationsAnnotationKey,
 	"ProjectAnnotationKey":                 ProjectAnnotationKey,
 	"ScheduleAfterDiscoveryAnnotationKey":  ScheduleAfterDiscoveryAnnotationKey,
 	"ProcessedAnnotationKey":               ProcessedAnnotationKey,

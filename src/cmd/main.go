@@ -977,6 +977,7 @@ func main() {
 		K8sClient:               mgr.GetClient(),
 		APIReader:               mgr.GetAPIReader(),
 		Installations:           github.NewInstallationLister(installationsHTTPClient),
+		Tokens:                  github.NewInstallationTokenMinter(installationsHTTPClient),
 		Policy:                  guardRails,
 		ClusterTemplatesEnabled: config.GetValue("CLUSTER_TEMPLATES_ENABLED") != "false",
 	}).SetupWithManager(mgr)
