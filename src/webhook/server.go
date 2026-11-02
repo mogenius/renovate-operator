@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/assert"
@@ -32,6 +33,22 @@ type Server struct {
 	policy           policy.Policy
 }
 
+// webhookProcessingTimeout bounds how long a delivery is processed once received, whether or
+// not its sender is still waiting for the answer.
+const webhookProcessingTimeout = 2 * time.Minute
+
+// detachFromClient lets a delivery finish after its sender hangs up. Senders give up on their
+// own clock (GitLab after 10 seconds by default) and the operator can need longer, e.g. when it
+// is short of CPU. Tied to the request context, the work was cancelled midway: the first live
+// API call, the webhook secret read, failed and the trigger was dropped instead of answered late.
+func detachFromClient(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), webhookProcessingTimeout)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func NewWebookServer(manager crdmanager.RenovateJobManager, discovery renovate.DiscoveryAgent, logger logr.Logger) *Server {
 	return &Server{
 		manager:   manager,
@@ -44,7 +61,7 @@ func RegisterWebhookRoutes(router *mux.Router, server *Server) {
 	assert.Assert(server.manager != nil, "failed to register webhook routes. manager must not be nil")
 
 	sub := router.PathPrefix("/webhook/v1").Subrouter()
-	sub.Use(telemetry.MuxMiddleware("renovate-operator-webhook"))
+	sub.Use(telemetry.MuxMiddleware("renovate-operator-webhook"), detachFromClient)
 	sub.HandleFunc("/schedule", server.runRenovate).Methods("POST")
 	sub.HandleFunc("/gitlab", server.gitLabWebhook).Methods("POST")
 	sub.HandleFunc("/github", server.githubWebhook).Methods("POST")
