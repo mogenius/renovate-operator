@@ -24,12 +24,15 @@ RUN mkdir -p src/static/js && \
     echo "Downloading Babel Standalone..." && \
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js" && \
     echo "All JavaScript dependencies downloaded successfully!"
+# React's production build: without the NODE_ENV define, esbuild bundles the
+# development one, several times slower and five times the size.
 RUN mkdir -p /bundle && \
     npm install --prefix /bundle "react@19.3.1" "react-dom@19.3.1" esbuild --save=false && \
     echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" \
         > /bundle/entry.mjs && \
     /bundle/node_modules/.bin/esbuild /bundle/entry.mjs \
         --bundle --format=esm --log-level=silent \
+        --define:process.env.NODE_ENV='"production"' --minify \
         --outfile=src/static/js/react-bundle.esm.js && \
     echo "Bundled React 19 successfully!"
 

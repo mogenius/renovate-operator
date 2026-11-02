@@ -105,8 +105,11 @@ jsInstall:
     BUNDLE_DIR=$(mktemp -d)
     npm install --prefix "$BUNDLE_DIR" "react@19.3.1" "react-dom@19.3.1" esbuild --save=false --silent
     echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" > "$BUNDLE_DIR/entry.mjs"
+    # The production build, as the Dockerfile ships, so `just ui-dev` and
+    # `just test-ui` run the React the image serves.
     "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/entry.mjs" \
         --bundle --format=esm --log-level=silent \
+        --define:process.env.NODE_ENV='"production"' --minify \
         --outfile=src/static/js/react-bundle.esm.js
     rm -rf "$BUNDLE_DIR"
     echo "All JavaScript dependencies ready!"
