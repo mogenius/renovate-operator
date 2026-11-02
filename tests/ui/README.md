@@ -15,6 +15,7 @@ Use `just ui-dev` to serve `src/static` with a mocked API:
 ```sh
 just ui-dev                                     # http://127.0.0.1:8098
 MOCK_JOB_COUNT=12 MOCK_PROJECTS_PER_JOB=40 just ui-dev   # a heavier dashboard
+MOCK_JOB_COUNT=2 MOCK_PROJECTS_PER_JOB=7000 just ui-dev  # jobs with thousands of projects
 BASE_PATH=/renovate just ui-dev                 # exercise the sub-path
 ```
 
@@ -76,6 +77,7 @@ tests/ui/
 │   └── renovateLogsFixture.mjs  # /api/v1/logs event-stream builders
 └── specs/
     ├── jobCardExpansion.spec.mjs
+    ├── largeJobRendering.spec.mjs
     ├── stickyToolbar.spec.mjs
     ├── triggerAllScope.spec.mjs
     └── logsFiltering.spec.mjs
