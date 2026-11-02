@@ -46,12 +46,15 @@ func (s *recordingLogStore) Get(namespace, renovateJob, project string) (string,
 
 // The log of a dry run of a custom branch whose config disables one of the default
 // branch's PRs: Renovate's report still lists the remaining branches as "pr-edited",
-// exactly like a real run would.
+// exactly like a real run would. It also carries one "PR updated" line, the message a real
+// run logs when it updates a PR, so there is an update for a real run to count and for a
+// dry run to ignore.
 var dryRunLogs = strings.Join([]string{
 	`{"level":30,"msg":"Renovate started"}`,
 	`{"level":40,"msg":"Found renovate config warnings","baseBranch":"test/renovate-685"}`,
 	`{"level":30,"msg":"DRY-RUN: Would update PR #3","baseBranch":"test/renovate-685"}`,
 	`{"level":30,"msg":"DRY-RUN: Would autoclose PR"}`,
+	`{"level":30,"msg":"PR updated","branch":"renovate/backend","pr":3,"prTitle":"Update backend dependencies"}`,
 	`{"level":30,"msg":"Repository finished","result":"done","status":"onboarded"}`,
 	`{"level":30,"msg":"Printing report","report":{"repositories":{"org/repo":{"branches":[` +
 		`{"branchName":"renovate/backend","result":"pr-edited","prNo":3},` +
@@ -161,16 +164,25 @@ func TestProcessProjectJobResultDryRunKeepsProjectDataAndMetrics(t *testing.T) {
 	t.Run("the same log from a real run replaces the project's data", func(t *testing.T) {
 		status := processFinishedRun(t, realRunJob, project, nil, &recordingLogStore{}, dryRunLogs)
 
-		if status.PRActivity == nil || status.PRActivity.Updated != 2 {
-			t.Fatalf("PRActivity = %+v, want the 2 updated PRs from the report", status.PRActivity)
+		// how the parser classifies the two PRs is its own business (logParser_test); what
+		// matters here is that a real run's parsed data replaces the project's data
+		if status.PRActivity == nil || len(status.PRActivity.PRs) != 2 || status.PRActivity.Updated != 1 {
+			t.Fatalf("PRActivity = %+v, want the 2 PRs from the report, 1 of them updated", status.PRActivity)
+		}
+		if status.LogIssues == nil || status.RenovateResultStatus == nil {
+			t.Errorf("a real run must replace the project's log issues and result, got LogIssues=%+v result=%v",
+				status.LogIssues, status.RenovateResultStatus)
 		}
 		labels := map[string]string{"renovate_namespace": "renovate-operator", "renovate_job": realRunJob, "project": project}
 		if got := gaugeValue(t, reg, "renovate_operator_open_pull_requests", labels); got != 2 {
 			t.Errorf("renovate_operator_open_pull_requests = %v, want 2 from this run", got)
 		}
+		if got := counterValue(t, reg, "renovate_operator_project_executions_total", labels); got != 1 {
+			t.Errorf("renovate_operator_project_executions_total = %v, want 1: a real run is a project run", got)
+		}
 		jobLabels := map[string]string{"renovate_namespace": "renovate-operator", "renovate_job": realRunJob}
-		if got := counterValue(t, reg, "renovate_operator_pull_requests_updated_total", jobLabels); got != 2 {
-			t.Errorf("renovate_operator_pull_requests_updated_total = %v, want 2", got)
+		if got := counterValue(t, reg, "renovate_operator_pull_requests_updated_total", jobLabels); got != 1 {
+			t.Errorf("renovate_operator_pull_requests_updated_total = %v, want 1 from the PR updated line", got)
 		}
 	})
 }
