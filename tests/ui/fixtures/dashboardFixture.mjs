@@ -198,8 +198,8 @@ class DashboardPage {
 
   /**
    * The project names the expanded cards currently show, in render order. Scoped to
-   * the table so the `lg:hidden` card layout — which stays in the DOM at this
-   * viewport — is not counted twice.
+   * the table, the layout a card renders at this viewport; below the lg breakpoint
+   * it renders stacked project cards instead.
    */
   async visibleProjectNames() {
     return this.page.locator('table tbody [data-testid="project-name"]').allTextContents();

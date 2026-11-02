@@ -57,7 +57,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useEffect, useCallback, useMemo, useRef } = React;
+      const { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } = React;
 
       const formatTimeAgo = (timestamp) => {
         const now = new Date();
@@ -251,92 +251,235 @@
         return null;
       };
 
-      function useTooltip(project) {
-        const [isVisible, setIsVisible] = useState(false);
-        const containerRef = React.useRef(null);
-        const timeoutRef = React.useRef(null);
-        const portalRef = React.useRef(null);
+      // The "Last Run Duration" tooltip of a job card's project list: one per
+      // list, fed by event delegation, so a job with thousands of projects
+      // does not pay for thousands of timers and portals. Rows name their
+      // project in data-project-row; cells holding controls opt out with
+      // data-no-tooltip.
+      const TOOLTIP_DELAY_MS = 500;
 
-        const handleMouseEnter = (e) => {
-          if (e.target.closest('[data-no-tooltip]')) return;
+      function useProjectDurationTooltip(projects) {
+        // { name, top } of the row the tooltip shows for, once the delay ran out.
+        const [shown, setShown] = useState(null);
+        const timeoutRef = useRef(null);
+        const hoveredRowRef = useRef(null);
+
+        const cancelPending = () => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+        };
+
+        const hide = () => {
+          cancelPending();
+          hoveredRowRef.current = null;
+          setShown((current) => (current === null ? current : null));
+        };
+
+        useEffect(() => cancelPending, []);
+
+        const onMouseMove = (e) => {
+          const row = e.target.closest("[data-project-row]");
+          if (!row || e.target.closest("[data-no-tooltip]")) {
+            hide();
+            return;
+          }
+          if (hoveredRowRef.current === row) return;
+          hide();
+          hoveredRowRef.current = row;
           timeoutRef.current = setTimeout(() => {
-            setIsVisible(true);
-          }, 500);
+            timeoutRef.current = null;
+            setShown({
+              name: row.getAttribute("data-project-row"),
+              top: row.getBoundingClientRect().top - 12,
+            });
+          }, TOOLTIP_DELAY_MS);
         };
 
-        const handleMouseMove = (e) => {
-          if (e.target.closest('[data-no-tooltip]')) {
-            if (timeoutRef.current) {
-              clearTimeout(timeoutRef.current);
-              timeoutRef.current = null;
-            }
-            setIsVisible(false);
+        // Looked up on every render so a refresh that lands while the tooltip
+        // is up shows the new duration, as the row itself does.
+        const project = shown ? projects.find((p) => p.name === shown.name) : null;
+        const tooltip = project && project.duration ? (
+          <div
+            className="fixed z-50 pointer-events-none border-0"
+            style={{ left: "50%", top: `${shown.top}px`, transform: "translate(-50%, -100%)" }}
+          >
+            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
+              <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
+              <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">{project.duration}</div>
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0" />
+            </div>
+          </div>
+        ) : null;
+
+        return { tooltipHandlers: { onMouseMove, onMouseLeave: hide }, tooltip };
+      }
+
+      // Tailwind's lg breakpoint: from there on a job card lists its projects as
+      // a table, below it as stacked cards.
+      const LARGE_SCREEN_MEDIA_QUERY = "(min-width: 1024px)";
+
+      function useMediaQuery(query) {
+        const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+        useEffect(() => {
+          const mediaQueryList = window.matchMedia(query);
+          const onChange = () => setMatches(mediaQueryList.matches);
+          onChange();
+          mediaQueryList.addEventListener("change", onChange);
+          return () => mediaQueryList.removeEventListener("change", onChange);
+        }, [query]);
+        return matches;
+      }
+
+      // A job card holding more projects than this renders only the ones near
+      // the viewport, so a job with thousands of them costs what a screenful
+      // does. Shorter lists render whole: that is cheap, and it keeps the
+      // browser's find-in-page working on them.
+      const VIRTUALIZE_ABOVE = 200;
+
+      // How far beyond the viewport edges rows stay rendered, so a scroll
+      // reveals rows that are already there.
+      const VIRTUAL_OVERSCAN_PX = 800;
+
+      // The first index in [0, count) for which a monotonic predicate holds,
+      // or count when it never does.
+      function firstIndexWhere(count, predicate) {
+        let low = 0;
+        let high = count;
+        while (low < high) {
+          const middle = (low + high) >> 1;
+          if (predicate(middle)) {
+            high = middle;
           } else {
-            if (!isVisible && !timeoutRef.current) {
-              timeoutRef.current = setTimeout(() => {
-                setIsVisible(true);
-                timeoutRef.current = null;
-              }, 500);
+            low = middle + 1;
+          }
+        }
+        return low;
+      }
+
+      // Renders the window of a long list that the page's own scrolling brings
+      // into view. The caller renders keys[start..end) between a spacer of
+      // topPad pixels and one of bottomPad, each item as an element carrying
+      // data-project-row directly inside the container, and the bottom spacer
+      // carrying data-virtual-end. Item heights are measured from those
+      // elements' tops as they render, so rows that wrap or expand a detail
+      // panel take their real height; an item never rendered counts as the
+      // average measured so far.
+      function useWindowVirtualizer({ keys, enabled, containerRef, estimatedHeight }) {
+        const count = keys.length;
+        const heightsRef = useRef(new Map());
+        // Bumped whenever a measured height changes, to recompute the offsets.
+        const [measuredVersion, setMeasuredVersion] = useState(0);
+        const [range, setRange] = useState({ start: 0, end: 0 });
+
+        // A layout switch rewraps every item: measure again from scratch.
+        useEffect(() => {
+          heightsRef.current = new Map();
+          setMeasuredVersion((version) => version + 1);
+        }, [estimatedHeight]);
+
+        // offsets[i] is the top of item i within the container, offsets[count]
+        // the height of the whole list.
+        const offsets = useMemo(() => {
+          if (!enabled) return null;
+          const heights = heightsRef.current;
+          let measuredTotal = 0;
+          for (const height of heights.values()) measuredTotal += height;
+          const fallback = heights.size > 0 ? measuredTotal / heights.size : estimatedHeight;
+          const result = new Float64Array(count + 1);
+          for (let i = 0; i < count; i++) {
+            result[i + 1] = result[i] + (heights.get(keys[i]) ?? fallback);
+          }
+          return result;
+        }, [enabled, keys, count, estimatedHeight, measuredVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+        const updateRange = useCallback(() => {
+          const container = containerRef.current;
+          if (!offsets || !container) return;
+          const top = container.getBoundingClientRect().top;
+          const from = -top - VIRTUAL_OVERSCAN_PX;
+          const to = -top + window.innerHeight + VIRTUAL_OVERSCAN_PX;
+          const start = firstIndexWhere(count, (i) => offsets[i + 1] > from);
+          const end = Math.max(start, firstIndexWhere(count, (i) => offsets[i] >= to));
+          setRange((current) => (current.start === start && current.end === end ? current : { start, end }));
+        }, [offsets, count, containerRef]);
+
+        // On every render rather than on scroll alone: a card above this one
+        // opening or closing moves the list without scrolling the page.
+        useLayoutEffect(() => {
+          if (enabled) updateRange();
+        });
+
+        useEffect(() => {
+          if (!enabled) return;
+          let frame = 0;
+          let width = window.innerWidth;
+          const onScrollOrResize = () => {
+            if (frame) return;
+            frame = requestAnimationFrame(() => {
+              frame = 0;
+              if (window.innerWidth !== width) {
+                // Every row may wrap differently now.
+                width = window.innerWidth;
+                heightsRef.current = new Map();
+                setMeasuredVersion((version) => version + 1);
+              } else {
+                updateRange();
+              }
+            });
+          };
+          window.addEventListener("scroll", onScrollOrResize, { passive: true });
+          window.addEventListener("resize", onScrollOrResize);
+          return () => {
+            cancelAnimationFrame(frame);
+            window.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+          };
+        }, [enabled, updateRange]);
+
+        // Measure what this render put on screen.
+        useLayoutEffect(() => {
+          const container = containerRef.current;
+          if (!enabled || !container) return;
+          const items = container.querySelectorAll(":scope > [data-project-row]");
+          const end = container.querySelector(":scope > [data-virtual-end]");
+          if (!end || items.length === 0) return;
+          const tops = [...items, end].map((element) => element.getBoundingClientRect().top);
+          const heights = heightsRef.current;
+          let changed = false;
+          items.forEach((item, i) => {
+            const key = item.getAttribute("data-project-row");
+            const height = tops[i + 1] - tops[i];
+            if (Math.abs((heights.get(key) ?? -1) - height) > 0.5) {
+              heights.set(key, height);
+              changed = true;
             }
-          }
-        };
+          });
+          if (changed) setMeasuredVersion((version) => version + 1);
+        });
 
-        const handleMouseLeave = () => {
-          if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          setIsVisible(false);
-        };
+        // Brings an item that may not be rendered into view: the page scrolls to
+        // where the item sits, and the scroll renders it.
+        const scrollToIndex = useCallback((index) => {
+          const container = containerRef.current;
+          if (!offsets || !container) return;
+          const top = container.getBoundingClientRect().top + window.scrollY + offsets[index];
+          window.scrollTo({ top: Math.max(0, top - window.innerHeight / 2) });
+        }, [offsets, containerRef]);
 
-        useEffect(() => {
-          return () => {
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          };
-        }, []);
-
-        useEffect(() => {
-          const container = document.createElement('div');
-          document.body.appendChild(container);
-          const root = window.createRoot(container);
-          portalRef.current = { container, root };
-          return () => {
-            root.unmount();
-            if (document.body.contains(container)) document.body.removeChild(container);
-          };
-        }, []);
-
-        useEffect(() => {
-          if (!portalRef.current) return;
-          const { root } = portalRef.current;
-          if (isVisible && project && project.duration) {
-            const top = containerRef.current
-              ? `${containerRef.current.getBoundingClientRect().top - 12}px`
-              : '0';
-            root.render(
-              React.createElement('div', {
-                className: 'fixed z-50 pointer-events-none border-0',
-                style: { left: '50%', top, transform: 'translate(-50%, -100%)' }
-              },
-                React.createElement('div', {
-                  className: 'bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative'
-                },
-                  React.createElement('div', { className: 'font-medium mb-1 text-gray-100' }, 'Last Run Duration'),
-                  React.createElement('div', { className: 'text-gray-300 dark:text-slate-300 whitespace-nowrap' }, project.duration),
-                  React.createElement('div', { className: 'absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0' })
-                )
-              )
-            );
-          } else {
-            root.render(null);
-          }
-        }, [isVisible, project]);
-
+        if (!enabled) {
+          return { enabled, start: 0, end: count, topPad: 0, bottomPad: 0, scrollToIndex };
+        }
+        const start = Math.min(range.start, count);
+        const end = Math.min(Math.max(range.end, start), count);
         return {
-          containerRef,
-          tooltipProps: {
-            onMouseEnter: handleMouseEnter,
-            onMouseMove: handleMouseMove,
-            onMouseLeave: handleMouseLeave,
-          },
-          tooltipElement: null,
+          enabled,
+          start,
+          end,
+          topPad: offsets[start],
+          bottomPad: offsets[count] - offsets[end],
+          scrollToIndex,
         };
       }
 
@@ -1813,6 +1956,13 @@
         );
       }
 
+      // Shared collators: a sort compares names tens of thousands of times on a
+      // large job, and String.prototype.localeCompare may set up a collator per
+      // call. compareText orders like localeCompare(); compareTextIgnoringCase
+      // like comparing the lowercased strings.
+      const compareText = new Intl.Collator().compare;
+      const compareTextIgnoringCase = new Intl.Collator(undefined, { sensitivity: "accent" }).compare;
+
       function getSortedProjects(projects, sortConfig) {
         if (!projects || projects.length === 0) {
           return [];
@@ -1860,9 +2010,7 @@
               }
 
               // Tertiary: name
-              const aName = (a.name || "").toLowerCase();
-              const bName = (b.name || "").toLowerCase();
-              return aName.localeCompare(bName);
+              return compareTextIgnoringCase(a.name || "", b.name || "");
             }
 
             // Special handling for lastTransition (date comparison)
@@ -1874,8 +2022,8 @@
             // String comparison
             if (typeof aValue === "string" && typeof bValue === "string") {
               return sortConfig.direction === "asc"
-                ? aValue.localeCompare(bValue)
-                : bValue.localeCompare(aValue);
+                ? compareText(aValue, bValue)
+                : compareText(bValue, aValue);
             }
 
             // Numeric comparison
@@ -2343,6 +2491,343 @@
         );
       }
 
+      const projectLogsHref = (jobName, jobNamespace, projectName) =>
+        `${BASE}/logs?renovate=${encodeURIComponent(jobName)}&namespace=${encodeURIComponent(jobNamespace)}&project=${encodeURIComponent(projectName)}`;
+
+      // A renovateResultStatus other than "done" (onboarding, disabled, ...)
+      // greys the project out and labels it.
+      const hasPendingResult = (project) =>
+        !!project.renovateResultStatus && project.renovateResultStatus !== "done";
+
+      // ProjectRow and ProjectCard are declared here, at the top level, and
+      // memoized. Declared inside JobCard's render they were a new component
+      // type on every render, so React tore down and rebuilt every row each
+      // time the card re-rendered: on every refresh, menu toggle or sort. Their
+      // callbacks take the project as an argument so JobCard can hand the same
+      // functions to every row, which is what lets memo skip unchanged rows.
+      const ProjectRow = React.memo(function ProjectRow({
+        project,
+        platform,
+        platformEndpoint,
+        jobName,
+        jobNamespace,
+        jobAccepted,
+        focused,
+        prExpanded,
+        issuesExpanded,
+        onTogglePRs,
+        onToggleIssues,
+        onTrigger,
+        onOpenDebugRun,
+        onCancel,
+        canTrigger,
+        canCancel,
+        canViewLogs,
+        actionHint,
+      }) {
+        const pending = hasPendingResult(project);
+        const dashboardUrl = buildDashboardUrl(platform, platformEndpoint, project.name);
+        const prUrl = buildPRUrl(platform, platformEndpoint, project.name);
+        return (
+          <>
+            <tr
+              data-project-row={project.name}
+              className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${focused ? 'ring-2 ring-inset ring-primary/40 bg-primary/5 dark:bg-primary/10' : ''} ${pending ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
+            >
+              <td className="px-3 xl:px-6 py-3">
+                <div className="flex items-center gap-2 w-full justify-between">
+                  <span
+                    data-testid="project-name"
+                    className={`font-medium min-w-0 [overflow-wrap:anywhere] ${pending ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}
+                  >
+                    {project.name}
+                  </span>
+                  {pending && (
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                      {project.renovateResultStatus}
+                    </span>
+                  )}
+                </div>
+              </td>
+              <td className="px-3 xl:px-6 py-3">
+                <StatusBadge status={project.status} />
+              </td>
+              <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
+                <PRActivityBadges
+                  prActivity={project.prActivity}
+                  expanded={prExpanded}
+                  onToggle={() => onTogglePRs(project.name)}
+                  projectName={project.name}
+                />
+              </td>
+              <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
+                <IssuesBadges
+                  logIssues={project.logIssues}
+                  expanded={issuesExpanded}
+                  onToggle={() => onToggleIssues(project.name)}
+                  projectName={project.name}
+                />
+              </td>
+              <td className="px-3 xl:px-6 py-3">
+                <span className="text-sm text-gray-600 dark:text-slate-300">
+                  {project.lastTransition ? formatTimeAgo(project.lastTransition) : ""}
+                </span>
+              </td>
+              <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
+                <div className="flex items-center gap-2">
+                  {dashboardUrl && (
+                    <a
+                      href={dashboardUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                      aria-label={`View Dependency Dashboard for ${project.name}`}
+                      title={`Dependency Dashboard for ${project.name}`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                      </svg>
+                    </a>
+                  )}
+                  {prUrl && (
+                    <a
+                      href={prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                      aria-label={`View open PRs/MRs for ${project.name}`}
+                      title={`Open PRs/MRs for ${project.name}`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                  {!prUrl && !dashboardUrl && (
+                    <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
+                  )}
+                </div>
+              </td>
+              <td className="px-3 xl:px-6 py-3 text-right" data-no-tooltip="true">
+                <div className="flex items-center justify-end gap-2">
+                  <ActionButton
+                    project={project}
+                    onTrigger={() => onTrigger(project)}
+                    onOpenDebugRun={() => onOpenDebugRun(project)}
+                    onCancel={() => onCancel(project)}
+                    width="w-[130px]"
+                    jobAccepted={jobAccepted}
+                    canTrigger={canTrigger}
+                    canCancel={canCancel}
+                    hint={actionHint}
+                  />
+                  <a
+                    href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
+                    target="_blank"
+                    title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                    aria-disabled={canViewLogs ? undefined : "true"}
+                    className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
+                    aria-label={`View logs for ${project.name}`}
+                  >
+                    Logs
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {prExpanded && project.prActivity && (
+              <PRDetailRow prActivity={project.prActivity} projectName={project.name} platform={platform} platformEndpoint={platformEndpoint} />
+            )}
+            {issuesExpanded && project.logIssues && (
+              <IssueDetailRow logIssues={project.logIssues} projectName={project.name} jobName={jobName} jobNamespace={jobNamespace} />
+            )}
+          </>
+        );
+      });
+
+      // The narrow-screen counterpart of ProjectRow; same props.
+      const ProjectCard = React.memo(function ProjectCard({
+        project,
+        platform,
+        platformEndpoint,
+        jobName,
+        jobNamespace,
+        jobAccepted,
+        prExpanded,
+        issuesExpanded,
+        onTogglePRs,
+        onToggleIssues,
+        onTrigger,
+        onOpenDebugRun,
+        onCancel,
+        canTrigger,
+        canCancel,
+        canViewLogs,
+        actionHint,
+      }) {
+        const pending = hasPendingResult(project);
+        const dashboardUrl = buildDashboardUrl(platform, platformEndpoint, project.name);
+        const prUrl = buildPRUrl(platform, platformEndpoint, project.name);
+        return (
+          <div
+            data-project-row={project.name}
+            className={`p-4 space-y-3 ${pending ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`font-medium ${pending ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                    {project.name}
+                  </p>
+                  {pending && (
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
+                      {project.renovateResultStatus}
+                    </span>
+                  )}
+                </div>
+                {project.lastTransition && (
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                    {formatTimeAgo(project.lastTransition)}
+                  </p>
+                )}
+              </div>
+              <StatusBadge status={project.status} className="ml-2" />
+            </div>
+            {/* PR Activity section */}
+            {project.prActivity?.prs?.length > 0 && (
+              <div className="flex items-center gap-2" data-no-tooltip="true">
+                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
+                <PRActivityBadges
+                  prActivity={project.prActivity}
+                  expanded={prExpanded}
+                  onToggle={() => onTogglePRs(project.name)}
+                  projectName={project.name}
+                />
+              </div>
+            )}
+            {prExpanded && project.prActivity?.prs?.length > 0 && (
+              <div id={`pr-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-gray-200 dark:border-slate-600 max-h-48 overflow-y-auto">
+                <div className="space-y-1.5">
+                  {project.prActivity.prs.map((pr, idx) => {
+                    const actionClass = prActionBadgeClass(pr.action);
+                    const singlePRUrl = buildSinglePRUrl(platform, platformEndpoint, project.name, pr.number);
+                    return (
+                      <div key={idx} className="flex items-center gap-2 text-sm">
+                        <span className={actionClass}>{pr.action}</span>
+                        {singlePRUrl ? (
+                          <a href={singlePRUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary-hover hover:underline truncate text-xs" title={pr.title || singlePRUrl}>
+                            {pr.title || singlePRUrl}
+                          </a>
+                        ) : (
+                          <span className="text-gray-700 dark:text-slate-300 truncate text-xs" title={pr.title}>{pr.title || "Untitled PR"}</span>
+                        )}
+                        {pr.number && singlePRUrl && <a href={singlePRUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>}
+                        {pr.number && !singlePRUrl && <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>}
+                      </div>
+                    );
+                  })}
+                  {project.prActivity.truncated && (
+                    <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some PRs omitted (list truncated)</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Issues section */}
+            {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0) && (
+              <div className="flex items-center gap-2" data-no-tooltip="true">
+                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
+                <IssuesBadges
+                  logIssues={project.logIssues}
+                  expanded={issuesExpanded}
+                  onToggle={() => onToggleIssues(project.name)}
+                  projectName={project.name}
+                />
+              </div>
+            )}
+            {issuesExpanded && project.logIssues?.issues?.length > 0 && (
+              <div id={`issue-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-amber-300 dark:border-amber-600 max-h-48 overflow-y-auto">
+                <div className="space-y-1.5">
+                  {project.logIssues.issues.map((issue, idx) => (
+                    <a
+                      key={idx}
+                      href={issueLogsHref(jobName, jobNamespace, project.name, issue.level)}
+                      target="_blank"
+                      rel="noopener"
+                      className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
+                      title="Open full message in logs"
+                    >
+                      <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
+                      <span className="text-gray-700 dark:text-slate-300 break-all text-xs">
+                        {displayIssueMessage(issue.message)}
+                        <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
+                          View in logs
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </span>
+                      </span>
+                    </a>
+                  ))}
+                  {project.logIssues.truncated && (
+                    <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some issues omitted (list truncated)</div>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap" data-no-tooltip="true">
+              <ActionButton
+                project={project}
+                onTrigger={() => onTrigger(project)}
+                onOpenDebugRun={() => onOpenDebugRun(project)}
+                onCancel={() => onCancel(project)}
+                width="w-[140px]"
+                jobAccepted={jobAccepted}
+                canTrigger={canTrigger}
+                canCancel={canCancel}
+                hint={actionHint}
+              />
+              <a
+                href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
+                target="_blank"
+                title={canViewLogs ? undefined : "Log access requires a group with read access"}
+                aria-disabled={canViewLogs ? undefined : "true"}
+                className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
+                aria-label={`View logs for ${project.name}`}
+              >
+                Logs
+              </a>
+              {dashboardUrl && (
+                <a
+                  href={dashboardUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                  aria-label={`View Dependency Dashboard for ${project.name}`}
+                  title={`Dependency Dashboard for ${project.name}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </a>
+              )}
+              {prUrl && (
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                  aria-label={`View open PRs/MRs for ${project.name}`}
+                  title={`Open PRs/MRs for ${project.name}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              )}
+            </div>
+          </div>
+        );
+      });
+
       function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onOpenDebugRun, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
@@ -2431,6 +2916,8 @@
         // queued runs cannot be taken back, so triggering repositories a filter hid
         // is not recoverable (issue #626). Only an unfiltered list is sent as "all",
         // leaving it to the operator to include whatever it has discovered since.
+        // A long list only renders the rows near the viewport, but the rest are
+        // still on the list, not filtered out, so they are in scope.
         const triggerScopeIsFiltered = projectListIsFiltered || hasActiveFilters;
         const projectsToTrigger = useMemo(
           () => sortedProjects.map((project) => project.name),
@@ -2457,7 +2944,7 @@
           return counts;
         }, [job.projects]);
         const [expandedProjects, setExpandedProjects] = useState(() => new Set());
-        const toggleProjectExpanded = (name) => {
+        const toggleProjectExpanded = useCallback((name) => {
           setExpandedProjects((prev) => {
             const next = new Set(prev);
             if (next.has(name)) {
@@ -2467,21 +2954,9 @@
             }
             return next;
           });
-        };
+        }, []);
         const [expandedIssues, setExpandedIssues] = useState(() => new Set());
-        const projectRowRefsRef = useRef({});
-
-        useEffect(() => {
-          if (onSortedProjectsChange) onSortedProjectsChange(sortedProjects);
-        }, [sortedProjects, onSortedProjectsChange]);
-
-        useEffect(() => {
-          if (focusedProjectName && projectRowRefsRef.current[focusedProjectName]) {
-            projectRowRefsRef.current[focusedProjectName].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          }
-        }, [focusedProjectName]);
-
-        const toggleIssueExpanded = (name) => {
+        const toggleIssueExpanded = useCallback((name) => {
           setExpandedIssues((prev) => {
             const next = new Set(prev);
             if (next.has(name)) {
@@ -2491,7 +2966,80 @@
             }
             return next;
           });
-        };
+        }, []);
+
+        // App re-creates its handlers on every render. The rows get these
+        // wrappers instead, which never change, so a memoized row only
+        // re-renders when its own project does.
+        const latestHandlersRef = useRef(null);
+        useLayoutEffect(() => {
+          latestHandlersRef.current = { job, onTriggerRenovate, onOpenDebugRun, onCancelRenovate };
+        });
+        const triggerProject = useCallback((project, executionOptions) => {
+          const { job, onTriggerRenovate } = latestHandlersRef.current;
+          onTriggerRenovate(job, project, executionOptions);
+        }, []);
+        const openDebugRunForProject = useCallback((project) => {
+          const { job, onOpenDebugRun } = latestHandlersRef.current;
+          onOpenDebugRun(job, project);
+        }, []);
+        const cancelProject = useCallback((project) => {
+          const { job, onCancelRenovate } = latestHandlersRef.current;
+          onCancelRenovate(job, project);
+        }, []);
+
+        // One layout at a time: the table and the narrow-screen cards used to be
+        // rendered side by side, with CSS hiding one of them.
+        const isLargeScreen = useMediaQuery(LARGE_SCREEN_MEDIA_QUERY);
+
+        // A long list only renders the projects near the viewport (see
+        // VIRTUALIZE_ABOVE). The container is the table body, or the stack of
+        // project cards on a narrow screen.
+        const projectRowsRef = useRef(null);
+        const projectNames = useMemo(() => sortedProjects.map((project) => project.name), [sortedProjects]);
+        const virtualRows = useWindowVirtualizer({
+          keys: projectNames,
+          enabled: sortedProjects.length > VIRTUALIZE_ABOVE,
+          containerRef: projectRowsRef,
+          estimatedHeight: isLargeScreen ? 57 : 150,
+        });
+        const renderedProjects = useMemo(
+          () => sortedProjects.slice(virtualRows.start, virtualRows.end),
+          [sortedProjects, virtualRows.start, virtualRows.end]
+        );
+        const { tooltipHandlers, tooltip } = useProjectDurationTooltip(renderedProjects);
+
+        useEffect(() => {
+          if (onSortedProjectsChange) onSortedProjectsChange(sortedProjects);
+        }, [sortedProjects, onSortedProjectsChange]);
+
+        // Keyboard navigation walks every project, rendered or not. A focused
+        // project that is not rendered is scrolled to first, and brought fully
+        // into view once that scroll has rendered its row.
+        const pendingFocusScrollRef = useRef(null);
+        const findRenderedRow = (name) =>
+          projectRowsRef.current?.querySelector(`:scope > [data-project-row="${CSS.escape(name)}"]`);
+        useEffect(() => {
+          if (!focusedProjectName) return;
+          const row = findRenderedRow(focusedProjectName);
+          if (row) {
+            row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            return;
+          }
+          const index = projectNames.indexOf(focusedProjectName);
+          if (index < 0) return;
+          pendingFocusScrollRef.current = focusedProjectName;
+          virtualRows.scrollToIndex(index);
+        }, [focusedProjectName]); // eslint-disable-line react-hooks/exhaustive-deps
+        useLayoutEffect(() => {
+          const name = pendingFocusScrollRef.current;
+          if (!name) return;
+          const row = findRenderedRow(name);
+          if (row) {
+            pendingFocusScrollRef.current = null;
+            row.scrollIntoView({ block: 'nearest' });
+          }
+        });
         const [showOptions, setShowOptions] = useState(false);
         const [optionsPos, setOptionsPos] = useState({ top: 0, right: 0 });
         const optionsBtnRef = useRef(null);
@@ -2990,400 +3538,160 @@
 
             {open && (
               <div className="border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-white dark:bg-slate-700 border-b border-gray-200 dark:border-slate-600">
-                      <tr>
-                        <th
-                          className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
-                          onClick={() => handleSort("name")}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>Project</span>
-                            <SortIcon columnKey="name" />
-                          </div>
-                        </th>
-                        <th
-                          className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
-                          onClick={() => handleSort("status")}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>Status</span>
-                            <SortIcon columnKey="status" />
-                          </div>
-                        </th>
-                        <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider select-none">
-                          Activity
-                        </th>
-                        <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider select-none">
-                          Issues
-                        </th>
-                        <th
-                          className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
-                          onClick={() => handleSort("lastTransition")}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>Since</span>
-                            <SortIcon columnKey="lastTransition" />
-                          </div>
-                        </th>
-                        <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
-                          Links
-                        </th>
-                        <th className="px-3 xl:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                      {sortedProjects.length > 0 ? (
-                        sortedProjects.map((project) => {
-                          const ProjectRow = () => {
-                            const { containerRef, tooltipProps } = useTooltip(project);
-
-                            return (
-                              <>
-                                <tr
-                                  ref={(el) => { containerRef.current = el; projectRowRefsRef.current[project.name] = el; }}
-                                  {...tooltipProps}
-                                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${focusedProjectName === project.name ? 'ring-2 ring-inset ring-primary/40 bg-primary/5 dark:bg-primary/10' : ''} ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 shadow-[inset_4px_0_0_0_rgb(251_191_36)] dark:shadow-[inset_4px_0_0_0_rgb(245_158_11)]" : ""}`}
-                                >
-                                  <td className="px-3 xl:px-6 py-3">
-                              <div className="flex items-center gap-2 w-full justify-between">
-                                <span
-                                  data-testid="project-name"
-                                  className={`font-medium min-w-0 [overflow-wrap:anywhere] ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}
-                                >
-                                  {project.name}
-                                </span>
-                                {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
-                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                    {project.renovateResultStatus}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 xl:px-6 py-3">
-                              <StatusBadge status={project.status} />
-                            </td>
-                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
-                              <PRActivityBadges
-                                prActivity={project.prActivity}
-                                expanded={expandedProjects.has(project.name)}
-                                onToggle={() => toggleProjectExpanded(project.name)}
-                                projectName={project.name}
+                {isLargeScreen ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full table-fixed">
+                      {/* Fixed column widths: a long list only holds the rows near
+                          the viewport, and automatic table layout would resize the
+                          columns to fit whichever rows are rendered as it scrolls.
+                          Project takes whatever the others leave. */}
+                      <colgroup>
+                        <col />
+                        <col className="w-[7.5rem] xl:w-[9rem]" />
+                        <col className="w-[18%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[5.5rem] xl:w-[7rem]" />
+                        <col className="w-[4rem] xl:w-[5.5rem]" />
+                        <col className="w-[14rem] xl:w-[15.75rem]" />
+                      </colgroup>
+                      <thead className="bg-white dark:bg-slate-700 border-b border-gray-200 dark:border-slate-600">
+                        <tr>
+                          <th
+                            className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
+                            onClick={() => handleSort("name")}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>Project</span>
+                              <SortIcon columnKey="name" />
+                            </div>
+                          </th>
+                          <th
+                            className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
+                            onClick={() => handleSort("status")}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>Status</span>
+                              <SortIcon columnKey="status" />
+                            </div>
+                          </th>
+                          <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider select-none">
+                            Activity
+                          </th>
+                          <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider select-none">
+                            Issues
+                          </th>
+                          <th
+                            className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-600 select-none"
+                            onClick={() => handleSort("lastTransition")}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>Since</span>
+                              <SortIcon columnKey="lastTransition" />
+                            </div>
+                          </th>
+                          <th className="px-3 xl:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
+                            Links
+                          </th>
+                          <th className="px-3 xl:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-300 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody ref={projectRowsRef} className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700" {...tooltipHandlers}>
+                        {sortedProjects.length > 0 ? (
+                          <>
+                            {virtualRows.topPad > 0 && (
+                              <tr aria-hidden="true" className="!border-0" style={{ height: `${virtualRows.topPad}px` }}>
+                                <td colSpan="7" className="p-0" />
+                              </tr>
+                            )}
+                            {renderedProjects.map((project) => (
+                              <ProjectRow
+                                key={project.name}
+                                project={project}
+                                platform={job.platform}
+                                platformEndpoint={job.platformEndpoint}
+                                jobName={job.name}
+                                jobNamespace={job.namespace}
+                                jobAccepted={job.accepted !== false}
+                                focused={focusedProjectName === project.name}
+                                prExpanded={expandedProjects.has(project.name)}
+                                issuesExpanded={expandedIssues.has(project.name)}
+                                onTogglePRs={toggleProjectExpanded}
+                                onToggleIssues={toggleIssueExpanded}
+                                onTrigger={triggerProject}
+                                onOpenDebugRun={openDebugRunForProject}
+                                onCancel={cancelProject}
+                                canTrigger={canTrigger}
+                                canCancel={canCancel}
+                                canViewLogs={canViewLogs}
+                                actionHint={actionHint}
                               />
-                            </td>
-                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
-                              <IssuesBadges
-                                logIssues={project.logIssues}
-                                expanded={expandedIssues.has(project.name)}
-                                onToggle={() => toggleIssueExpanded(project.name)}
-                                projectName={project.name}
-                              />
-                            </td>
-                            <td className="px-3 xl:px-6 py-3">
-                              <span className="text-sm text-gray-600 dark:text-slate-300">
-                                {project.lastTransition
-                                  ? formatTimeAgo(project.lastTransition)
-                                  : ""}
-                              </span>
-                            </td>
-                            <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
-                              <div className="flex items-center gap-2">
-                                {(() => {
-                                  const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
-                                  return dashboardUrl ? (
-                                    <a
-                                      href={dashboardUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
-                                      aria-label={`View Dependency Dashboard for ${project.name}`}
-                                      title={`Dependency Dashboard for ${project.name}`}
-                                    >
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                      </svg>
-                                    </a>
-                                  ) : null;
-                                })()}
-                                {(() => {
-                                  const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
-                                  return prUrl ? (
-                                    <a
-                                      href={prUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
-                                      aria-label={`View open PRs/MRs for ${project.name}`}
-                                      title={`Open PRs/MRs for ${project.name}`}
-                                    >
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </a>
-                                  ) : null;
-                                })()}
-                                {(() => {
-                                  const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
-                                  const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
-                                  return (!prUrl && !dashboardUrl) ? (
-                                    <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
-                                  ) : null;
-                                })()}
-                              </div>
-                            </td>
-                            <td className="px-3 xl:px-6 py-3 text-right" data-no-tooltip="true">
-                              <div className="flex items-center justify-end gap-2">
-                                <ActionButton
-                                  project={project}
-                                  onTrigger={() => onTriggerRenovate(job, project)}
-                                  onOpenDebugRun={() => onOpenDebugRun(job, project)}
-                                  onCancel={() => onCancelRenovate(job, project)}
-                                  width="w-[130px]"
-                                  jobAccepted={job.accepted !== false}
-                                  canTrigger={canTrigger}
-                                  canCancel={canCancel}
-                                  hint={actionHint}
-                                />
-                                <a
-                                  href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
-                                    job.name
-                                  )}&namespace=${encodeURIComponent(
-                                    job.namespace
-                                  )}&project=${encodeURIComponent(
-                                    project.name
-                                  )}` : undefined}
-                                  target="_blank"
-                                  title={canViewLogs ? undefined : "Log access requires a group with read access"}
-                                  aria-disabled={canViewLogs ? undefined : "true"}
-                                  className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
-                                  aria-label={`View logs for ${project.name}`}
-                                >
-                                  Logs
-                                </a>
-                              </div>
+                            ))}
+                            {virtualRows.enabled && (
+                              <tr aria-hidden="true" data-virtual-end="" className="!border-0" style={{ height: `${virtualRows.bottomPad}px` }}>
+                                <td colSpan="7" className="p-0" />
+                              </tr>
+                            )}
+                          </>
+                        ) : (
+                          <tr>
+                            <td
+                              colSpan="7"
+                              className="px-6 py-8 text-center text-gray-500 dark:text-slate-400"
+                            >
+                              {hasActiveFilters
+                                ? `0 of ${(job.projects || []).length} projects matched your filters`
+                                : "No projects found. Run discovery to find projects."}
                             </td>
                           </tr>
-                          {expandedProjects.has(project.name) && project.prActivity && (
-                            <PRDetailRow prActivity={project.prActivity} projectName={project.name} platform={job.platform} platformEndpoint={job.platformEndpoint} />
-                          )}
-                          {expandedIssues.has(project.name) && project.logIssues && (
-                            <IssueDetailRow logIssues={project.logIssues} projectName={project.name} jobName={job.name} jobNamespace={job.namespace} />
-                          )}
-                        </>
-                      );
-                    };
-
-                    return <ProjectRow key={project.name} />;
-                  })
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan="7"
-                            className="px-6 py-8 text-center text-gray-500 dark:text-slate-400"
-                          >
-                            {hasActiveFilters
-                              ? `0 of ${(job.projects || []).length} projects matched your filters`
-                              : "No projects found. Run discovery to find projects."}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="lg:hidden bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                  {sortedProjects.length > 0 ? (
-                    sortedProjects.map((project) => {
-                      const ProjectCard = () => {
-                        const { containerRef, tooltipProps } = useTooltip(project);
-
-                        return (
-                          <>
-                            <div
-                              ref={containerRef}
-                              {...tooltipProps}
-                              className={`p-4 space-y-3 ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
-                            >
-                          <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className={`font-medium ${project.renovateResultStatus && project.renovateResultStatus !== "done" ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
-                                {project.name}
-                              </p>
-                              {project.renovateResultStatus && project.renovateResultStatus !== "done" && (
-                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700">
-                                  {project.renovateResultStatus}
-                                </span>
-                              )}
-                            </div>
-                            {project.lastTransition && (
-                              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                                {formatTimeAgo(project.lastTransition)}
-                              </p>
-                            )}
-                          </div>
-                          <StatusBadge status={project.status} className="ml-2" />
-                        </div>
-                        {/* PR Activity section */}
-                        {project.prActivity?.prs?.length > 0 && (
-                          <div className="flex items-center gap-2" data-no-tooltip="true">
-                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
-                            <PRActivityBadges
-                              prActivity={project.prActivity}
-                              expanded={expandedProjects.has(project.name)}
-                              onToggle={() => toggleProjectExpanded(project.name)}
-                              projectName={project.name}
-                            />
-                          </div>
                         )}
-                        {expandedProjects.has(project.name) && project.prActivity && project.prActivity.prs && project.prActivity.prs.length > 0 && (
-                          <div id={`pr-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-gray-200 dark:border-slate-600 max-h-48 overflow-y-auto">
-                            <div className="space-y-1.5">
-                              {project.prActivity.prs.map((pr, idx) => {
-                                const actionClass = prActionBadgeClass(pr.action);
-                                const prUrl = buildSinglePRUrl(job.platform, job.platformEndpoint, project.name, pr.number);
-                                return (
-                                  <div key={idx} className="flex items-center gap-2 text-sm">
-                                    <span className={actionClass}>{pr.action}</span>
-                                    {prUrl ? (
-                                      <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary-hover hover:underline truncate text-xs" title={pr.title || prUrl}>
-                                        {pr.title || prUrl}
-                                      </a>
-                                    ) : (
-                                      <span className="text-gray-700 dark:text-slate-300 truncate text-xs" title={pr.title}>{pr.title || "Untitled PR"}</span>
-                                    )}
-                                    {pr.number && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>}
-                                    {pr.number && !prUrl && <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>}
-                                  </div>
-                                );
-                              })}
-                              {project.prActivity.truncated && (
-                                <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some PRs omitted (list truncated)</div>
-                              )}
-                            </div>
-                          </div>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div ref={projectRowsRef} className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700" {...tooltipHandlers}>
+                    {sortedProjects.length > 0 ? (
+                      <>
+                        {virtualRows.topPad > 0 && (
+                          <div aria-hidden="true" className="!border-0" style={{ height: `${virtualRows.topPad}px` }} />
                         )}
-                        {/* Issues section */}
-                        {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0) && (
-                          <div className="flex items-center gap-2" data-no-tooltip="true">
-                            <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
-                            <IssuesBadges
-                              logIssues={project.logIssues}
-                              expanded={expandedIssues.has(project.name)}
-                              onToggle={() => toggleIssueExpanded(project.name)}
-                              projectName={project.name}
-                            />
-                          </div>
-                        )}
-                        {expandedIssues.has(project.name) && project.logIssues && project.logIssues.issues && project.logIssues.issues.length > 0 && (
-                          <div id={`issue-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-amber-300 dark:border-amber-600 max-h-48 overflow-y-auto">
-                            <div className="space-y-1.5">
-                              {project.logIssues.issues.map((issue, idx) => (
-                                <a
-                                  key={idx}
-                                  href={issueLogsHref(job.name, job.namespace, project.name, issue.level)}
-                                  target="_blank"
-                                  rel="noopener"
-                                  className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
-                                  title="Open full message in logs"
-                                >
-                                  <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
-                                  <span className="text-gray-700 dark:text-slate-300 break-all text-xs">
-                                    {displayIssueMessage(issue.message)}
-                                    <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
-                                      View in logs
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </span>
-                                  </span>
-                                </a>
-                              ))}
-                              {project.logIssues.truncated && (
-                                <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some issues omitted (list truncated)</div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex gap-2 flex-wrap" data-no-tooltip="true">
-                          <ActionButton
+                        {renderedProjects.map((project) => (
+                          <ProjectCard
+                            key={project.name}
                             project={project}
-                            onTrigger={() => onTriggerRenovate(job, project)}
-                            onOpenDebugRun={() => onOpenDebugRun(job, project)}
-                            onCancel={() => onCancelRenovate(job, project)}
-                            width="w-[140px]"
+                            platform={job.platform}
+                            platformEndpoint={job.platformEndpoint}
+                            jobName={job.name}
+                            jobNamespace={job.namespace}
                             jobAccepted={job.accepted !== false}
+                            prExpanded={expandedProjects.has(project.name)}
+                            issuesExpanded={expandedIssues.has(project.name)}
+                            onTogglePRs={toggleProjectExpanded}
+                            onToggleIssues={toggleIssueExpanded}
+                            onTrigger={triggerProject}
+                            onOpenDebugRun={openDebugRunForProject}
+                            onCancel={cancelProject}
                             canTrigger={canTrigger}
                             canCancel={canCancel}
-                            hint={actionHint}
+                            canViewLogs={canViewLogs}
+                            actionHint={actionHint}
                           />
-                          <a
-                            href={canViewLogs ? `${BASE}/logs?renovate=${encodeURIComponent(
-                              job.name
-                            )}&namespace=${encodeURIComponent(
-                              job.namespace
-                            )}&project=${encodeURIComponent(project.name)}` : undefined}
-                            target="_blank"
-                            title={canViewLogs ? undefined : "Log access requires a group with read access"}
-                            aria-disabled={canViewLogs ? undefined : "true"}
-                            className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
-                            aria-label={`View logs for ${project.name}`}
-                          >
-                            Logs
-                          </a>
-                          {(() => {
-                            const dashboardUrl = buildDashboardUrl(job.platform, job.platformEndpoint, project.name);
-                            return dashboardUrl ? (
-                              <a
-                                href={dashboardUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
-                                aria-label={`View Dependency Dashboard for ${project.name}`}
-                                title={`Dependency Dashboard for ${project.name}`}
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                </svg>
-                              </a>
-                            ) : null;
-                          })()}
-                          {(() => {
-                            const prUrl = buildPRUrl(job.platform, job.platformEndpoint, project.name);
-                            return prUrl ? (
-                              <a
-                                href={prUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
-                                aria-label={`View open PRs/MRs for ${project.name}`}
-                                title={`Open PRs/MRs for ${project.name}`}
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                              </a>
-                            ) : null;
-                          })()}
-                        </div>
+                        ))}
+                        {virtualRows.enabled && (
+                          <div aria-hidden="true" data-virtual-end="" className="!border-0" style={{ height: `${virtualRows.bottomPad}px` }} />
+                        )}
+                      </>
+                    ) : (
+                      <div className="p-8 text-center text-gray-500 dark:text-slate-400">
+                        {hasActiveFilters
+                          ? `0 of ${(job.projects || []).length} projects matched your filters`
+                          : "No projects found. Run discovery to find projects."}
                       </div>
-                    </>
-                  );
-                };
-
-                return <ProjectCard key={project.name} />;
-              })
-                  ) : (
-                    <div className="p-8 text-center text-gray-500 dark:text-slate-400">
-                      {hasActiveFilters
-                        ? `0 of ${(job.projects || []).length} projects matched your filters`
-                        : "No projects found. Run discovery to find projects."}
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
+                {tooltip}
               </div>
             )}
           </div>
