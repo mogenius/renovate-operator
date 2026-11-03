@@ -18,6 +18,7 @@ import { test, expect } from "../fixtures/dashboardFixture.mjs";
 import {
   buildMultiJobDashboard,
   buildDashboardWithTwoFailingJobs,
+  buildDashboardWithEveryProjectState,
 } from "../fixtures/renovateJobsFixture.mjs";
 
 test.describe("job card expansion", () => {
@@ -57,20 +58,20 @@ test.describe("job card expansion", () => {
     expect(await dashboard.isExpanded("team-03")).toBe(true);
   });
 
-  test("expand all and collapse all only touch the filtered jobs", async ({ dashboard }) => {
+  test("the toggle only touches the filtered jobs", async ({ dashboard }) => {
     const renovateJobs = buildDashboardWithTwoFailingJobs();
 
     // ?filter=failed hides job-all-green: it has no failing project.
     await dashboard.open(renovateJobs, { statFilter: "failed", expectedJobCount: 2 });
     await expect(dashboard.jobHeading("job-all-green")).toHaveCount(0);
 
-    // Both visible cards are already open, so there is nothing left to expand.
-    await expect(dashboard.expandAllButton).toBeDisabled();
+    // Both visible cards are open, so the toggle offers to collapse them all.
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
 
-    await dashboard.collapseAllButton.click();
+    await dashboard.toggleAllButton.click();
     expect(await dashboard.isExpanded("job-failing-a")).toBe(false);
     expect(await dashboard.isExpanded("job-failing-b")).toBe(false);
-    await expect(dashboard.collapseAllButton).toBeDisabled();
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Expand all job cards");
     expect(await dashboard.readStoredToggledJobCardKeys()).toEqual([
       "renovate/job-failing-a",
       "renovate/job-failing-b",
@@ -82,15 +83,31 @@ test.describe("job card expansion", () => {
     // The job that was filtered out was never collapsed behind the user's back.
     expect(await dashboard.isExpanded("job-all-green")).toBe(true);
 
-    // Expand all now sees all three, so it clears the two that are closed.
-    await dashboard.expandAllButton.click();
+    // With all three visible, the toggle expands the two that are closed.
+    await dashboard.toggleAllButton.click();
     expect(await dashboard.isExpanded("job-failing-a")).toBe(true);
     expect(await dashboard.isExpanded("job-failing-b")).toBe(true);
-    await expect(dashboard.expandAllButton).toBeDisabled();
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
     expect(await dashboard.readStoredToggledJobCardKeys()).toEqual([]);
   });
 
-  test("collapse all follows the search box, not the full job list", async ({ dashboard }) => {
+  test("shows the toggle for a single job, like the toggle shortcut does", async ({ dashboard }) => {
+    await dashboard.open(buildDashboardWithEveryProjectState());
+
+    // A lone job keeps the control: the shortcut works there, so the button must
+    // not vanish just because there is only one card.
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
+
+    await dashboard.toggleAllButton.click();
+    expect(await dashboard.isExpanded("job-all-states")).toBe(false);
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Expand all job cards");
+
+    await dashboard.toggleAllButton.click();
+    expect(await dashboard.isExpanded("job-all-states")).toBe(true);
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
+  });
+
+  test("the toggle follows the search box, not the full job list", async ({ dashboard }) => {
     const renovateJobs = buildDashboardWithTwoFailingJobs();
 
     // The search box narrows to projects matching "broken", which only the two
@@ -98,8 +115,8 @@ test.describe("job card expansion", () => {
     await dashboard.open(renovateJobs, { search: "broken", expectedJobCount: 2 });
     await expect(dashboard.jobHeading("job-all-green")).toHaveCount(0);
 
-    await dashboard.collapseAllButton.click();
-    await expect(dashboard.collapseAllButton).toBeDisabled();
+    await dashboard.toggleAllButton.click();
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Expand all job cards");
 
     // Reopening without the search term brings the third job back untouched.
     await dashboard.open(renovateJobs);
