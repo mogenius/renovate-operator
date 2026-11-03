@@ -319,8 +319,16 @@ func createScheduler(logger logr.Logger, renovateJob *api.RenovateJob, reconcile
 	logger.V(2).Info("Added schedule for RenovateJob", "schedule", expr)
 }
 
+// orphanGracePeriod is how long a project must have been Running before a missing Job makes it
+// an orphan. Both lists come from the informer cache, and the executor creates the Job just
+// before it marks the project Running, so the project can show up Running before its Job does.
+const orphanGracePeriod = 2 * time.Minute
+
 // resetOrphanedRunning resets Running projects whose k8s Job no longer exists (e.g. deleted
 // while the operator was scaled down). Uses a single list call to avoid per-project API calls.
+// A project that turned Running less than orphanGracePeriod ago is left alone: marking it
+// Failed while its Job runs would lose the run's result, since a finished Job is only processed
+// for a project that is still Running, and would free its parallelism slot early.
 func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renovateJob *api.RenovateJob) {
 	logger := log.FromContext(ctx)
 	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
@@ -353,6 +361,9 @@ func (r *RenovateJobReconciler) resetOrphanedRunning(ctx context.Context, renova
 
 	isOrphaned := func(p crdManager.RenovateProjectStatus) bool {
 		if p.Status != api.JobStatusRunning {
+			return false
+		}
+		if time.Since(p.LastTransition.Time) < orphanGracePeriod {
 			return false
 		}
 		_, active := activeProjects[p.Name]

@@ -40,6 +40,7 @@ type fakeManager struct {
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
 }
 
 func (f *fakeManager) ListRenovateJobs(ctx context.Context) ([]crdManager.RenovateJobIdentifier, error) {
@@ -99,6 +100,9 @@ func (f *fakeManager) SetSuspend(ctx context.Context, job crdManager.RenovateJob
 	return nil
 }
 func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
+	if f.getProjectsByStatusFn != nil {
+		return f.getProjectsByStatusFn(ctx, job, status)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
@@ -664,5 +668,44 @@ func TestReconcileCleansUpWebhooksOnDeletion(t *testing.T) {
 	err := cl.Get(context.Background(), k8stypes.NamespacedName{Name: "deleting", Namespace: "default"}, updated)
 	if err == nil && controllerutil.ContainsFinalizer(updated, api.FinalizerWebhookCleanup) {
 		t.Error("expected finalizer to be removed after cleanup")
+	}
+}
+
+// A project dispatched moments ago can be Running in the cache before its Job shows up there.
+// The orphan check must leave it alone, or the run's result is lost and its slot freed early;
+// only a project Running for longer than the grace period with no Job is reset.
+func TestResetOrphanedRunning_SparesJustDispatchedProjects(t *testing.T) {
+	now := time.Now()
+	running := []crdManager.RenovateProjectStatus{
+		{Name: "org/just-dispatched", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusRunning, LastTransition: metav1.NewTime(now.Add(-2 * time.Second))}},
+		{Name: "org/orphaned", RenovateProjectState: api.RenovateProjectState{Status: api.JobStatusRunning, LastTransition: metav1.NewTime(now.Add(-10 * time.Minute))}},
+	}
+	var reset []string
+	var resetTo api.RenovateProjectStatus
+	mgr := &fakeManager{
+		getProjectsByStatusFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier, _ api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error) {
+			return running, nil
+		},
+		updateProjectStatusBatchedFn: func(_ context.Context, fn func(crdManager.RenovateProjectStatus) bool, _ crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+			resetTo = status.Status
+			for _, p := range running {
+				if fn(p) {
+					reset = append(reset, p.Name)
+				}
+			}
+			return nil
+		},
+	}
+	renovateJob := makeRenovateJob("test", "default", nil)
+	// No executor Job exists for either project.
+	reconciler := &RenovateJobReconciler{Manager: mgr, K8sClient: buildFakeK8sClient(t, renovateJob)}
+
+	reconciler.resetOrphanedRunning(context.Background(), renovateJob)
+
+	if !slices.Equal(reset, []string{"org/orphaned"}) {
+		t.Fatalf("expected only org/orphaned to be reset, got %v", reset)
+	}
+	if resetTo != api.JobStatusFailed {
+		t.Fatalf("expected orphans to be reset to %s, got %s", api.JobStatusFailed, resetTo)
 	}
 }
