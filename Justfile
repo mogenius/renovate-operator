@@ -43,6 +43,10 @@ _install_controller_gen:
 generate: _install_controller_gen
     $(go env GOPATH)/bin/controller-gen crd paths=./src/... output:crd:dir=charts/renovate-operator/crd
 
+# Regenerate the Helm chart README from the values.yaml comments
+helm-docs:
+    helm-docs --chart-search-root charts/renovate-operator
+
 # Run tests and linters for quick iteration locally.
 check: generate golangci-lint test-unit test-helm
 
