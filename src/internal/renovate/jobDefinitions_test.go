@@ -920,3 +920,119 @@ func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
 		}
 	})
 }
+
+func TestS3CredentialSecretKeyNames(t *testing.T) {
+	s3ConfigKeys := []config.ConfigItemDescription{
+		{Key: "S3_FORWARD_CACHE_TO_JOBS", Optional: true, Default: "true"},
+		{Key: "S3_BUCKET", Optional: true, Default: ""},
+		{Key: "S3_CACHE_PREFIX", Optional: true, Default: "renovate-cache"},
+		{Key: "S3_REGION", Optional: true, Default: "us-east-1"},
+		{Key: "S3_ENDPOINT", Optional: true, Default: ""},
+		{Key: "S3_FORCE_PATH_STYLE", Optional: true, Default: "false"},
+		{Key: "S3_CREDENTIALS_SECRET_NAME", Optional: true, Default: ""},
+		{Key: "S3_ACCESS_KEY_ID_SECRET_KEY", Optional: true, Default: "access-key-id"},
+		{Key: "S3_SECRET_ACCESS_KEY_SECRET_KEY", Optional: true, Default: "secret-access-key"},
+	}
+
+	secretKeyRef := func(t *testing.T, envs []v1.EnvVar, name string) (string, string) {
+		t.Helper()
+		for _, env := range envs {
+			if env.Name != name {
+				continue
+			}
+			if env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil {
+				t.Fatalf("expected env var %s to use a secret key ref, got %+v", name, env)
+			}
+			return env.ValueFrom.SecretKeyRef.Name, env.ValueFrom.SecretKeyRef.Key
+		}
+		t.Fatalf("expected env var %s not found", name)
+		return "", ""
+	}
+
+	setupS3Config := func(t *testing.T, secretName, idKey, secretKey string) {
+		t.Helper()
+		t.Setenv("S3_FORWARD_CACHE_TO_JOBS", "true")
+		t.Setenv("S3_BUCKET", "my-bucket")
+		if secretName != "" {
+			t.Setenv("S3_CREDENTIALS_SECRET_NAME", secretName)
+		}
+		if idKey != "" {
+			t.Setenv("S3_ACCESS_KEY_ID_SECRET_KEY", idKey)
+		}
+		if secretKey != "" {
+			t.Setenv("S3_SECRET_ACCESS_KEY_SECRET_KEY", secretKey)
+		}
+		_ = config.InitializeConfigModule(s3ConfigKeys)
+	}
+
+	t.Run("falls back to the default key names", func(t *testing.T) {
+		setupS3Config(t, "s3-creds", "", "")
+
+		envs := getDefaultEnvVars(&api.RenovateJob{}, "")
+
+		if secretName, key := secretKeyRef(t, envs, "AWS_ACCESS_KEY_ID"); secretName != "s3-creds" || key != "access-key-id" {
+			t.Fatalf("expected AWS_ACCESS_KEY_ID from s3-creds/access-key-id, got %s/%s", secretName, key)
+		}
+		if secretName, key := secretKeyRef(t, envs, "AWS_SECRET_ACCESS_KEY"); secretName != "s3-creds" || key != "secret-access-key" {
+			t.Fatalf("expected AWS_SECRET_ACCESS_KEY from s3-creds/secret-access-key, got %s/%s", secretName, key)
+		}
+	})
+
+	t.Run("uses the configured key names", func(t *testing.T) {
+		setupS3Config(t, "s3-creds", "custom-id", "custom-secret")
+
+		envs := getDefaultEnvVars(&api.RenovateJob{}, "")
+
+		if secretName, key := secretKeyRef(t, envs, "AWS_ACCESS_KEY_ID"); secretName != "s3-creds" || key != "custom-id" {
+			t.Fatalf("expected AWS_ACCESS_KEY_ID from s3-creds/custom-id, got %s/%s", secretName, key)
+		}
+		if secretName, key := secretKeyRef(t, envs, "AWS_SECRET_ACCESS_KEY"); secretName != "s3-creds" || key != "custom-secret" {
+			t.Fatalf("expected AWS_SECRET_ACCESS_KEY from s3-creds/custom-secret, got %s/%s", secretName, key)
+		}
+	})
+
+	t.Run("omits credential refs without a credentials secret name", func(t *testing.T) {
+		t.Setenv("S3_FORWARD_CACHE_TO_JOBS", "true")
+		t.Setenv("S3_BUCKET", "my-bucket")
+		_ = config.InitializeConfigModule(s3ConfigKeys)
+
+		for _, env := range getDefaultEnvVars(&api.RenovateJob{}, "") {
+			if env.Name == "AWS_ACCESS_KEY_ID" || env.Name == "AWS_SECRET_ACCESS_KEY" {
+				t.Fatalf("expected no %s ref without a credentials secret name", env.Name)
+			}
+		}
+	})
+
+	t.Run("allows mixing custom and default key names", func(t *testing.T) {
+		setupS3Config(t, "s3-creds", "custom-id", "")
+
+		envs := getDefaultEnvVars(&api.RenovateJob{}, "")
+
+		if secretName, key := secretKeyRef(t, envs, "AWS_ACCESS_KEY_ID"); secretName != "s3-creds" || key != "custom-id" {
+			t.Fatalf("expected AWS_ACCESS_KEY_ID from s3-creds/custom-id, got %s/%s", secretName, key)
+		}
+		if secretName, key := secretKeyRef(t, envs, "AWS_SECRET_ACCESS_KEY"); secretName != "s3-creds" || key != "secret-access-key" {
+			t.Fatalf("expected AWS_SECRET_ACCESS_KEY from s3-creds/secret-access-key, got %s/%s", secretName, key)
+		}
+	})
+
+	t.Run("falls back to defaults when key names are empty strings", func(t *testing.T) {
+		// Explicitly set empty strings (helper skips empty values, so we set them directly)
+		t.Setenv("S3_FORWARD_CACHE_TO_JOBS", "true")
+		t.Setenv("S3_BUCKET", "my-bucket")
+		t.Setenv("S3_CREDENTIALS_SECRET_NAME", "s3-creds")
+		t.Setenv("S3_ACCESS_KEY_ID_SECRET_KEY", "")
+		t.Setenv("S3_SECRET_ACCESS_KEY_SECRET_KEY", "")
+		_ = config.InitializeConfigModule(s3ConfigKeys)
+
+		envs := getDefaultEnvVars(&api.RenovateJob{}, "")
+
+		// Empty strings should fall back to defaults (config module treats empty as unset)
+		if secretName, key := secretKeyRef(t, envs, "AWS_ACCESS_KEY_ID"); secretName != "s3-creds" || key != "access-key-id" {
+			t.Fatalf("expected AWS_ACCESS_KEY_ID from s3-creds/access-key-id, got %s/%s", secretName, key)
+		}
+		if secretName, key := secretKeyRef(t, envs, "AWS_SECRET_ACCESS_KEY"); secretName != "s3-creds" || key != "secret-access-key" {
+			t.Fatalf("expected AWS_SECRET_ACCESS_KEY from s3-creds/secret-access-key, got %s/%s", secretName, key)
+		}
+	})
+}

@@ -325,7 +325,7 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
 							Name: secretName,
-							Key:  "access-key-id",
+							Key:  config.GetValue("S3_ACCESS_KEY_ID_SECRET_KEY"),
 						},
 					},
 				},
@@ -334,7 +334,7 @@ func getDefaultEnvVars(job *api.RenovateJob, redisSecretName string) []v1.EnvVar
 					ValueFrom: &v1.EnvVarSource{
 						SecretKeyRef: &v1.SecretKeySelector{
 							Name: secretName,
-							Key:  "secret-access-key",
+							Key:  config.GetValue("S3_SECRET_ACCESS_KEY_SECRET_KEY"),
 						},
 					},
 				},

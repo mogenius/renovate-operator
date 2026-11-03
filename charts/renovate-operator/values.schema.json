@@ -482,9 +482,11 @@
         },
         "cachePrefix": { "type": "string" },
         "existingSecret": {
-          "description": "Secret must contain the keys access-key-id and secret-access-key",
+          "description": "Name of an existing Secret containing S3 credentials; key names are configurable via accessKeyIdKey and secretAccessKeyKey",
           "type": "string"
-        }
+        },
+        "accessKeyIdKey": { "type": "string" },
+        "secretAccessKeyKey": { "type": "string" }
       }
     },
     "metrics": {
