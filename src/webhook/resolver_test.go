@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -241,5 +242,30 @@ func TestFindAndAuthenticateJob(t *testing.T) {
 				t.Errorf("expected id %+v, got %+v", tt.wantId, id)
 			}
 		})
+	}
+}
+
+// A checker that errors (the webhook secret could not be read) is still reported as an
+// authentication failure, but the cause must survive so the "webhook resolve failed" log
+// line says why instead of looking like a credential mismatch.
+func TestFindAndAuthenticateJobKeepsCheckerErrorCause(t *testing.T) {
+	lister := &mockJobLister{entries: []testJobEntry{
+		makeEntry("job1", "ns1", true, true, "org/repo"),
+		makeEntry("job2", "ns1", true, true, "org/repo"),
+	}}
+
+	_, err := FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", errorChecker)
+	if !errors.Is(err, ErrAuthenticationFailed) {
+		t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
+	}
+	for _, want := range []string{"ns1/job1: auth error", "ns1/job2: auth error"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected %q in %q", want, err.Error())
+		}
+	}
+
+	_, err = FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", failingChecker)
+	if err != ErrAuthenticationFailed {
+		t.Errorf("a plain mismatch should return the bare sentinel, got %v", err)
 	}
 }
