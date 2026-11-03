@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
@@ -87,7 +86,6 @@ type RenovateJobManager interface {
 	// StreamLogsForProject returns an io.ReadCloser that streams NDJSON log lines for the given
 	// project. For running pods Follow is true so the stream stays open until the container exits.
 	// For completed pods or log-store fallback the stream closes after all content is delivered.
-	// The lock is released before returning — callers read outside the lock.
 	StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error)
 	// IsWebhookTokenValid checks if the provided token is valid for the webhook of the specified RenovateJob CRD.
 	IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error)
@@ -117,7 +115,6 @@ type renovateJobManager struct {
 	client                   client.Client
 	gitProviderClientFactory gitProviderClientFactory.GitProviderClientFactory
 	logger                   logr.Logger
-	lock                     *sync.RWMutex
 	logStore                 logStore.LogStore
 	logReader                podLogs.PodLogReader
 	policy                   policy.Policy
@@ -143,31 +140,13 @@ func NewRenovateJobManager(client client.Client, gitProviderClientFactory gitPro
 		client:                   client,
 		gitProviderClientFactory: gitProviderClientFactory,
 		logger:                   logger,
-		lock:                     &sync.RWMutex{},
 		logStore:                 ls,
 		logReader:                lr,
 		policy:                   p,
 	}
 }
 
-// globally lock the manager, if parameter is true, lock in read mode
-func (r *renovateJobManager) globalManagerLock(readonly bool) func() {
-	if readonly {
-		r.lock.RLock()
-		return func() {
-			r.lock.RUnlock()
-		}
-	}
-
-	r.lock.Lock()
-	return func() {
-		r.lock.Unlock()
-	}
-}
-
 func (r *renovateJobManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
-	defer r.globalManagerLock(true)()
-
 	renovateJob, err := loadRenovateJob(ctx, name, namespace, r.client)
 	if err != nil {
 		return nil, err
@@ -176,14 +155,10 @@ func (r *renovateJobManager) GetRenovateJob(ctx context.Context, name string, na
 }
 
 func (r *renovateJobManager) GetRawRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
-	defer r.globalManagerLock(true)()
-
 	return loadRenovateJob(ctx, name, namespace, r.client)
 }
 
 func (r *renovateJobManager) ResolveEffective(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error) {
-	defer r.globalManagerLock(true)()
-
 	return resolveEffectiveJob(ctx, job, r.client)
 }
 
@@ -205,8 +180,6 @@ func toRenovateProjectStatus(p *api.RenovateProject) RenovateProjectStatus {
 }
 
 func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job RenovateJobIdentifier, status api.RenovateProjectStatus) ([]RenovateProjectStatus, error) {
-	defer r.globalManagerLock(true)()
-
 	var projectList api.RenovateProjectList
 	if err := r.client.List(ctx, &projectList,
 		client.InNamespace(job.Namespace),
@@ -225,8 +198,6 @@ func (r *renovateJobManager) GetProjectsByStatus(ctx context.Context, job Renova
 }
 
 func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job RenovateJobIdentifier) ([]RenovateProjectStatus, error) {
-	defer r.globalManagerLock(true)()
-
 	var projectList api.RenovateProjectList
 	if err := r.client.List(ctx, &projectList,
 		client.InNamespace(job.Namespace),
@@ -243,8 +214,6 @@ func (r *renovateJobManager) GetProjectsForRenovateJob(ctx context.Context, job 
 }
 
 func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJobIdentifier, error) {
-	defer r.globalManagerLock(true)()
-
 	var renovateJobs api.RenovateJobList
 	err := r.client.List(ctx, &renovateJobs)
 	if err != nil {
@@ -263,8 +232,6 @@ func (r *renovateJobManager) ListRenovateJobs(ctx context.Context) ([]RenovateJo
 }
 
 func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
-	defer r.globalManagerLock(true)()
-
 	var renovateJobs api.RenovateJobList
 	err := r.client.List(ctx, &renovateJobs)
 	if err != nil {
@@ -275,8 +242,6 @@ func (r *renovateJobManager) ListRenovateJobsFull(ctx context.Context) ([]api.Re
 }
 
 func (r *renovateJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
-	defer r.globalManagerLock(true)()
-
 	var renovateJobs api.RenovateJobList
 	if err := r.client.List(ctx, &renovateJobs); err != nil {
 		return nil, err
@@ -298,8 +263,6 @@ func (r *renovateJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) 
 }
 
 func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project string, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-	defer r.globalManagerLock(false)()
-
 	rpName := utils.RenovateProjectCRDName(job.Name, project)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -321,8 +284,6 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 }
 
 func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p RenovateProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
-	defer r.globalManagerLock(false)()
-
 	var projectList api.RenovateProjectList
 	if err := r.client.List(ctx, &projectList,
 		client.InNamespace(job.Namespace),
@@ -406,8 +367,6 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 		}
 	}
 
-	defer r.globalManagerLock(false)()
-
 	// List existing RenovateProject objects for this job.
 	var existing api.RenovateProjectList
 	if err := r.client.List(ctx, &existing,
@@ -464,7 +423,6 @@ func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob 
 }
 
 func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error {
-	unlock := r.globalManagerLock(true)
 	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	var projectList api.RenovateProjectList
 	var listErr error
@@ -474,7 +432,6 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 			client.MatchingLabels{api.LabelRenovateJob: job.Name},
 		)
 	}
-	unlock()
 	if err != nil {
 		return fmt.Errorf("failed to load renovate job: %w", err)
 	}
@@ -507,7 +464,6 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 }
 
 func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
-	unlock := r.globalManagerLock(true)
 	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	var projectList api.RenovateProjectList
 	var listErr error
@@ -517,7 +473,6 @@ func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJo
 			client.MatchingLabels{api.LabelRenovateJob: job.Name},
 		)
 	}
-	unlock()
 	if err != nil {
 		return fmt.Errorf("failed to load renovate job: %w", err)
 	}
@@ -622,9 +577,6 @@ func buildWebhookURL(rawURL string, job RenovateJobIdentifier) (string, error) {
 }
 
 func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job RenovateJobIdentifier, project string) (io.ReadCloser, error) {
-	// Phase 1: hold the read lock only for CRD + k8s Job metadata lookup.
-	unlock := r.globalManagerLock(true)
-
 	rpName := utils.RenovateProjectCRDName(job.Name, project)
 	var rp api.RenovateProject
 	projectRunning := false
@@ -639,9 +591,6 @@ func (r *renovateJobManager) StreamLogsForProject(ctx context.Context, job Renov
 		Project:         project,
 	})
 
-	unlock() // released before any streaming I/O so the lock is never held across a long-lived connection
-
-	// Phase 2: open the stream (no lock held).
 	if jobErr == nil {
 		stream, err := r.logReader.StreamJobLogs(ctx, executorJob, projectRunning)
 		if err == nil {
@@ -695,8 +644,6 @@ func (r *renovateJobManager) getRenovateJobTokens(ctx context.Context, job *api.
 }
 
 func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job RenovateJobIdentifier, token string) (bool, error) {
-	defer r.globalManagerLock(true)()
-
 	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
@@ -720,8 +667,6 @@ func (r *renovateJobManager) IsWebhookTokenValid(ctx context.Context, job Renova
 }
 
 func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job RenovateJobIdentifier, signature string, body []byte) (bool, error) {
-	defer r.globalManagerLock(true)()
-
 	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
@@ -757,8 +702,6 @@ func (r *renovateJobManager) IsWebhookSignatureValid(ctx context.Context, job Re
 // list of "v1,<base64>" entries; a match against any entry for any configured key authenticates the request.
 // The timestamp must be within standardWebhookTimestampTolerance of now to reject replayed requests.
 func (r *renovateJobManager) IsWebhookStandardSignatureValid(ctx context.Context, job RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error) {
-	defer r.globalManagerLock(true)()
-
 	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
 	if err != nil {
 		return false, err
@@ -818,8 +761,6 @@ func (r *renovateJobManager) CancelProjectJob(ctx context.Context, project strin
 }
 
 func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job RenovateJobIdentifier, accepted bool, reason string, message string) (bool, error) {
-	defer r.globalManagerLock(false)()
-
 	status := v1.ConditionTrue
 	if !accepted {
 		status = v1.ConditionFalse
@@ -857,31 +798,32 @@ func (r *renovateJobManager) SetAcceptedCondition(ctx context.Context, job Renov
 }
 
 func (r *renovateJobManager) SetSuspend(ctx context.Context, job RenovateJobIdentifier, suspend bool) error {
-	defer r.globalManagerLock(false)()
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// The raw object: it is patched, so it must not carry an inherited spec.
+		renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
+		if err != nil {
+			return err
+		}
 
-	// The raw object: it is patched, so it must not carry an inherited spec.
-	renovateJob, err := loadRenovateJob(ctx, job.Name, job.Namespace, r.client)
-	if err != nil {
-		return err
-	}
+		// An explicit value would pin the job against later changes to its
+		// template, so write one only when inheriting gives the wrong state. A
+		// template that cannot be resolved leaves the explicit value, which is safe
+		// either way.
+		want := &suspend
+		if inherited, err := r.inheritedSuspend(ctx, renovateJob); err == nil && inherited == suspend {
+			want = nil
+		}
+		if reflect.DeepEqual(renovateJob.Spec.Suspend, want) {
+			return nil
+		}
 
-	// An explicit value would pin the job against later changes to its
-	// template, so write one only when inheriting gives the wrong state. A
-	// template that cannot be resolved leaves the explicit value, which is safe
-	// either way.
-	want := &suspend
-	if inherited, err := r.inheritedSuspend(ctx, renovateJob); err == nil && inherited == suspend {
-		want = nil
-	}
-	if reflect.DeepEqual(renovateJob.Spec.Suspend, want) {
-		return nil
-	}
-
-	// A merge patch carries spec.suspend alone, so it cannot overwrite a
-	// concurrent change to the rest of the spec.
-	patch := client.MergeFrom(renovateJob.DeepCopy())
-	renovateJob.Spec.Suspend = want
-	return r.client.Patch(ctx, renovateJob, patch)
+		// An optimistic-lock merge patch carries spec.suspend plus the resourceVersion
+		// it was read at, so a concurrent spec change surfaces as a conflict here and
+		// gets retried against a fresh read, instead of being silently overwritten.
+		patch := client.MergeFromWithOptions(renovateJob.DeepCopy(), client.MergeFromWithOptimisticLock{})
+		renovateJob.Spec.Suspend = want
+		return r.client.Patch(ctx, renovateJob, patch)
+	})
 }
 
 // inheritedSuspend is the suspend value the job would have with none of its own.

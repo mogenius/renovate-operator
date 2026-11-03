@@ -2,7 +2,6 @@ package crdmanager
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -60,7 +59,6 @@ func conditionManager(t *testing.T, job *api.RenovateJob) (*renovateJobManager, 
 	return &renovateJobManager{
 		client: countingClient{WithWatch: base, statusUpdates: &writes},
 		logger: logr.Discard(),
-		lock:   &sync.RWMutex{},
 		policy: policy.Policy{},
 	}, &writes
 }
