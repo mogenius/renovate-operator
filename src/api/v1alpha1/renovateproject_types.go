@@ -63,6 +63,14 @@ const (
 type RenovateExecutionOptions struct {
 	// If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
 	Debug bool `json:"debug,omitempty"`
+	// If set, the renovate job runs once against this branch instead of the repository's
+	// base branches, using the Renovate config found on that branch. Such a run is always
+	// a dry run (RENOVATE_DRY_RUN=full).
+	// +kubebuilder:validation:MaxLength=250
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._/-]*$`
+	BaseBranch string `json:"baseBranch,omitempty"`
+	// If true, the renovate job will be executed with RENOVATE_DRY_RUN=full
+	DryRun bool `json:"dryRun,omitempty"`
 }
 
 // RenovateProjectSpec contains the immutable identity of the tracked repository.

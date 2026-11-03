@@ -72,8 +72,19 @@ spec:
                 type: string
               executionOptions:
                 properties:
+                  baseBranch:
+                    description: |-
+                      If set, the renovate job runs once against this branch instead of the repository's
+                      base branches, using the Renovate config found on that branch. Such a run is always
+                      a dry run (RENOVATE_DRY_RUN=full).
+                    maxLength: 250
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._/-]*$
+                    type: string
                   debug:
                     description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
+                    type: boolean
+                  dryRun:
+                    description: If true, the renovate job will be executed with RENOVATE_DRY_RUN=full
                     type: boolean
                 type: object
               lastTransition:

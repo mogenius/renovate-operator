@@ -25,6 +25,8 @@ export { expect };
 class DashboardPage {
   constructor(page) {
     this.page = page;
+    /** Bodies the page POSTed to /api/v1/renovate (one project), oldest first. */
+    this.triggerRequests = [];
     /** Bodies the page POSTed to /api/v1/renovate/all, oldest first. */
     this.triggerAllRequests = [];
     /** Bodies the page POSTed to /api/v1/renovatejob/suspend, oldest first. */
@@ -47,6 +49,10 @@ class DashboardPage {
     await this.page.route("**/api/v1/renovate/all", (route) => {
       this.triggerAllRequests.push(JSON.parse(route.request().postData() || "{}"));
       return route.fulfill({ json: { message: "All projects triggered" } });
+    });
+    await this.page.route("**/api/v1/renovate", (route) => {
+      this.triggerRequests.push(JSON.parse(route.request().postData() || "{}"));
+      return route.fulfill({ json: { message: "Renovate job triggered for project" } });
     });
     await this.page.route("**/api/v1/renovatejob/suspend", (route) => {
       this.suspendRequests.push(JSON.parse(route.request().postData() || "{}"));
@@ -328,6 +334,23 @@ class DashboardPage {
     );
     await (debug ? this.triggerAllDebugButton(jobName) : this.triggerAllButton(jobName)).click();
     await sent;
+  }
+
+  /**
+   * The debug-run button of a project row, which opens the "Debug or dry run" dialog. Scoped to
+   * the table so the `lg:hidden` card layout, which stays in the DOM at this viewport, is
+   * not matched too.
+   */
+  debugRunButton(projectName) {
+    return this.page
+      .locator("table tbody tr", {
+        has: this.page.getByTestId("project-name").filter({ hasText: projectName }),
+      })
+      .getByTestId("debug-run");
+  }
+
+  get debugRunDialog() {
+    return this.page.getByRole("dialog", { name: "Debug or dry run" });
   }
 
   /** What the job card persisted for its "Hide Projects" selection. */

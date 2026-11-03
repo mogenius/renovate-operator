@@ -49,6 +49,7 @@
     <script type="text/babel" src="components/StickyToolbar.js"></script>
     <script type="text/babel" src="components/Footer.js"></script>
     <script type="text/babel" src="components/ShortcutsModal.js"></script>
+    <script type="text/babel" src="components/DebugRunModal.js"></script>
 
     <link rel="stylesheet" href="css/styles.css" />
   </head>
@@ -608,6 +609,8 @@
         }, []);
 
         const [showShortcuts, setShowShortcuts] = useState(false);
+        // { job, project } while the "Debug run" dialog is open
+        const [debugRunTarget, setDebugRunTarget] = useState(null);
         const [focusedJobIndex, setFocusedJobIndex] = useState(null);
         const [focusedProjectName, setFocusedProjectName] = useState(null);
         const [focusedCardProjects, setFocusedCardProjects] = useState([]);
@@ -1194,7 +1197,7 @@
               setShowShortcuts((s) => !s);
               return;
             }
-            if (showShortcuts) return;
+            if (showShortcuts || debugRunTarget) return;
             if (inInput) return;
             switch (e.key) {
               case '/':
@@ -1276,7 +1279,7 @@
           };
           document.addEventListener('keydown', handleKeyDown);
           return () => document.removeEventListener('keydown', handleKeyDown);
-        }, [showShortcuts, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
+        }, [showShortcuts, debugRunTarget, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
 
         useEffect(() => {
           if (focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex]) {
@@ -1316,6 +1319,16 @@
           <div className="min-h-screen flex flex-col">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
             {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} shortcuts={DASHBOARD_SHORTCUTS} />}
+            {debugRunTarget && (
+              <DebugRunModal
+                projectName={debugRunTarget.project.name}
+                onClose={() => setDebugRunTarget(null)}
+                onSubmit={(executionOptions) => {
+                  triggerRenovate(debugRunTarget.job, debugRunTarget.project, executionOptions);
+                  setDebugRunTarget(null);
+                }}
+              />
+            )}
 
             {/* Brand strip only — everything the user filters and searches with
                 lives in the sticky toolbar below, so it stays reachable while
@@ -1726,6 +1739,7 @@
                       onRunDiscovery={runDiscovery}
                       onToggleSuspend={toggleSuspend}
                       onTriggerRenovate={triggerRenovate}
+                      onOpenDebugRun={(job, project) => setDebugRunTarget({ job, project })}
                       onTriggerAllRenovate={triggerAllRenovate}
                       onCancelRenovate={cancelRenovate}
                       projectListIsFiltered={projectListIsFiltered}
@@ -2101,13 +2115,28 @@
         );
       }
 
-      function ActionButton({ project, onTrigger, onTriggerDebug, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
+      function ActionButton({ project, onTrigger, onOpenDebugRun, onCancel, width, jobAccepted, canTrigger = true, canCancel = true, hint }) {
         const isRunning = project.status === "running";
         const isScheduled = project.status === "scheduled";
         const isPrioritized = isScheduled && (project.priority || 0) > 0;
         const isTriggering = !!project.triggering;
         const isCancelling = !!project.cancelling;
-        const isDebugScheduled = isScheduled && !!project.executionOptions?.debug;
+        const scheduledBaseBranch = isScheduled ? project.executionOptions?.baseBranch : undefined;
+        const isDebugRunScheduled = isScheduled && (!!project.executionOptions?.debug || !!scheduledBaseBranch);
+        const queuedDebugRun = scheduledBaseBranch
+          ? `Queued: dry run against branch ${scheduledBaseBranch}${project.executionOptions?.debug ? " with debug logs" : ""}`
+          : isDebugRunScheduled
+          ? "Queued: debug run on the default branch"
+          : undefined;
+        const debugRunTooltipId = `debug-run-tooltip-${project.name}`;
+        // Shown with fixed positioning: the project table scrolls horizontally and the job
+        // card hides overflow, both of which would clip a tooltip positioned in the row.
+        const [debugRunTooltipAt, setDebugRunTooltipAt] = useState(null);
+        const showDebugRunTooltip = (event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setDebugRunTooltipAt({ top: rect.top - 8, right: window.innerWidth - rect.right });
+        };
+        const hideDebugRunTooltip = () => setDebugRunTooltipAt(null);
 
         if (isRunning) {
           return (
@@ -2141,12 +2170,12 @@
           : undefined;
 
         return (
-          <div className={`flex items-stretch shadow-sm rounded-lg overflow-hidden ${width || ""}`}>
+          <div className={`flex items-stretch shadow-sm rounded-lg ${width || ""}`}>
             <button
               onClick={onTrigger}
               disabled={isTriggering || isPrioritized || !!blocked}
               title={blocked}
-              className="flex-1 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
+              className="flex-1 rounded-l-lg bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
               aria-label={
                 blocked
                   ? blocked
@@ -2162,15 +2191,39 @@
               {isTriggering && <Spinner />}
               {label}
             </button>
-            <button
-              onClick={onTriggerDebug}
-              disabled={isTriggering || !!blocked}
-              title={blocked || "Trigger in debug mode"}
-              className={`${isDebugScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
-              aria-label={blocked || `Trigger ${project.name} in debug mode`}
-            >
-              <BugIcon className="w-3.5 h-3.5" />
-            </button>
+            {/* One button for both debug runs: on the default branch, or on a specific
+                branch as a dry run. The dialog picks which; the tooltip says so, since a
+                bug icon alone does not tell that a branch can be chosen. */}
+            <div className="flex" onMouseEnter={showDebugRunTooltip} onMouseLeave={hideDebugRunTooltip} onFocus={showDebugRunTooltip} onBlur={hideDebugRunTooltip}>
+              <button
+                onClick={onOpenDebugRun}
+                disabled={isTriggering || !!blocked}
+                data-testid="debug-run"
+                aria-label={blocked || queuedDebugRun || `Debug or dry run for ${project.name}`}
+                aria-describedby={blocked ? undefined : debugRunTooltipId}
+                className={`${isDebugRunScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} rounded-r-lg hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
+              >
+                <BugIcon className="w-3.5 h-3.5" />
+              </button>
+              <div
+                id={debugRunTooltipId}
+                role="tooltip"
+                hidden={!debugRunTooltipAt}
+                style={debugRunTooltipAt ? { top: debugRunTooltipAt.top, right: debugRunTooltipAt.right, transform: "translateY(-100%)" } : undefined}
+                className="pointer-events-none fixed w-64 rounded-lg bg-gray-900 dark:bg-slate-700 text-white text-xs text-left p-2.5 shadow-lg z-50"
+              >
+                {blocked ? (
+                  blocked
+                ) : (
+                  <>
+                    {queuedDebugRun && <div className="font-semibold text-amber-300 mb-1.5">{queuedDebugRun}</div>}
+                    <div className="font-semibold mb-1">Debug or dry run</div>
+                    <div className="text-gray-300"><span className="text-amber-300 font-medium">Debug run</span> on the default branch: a real run with debug logs.</div>
+                    <div className="text-gray-300 mt-1"><span className="text-teal-300 font-medium">Dry run</span> on a specific branch: tests its Renovate config before merging; nothing changes.</div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         );
       }
@@ -2290,7 +2343,7 @@
         );
       }
 
-      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
+      function JobCard({ job, expanded, focused, innerRef, focusedProjectName, onSortedProjectsChange, onToggleExpanded, onRunDiscovery, onToggleSuspend, onTriggerRenovate, onOpenDebugRun, onTriggerAllRenovate, onCancelRenovate, projectListIsFiltered, authInfo }) {
         const [sortConfig, setSortConfig] = useState({
           key: "status",
           direction: "asc",
@@ -3086,7 +3139,7 @@
                                 <ActionButton
                                   project={project}
                                   onTrigger={() => onTriggerRenovate(job, project)}
-                                  onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
+                                  onOpenDebugRun={() => onOpenDebugRun(job, project)}
                                   onCancel={() => onCancelRenovate(job, project)}
                                   width="w-[130px]"
                                   jobAccepted={job.accepted !== false}
@@ -3259,7 +3312,7 @@
                           <ActionButton
                             project={project}
                             onTrigger={() => onTriggerRenovate(job, project)}
-                            onTriggerDebug={() => onTriggerRenovate(job, project, { debug: true })}
+                            onOpenDebugRun={() => onOpenDebugRun(job, project)}
                             onCancel={() => onCancelRenovate(job, project)}
                             width="w-[140px]"
                             jobAccepted={job.accepted !== false}

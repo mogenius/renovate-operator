@@ -1,0 +1,175 @@
+// Mirrors validateBaseBranch in src/ui/executionOptions.go; the server is authoritative,
+// this only spares the user a round trip for an obviously invalid name.
+function customBranchNameProblem(branch) {
+  if (branch.length > 250) return "At most 250 characters.";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch)) {
+    return "Start with a letter or digit; use only letters, digits, '.', '_', '-' and '/'.";
+  }
+  for (const forbidden of ["..", "//", "/.", ".lock/"]) {
+    if (branch.includes(forbidden)) return `Must not contain "${forbidden}".`;
+  }
+  for (const forbiddenSuffix of ["/", ".", ".lock"]) {
+    if (branch.endsWith(forbiddenSuffix)) return `Must not end with "${forbiddenSuffix}".`;
+  }
+  return null;
+}
+
+// The dialog behind a project's debug button. It offers two different things and says so:
+// a debug run on the default branch (a real run with debug logging, like the old debug
+// button), or a dry run on a specific branch (to test the Renovate config on that branch
+// before merging it; the operator always runs it as a dry run). Debug logging starts ticked
+// in both cases. On the default branch it cannot be unticked, since a plain run of the
+// default branch is what the Trigger button already does.
+function DebugRunModal({ projectName, onSubmit, onClose }) {
+  const { useEffect, useState } = React;
+  const [target, setTarget] = useState("default"); // "default" or "branch"
+  const [branch, setBranch] = useState("");
+  const [debug, setDebug] = useState(true);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const onSpecificBranch = target === "branch";
+  const trimmedBranch = branch.trim();
+  const branchProblem = onSpecificBranch && trimmedBranch ? customBranchNameProblem(trimmedBranch) : null;
+  const canSubmit = !onSpecificBranch || (trimmedBranch !== "" && !branchProblem);
+
+  const chooseTarget = (nextTarget) => {
+    setTarget(nextTarget);
+    // debug is the point of this dialog: picking a target always starts with it ticked
+    setDebug(true);
+  };
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    if (!onSpecificBranch) {
+      onSubmit({ debug: true });
+      return;
+    }
+    // the operator only accepts runs on a specific branch as dry runs
+    const executionOptions = { baseBranch: trimmedBranch, dryRun: true };
+    if (debug) executionOptions.debug = true;
+    onSubmit(executionOptions);
+  };
+
+  const targetOption = (value, kind, kindClass, where, hint) => (
+    <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer text-xs ${target === value ? "border-primary bg-sky-50 dark:bg-slate-700/50" : "border-gray-200 dark:border-slate-600"}`}>
+      <input type="radio" name="debug-run-target" value={value} checked={target === value} onChange={() => chooseTarget(value)} className="mt-0.5" />
+      <span>
+        <span className="flex items-center gap-1.5 font-medium text-gray-800 dark:text-slate-100">
+          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${kindClass}`}>{kind}</span>
+          <span>{where}</span>
+        </span>
+        <span className="block mt-0.5 text-gray-500 dark:text-slate-400">{hint}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <form
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-600 p-5 max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={submit}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Debug or dry run"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Debug or dry run</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+            aria-label="Close debug or dry run"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-slate-400 mb-4">
+          One run of <span className="font-mono break-all">{projectName}</span>. Nothing is saved for later runs.
+        </p>
+
+        <fieldset className="space-y-2">
+          <legend className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">What to run</legend>
+          {targetOption("default", "Debug run", "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", "on the default branch",
+            "A real run with debug logging, like a scheduled run: Renovate opens and updates pull requests.")}
+          {targetOption("branch", "Dry run", "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300", "on a specific branch",
+            "Tests the Renovate config on another branch before merging it. Renovate only logs what it would do; nothing changes in the repository.")}
+        </fieldset>
+
+        {onSpecificBranch && (
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1" htmlFor="debug-run-branch">
+              Branch name
+            </label>
+            <input
+              id="debug-run-branch"
+              type="text"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="e.g. test/renovate-config"
+              aria-invalid={!!branchProblem}
+              aria-describedby="debug-run-branch-problem"
+              className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <p id="debug-run-branch-problem" className="min-h-[1rem] mt-1 text-xs text-error">
+              {branchProblem || ""}
+            </p>
+          </div>
+        )}
+
+        <label className={`flex items-start gap-2 mt-3 text-xs ${onSpecificBranch ? "text-gray-700 dark:text-slate-300" : "text-gray-500 dark:text-slate-400"}`}>
+          <input
+            type="checkbox"
+            checked={debug}
+            disabled={!onSpecificBranch}
+            onChange={(e) => setDebug(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Debug log level
+            {!onSpecificBranch && <span className="block">Always on here: use Trigger for a run without debug logs.</span>}
+          </span>
+        </label>
+
+        {onSpecificBranch && (
+          <p className="mt-3 text-xs text-gray-600 dark:text-slate-400">
+            This is always a dry run: Renovate logs what it would change, but opens or updates no pull
+            requests and leaves the Dependency Dashboard alone. Read the result in the project's logs.
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-[0.813rem] rounded-lg text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all"
+          >
+            {onSpecificBranch ? "Start dry run" : "Start debug run"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+window.DebugRunModal = DebugRunModal;
