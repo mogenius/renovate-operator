@@ -649,8 +649,7 @@
         [['Space'], 'Expand / collapse focused card'],
         [['↑', '↓'], 'Navigate projects in card'],
         [['t'], 'Trigger focused project'],
-        [['e'], 'Expand all cards'],
-        [['c'], 'Collapse all cards'],
+        [['e'], 'Expand / collapse all cards'],
         [['r'], 'Refresh'],
         [['/'], 'Focus search'],
         [['Esc'], 'Clear active filter'],
@@ -870,7 +869,7 @@
         );
 
         // Whether a bulk action has to add or remove keys depends on the default,
-        // so both buttons go through one helper stating the state they want.
+        // so the toggle goes through one helper stating the state it wants.
         const setExpansionForVisibleJobs = useCallback((expanded) => {
           setToggledJobCardKeys((current) => {
             const next = new Set(current);
@@ -887,14 +886,12 @@
           });
         }, [searchFilteredJobs]);
 
-        const expandAllJobs = useCallback(
-          () => setExpansionForVisibleJobs(true),
-          [setExpansionForVisibleJobs]
-        );
+        // Collapse when every visible job is open, expand otherwise.
+        const allVisibleExpanded = expandedVisibleJobCount === searchFilteredJobs.length;
 
-        const collapseAllJobs = useCallback(
-          () => setExpansionForVisibleJobs(false),
-          [setExpansionForVisibleJobs]
+        const toggleAllJobs = useCallback(
+          () => setExpansionForVisibleJobs(!allVisibleExpanded),
+          [allVisibleExpanded, setExpansionForVisibleJobs]
         );
 
         // Unlike expand/collapse, Suspend all and Resume all act on every job the
@@ -1408,11 +1405,7 @@
               }
               case 'e':
                 e.preventDefault();
-                expandAllJobs();
-                break;
-              case 'c':
-                e.preventDefault();
-                collapseAllJobs();
+                toggleAllJobs();
                 break;
               case 'r':
                 e.preventDefault();
@@ -1422,7 +1415,7 @@
           };
           document.addEventListener('keydown', handleKeyDown);
           return () => document.removeEventListener('keydown', handleKeyDown);
-        }, [showShortcuts, debugRunTarget, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, expandAllJobs, collapseAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
+        }, [showShortcuts, debugRunTarget, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, toggleAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
 
         useEffect(() => {
           if (focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex]) {
@@ -1582,31 +1575,27 @@
                       </button>
                     )}
                   </div>
-                  {searchFilteredJobs.length > 1 && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={expandAllJobs}
-                        disabled={expandedVisibleJobCount === searchFilteredJobs.length}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                        aria-label="Expand all job cards"
-                      >
-                        {/* The short label keeps the search box usable on a phone,
-                            where this row has to share one line with it. */}
-                        <span className="sm:hidden">Expand</span>
-                        <span className="hidden sm:inline">Expand all</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={collapseAllJobs}
-                        disabled={expandedVisibleJobCount === 0}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300"
-                        aria-label="Collapse all job cards"
-                      >
-                        <span className="sm:hidden">Collapse</span>
-                        <span className="hidden sm:inline">Collapse all</span>
-                      </button>
-                    </div>
+                  {searchFilteredJobs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleAllJobs}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
+                      aria-label={allVisibleExpanded ? "Collapse all job cards" : "Expand all job cards"}
+                      title={allVisibleExpanded ? "Collapse all job cards (e)" : "Expand all job cards (e)"}
+                    >
+                      <span className="flex h-5 items-center shrink-0">
+                        <svg
+                          className={`w-4 h-4 transition-transform duration-200 ${allVisibleExpanded ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m4.5 5.25 7.5 7.5 7.5-7.5m-15 6 7.5 7.5 7.5-7.5" />
+                        </svg>
+                      </span>
+                      <span className="hidden sm:inline">Toggle all</span>
+                    </button>
                   )}
                   {/* Only where the operator offers suspending (authorization.suspendFromUI),
                       and only with jobs to batch: a lone job has its card's button. Like

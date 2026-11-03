@@ -32,7 +32,7 @@ test.describe("sticky dashboard toolbar", () => {
     expect(await dashboard.distanceFromViewportTop(dashboard.toolbar)).toBe(0);
     await expect(dashboard.searchInput).toBeInViewport();
     await expect(dashboard.statBadge("Failed")).toBeInViewport();
-    await expect(dashboard.expandAllButton).toBeInViewport();
+    await expect(dashboard.toggleAllButton).toBeInViewport();
   });
 
   test("filters and searches from the bottom of the page without scrolling back up", async ({
@@ -51,7 +51,7 @@ test.describe("sticky dashboard toolbar", () => {
     await dashboard.searchInput.fill("");
     await expect(dashboard.jobHeadings).toHaveCount(renovateJobs.length);
 
-    await dashboard.collapseAllButton.click();
+    await dashboard.toggleAllButton.click();
     await expect(dashboard.projectRows).toHaveCount(0);
 
     // Collapsing shrank the page below one viewport, so the toolbar is no longer

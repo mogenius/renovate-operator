@@ -1,5 +1,5 @@
 // Covers the keyboard shortcuts added to the dashboard: j/k to move card focus,
-// Space to toggle expansion, arrow keys to walk projects within a card, e/c to
+// Space to toggle expansion, arrow keys to walk projects within a card, e to
 // expand/collapse all, / to reach the search box, and ? for the shortcuts modal.
 //
 // A card is "focused" when the dashboard applies border-primary to its outer
@@ -126,11 +126,11 @@ test.describe("keyboard navigation — dashboard", () => {
     await expect(cardRows.nth(0)).toHaveClass(/ring-primary/);
   });
 
-  test("c collapses all visible cards and e expands them again", async ({ dashboard }) => {
+  test("e toggles all visible cards between collapsed and expanded", async ({ dashboard }) => {
     await dashboard.open(SMALL());
 
-    // Default is expanded; collapse all.
-    await dashboard.page.keyboard.press("c");
+    // Default is expanded; the toggle collapses.
+    await dashboard.page.keyboard.press("e");
     expect(await dashboard.isExpanded("team-01")).toBe(false);
     expect(await dashboard.isExpanded("team-02")).toBe(false);
     expect(await dashboard.isExpanded("team-03")).toBe(false);

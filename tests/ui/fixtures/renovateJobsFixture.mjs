@@ -543,8 +543,8 @@ export function buildDashboardWithNestedProjectPaths() {
 /**
  * Three jobs of which two have a failing project. Under `?filter=failed` the
  * dashboard shows those two and hides the third entirely, which is the setup the
- * expand-all / collapse-all scoping needs: more than one visible job (so the bulk
- * controls render at all) plus one job that must stay untouched.
+ * expand-all / collapse-all scoping needs: one job the filter leaves behind plus
+ * one job that must stay untouched.
  */
 export function buildDashboardWithTwoFailingJobs() {
   return [

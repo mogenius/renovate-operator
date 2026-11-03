@@ -179,12 +179,8 @@ class DashboardPage {
     return Number(value);
   }
 
-  get expandAllButton() {
-    return this.page.getByRole("button", { name: "Expand all job cards" });
-  }
-
-  get collapseAllButton() {
-    return this.page.getByRole("button", { name: "Collapse all job cards" });
+  get toggleAllButton() {
+    return this.page.getByRole("button", { name: /(Expand|Collapse) all job cards/ });
   }
 
   /** Project rows only exist inside expanded cards. */
