@@ -15,9 +15,12 @@ import (
 	"renovate-operator/internal/utils"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // testPolicy allows the hosts the fixtures in this file point at, so tests that
@@ -207,6 +210,137 @@ func TestUpdateProjectStatusBatched(t *testing.T) {
 	}
 	if !foundP2 {
 		t.Fatalf("p2 not found after batched update")
+	}
+}
+
+// batchTestManager builds a manager over job1 with the given projects, all Completed, and the
+// given interceptors standing in for writers that run alongside a batch.
+func batchTestManager(t *testing.T, funcs interceptor.Funcs, projects ...string) (*renovateJobManager, RenovateJobIdentifier) {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	objs := []client.Object{makeJob("job1", "default")}
+	for _, p := range projects {
+		objs = append(objs, makeProject("job1", "default", p, api.JobStatusCompleted))
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&api.RenovateJob{}, &api.RenovateProject{}).
+		WithInterceptorFuncs(funcs).
+		Build()
+	log, err := logStore.NewLogStore(logr.Logger{}, "memory", kvstore.ValkeyConfig{}, objectstore.S3Config{}, logStore.S3LogOptions{})
+	if err != nil {
+		t.Fatalf("failed to initialise logStore")
+	}
+	mgr := NewRenovateJobManager(cl, nil, logr.Logger{}, log, nil, testPolicy()).(*renovateJobManager)
+	return mgr, RenovateJobIdentifier{Name: "job1", Namespace: "default"}
+}
+
+func batchProjectStatus(t *testing.T, mgr *renovateJobManager, jobId RenovateJobIdentifier, project string) RenovateProjectStatus {
+	t.Helper()
+	projects, err := mgr.GetProjectsForRenovateJob(context.Background(), jobId)
+	if err != nil {
+		t.Fatalf("unexpected error getting projects: %v", err)
+	}
+	for _, p := range projects {
+		if p.Name == project {
+			return p
+		}
+	}
+	t.Fatalf("project %s not found", project)
+	return RenovateProjectStatus{}
+}
+
+// Discovery can delete a project between the batch's listing and its update; the batch skips it
+// instead of failing for the rest.
+func TestUpdateProjectStatusBatched_SkipsProjectDeletedMeanwhile(t *testing.T) {
+	gone := utils.RenovateProjectCRDName("job1", "gone")
+	mgr, jobId := batchTestManager(t, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if key.Name == gone {
+				return apierrors.NewNotFound(api.GroupVersion.WithResource("renovateprojects").GroupResource(), key.Name)
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	}, "gone", "kept")
+
+	err := mgr.UpdateProjectStatusBatched(context.Background(),
+		func(p RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning },
+		jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
+	if err != nil {
+		t.Fatalf("unexpected error in batched update: %v", err)
+	}
+	if s := batchProjectStatus(t, mgr, jobId, "kept").Status; s != api.JobStatusScheduled {
+		t.Fatalf("expected kept scheduled, got %v", s)
+	}
+}
+
+// The filter is applied to the fresh copy too: a project queued on its own after the listing
+// (here with a one-off base branch) no longer matches a batch that skips Scheduled projects, so
+// its run options are not overwritten.
+func TestUpdateProjectStatusBatched_RechecksFilterOnFreshCopy(t *testing.T) {
+	queued := utils.RenovateProjectCRDName("job1", "queued")
+	var updated []string
+	mgr, jobId := batchTestManager(t, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if err := c.Get(ctx, key, obj, opts...); err != nil {
+				return err
+			}
+			if rp, ok := obj.(*api.RenovateProject); ok && key.Name == queued {
+				rp.Status.Status = api.JobStatusScheduled
+				rp.Status.ExecutionOptions = &api.RenovateExecutionOptions{BaseBranch: "feature-x"}
+			}
+			return nil
+		},
+		SubResourceUpdate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			updated = append(updated, obj.GetName())
+			return c.SubResource(subResourceName).Update(ctx, obj, opts...)
+		},
+	}, "queued", "other")
+
+	notQueued := func(p RenovateProjectStatus) bool {
+		return p.Status != api.JobStatusRunning && p.Status != api.JobStatusScheduled
+	}
+	err := mgr.UpdateProjectStatusBatched(context.Background(), notQueued, jobId,
+		&types.RenovateStatusUpdate{Status: api.JobStatusScheduled, ExecutionOptions: &api.RenovateExecutionOptions{Debug: true}})
+	if err != nil {
+		t.Fatalf("unexpected error in batched update: %v", err)
+	}
+	for _, name := range updated {
+		if name == queued {
+			t.Fatal("the batch rewrote a project that no longer matched its filter")
+		}
+	}
+	if s := batchProjectStatus(t, mgr, jobId, "other").Status; s != api.JobStatusScheduled {
+		t.Fatalf("expected other scheduled, got %v", s)
+	}
+}
+
+// One project failing does not stop the batch: the others are still updated, and the failure is
+// reported with the project's name.
+func TestUpdateProjectStatusBatched_ContinuesPastAFailedProject(t *testing.T) {
+	broken := utils.RenovateProjectCRDName("job1", "a-broken") // listed first, so the others come after it
+	mgr, jobId := batchTestManager(t, interceptor.Funcs{
+		SubResourceUpdate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if obj.GetName() == broken {
+				return apierrors.NewInternalError(context.DeadlineExceeded)
+			}
+			return c.SubResource(subResourceName).Update(ctx, obj, opts...)
+		},
+	}, "a-broken", "after", "before")
+
+	err := mgr.UpdateProjectStatusBatched(context.Background(),
+		func(p RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning },
+		jobId, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
+	if err == nil || !strings.Contains(err.Error(), "1 of the selected projects") || !strings.Contains(err.Error(), broken) {
+		t.Fatalf("expected the broken project's failure to be reported, got %v", err)
+	}
+	for _, p := range []string{"after", "before"} {
+		if s := batchProjectStatus(t, mgr, jobId, p).Status; s != api.JobStatusScheduled {
+			t.Fatalf("expected %s scheduled despite the failure, got %v", p, s)
+		}
 	}
 }
 
