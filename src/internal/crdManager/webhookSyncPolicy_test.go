@@ -73,7 +73,6 @@ func syncManager(t *testing.T, provider gitProviderClients.GitProviderClient, al
 	return &renovateJobManager{
 		gitProviderClientFactory: stubFactory{provider: provider},
 		logger:                   logr.Discard(),
-		lock:                     &sync.RWMutex{},
 		policy:                   policy.Policy{AllowedHosts: allowedHosts},
 	}
 }
@@ -160,7 +159,6 @@ func tokenManager(t *testing.T, secret *corev1.Secret, p policy.Policy) *renovat
 	return &renovateJobManager{
 		client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build(),
 		logger: logr.Discard(),
-		lock:   &sync.RWMutex{},
 		policy: p,
 	}
 }

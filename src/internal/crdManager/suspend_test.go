@@ -2,7 +2,6 @@ package crdmanager
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	api "renovate-operator/api/v1alpha1"
@@ -19,7 +18,6 @@ func suspendManager(t *testing.T, objs ...client.Object) *renovateJobManager {
 	return &renovateJobManager{
 		client: resolveClient(t, objs...),
 		logger: logr.Discard(),
-		lock:   &sync.RWMutex{},
 		policy: policy.Policy{},
 	}
 }
