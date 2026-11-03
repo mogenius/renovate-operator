@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -39,7 +40,9 @@ type credentialValidator interface {
 // require checker to return true. Returns the first authenticated candidate.
 //
 // Returns ErrNoMatchingJob when no job matches the filters, ErrAuthenticationFailed when
-// candidates exist but none pass authentication.
+// candidates exist but none pass authentication. When a checker failed with an error rather
+// than a mismatch (e.g. the webhook secret could not be read), the returned error still
+// matches ErrAuthenticationFailed but also wraps that cause, so it shows up in the logs.
 func FindAndAuthenticateJob(
 	ctx context.Context,
 	manager jobLister,
@@ -58,6 +61,7 @@ func FindAndAuthenticateJob(
 		return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
 	}
 
+	var checkErrs []error
 	for _, job := range candidates {
 		id := crdmanager.RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
 
@@ -68,12 +72,19 @@ func FindAndAuthenticateJob(
 			continue
 		}
 		ok, err := checker(ctx, id)
-		if err != nil || !ok {
+		if err != nil {
+			checkErrs = append(checkErrs, fmt.Errorf("%s/%s: %w", id.Namespace, id.Name, err))
+			continue
+		}
+		if !ok {
 			continue
 		}
 		return id, nil
 	}
 
+	if len(checkErrs) > 0 {
+		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %w", ErrAuthenticationFailed, errors.Join(checkErrs...))
+	}
 	return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
 }
 
