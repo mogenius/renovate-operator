@@ -283,6 +283,13 @@ func (r *renovateJobManager) UpdateProjectStatus(ctx context.Context, project st
 	})
 }
 
+// UpdateProjectStatusBatched applies status to every project of the job that fn selects.
+//
+// Other writers (the executor, webhooks, the UI, discovery) run alongside a batch that can take
+// minutes on a large job, so each project is judged again on its fresh copy: one that no longer
+// matches fn is left alone, and one deleted since the listing is skipped. A project that still
+// fails, e.g. a conflict outlasting the retries, does not stop the batch: the rest are updated
+// and the failures are returned together.
 func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p RenovateProjectStatus) bool, job RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
 	var projectList api.RenovateProjectList
 	if err := r.client.List(ctx, &projectList,
@@ -292,11 +299,10 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 		return err
 	}
 
+	var failed []error
 	for i := range projectList.Items {
 		rp := &projectList.Items[i]
-		ps := toRenovateProjectStatus(rp)
-
-		if !fn(ps) {
+		if !fn(toRenovateProjectStatus(rp)) {
 			continue
 		}
 
@@ -310,13 +316,19 @@ func (r *renovateJobManager) UpdateProjectStatusBatched(ctx context.Context, fn 
 			}, &fresh); err != nil {
 				return err
 			}
+			if !fn(toRenovateProjectStatus(&fresh)) {
+				return nil
+			}
 			utils.GetUpdateStatusForProject(&fresh.Status, status)
 			return r.client.Status().Update(ctx, &fresh)
-		}); err != nil {
-			return err
+		}); err != nil && !apierrors.IsNotFound(err) {
+			failed = append(failed, fmt.Errorf("project %s: %w", rpName, err))
 		}
 	}
 
+	if len(failed) > 0 {
+		return fmt.Errorf("failed to update %d of the selected projects: %w", len(failed), errors.Join(failed...))
+	}
 	return nil
 }
 
