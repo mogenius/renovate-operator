@@ -1,5 +1,40 @@
 # Changelog
 
+## [6.8.0](https://github.com/mogenius/renovate-operator/compare/6.7.0...6.8.0) (2026-11-04)
+
+
+### Features
+
+* **actions:** publish combined crds to the github release ([6c23da2](https://github.com/mogenius/renovate-operator/commit/6c23da23c1ca1c4c1b3c51d8fa88aec45f896d91))
+* add baseBranch and dryRun per-run execution options([#735](https://github.com/mogenius/renovate-operator/issues/735)) ([a518454](https://github.com/mogenius/renovate-operator/commit/a51845428d3c58ef5996c3fdffc5b6e4dd04f257))
+* **auth:** add in-memory session store and reject oversized session cookies ([f42b9f2](https://github.com/mogenius/renovate-operator/commit/f42b9f23771e6457a79cd4ee555d21e27457ce53)), closes [#745](https://github.com/mogenius/renovate-operator/issues/745)
+* bound retention and minimise personal data for GDPR compliance ([703effe](https://github.com/mogenius/renovate-operator/commit/703effe62ff12631f0aa8afd0024358a1bce4a71))
+* **chart:** make S3 credential secret key names configurable ([e66348b](https://github.com/mogenius/renovate-operator/commit/e66348b4f37fd5e65028d9b1d8064ccc1f717326))
+* rework readiness and liveness, add helm value for disabling those probes ([4585555](https://github.com/mogenius/renovate-operator/commit/4585555160ae702bfa51a9bc56aa3278fbf17fdd))
+* **ui:** add a check-all toggle to the log level filter ([6a75674](https://github.com/mogenius/renovate-operator/commit/6a7567431e7ffc85b17c72dbd1e45f9da0da9a83)), closes [#769](https://github.com/mogenius/renovate-operator/issues/769)
+
+
+### Bug Fixes
+
+* **chart:** grant delete on secrets for redis url secret ownership ([25ad4ca](https://github.com/mogenius/renovate-operator/commit/25ad4caa9100f48cec41fd0368c4f81a88e07f47)), closes [#770](https://github.com/mogenius/renovate-operator/issues/770)
+* **controller:** don't fail a project the orphan check sees too early ([689d324](https://github.com/mogenius/renovate-operator/commit/689d324b98e31d6153939b26c63f93c0b66333e6))
+* **deps:** update aws-sdk-go-v2 monorepo ([0997265](https://github.com/mogenius/renovate-operator/commit/09972653ec113642b38202c229b67874dc1e4db5))
+* **deps:** update kubernetes monorepo to v0.37.2 ([f81d07d](https://github.com/mogenius/renovate-operator/commit/f81d07db493acd3ec29fa40c83911ec521ec30d3))
+* **deps:** update module github.com/netresearch/go-cron to v0.18.0 ([e54c80f](https://github.com/mogenius/renovate-operator/commit/e54c80f2fcedd5ce711188485917ff2e2e023f09))
+* **deps:** update module github.com/netresearch/go-cron to v0.19.0 ([306909a](https://github.com/mogenius/renovate-operator/commit/306909a6e7390ca0be1563603c9aaa47fdfdcf61))
+* **deps:** update node.js to v26.13.0 ([8f261eb](https://github.com/mogenius/renovate-operator/commit/8f261eb87730b550e89193d82bf557e764473296))
+* **manager:** keep batched status updates going past a single project ([50b0416](https://github.com/mogenius/renovate-operator/commit/50b0416b9d1b75b90c022d52adea6a252cd0bfa9))
+* **manager:** remove no longer needed locking of job interactions ([056991d](https://github.com/mogenius/renovate-operator/commit/056991d8b84e90698a59ec0d68a4aba6790be0a1))
+* **parser:** do not report user-edited branches as updated PRs ([102dda3](https://github.com/mogenius/renovate-operator/commit/102dda32006ba1b648d74a7d583145ddb7bf3599))
+* **parser:** read PR title from Renovate's Creating PR log line ([3823780](https://github.com/mogenius/renovate-operator/commit/3823780ff68b75040650f673b52eb31022dcc460))
+* **webhook:** keep processing a delivery after its sender hangs up ([d76d919](https://github.com/mogenius/renovate-operator/commit/d76d919cbcbdd544feaac36770cbfc8d5a3a7cbe))
+* **webhook:** report why a credential check failed ([9664075](https://github.com/mogenius/renovate-operator/commit/966407511435ae85bb028513f5324558f78d81b8))
+
+
+### Performance Improvements
+
+* **ui:** render only the projects near the viewport on large jobs ([ade8b0c](https://github.com/mogenius/renovate-operator/commit/ade8b0ce3e8c42d8563c93170f98ef8c8dbf0227))
+
 ## [6.7.0](https://github.com/mogenius/renovate-operator/compare/6.6.0...6.7.0) (2026-10-28)
 
 
