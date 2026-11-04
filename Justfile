@@ -105,16 +105,21 @@ jsInstall:
     curl -s -L -o src/static/js/tailwind.min.js "https://cdn.tailwindcss.com"
     echo "Downloading Babel Standalone..."
     curl -s -L -o src/static/js/babel.min.js "https://unpkg.com/@babel/standalone@8.0.1/babel.min.js"
-    echo "Bundling React 19..."
+    echo "Bundling React 19 and Floating UI..."
     BUNDLE_DIR=$(mktemp -d)
-    npm install --prefix "$BUNDLE_DIR" "react@19.3.1" "react-dom@19.3.1" esbuild --save=false --silent
-    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" > "$BUNDLE_DIR/entry.mjs"
+    npm install --prefix "$BUNDLE_DIR" "react@19.3.1" "react-dom@19.3.1" "@floating-ui/dom@1.8.0" esbuild --save=false --silent
+    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; import { createPortal } from 'react-dom'; export { React, createRoot, createPortal };" > "$BUNDLE_DIR/react.entry.mjs"
     # The production build, as the Dockerfile ships, so `just ui-dev` and
     # `just test-ui` run the React the image serves.
-    "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/entry.mjs" \
+    "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/react.entry.mjs" \
         --bundle --format=esm --log-level=silent \
         --define:process.env.NODE_ENV='"production"' --minify \
         --outfile=src/static/js/react-bundle.esm.js
+    echo "export { computePosition, autoUpdate, offset, flip, shift } from '@floating-ui/dom';" > "$BUNDLE_DIR/floating-ui.entry.mjs"
+    "$BUNDLE_DIR/node_modules/.bin/esbuild" "$BUNDLE_DIR/floating-ui.entry.mjs" \
+        --bundle --format=esm --log-level=silent \
+        --define:process.env.NODE_ENV='"production"' --minify \
+        --outfile=src/static/js/floating-ui.esm.js
     rm -rf "$BUNDLE_DIR"
     echo "All JavaScript dependencies ready!"
 

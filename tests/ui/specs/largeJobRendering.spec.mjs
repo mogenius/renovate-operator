@@ -225,4 +225,23 @@ test.describe("large job rendering", () => {
     await page.getByRole("link", { name: `View logs for ${projectName(3)}` }).hover();
     await expect(tooltip).toHaveCount(0);
   });
+
+  test("keeps the last run duration tooltip on its row while scrolling", async ({ dashboard }) => {
+    await dashboard.open(buildLargeJob(300));
+    const page = dashboard.page;
+
+    await dashboard.projectCell(projectName(3)).hover();
+    const tooltip = page.getByText("Last Run Duration");
+    await expect(tooltip).toBeVisible();
+
+    // The tooltip re-anchors to its row as the page scrolls instead of staying
+    // where it first rendered.
+    const before = await tooltip.boundingBox();
+    await page.evaluate(() => window.scrollBy(0, 400));
+    await page.waitForTimeout(150);
+    const after = await tooltip.boundingBox();
+
+    expect(after).not.toBeNull();
+    expect(Math.abs(after.y + 400 - before.y)).toBeLessThan(20);
+  });
 });

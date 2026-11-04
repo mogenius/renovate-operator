@@ -26,12 +26,18 @@
     };
   </script>
   <script src="js/theme-utils.js"></script>
+  <script src="js/floating-utils.js"></script>
   <script src="js/babel.min.js"></script>
   <script src="js/babel-config.js"></script>
   <script type="module">
-    import { React, createRoot } from './js/react-bundle.esm.js';
+    import { React, createRoot, createPortal } from './js/react-bundle.esm.js';
     window.React = React;
     window.createRoot = createRoot;
+    window.createPortal = createPortal;
+  </script>
+  <script type="module">
+    import * as FloatingUI from './js/floating-ui.esm.js';
+    window.FloatingUI = FloatingUI;
   </script>
   <script type="text/babel" src="components/Spinner.js"></script>
   <script type="text/babel" src="components/ThemeToggle.js"></script>
@@ -39,6 +45,8 @@
   <script type="text/babel" src="components/StatBadge.js"></script>
   <script type="text/babel" src="components/StickyToolbar.js"></script>
   <script type="text/babel" src="components/Footer.js"></script>
+  <script type="text/babel" src="components/Keycap.js"></script>
+  <script type="text/babel" src="components/Tooltip.js"></script>
   <script type="text/babel" src="components/ShortcutsModal.js"></script>
 
   <link rel="stylesheet" href="css/styles.css" />
@@ -565,14 +573,15 @@
                     </svg>
                     <span className="hidden sm:inline">Download</span>
                   </button>
-                  <button
-                    onClick={() => setShowShortcuts(true)}
-                    aria-label="Keyboard shortcuts"
-                    title="Keyboard shortcuts (?)"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-sm font-medium text-gray-700 dark:text-slate-200"
-                  >
-                    ?
-                  </button>
+                  <Tooltip label="Keyboard shortcuts" keys={["?"]}>
+                    <button
+                      onClick={() => setShowShortcuts(true)}
+                      aria-label="Keyboard shortcuts"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-sm font-medium text-gray-700 dark:text-slate-200"
+                    >
+                      ?
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             )}

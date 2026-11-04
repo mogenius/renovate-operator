@@ -101,25 +101,25 @@ function Footer() {
 
           <nav aria-label="Project" className="ml-auto flex items-center gap-1">
             {FOOTER_PROJECT_LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={link.label}
-                aria-label={link.label}
-                className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                {link.fill ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path fillRule="evenodd" clipRule="evenodd" d={link.icon} />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={link.icon} />
-                  </svg>
-                )}
-              </a>
+              <Tooltip key={link.label} content={link.label}>
+                <a
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={link.label}
+                  className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {link.fill ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fillRule="evenodd" clipRule="evenodd" d={link.icon} />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={link.icon} />
+                    </svg>
+                  )}
+                </a>
+              </Tooltip>
             ))}
           </nav>
         </div>
