@@ -91,24 +91,26 @@ function SetupYamlBlock({ id, text, copiedId, onCopy }) {
         {text}
       </pre>
       <div className="absolute top-2 right-2 flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => onCopy(id, text)}
-          className={buttonClass}
-          aria-label="Copy the manifest to the clipboard"
-          title="Copy the raw manifest"
-        >
-          {copiedId === id ? "Copied!" : "Copy YAML"}
-        </button>
-        <button
-          type="button"
-          onClick={() => onCopy(`${id}-kubectl`, kubectlText)}
-          className={buttonClass}
-          aria-label="Copy a ready-to-run kubectl apply command to the clipboard"
-          title="Copy as kubectl apply command"
-        >
-          {copiedId === `${id}-kubectl` ? "Copied!" : "Copy kubectl"}
-        </button>
+        <Tooltip content="Copy the raw manifest">
+          <button
+            type="button"
+            onClick={() => onCopy(id, text)}
+            className={buttonClass}
+            aria-label="Copy the manifest to the clipboard"
+          >
+            {copiedId === id ? "Copied!" : "Copy YAML"}
+          </button>
+        </Tooltip>
+        <Tooltip content="Copy as kubectl apply command">
+          <button
+            type="button"
+            onClick={() => onCopy(`${id}-kubectl`, kubectlText)}
+            className={buttonClass}
+            aria-label="Copy a ready-to-run kubectl apply command to the clipboard"
+          >
+            {copiedId === `${id}-kubectl` ? "Copied!" : "Copy kubectl"}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

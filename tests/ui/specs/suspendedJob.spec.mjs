@@ -104,7 +104,8 @@ test.describe("suspend toggle", () => {
 
     const toggle = dashboard.suspendToggle("job-read-only");
     await expect(toggle).toBeDisabled();
-    await expect(toggle).toHaveAttribute("title", "Requires admin access");
+    await toggle.hover();
+    await expect(dashboard.page.getByRole("tooltip", { name: "Requires admin access" })).toBeVisible();
   });
 });
 
@@ -136,10 +137,10 @@ test.describe("suspend/resume toggle", () => {
       expectedJobCount: 1,
     });
 
-    await expect(dashboard.suspendResumeAllButton).toHaveAttribute(
-      "title",
-      "Stop new runs for 1 job, including any the filter hides",
-    );
+    await dashboard.suspendResumeAllButton.hover();
+    await expect(
+      dashboard.page.getByRole("tooltip", { name: "Stop new runs for 1 job, including any the filter hides" }),
+    ).toBeVisible();
     await dashboard.toggleSuspendAll();
 
     expect(dashboard.suspendRequests).toEqual([
@@ -204,10 +205,12 @@ test.describe("suspend/resume toggle", () => {
     // Only job-a matches, but job-b still needs resuming.
     await dashboard.open(renovateJobs, { search: "job-a", expectedJobCount: 1 });
 
-    await expect(dashboard.suspendResumeAllButton).toHaveAttribute(
-      "title",
-      "Resume 2 suspended jobs, including any the filter hides, whatever suspended them",
-    );
+    await dashboard.suspendResumeAllButton.hover();
+    await expect(
+      dashboard.page.getByRole("tooltip", {
+        name: "Resume 2 suspended jobs, including any the filter hides, whatever suspended them",
+      }),
+    ).toBeVisible();
     await dashboard.toggleSuspendAll();
 
     expect(dashboard.suspendRequests).toEqual([
@@ -235,6 +238,7 @@ test.describe("suspend/resume toggle", () => {
     );
 
     await expect(dashboard.suspendResumeAllButton).toBeDisabled();
-    await expect(dashboard.suspendResumeAllButton).toHaveAttribute("title", "Requires admin access");
+    await dashboard.suspendResumeAllButton.hover();
+    await expect(dashboard.page.getByRole("tooltip", { name: "Requires admin access" })).toBeVisible();
   });
 });

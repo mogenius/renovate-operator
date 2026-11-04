@@ -26,17 +26,25 @@
     };
   </script>
   <script src="js/theme-utils.js"></script>
+  <script src="js/floating-utils.js"></script>
   <script src="js/babel.min.js"></script>
   <script src="js/babel-config.js"></script>
   <script type="module">
-    import { React, createRoot } from './js/react-bundle.esm.js';
+    import { React, createRoot, createPortal } from './js/react-bundle.esm.js';
     window.React = React;
     window.createRoot = createRoot;
+    window.createPortal = createPortal;
+  </script>
+  <script type="module">
+    import * as FloatingUI from './js/floating-ui.esm.js';
+    window.FloatingUI = FloatingUI;
   </script>
   <script type="text/babel" src="components/Spinner.js"></script>
   <script type="text/babel" src="components/ThemeToggle.js"></script>
   <script type="text/babel" src="components/SiteHeader.js"></script>
   <script type="text/babel" src="components/Footer.js"></script>
+  <script type="text/babel" src="components/Keycap.js"></script>
+  <script type="text/babel" src="components/Tooltip.js"></script>
   <script type="text/babel" src="components/SetupGuide.js"></script>
 
   <link rel="stylesheet" href="css/styles.css" />

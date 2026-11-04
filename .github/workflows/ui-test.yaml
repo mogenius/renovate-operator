@@ -37,9 +37,9 @@ jobs:
       - name: Set up just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
-      # `just test-ui` also runs `jsInstall`, which fetches the Tailwind, Babel and
-      # React bundles that index.html loads. They are gitignored, so a fresh
-      # checkout renders a blank page without it.
+      # `just test-ui` also runs `jsInstall`, which fetches the Tailwind, Babel,
+      # React and Floating UI bundles that index.html loads. They are gitignored,
+      # so a fresh checkout renders a blank page without it.
       - name: Run the browser tests
         run: just test-ui
 

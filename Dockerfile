@@ -27,14 +27,20 @@ RUN mkdir -p src/static/js && \
 # React's production build: without the NODE_ENV define, esbuild bundles the
 # development one, several times slower and five times the size.
 RUN mkdir -p /bundle && \
-    npm install --prefix /bundle "react@19.3.1" "react-dom@19.3.1" esbuild --save=false && \
-    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; export { React, createRoot };" \
-        > /bundle/entry.mjs && \
-    /bundle/node_modules/.bin/esbuild /bundle/entry.mjs \
+    npm install --prefix /bundle "react@19.3.1" "react-dom@19.3.1" "@floating-ui/dom@1.8.0" esbuild --save=false && \
+    echo "import React from 'react'; import { createRoot } from 'react-dom/client'; import { createPortal } from 'react-dom'; export { React, createRoot, createPortal };" \
+        > /bundle/react.entry.mjs && \
+    /bundle/node_modules/.bin/esbuild /bundle/react.entry.mjs \
         --bundle --format=esm --log-level=silent \
         --define:process.env.NODE_ENV='"production"' --minify \
         --outfile=src/static/js/react-bundle.esm.js && \
-    echo "Bundled React 19 successfully!"
+    echo "export { computePosition, autoUpdate, offset, flip, shift } from '@floating-ui/dom';" \
+        > /bundle/floating-ui.entry.mjs && \
+    /bundle/node_modules/.bin/esbuild /bundle/floating-ui.entry.mjs \
+        --bundle --format=esm --log-level=silent \
+        --define:process.env.NODE_ENV='"production"' --minify \
+        --outfile=src/static/js/floating-ui.esm.js && \
+    echo "Bundled React 19 and Floating UI successfully!"
 
 
 FROM scratch
