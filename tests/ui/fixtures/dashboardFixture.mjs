@@ -128,7 +128,7 @@ class DashboardPage {
 
   /** The "All" stat badge, the only way back from an active stat filter. */
   get clearStatFilterButton() {
-    return this.page.getByTitle("Show all projects");
+    return this.page.getByRole("button", { name: /^All \d/ });
   }
 
   get searchInput() {

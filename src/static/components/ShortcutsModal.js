@@ -39,7 +39,7 @@ function ShortcutsModal({ onClose, shortcuts }) {
                 {keys.map((k, i) => (
                   <React.Fragment key={k}>
                     {i > 0 && <span className="text-[0.6rem] text-gray-400 dark:text-slate-500 mx-0.5">or</span>}
-                    <kbd className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded border border-gray-300 dark:border-slate-600 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300">{k}</kbd>
+                    <Keycap>{k}</Keycap>
                   </React.Fragment>
                 ))}
               </div>

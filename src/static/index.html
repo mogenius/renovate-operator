@@ -35,12 +35,18 @@
       };
     </script>
     <script src="js/theme-utils.js"></script>
+    <script src="js/floating-utils.js"></script>
     <script src="js/babel.min.js"></script>
     <script src="js/babel-config.js"></script>
     <script type="module">
-      import { React, createRoot } from './js/react-bundle.esm.js';
+      import { React, createRoot, createPortal } from './js/react-bundle.esm.js';
       window.React = React;
       window.createRoot = createRoot;
+      window.createPortal = createPortal;
+    </script>
+    <script type="module">
+      import * as FloatingUI from './js/floating-ui.esm.js';
+      window.FloatingUI = FloatingUI;
     </script>
     <script type="text/babel" src="components/Spinner.js"></script>
     <script type="text/babel" src="components/ThemeToggle.js"></script>
@@ -48,6 +54,8 @@
     <script type="text/babel" src="components/StatBadge.js"></script>
     <script type="text/babel" src="components/StickyToolbar.js"></script>
     <script type="text/babel" src="components/Footer.js"></script>
+    <script type="text/babel" src="components/Keycap.js"></script>
+    <script type="text/babel" src="components/Tooltip.js"></script>
     <script type="text/babel" src="components/ShortcutsModal.js"></script>
     <script type="text/babel" src="components/DebugRunModal.js"></script>
 
@@ -259,10 +267,12 @@
       const TOOLTIP_DELAY_MS = 500;
 
       function useProjectDurationTooltip(projects) {
-        // { name, top } of the row the tooltip shows for, once the delay ran out.
+        // Name of the row the tooltip shows for, once the delay ran out. The row
+        // element itself lives in hoveredRowRef so Floating UI can follow it.
         const [shown, setShown] = useState(null);
         const timeoutRef = useRef(null);
         const hoveredRowRef = useRef(null);
+        const tooltipRef = useRef(null);
 
         const cancelPending = () => {
           if (timeoutRef.current) {
@@ -274,7 +284,7 @@
         const hide = () => {
           cancelPending();
           hoveredRowRef.current = null;
-          setShown((current) => (current === null ? current : null));
+          setShown(null);
         };
 
         useEffect(() => cancelPending, []);
@@ -290,25 +300,28 @@
           hoveredRowRef.current = row;
           timeoutRef.current = setTimeout(() => {
             timeoutRef.current = null;
-            setShown({
-              name: row.getAttribute("data-project-row"),
-              top: row.getBoundingClientRect().top - 12,
-            });
+            setShown({ name: row.getAttribute("data-project-row") });
           }, TOOLTIP_DELAY_MS);
         };
+
+        // Anchor the tooltip to the hovered row and keep it there while the row
+        // scrolls or the viewport resizes.
+        useLayoutEffect(() => {
+          const row = hoveredRowRef.current;
+          const tooltip = tooltipRef.current;
+          if (!shown || !row || !tooltip) return;
+
+          return window.FloatingUtils.anchorBelow(row, tooltip);
+        }, [shown]);
 
         // Looked up on every render so a refresh that lands while the tooltip
         // is up shows the new duration, as the row itself does.
         const project = shown ? projects.find((p) => p.name === shown.name) : null;
         const tooltip = project && project.duration ? (
-          <div
-            className="fixed z-50 pointer-events-none border-0"
-            style={{ left: "50%", top: `${shown.top}px`, transform: "translate(-50%, -100%)" }}
-          >
-            <div className="bg-gray-900 dark:bg-slate-700 text-white text-sm rounded-lg shadow-xl px-3 py-2 max-w-xs animate-fadeIn border-0 relative">
-              <div className="font-medium mb-1 text-gray-100">Last Run Duration</div>
+          <div ref={tooltipRef} className="pointer-events-none fixed top-0 left-0 z-50">
+            <div className="max-w-xs rounded-lg bg-gray-900 dark:bg-slate-700 px-2.5 py-1.5 text-xs text-white shadow-xl">
+              <div className="font-semibold mb-1">Last Run Duration</div>
               <div className="text-gray-300 dark:text-slate-300 whitespace-nowrap">{project.duration}</div>
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-slate-700 border-0" />
             </div>
           </div>
         ) : null;
@@ -1571,26 +1584,31 @@
                     )}
                   </div>
                   {searchFilteredJobs.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={toggleAllJobs}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
-                      aria-label={allVisibleCollapsed ? "Expand all job cards" : "Collapse all job cards"}
-                      title={allVisibleCollapsed ? "Expand all job cards (e)" : "Collapse all job cards (e)"}
+                    <Tooltip
+                      className="shrink-0"
+                      label={allVisibleCollapsed ? "Expand all job cards" : "Collapse all job cards"}
+                      keys={["e"]}
                     >
-                      <span className="flex h-5 items-center shrink-0">
-                        <svg
-                          className={`w-4 h-4 transition-transform duration-200 ${allVisibleCollapsed ? "" : "rotate-180"}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m4.5 5.25 7.5 7.5 7.5-7.5m-15 6 7.5 7.5 7.5-7.5" />
-                        </svg>
-                      </span>
-                      <span className="hidden sm:inline">{allVisibleCollapsed ? "Expand all" : "Collapse all"}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={toggleAllJobs}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
+                        aria-label={allVisibleCollapsed ? "Expand all job cards" : "Collapse all job cards"}
+                      >
+                        <span className="flex h-5 items-center shrink-0">
+                          <svg
+                            className={`w-4 h-4 transition-transform duration-200 ${allVisibleCollapsed ? "" : "rotate-180"}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m4.5 5.25 7.5 7.5 7.5-7.5m-15 6 7.5 7.5 7.5-7.5" />
+                          </svg>
+                        </span>
+                        <span className="hidden sm:inline">{allVisibleCollapsed ? "Expand all" : "Collapse all"}</span>
+                      </button>
+                    </Tooltip>
                   )}
                   {/* Only where the operator offers suspending (authorization.suspendFromUI),
                       and only with jobs to batch: a lone job has its card's button. The
@@ -1598,12 +1616,9 @@
                       you can suspend already is, in which case it offers to resume them,
                       whatever suspended each one. */}
                   {suspendFromUI && jobs.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setAllJobsSuspended(!allSuspendableSuspended)}
-                      data-testid="suspend-resume-all"
-                      disabled={bulkSuspend !== null || !!toggleSuspendAllBlocked}
-                      title={
+                    <Tooltip
+                      className="shrink-0"
+                      content={
                         toggleSuspendAllBlocked ||
                         (allSuspendableSuspended
                           ? `Resume ${suspendedJobCount} suspended job${suspendedJobCount === 1 ? "" : "s"}${
@@ -1613,54 +1628,62 @@
                               projectListIsFiltered ? ", including any the filter hides" : ""
                             }`)
                       }
-                      className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
-                      aria-label={
-                        toggleSuspendAllBlocked ||
-                        (bulkSuspend !== null
-                          ? (bulkSuspend ? "Suspending all jobs" : "Resuming all jobs")
-                          : (allSuspendableSuspended ? "Resume all jobs" : "Suspend all jobs"))
-                      }
                     >
-                      {bulkSuspend !== null ? (
-                        <Spinner />
-                      ) : allSuspendableSuspended ? (
-                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      ) : (
-                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      )}
-                      {/* Icon only on a phone, where the row shares one line with the search box. */}
-                      <span className="hidden sm:inline">
-                        {bulkSuspend === true
-                          ? "Suspending..."
-                          : bulkSuspend === false
-                            ? "Resuming..."
-                            : allSuspendableSuspended
-                              ? "Resume all"
-                              : "Suspend all"}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setAllJobsSuspended(!allSuspendableSuspended)}
+                        data-testid="suspend-resume-all"
+                        disabled={bulkSuspend !== null || !!toggleSuspendAllBlocked}
+                        className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
+                        aria-label={
+                          toggleSuspendAllBlocked ||
+                          (bulkSuspend !== null
+                            ? (bulkSuspend ? "Suspending all jobs" : "Resuming all jobs")
+                            : (allSuspendableSuspended ? "Resume all jobs" : "Suspend all jobs"))
+                        }
+                      >
+                        {bulkSuspend !== null ? (
+                          <Spinner />
+                        ) : allSuspendableSuspended ? (
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                        {/* Icon only on a phone, where the row shares one line with the search box. */}
+                        <span className="hidden sm:inline">
+                          {bulkSuspend === true
+                            ? "Suspending..."
+                            : bulkSuspend === false
+                              ? "Resuming..."
+                              : allSuspendableSuspended
+                                ? "Resume all"
+                                : "Suspend all"}
+                        </span>
+                      </button>
+                    </Tooltip>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setShowShortcuts(true)}
-                    className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
-                    aria-label="Keyboard shortcuts"
-                    title="Keyboard shortcuts (?)"
-                  >
-                    ?
-                  </button>
+                  <Tooltip label="Keyboard shortcuts" keys={["?"]} className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowShortcuts(true)}
+                      className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
+                      aria-label="Keyboard shortcuts"
+                    >
+                      ?
+                    </button>
+                  </Tooltip>
                 </div>
               )}
 
@@ -2088,6 +2111,37 @@
         );
       }
 
+      function PRRowItem({ pr, projectName, platform, platformEndpoint }) {
+        const prUrl = buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
+        return (
+          <div className="flex items-center gap-2 text-sm">
+            <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>
+            {prUrl ? (
+              <Tooltip content={pr.title || prUrl}>
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary-hover hover:underline truncate text-xs"
+                >
+                  {pr.title || prUrl}
+                </a>
+              </Tooltip>
+            ) : (
+              <Tooltip content={pr.title}>
+                <span className="text-gray-700 dark:text-slate-300 truncate text-xs">{pr.title || "Untitled PR"}</span>
+              </Tooltip>
+            )}
+            {pr.number && prUrl && (
+              <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>
+            )}
+            {pr.number && !prUrl && (
+              <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>
+            )}
+          </div>
+        );
+      }
+
       function PRDetailRow({ prActivity, projectName, platform, platformEndpoint }) {
         if (!prActivity || !prActivity.prs || prActivity.prs.length === 0) return null;
 
@@ -2096,33 +2150,9 @@
             <td colSpan="7" className="px-6 py-0">
               <div className="py-3 pl-4 border-l-2 border-gray-200 dark:border-slate-600 max-h-64 overflow-y-auto">
                 <div className="space-y-1.5">
-                  {prActivity.prs.map((pr, idx) => {
-                    const prUrl = buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
-                    return (
-                      <div key={idx} className="flex items-center gap-2 text-sm">
-                        <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>
-                        {prUrl ? (
-                          <a
-                            href={prUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary-hover hover:underline truncate"
-                            title={pr.title || prUrl}
-                          >
-                            {pr.title || prUrl}
-                          </a>
-                        ) : (
-                          <span className="text-gray-700 dark:text-slate-300 truncate" title={pr.title}>{pr.title || "Untitled PR"}</span>
-                        )}
-                        {pr.number && prUrl && (
-                          <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>
-                        )}
-                        {pr.number && !prUrl && (
-                          <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {prActivity.prs.map((pr, idx) => (
+                    <PRRowItem key={idx} pr={pr} projectName={projectName} platform={platform} platformEndpoint={platformEndpoint} />
+                  ))}
                   {prActivity.truncated && (
                     <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">
                       Some PRs omitted (list truncated)
@@ -2196,6 +2226,30 @@
         return msg;
       }
 
+      function IssueRowItem({ issue, projectName, jobName, jobNamespace }) {
+        return (
+          <Tooltip content="Open full message in logs">
+            <a
+              href={issueLogsHref(jobName, jobNamespace, projectName, issue.level)}
+              target="_blank"
+              rel="noopener"
+              className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
+            >
+              <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
+              <span className="text-gray-700 dark:text-slate-300 break-all text-xs">
+                {displayIssueMessage(issue.message)}
+                <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
+                  View in logs
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </span>
+              </span>
+            </a>
+          </Tooltip>
+        );
+      }
+
       function IssueDetailRow({ logIssues, projectName, jobName, jobNamespace }) {
         if (!logIssues || !logIssues.issues || logIssues.issues.length === 0) return null;
 
@@ -2205,25 +2259,7 @@
               <div className="py-3 pl-4 border-l-2 border-amber-300 dark:border-amber-600 max-h-64 overflow-y-auto">
                 <div className="space-y-1.5">
                   {logIssues.issues.map((issue, idx) => (
-                    <a
-                      key={idx}
-                      href={issueLogsHref(jobName, jobNamespace, projectName, issue.level)}
-                      target="_blank"
-                      rel="noopener"
-                      className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
-                      title="Open full message in logs"
-                    >
-                      <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
-                      <span className="text-gray-700 dark:text-slate-300 break-all">
-                        {displayIssueMessage(issue.message)}
-                        <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
-                          View in logs
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </span>
-                      </span>
-                    </a>
+                    <IssueRowItem key={idx} issue={issue} projectName={projectName} jobName={jobName} jobNamespace={jobNamespace} />
                   ))}
                   {logIssues.truncated && (
                     <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">
@@ -2258,28 +2294,19 @@
           : isDebugRunScheduled
           ? "Queued: debug run on the default branch"
           : undefined;
-        const debugRunTooltipId = `debug-run-tooltip-${project.name}`;
-        // Shown with fixed positioning: the project table scrolls horizontally and the job
-        // card hides overflow, both of which would clip a tooltip positioned in the row.
-        const [debugRunTooltipAt, setDebugRunTooltipAt] = useState(null);
-        const showDebugRunTooltip = (event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          setDebugRunTooltipAt({ top: rect.top - 8, right: window.innerWidth - rect.right });
-        };
-        const hideDebugRunTooltip = () => setDebugRunTooltipAt(null);
-
         if (isRunning) {
           return (
-            <button
-              onClick={onCancel}
-              disabled={isCancelling || !canCancel}
-              title={canCancel ? undefined : hint}
-              className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-flex items-center justify-center gap-1.5 ${width || ""}`}
-              aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
-            >
-              {isCancelling && <Spinner />}
-              <span>{isCancelling ? "Cancelling..." : "Cancel"}</span>
-            </button>
+            <Tooltip content={canCancel ? undefined : hint}>
+              <button
+                onClick={onCancel}
+                disabled={isCancelling || !canCancel}
+                className={`bg-error hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all inline-flex items-center justify-center gap-1.5 ${width || ""}`}
+                aria-label={isCancelling ? "Cancelling renovate" : `Cancel renovate for ${project.name}`}
+              >
+                {isCancelling && <Spinner />}
+                <span>{isCancelling ? "Cancelling..." : "Cancel"}</span>
+              </button>
+            </Tooltip>
           );
         }
 
@@ -2301,59 +2328,54 @@
 
         return (
           <div className={`flex items-stretch shadow-sm rounded-lg ${width || ""}`}>
-            <button
-              onClick={onTrigger}
-              disabled={isTriggering || isPrioritized || !!blocked}
-              title={blocked}
-              className="flex-1 rounded-l-lg bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
-              aria-label={
-                blocked
-                  ? blocked
-                  : isTriggering
-                  ? "Triggering renovate"
-                  : isPrioritized
-                  ? `Renovate already prioritized for ${project.name}`
-                  : isScheduled
-                  ? `Prioritize renovate for ${project.name}`
-                  : `Trigger renovate for ${project.name}`
-              }
-            >
-              {isTriggering && <Spinner />}
-              {label}
-            </button>
+            <Tooltip content={blocked}>
+              <button
+                onClick={onTrigger}
+                disabled={isTriggering || isPrioritized || !!blocked}
+                className="flex-1 rounded-l-lg bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 font-semibold text-[0.813rem] transition-all inline-flex items-center justify-center gap-1.5"
+                aria-label={
+                  blocked
+                    ? blocked
+                    : isTriggering
+                    ? "Triggering renovate"
+                    : isPrioritized
+                    ? `Renovate already prioritized for ${project.name}`
+                    : isScheduled
+                    ? `Prioritize renovate for ${project.name}`
+                    : `Trigger renovate for ${project.name}`
+                }
+              >
+                {isTriggering && <Spinner />}
+                {label}
+              </button>
+            </Tooltip>
             {/* One button for both debug runs: on the default branch, or on a specific
                 branch as a dry run. The dialog picks which; the tooltip says so, since a
                 bug icon alone does not tell that a branch can be chosen. */}
-            <div className="flex" onMouseEnter={showDebugRunTooltip} onMouseLeave={hideDebugRunTooltip} onFocus={showDebugRunTooltip} onBlur={hideDebugRunTooltip}>
+            <Tooltip
+              content={
+                blocked ? (
+                  blocked
+                ) : (
+                  <div className="w-64 text-left">
+                    {queuedDebugRun && <div className="font-semibold text-amber-300 mb-1.5">{queuedDebugRun}</div>}
+                    <div className="font-semibold mb-1">Debug or dry run</div>
+                    <div className="text-gray-300"><span className="text-amber-300 font-medium">Debug run</span> on the default branch: a real run with debug logs.</div>
+                    <div className="text-gray-300 mt-1"><span className="text-teal-300 font-medium">Dry run</span> on a specific branch: tests its Renovate config before merging; nothing changes.</div>
+                  </div>
+                )
+              }
+            >
               <button
                 onClick={onOpenDebugRun}
                 disabled={isTriggering || !!blocked}
                 data-testid="debug-run"
                 aria-label={blocked || queuedDebugRun || `Debug or dry run for ${project.name}`}
-                aria-describedby={blocked ? undefined : debugRunTooltipId}
                 className={`${isDebugRunScheduled ? "bg-amber-600 text-white" : "bg-gray-600 text-amber-400"} rounded-r-lg hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10`}
               >
                 <BugIcon className="w-3.5 h-3.5" />
               </button>
-              <div
-                id={debugRunTooltipId}
-                role="tooltip"
-                hidden={!debugRunTooltipAt}
-                style={debugRunTooltipAt ? { top: debugRunTooltipAt.top, right: debugRunTooltipAt.right, transform: "translateY(-100%)" } : undefined}
-                className="pointer-events-none fixed w-64 rounded-lg bg-gray-900 dark:bg-slate-700 text-white text-xs text-left p-2.5 shadow-lg z-50"
-              >
-                {blocked ? (
-                  blocked
-                ) : (
-                  <>
-                    {queuedDebugRun && <div className="font-semibold text-amber-300 mb-1.5">{queuedDebugRun}</div>}
-                    <div className="font-semibold mb-1">Debug or dry run</div>
-                    <div className="text-gray-300"><span className="text-amber-300 font-medium">Debug run</span> on the default branch: a real run with debug logs.</div>
-                    <div className="text-gray-300 mt-1"><span className="text-teal-300 font-medium">Dry run</span> on a specific branch: tests its Renovate config before merging; nothing changes.</div>
-                  </>
-                )}
-              </div>
-            </div>
+            </Tooltip>
           </div>
         );
       }
@@ -2415,14 +2437,15 @@
         // anything Renovate adds later) get a monogram instead of a blank.
         if (!logo) {
           return (
-            <span
-              className="w-4 h-4 flex-shrink-0 inline-flex items-center justify-center rounded-sm bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[0.625rem] font-bold leading-none uppercase"
-              role="img"
-              aria-label={raw}
-              title={raw}
-            >
-              {raw.charAt(0)}
-            </span>
+            <Tooltip content={raw}>
+              <span
+                className="w-4 h-4 flex-shrink-0 inline-flex items-center justify-center rounded-sm bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[0.625rem] font-bold leading-none uppercase"
+                role="img"
+                aria-label={raw}
+              >
+                {raw.charAt(0)}
+              </span>
+            </Tooltip>
           );
         }
 
@@ -2558,32 +2581,34 @@
               <td className="px-3 xl:px-6 py-3" data-no-tooltip="true">
                 <div className="flex items-center gap-2">
                   {dashboardUrl && (
-                    <a
-                      href={dashboardUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
-                      aria-label={`View Dependency Dashboard for ${project.name}`}
-                      title={`Dependency Dashboard for ${project.name}`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                      </svg>
-                    </a>
+                    <Tooltip content={`Dependency Dashboard for ${project.name}`}>
+                      <a
+                        href={dashboardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                        aria-label={`View Dependency Dashboard for ${project.name}`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                      </a>
+                    </Tooltip>
                   )}
                   {prUrl && (
-                    <a
-                      href={prUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
-                      aria-label={`View open PRs/MRs for ${project.name}`}
-                      title={`Open PRs/MRs for ${project.name}`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
+                    <Tooltip content={`Open PRs/MRs for ${project.name}`}>
+                      <a
+                        href={prUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover font-medium"
+                        aria-label={`View open PRs/MRs for ${project.name}`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </Tooltip>
                   )}
                   {!prUrl && !dashboardUrl && (
                     <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>
@@ -2603,16 +2628,17 @@
                     canCancel={canCancel}
                     hint={actionHint}
                   />
-                  <a
-                    href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
-                    target="_blank"
-                    title={canViewLogs ? undefined : "Log access requires a group with read access"}
-                    aria-disabled={canViewLogs ? undefined : "true"}
-                    className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
-                    aria-label={`View logs for ${project.name}`}
-                  >
-                    Logs
-                  </a>
+                  <Tooltip content={canViewLogs ? undefined : "Log access requires a group with read access"}>
+                    <a
+                      href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
+                      target="_blank"
+                      aria-disabled={canViewLogs ? undefined : "true"}
+                      className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block min-w-[60px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
+                      aria-label={`View logs for ${project.name}`}
+                    >
+                      Logs
+                    </a>
+                  </Tooltip>
                 </div>
               </td>
             </tr>
@@ -2689,24 +2715,9 @@
             {prExpanded && project.prActivity?.prs?.length > 0 && (
               <div id={`pr-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-gray-200 dark:border-slate-600 max-h-48 overflow-y-auto">
                 <div className="space-y-1.5">
-                  {project.prActivity.prs.map((pr, idx) => {
-                    const actionClass = prActionBadgeClass(pr.action);
-                    const singlePRUrl = buildSinglePRUrl(platform, platformEndpoint, project.name, pr.number);
-                    return (
-                      <div key={idx} className="flex items-center gap-2 text-sm">
-                        <span className={actionClass}>{pr.action}</span>
-                        {singlePRUrl ? (
-                          <a href={singlePRUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary-hover hover:underline truncate text-xs" title={pr.title || singlePRUrl}>
-                            {pr.title || singlePRUrl}
-                          </a>
-                        ) : (
-                          <span className="text-gray-700 dark:text-slate-300 truncate text-xs" title={pr.title}>{pr.title || "Untitled PR"}</span>
-                        )}
-                        {pr.number && singlePRUrl && <a href={singlePRUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 dark:text-slate-500 hover:text-primary hover:dark:text-primary-hover text-xs flex-shrink-0">#{pr.number}</a>}
-                        {pr.number && !singlePRUrl && <span className="text-gray-400 dark:text-slate-500 text-xs flex-shrink-0">#{pr.number}</span>}
-                      </div>
-                    );
-                  })}
+                  {project.prActivity.prs.map((pr, idx) => (
+                    <PRRowItem key={idx} pr={pr} projectName={project.name} platform={platform} platformEndpoint={platformEndpoint} />
+                  ))}
                   {project.prActivity.truncated && (
                     <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some PRs omitted (list truncated)</div>
                   )}
@@ -2729,25 +2740,7 @@
               <div id={`issue-details-${safeId(project.name)}`} className="pl-2 border-l-2 border-amber-300 dark:border-amber-600 max-h-48 overflow-y-auto">
                 <div className="space-y-1.5">
                   {project.logIssues.issues.map((issue, idx) => (
-                    <a
-                      key={idx}
-                      href={issueLogsHref(jobName, jobNamespace, project.name, issue.level)}
-                      target="_blank"
-                      rel="noopener"
-                      className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
-                      title="Open full message in logs"
-                    >
-                      <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
-                      <span className="text-gray-700 dark:text-slate-300 break-all text-xs">
-                        {displayIssueMessage(issue.message)}
-                        <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
-                          View in logs
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </span>
-                      </span>
-                    </a>
+                    <IssueRowItem key={idx} issue={issue} projectName={project.name} jobName={jobName} jobNamespace={jobNamespace} />
                   ))}
                   {project.logIssues.truncated && (
                     <div className="text-xs text-gray-400 dark:text-slate-500 italic mt-1">Some issues omitted (list truncated)</div>
@@ -2767,43 +2760,46 @@
                 canCancel={canCancel}
                 hint={actionHint}
               />
-              <a
-                href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
-                target="_blank"
-                title={canViewLogs ? undefined : "Log access requires a group with read access"}
-                aria-disabled={canViewLogs ? undefined : "true"}
-                className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
-                aria-label={`View logs for ${project.name}`}
-              >
-                Logs
-              </a>
-              {dashboardUrl && (
+              <Tooltip content={canViewLogs ? undefined : "Log access requires a group with read access"}>
                 <a
-                  href={dashboardUrl}
+                  href={canViewLogs ? projectLogsHref(jobName, jobNamespace, project.name) : undefined}
                   target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
-                  aria-label={`View Dependency Dashboard for ${project.name}`}
-                  title={`Dependency Dashboard for ${project.name}`}
+                  aria-disabled={canViewLogs ? undefined : "true"}
+                  className={`bg-gray-600 text-white px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm transition-all inline-block w-[70px] text-center ${canViewLogs ? "hover:bg-gray-700 hover:shadow-md" : "opacity-60 cursor-not-allowed"}`}
+                  aria-label={`View logs for ${project.name}`}
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
+                  Logs
                 </a>
+              </Tooltip>
+              {dashboardUrl && (
+                <Tooltip content={`Dependency Dashboard for ${project.name}`}>
+                  <a
+                    href={dashboardUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                    aria-label={`View Dependency Dashboard for ${project.name}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                  </a>
+                </Tooltip>
               )}
               {prUrl && (
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
-                  aria-label={`View open PRs/MRs for ${project.name}`}
-                  title={`Open PRs/MRs for ${project.name}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
+                <Tooltip content={`Open PRs/MRs for ${project.name}`}>
+                  <a
+                    href={prUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md transition-all"
+                    aria-label={`View open PRs/MRs for ${project.name}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -2815,14 +2811,6 @@
           key: "status",
           direction: "asc",
         });
-        const [infoTooltipPos, setInfoTooltipPos] = useState(null);
-        const infoIconRef = useRef(null);
-        const showInfoTooltip = () => {
-          if (!infoIconRef.current) return;
-          const rect = infoIconRef.current.getBoundingClientRect();
-          setInfoTooltipPos({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
-        };
-        const hideInfoTooltip = () => setInfoTooltipPos(null);
         const actionHint = permissionHint(authInfo);
         const canTrigger = can(job, "trigger");
         const canTriggerAll = can(job, "triggerAll");
@@ -3124,12 +3112,11 @@
                     {job.name}
                   </h2>
                   {readOnly && (
-                    <span
-                      className="flex-shrink-0 px-2 py-0.5 rounded-full border border-gray-300 dark:border-slate-600 text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400"
-                      title={actionHint}
-                    >
-                      Read-only
-                    </span>
+                    <Tooltip content={actionHint}>
+                      <span className="flex-shrink-0 px-2 py-0.5 rounded-full border border-gray-300 dark:border-slate-600 text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                        Read-only
+                      </span>
+                    </Tooltip>
                   )}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-slate-400 leading-tight font-mono">
@@ -3190,45 +3177,43 @@
               {/* Config info icon */}
               {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0) && (
                 <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <svg
-                    ref={infoIconRef}
-                    className={`w-4 h-4 cursor-default transition-colors ${infoTooltipPos ? "text-primary" : "text-gray-400 dark:text-slate-500"}`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-label="Job configuration info"
-                    onMouseEnter={showInfoTooltip}
-                    onMouseLeave={hideInfoTooltip}
+                  <Tooltip
+                    variant="light"
+                    content={
+                      <>
+                        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-l border-t border-gray-200 dark:border-slate-600 rotate-45" />
+                        {job.discoveryFilters?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discovery Filters</p>
+                            <ul className="space-y-0.5">
+                              {job.discoveryFilters.map((f, i) => (
+                                <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 break-all">{f}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {job.discoverTopics?.length > 0 && (
+                          <div>
+                            <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discover Topics</p>
+                            <ul className="space-y-0.5">
+                              {job.discoverTopics.map((t, i) => (
+                                <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 break-all">{t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    }
                   >
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                  {infoTooltipPos && (
-                    <div
-                      style={{ position: "fixed", top: infoTooltipPos.top, left: infoTooltipPos.left, transform: "translateX(-50%)" }}
-                      className="z-50 w-64 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-3 text-left pointer-events-none"
+                    <svg
+                      className="w-4 h-4 cursor-default text-gray-400 dark:text-slate-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      aria-label="Job configuration info"
                     >
-                      <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-l border-t border-gray-200 dark:border-slate-600 rotate-45" />
-                      {job.discoveryFilters?.length > 0 && (
-                        <div className="mb-2">
-                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discovery Filters</p>
-                          <ul className="space-y-0.5">
-                            {job.discoveryFilters.map((f, i) => (
-                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={f}>{f}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {job.discoverTopics?.length > 0 && (
-                        <div>
-                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discover Topics</p>
-                          <ul className="space-y-0.5">
-                            {job.discoverTopics.map((t, i) => (
-                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={t}>{t}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  </Tooltip>
                 </div>
               )}
 
@@ -3238,117 +3223,78 @@
                     Resume is the way out of the banner below, so it takes the
                     primary style; Suspend stays secondary next to the run buttons. */}
                 {job.suspendFromUI && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleSuspend(job);
-                    }}
-                    data-testid="suspend-toggle"
-                    disabled={job.suspendToggling || !!suspendBlocked}
-                    title={
+                  <Tooltip
+                    content={
                       suspendBlocked ||
                       (job.suspended ? "Let this job start new runs again" : "Stop new runs for this job until it is resumed")
                     }
-                    className={`${
-                      job.suspended
-                        ? "bg-primary hover:bg-primary-hover text-white"
-                        : "bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600"
-                    } disabled:opacity-60 disabled:cursor-not-allowed px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5`}
-                    aria-label={
-                      suspendBlocked
-                        ? suspendBlocked
-                        : job.suspendToggling
-                          ? job.suspended ? "Resuming" : "Suspending"
-                          : job.suspended ? `Resume ${job.name}` : `Suspend ${job.name}`
-                    }
                   >
-                    {job.suspendToggling ? (
-                      <Spinner />
-                    ) : (
-                      <svg
-                        className="w-3.5 h-3.5 flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d={
-                            job.suspended
-                              ? "M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                              : "M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                          }
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
-                    <span className="hidden sm:inline">
-                      {job.suspendToggling
-                        ? job.suspended ? "Resuming..." : "Suspending..."
-                        : job.suspended ? "Resume" : "Suspend"}
-                    </span>
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSuspend(job);
+                      }}
+                      data-testid="suspend-toggle"
+                      disabled={job.suspendToggling || !!suspendBlocked}
+                      className={`${
+                        job.suspended
+                          ? "bg-primary hover:bg-primary-hover text-white"
+                          : "bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600"
+                      } disabled:opacity-60 disabled:cursor-not-allowed px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5`}
+                      aria-label={
+                        suspendBlocked
+                          ? suspendBlocked
+                          : job.suspendToggling
+                            ? job.suspended ? "Resuming" : "Suspending"
+                            : job.suspended ? `Resume ${job.name}` : `Suspend ${job.name}`
+                      }
+                    >
+                      {job.suspendToggling ? (
+                        <Spinner />
+                      ) : (
+                        <svg
+                          className="w-3.5 h-3.5 flex-shrink-0"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d={
+                              job.suspended
+                                ? "M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                : "M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                            }
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                      <span className="hidden sm:inline">
+                        {job.suspendToggling
+                          ? job.suspended ? "Resuming..." : "Suspending..."
+                          : job.suspended ? "Resume" : "Suspend"}
+                      </span>
+                    </button>
+                  </Tooltip>
                 )}
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRunDiscovery(job);
-                  }}
-                  disabled={job.discoveryRunning || !!discoveryBlocked}
-                  title={discoveryBlocked}
-                  className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
-                  aria-label={
-                    discoveryBlocked
-                      ? discoveryBlocked
-                      : job.discoveryRunning
-                        ? "Discovery running"
-                        : `Run discovery for ${job.name}`
-                  }
-                >
-                  {job.discoveryRunning ? (
-                    <Spinner />
-                  ) : (
-                    <svg
-                      className="w-3.5 h-3.5 flex-shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                  <span className="hidden sm:inline">
-                    {job.discoveryRunning ? "Running..." : "Run Discovery"}
-                  </span>
-                </button>
-
-                <div className="flex items-stretch shadow-sm rounded-lg overflow-hidden">
+                <Tooltip content={discoveryBlocked}>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onTriggerAllRenovate(
-                        job,
-                        {},
-                        triggerScopeIsFiltered ? projectsToTrigger : null
-                      );
+                      onRunDiscovery(job);
                     }}
-                    data-testid="trigger-all"
-                    disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
-                    title={triggerAllBlocked || triggerScopeDescription}
-                    className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 font-semibold text-[0.813rem] hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                    disabled={job.discoveryRunning || !!discoveryBlocked}
+                    className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-[0.813rem] shadow-sm hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
                     aria-label={
-                      triggerAllBlocked
-                        ? triggerAllBlocked
-                        : job.triggeringAll
-                          ? "Triggering all projects"
-                          : triggerScopeDescription
+                      discoveryBlocked
+                        ? discoveryBlocked
+                        : job.discoveryRunning
+                          ? "Discovery running"
+                          : `Run discovery for ${job.name}`
                     }
                   >
-                    {job.triggeringAll ? (
+                    {job.discoveryRunning ? (
                       <Spinner />
                     ) : (
                       <svg
@@ -3358,32 +3304,77 @@
                       >
                         <path
                           fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                          d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
                           clipRule="evenodd"
                         />
                       </svg>
                     )}
                     <span className="hidden sm:inline">
-                      {job.triggeringAll ? "Triggering..." : triggerScopeLabel}
+                      {job.discoveryRunning ? "Running..." : "Run Discovery"}
                     </span>
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTriggerAllRenovate(
-                        job,
-                        { debug: true },
-                        triggerScopeIsFiltered ? projectsToTrigger : null
-                      );
-                    }}
-                    data-testid="trigger-all-debug"
-                    disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
-                    title={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}
-                    className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10 flex items-center"
-                    aria-label={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}
-                  >
-                    <BugIcon className="w-3.5 h-3.5" />
-                  </button>
+                </Tooltip>
+
+                <div className="flex items-stretch shadow-sm rounded-lg overflow-hidden">
+                  <Tooltip content={triggerAllBlocked || triggerScopeDescription}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTriggerAllRenovate(
+                          job,
+                          {},
+                          triggerScopeIsFiltered ? projectsToTrigger : null
+                        );
+                      }}
+                      data-testid="trigger-all"
+                      disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
+                      className="bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white px-2 sm:px-3 py-1.5 font-semibold text-[0.813rem] hover:shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                      aria-label={
+                        triggerAllBlocked
+                          ? triggerAllBlocked
+                          : job.triggeringAll
+                            ? "Triggering all projects"
+                            : triggerScopeDescription
+                      }
+                    >
+                      {job.triggeringAll ? (
+                        <Spinner />
+                      ) : (
+                        <svg
+                          className="w-3.5 h-3.5 flex-shrink-0"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                      <span className="hidden sm:inline">
+                        {job.triggeringAll ? "Triggering..." : triggerScopeLabel}
+                      </span>
+                    </button>
+                  </Tooltip>
+                  <Tooltip content={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTriggerAllRenovate(
+                          job,
+                          { debug: true },
+                          triggerScopeIsFiltered ? projectsToTrigger : null
+                        );
+                      }}
+                      data-testid="trigger-all-debug"
+                      disabled={job.triggeringAll || projectsToTrigger.length === 0 || !!triggerAllBlocked}
+                      className="bg-gray-600 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-amber-400 hover:text-white px-2 py-1.5 text-[0.813rem] transition-all border-l border-white/10 flex items-center"
+                      aria-label={triggerAllBlocked || `${triggerScopeDescription} in debug mode`}
+                    >
+                      <BugIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
 

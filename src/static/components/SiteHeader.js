@@ -7,12 +7,11 @@ function SiteHeader({ version, authInfo, children, hasBottomMargin = true }) {
 
   const authBlock = showAuth ? (
     <div className="flex items-center gap-2">
-      <span
-        className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[120px] sm:max-w-[150px]"
-        title={authInfo.email}
-      >
-        {authInfo.name || authInfo.email}
-      </span>
+      <Tooltip content={authInfo.email}>
+        <span className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 truncate max-w-[120px] sm:max-w-[150px]">
+          {authInfo.name || authInfo.email}
+        </span>
+      </Tooltip>
       <a
         href={`${base}/auth/logout`}
         className="px-2 sm:px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all text-gray-700 dark:text-slate-200 text-xs sm:text-sm font-medium"
