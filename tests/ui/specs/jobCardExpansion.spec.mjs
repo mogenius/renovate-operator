@@ -83,10 +83,25 @@ test.describe("job card expansion", () => {
     // The job that was filtered out was never collapsed behind the user's back.
     expect(await dashboard.isExpanded("job-all-green")).toBe(true);
 
-    // With all three visible, the toggle expands the two that are closed.
+    // job-all-green is still open, so this is a partial mix, not every visible
+    // card collapsed — the toggle offers to collapse the rest rather than expand.
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
+    await dashboard.toggleAllButton.click();
+    expect(await dashboard.isExpanded("job-failing-a")).toBe(false);
+    expect(await dashboard.isExpanded("job-failing-b")).toBe(false);
+    expect(await dashboard.isExpanded("job-all-green")).toBe(false);
+    expect(await dashboard.readStoredToggledJobCardKeys()).toEqual([
+      "renovate/job-failing-a",
+      "renovate/job-failing-b",
+      "renovate/job-all-green",
+    ]);
+
+    // Now every visible card is collapsed, so the toggle offers to expand them all.
+    await expect(dashboard.toggleAllButton).toHaveAccessibleName("Expand all job cards");
     await dashboard.toggleAllButton.click();
     expect(await dashboard.isExpanded("job-failing-a")).toBe(true);
     expect(await dashboard.isExpanded("job-failing-b")).toBe(true);
+    expect(await dashboard.isExpanded("job-all-green")).toBe(true);
     await expect(dashboard.toggleAllButton).toHaveAccessibleName("Collapse all job cards");
     expect(await dashboard.readStoredToggledJobCardKeys()).toEqual([]);
   });

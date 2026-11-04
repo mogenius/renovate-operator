@@ -4,8 +4,9 @@
 // refuses discovery, but triggering still queues projects for when it is resumed.
 // So the card says so, has no countdown to show, disables the discovery button,
 // and leaves the trigger button alone. Where the operator offers it, admins flip
-// the state from the card itself, or suspend and resume every job at once from
-// the toolbar.
+// the state from the card itself, or from the toolbar's single toggle, which
+// suspends whatever is still active unless every job is already suspended, in
+// which case it offers to resume them instead.
 
 import { test, expect } from "../fixtures/dashboardFixture.mjs";
 import {
@@ -107,18 +108,19 @@ test.describe("suspend toggle", () => {
   });
 });
 
-test.describe("suspend all", () => {
+test.describe("suspend/resume toggle", () => {
   test("is not offered unless the operator enables it", async ({ dashboard }) => {
     await dashboard.open(buildDashboardWithSuspendedJob());
 
-    await expect(dashboard.suspendAllButton).toHaveCount(0);
-    await expect(dashboard.resumeAllButton).toHaveCount(0);
+    await expect(dashboard.suspendResumeAllButton).toHaveCount(0);
   });
 
-  test("an admin suspends every job with one request", async ({ dashboard }) => {
+  test("an admin suspends every active job with one request", async ({ dashboard }) => {
     await dashboard.open(buildDashboardWithSuspendedJob({ suspendFromUI: true }));
 
-    await dashboard.suspendAll();
+    // job-active is still running, so the toggle offers to suspend it.
+    await expect(dashboard.suspendResumeAllButton).toHaveAccessibleName("Suspend all jobs");
+    await dashboard.toggleSuspendAll();
 
     // One request naming them all, so a tab dying mid-way cannot leave some
     // running; the job already suspended is left out.
@@ -134,107 +136,96 @@ test.describe("suspend all", () => {
       expectedJobCount: 1,
     });
 
-    await expect(dashboard.suspendAllButton).toHaveAttribute(
+    await expect(dashboard.suspendResumeAllButton).toHaveAttribute(
       "title",
       "Stop new runs for 1 job, including any the filter hides",
     );
-    await dashboard.suspendAll();
+    await dashboard.toggleSuspendAll();
 
     expect(dashboard.suspendRequests).toEqual([
       { renovateJobs: [{ name: "job-active", namespace: "renovate" }], suspend: true },
     ]);
   });
 
-  test("is disabled once every job is suspended", async ({ dashboard }) => {
-    await dashboard.open(
-      ["job-a", "job-b"].map((name) =>
-        buildRenovateJob({
-          name,
-          suspended: true,
-          suspendFromUI: true,
-          projects: [buildProject({ name: `acme/${name}` })],
-        }),
-      ),
-    );
-
-    await expect(dashboard.suspendAllButton).toBeDisabled();
-    await expect(dashboard.suspendAllButton).toHaveAttribute(
-      "title",
-      "Every job you can suspend is already suspended",
-    );
-  });
-
-  test("a reader cannot suspend all jobs", async ({ dashboard }) => {
-    await dashboard.open(
-      ["job-a", "job-b"].map((name) =>
-        buildRenovateJob({
-          name,
-          suspendFromUI: true,
-          role: "reader",
-          permissions: READER_PERMISSIONS,
-          projects: [buildProject({ name: `acme/${name}` })],
-        }),
-      ),
-    );
-
-    await expect(dashboard.suspendAllButton).toBeDisabled();
-    await expect(dashboard.suspendAllButton).toHaveAttribute("title", "Requires admin access");
-  });
-});
-
-test.describe("resume all", () => {
-  test("an admin resumes every job with one request", async ({ dashboard }) => {
+  test("offers to resume only once every job you can suspend already is", async ({ dashboard }) => {
+    // One of two jobs is still active: a partial mix suspends, it does not resume.
     await dashboard.open(buildDashboardWithSuspendedJob({ suspendFromUI: true }));
+    await expect(dashboard.suspendResumeAllButton).toHaveAccessibleName("Suspend all jobs");
 
-    await dashboard.resumeAll();
-
-    expect(dashboard.suspendRequests).toEqual([
-      { renovateJobs: [{ name: "job-suspended", namespace: "renovate" }], suspend: false },
-    ]);
-  });
-
-  test("still applies to the jobs a search hides", async ({ dashboard }) => {
-    // Only the active job matches, but the suspended one still needs resuming.
-    await dashboard.open(buildDashboardWithSuspendedJob({ suspendFromUI: true }), {
-      search: "running-normally",
-      expectedJobCount: 1,
-    });
-
-    await expect(dashboard.resumeAllButton).toHaveAttribute(
-      "title",
-      "Resume 1 suspended job, including any the filter hides, whatever suspended it",
-    );
-    await dashboard.resumeAll();
-
-    expect(dashboard.suspendRequests).toEqual([
-      { renovateJobs: [{ name: "job-suspended", namespace: "renovate" }], suspend: false },
-    ]);
-  });
-
-  test("is disabled while no job is suspended", async ({ dashboard }) => {
+    // Every job suspended: the toggle flips to offer resuming them instead.
     await dashboard.open(
       ["job-a", "job-b"].map((name) =>
         buildRenovateJob({
           name,
+          suspended: true,
+          suspendFromUI: true,
+          projects: [buildProject({ name: `acme/${name}` })],
+        }),
+      ),
+    );
+    await expect(dashboard.suspendResumeAllButton).toHaveAccessibleName("Resume all jobs");
+  });
+
+  test("an admin resumes every suspended job with one request", async ({ dashboard }) => {
+    await dashboard.open(
+      ["job-a", "job-b"].map((name) =>
+        buildRenovateJob({
+          name,
+          suspended: true,
           suspendFromUI: true,
           projects: [buildProject({ name: `acme/${name}` })],
         }),
       ),
     );
 
-    await expect(dashboard.resumeAllButton).toBeDisabled();
-    await expect(dashboard.resumeAllButton).toHaveAttribute(
-      "title",
-      "No job you can resume is suspended",
-    );
+    await dashboard.toggleSuspendAll();
+
+    expect(dashboard.suspendRequests).toEqual([
+      {
+        renovateJobs: [
+          { name: "job-a", namespace: "renovate" },
+          { name: "job-b", namespace: "renovate" },
+        ],
+        suspend: false,
+      },
+    ]);
   });
 
-  test("a reader cannot resume all jobs", async ({ dashboard }) => {
+  test("still resumes the jobs a search hides", async ({ dashboard }) => {
+    const renovateJobs = ["job-a", "job-b"].map((name) =>
+      buildRenovateJob({
+        name,
+        suspended: true,
+        suspendFromUI: true,
+        projects: [buildProject({ name: `acme/${name}` })],
+      }),
+    );
+
+    // Only job-a matches, but job-b still needs resuming.
+    await dashboard.open(renovateJobs, { search: "job-a", expectedJobCount: 1 });
+
+    await expect(dashboard.suspendResumeAllButton).toHaveAttribute(
+      "title",
+      "Resume 2 suspended jobs, including any the filter hides, whatever suspended them",
+    );
+    await dashboard.toggleSuspendAll();
+
+    expect(dashboard.suspendRequests).toEqual([
+      {
+        renovateJobs: [
+          { name: "job-a", namespace: "renovate" },
+          { name: "job-b", namespace: "renovate" },
+        ],
+        suspend: false,
+      },
+    ]);
+  });
+
+  test("a reader cannot suspend or resume", async ({ dashboard }) => {
     await dashboard.open(
       ["job-a", "job-b"].map((name) =>
         buildRenovateJob({
           name,
-          suspended: true,
           suspendFromUI: true,
           role: "reader",
           permissions: READER_PERMISSIONS,
@@ -243,7 +234,7 @@ test.describe("resume all", () => {
       ),
     );
 
-    await expect(dashboard.resumeAllButton).toBeDisabled();
-    await expect(dashboard.resumeAllButton).toHaveAttribute("title", "Requires admin access");
+    await expect(dashboard.suspendResumeAllButton).toBeDisabled();
+    await expect(dashboard.suspendResumeAllButton).toHaveAttribute("title", "Requires admin access");
   });
 });

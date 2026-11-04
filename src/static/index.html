@@ -886,16 +886,17 @@
           });
         }, [searchFilteredJobs]);
 
-        // Collapse when every visible job is open, expand otherwise.
-        const allVisibleExpanded = expandedVisibleJobCount === searchFilteredJobs.length;
+        // Expand only once every visible job is already collapsed; any other mix,
+        // including a partial one, collapses the rest instead.
+        const allVisibleCollapsed = expandedVisibleJobCount === 0;
 
         const toggleAllJobs = useCallback(
-          () => setExpansionForVisibleJobs(!allVisibleExpanded),
-          [allVisibleExpanded, setExpansionForVisibleJobs]
+          () => setExpansionForVisibleJobs(allVisibleCollapsed),
+          [allVisibleCollapsed, setExpansionForVisibleJobs]
         );
 
-        // Unlike expand/collapse, Suspend all and Resume all act on every job the
-        // visitor may suspend, whatever the stat filter and search show: they narrow
+        // Unlike expand/collapse, the suspend toggle acts on every job the visitor
+        // may suspend, whatever the stat filter and search show: they narrow
         // projects, while suspending pauses whole jobs, and a job left running
         // because a filter hid it would defeat the button.
         // The bulk change in flight: true suspends, false resumes, null is none.
@@ -904,18 +905,12 @@
         const suspendableJobs = useMemo(() => jobs.filter((job) => can(job, "suspend")), [jobs]);
         const suspendedJobCount = suspendableJobs.filter((job) => job.suspended).length;
         const activeSuspendableJobCount = suspendableJobs.length - suspendedJobCount;
-        const suspendAllBlocked =
-          suspendableJobs.length === 0
-            ? permissionHint(authInfo)
-            : activeSuspendableJobCount === 0
-              ? "Every job you can suspend is already suspended"
-              : undefined;
-        const resumeAllBlocked =
-          suspendableJobs.length === 0
-            ? permissionHint(authInfo)
-            : suspendedJobCount === 0
-              ? "No job you can resume is suspended"
-              : undefined;
+
+        // Resume only once every job you can suspend is already suspended; any
+        // other mix, including a partial one, suspends the rest instead.
+        const allSuspendableSuspended = suspendableJobs.length > 0 && activeSuspendableJobCount === 0;
+
+        const toggleSuspendAllBlocked = suspendableJobs.length === 0 ? permissionHint(authInfo) : undefined;
 
         const addToast = useCallback(
           (type, title, message = "", duration = 5000) => {
@@ -1580,12 +1575,12 @@
                       type="button"
                       onClick={toggleAllJobs}
                       className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors"
-                      aria-label={allVisibleExpanded ? "Collapse all job cards" : "Expand all job cards"}
-                      title={allVisibleExpanded ? "Collapse all job cards (e)" : "Expand all job cards (e)"}
+                      aria-label={allVisibleCollapsed ? "Expand all job cards" : "Collapse all job cards"}
+                      title={allVisibleCollapsed ? "Expand all job cards (e)" : "Collapse all job cards (e)"}
                     >
                       <span className="flex h-5 items-center shrink-0">
                         <svg
-                          className={`w-4 h-4 transition-transform duration-200 ${allVisibleExpanded ? "rotate-180" : ""}`}
+                          className={`w-4 h-4 transition-transform duration-200 ${allVisibleCollapsed ? "" : "rotate-180"}`}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1594,70 +1589,68 @@
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m4.5 5.25 7.5 7.5 7.5-7.5m-15 6 7.5 7.5 7.5-7.5" />
                         </svg>
                       </span>
-                      <span className="hidden sm:inline">Toggle all</span>
+                      <span className="hidden sm:inline">{allVisibleCollapsed ? "Expand all" : "Collapse all"}</span>
                     </button>
                   )}
                   {/* Only where the operator offers suspending (authorization.suspendFromUI),
-                      and only with jobs to batch: a lone job has its card's button. Like
-                      the card's Resume, Resume all resumes a job whatever suspended it. */}
+                      and only with jobs to batch: a lone job has its card's button. The
+                      toggle offers to suspend whatever is still active, unless every job
+                      you can suspend already is, in which case it offers to resume them,
+                      whatever suspended each one. */}
                   {suspendFromUI && jobs.length > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setAllJobsSuspended(true)}
-                        data-testid="suspend-all"
-                        disabled={bulkSuspend !== null || !!suspendAllBlocked}
-                        title={
-                          suspendAllBlocked ||
-                          `Stop new runs for ${activeSuspendableJobCount} job${activeSuspendableJobCount === 1 ? "" : "s"}${
-                            projectListIsFiltered ? ", including any the filter hides" : ""
-                          }`
-                        }
-                        className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
-                        aria-label={suspendAllBlocked || (bulkSuspend === true ? "Suspending all jobs" : "Suspend all jobs")}
-                      >
-                        {bulkSuspend === true ? (
-                          <Spinner />
-                        ) : (
-                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                            <path
-                              fillRule="evenodd"
-                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                        {/* Icon only on a phone, where the row shares one line with the search box. */}
-                        <span className="hidden sm:inline">{bulkSuspend === true ? "Suspending..." : "Suspend all"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAllJobsSuspended(false)}
-                        data-testid="resume-all"
-                        disabled={bulkSuspend !== null || !!resumeAllBlocked}
-                        title={
-                          resumeAllBlocked ||
-                          `Resume ${suspendedJobCount} suspended job${suspendedJobCount === 1 ? "" : "s"}${
-                            projectListIsFiltered ? ", including any the filter hides," : ""
-                          } whatever suspended ${suspendedJobCount === 1 ? "it" : "them"}`
-                        }
-                        className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
-                        aria-label={resumeAllBlocked || (bulkSuspend === false ? "Resuming all jobs" : "Resume all jobs")}
-                      >
-                        {bulkSuspend === false ? (
-                          <Spinner />
-                        ) : (
-                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                        <span className="hidden sm:inline">{bulkSuspend === false ? "Resuming..." : "Resume all"}</span>
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setAllJobsSuspended(!allSuspendableSuspended)}
+                      data-testid="suspend-resume-all"
+                      disabled={bulkSuspend !== null || !!toggleSuspendAllBlocked}
+                      title={
+                        toggleSuspendAllBlocked ||
+                        (allSuspendableSuspended
+                          ? `Resume ${suspendedJobCount} suspended job${suspendedJobCount === 1 ? "" : "s"}${
+                              projectListIsFiltered ? ", including any the filter hides," : ""
+                            } whatever suspended ${suspendedJobCount === 1 ? "it" : "them"}`
+                          : `Stop new runs for ${activeSuspendableJobCount} job${activeSuspendableJobCount === 1 ? "" : "s"}${
+                              projectListIsFiltered ? ", including any the filter hides" : ""
+                            }`)
+                      }
+                      className="shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-600 dark:disabled:hover:text-slate-300 flex items-center gap-1.5"
+                      aria-label={
+                        toggleSuspendAllBlocked ||
+                        (bulkSuspend !== null
+                          ? (bulkSuspend ? "Suspending all jobs" : "Resuming all jobs")
+                          : (allSuspendableSuspended ? "Resume all jobs" : "Suspend all jobs"))
+                      }
+                    >
+                      {bulkSuspend !== null ? (
+                        <Spinner />
+                      ) : allSuspendableSuspended ? (
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                      {/* Icon only on a phone, where the row shares one line with the search box. */}
+                      <span className="hidden sm:inline">
+                        {bulkSuspend === true
+                          ? "Suspending..."
+                          : bulkSuspend === false
+                            ? "Resuming..."
+                            : allSuspendableSuspended
+                              ? "Resume all"
+                              : "Suspend all"}
+                      </span>
+                    </button>
                   )}
                   <button
                     type="button"
