@@ -97,6 +97,9 @@ func MergeTemplateSpec(base, overlay RenovateJobSpec) RenovateJobSpec {
 	if ov.DiscoverTopics != nil {
 		merged.DiscoverTopics = ov.DiscoverTopics
 	}
+	if ov.Repositories != nil {
+		merged.Repositories = ov.Repositories
+	}
 	if ov.SkipForks != nil {
 		merged.SkipForks = ov.SkipForks
 	}

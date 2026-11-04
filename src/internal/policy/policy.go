@@ -139,6 +139,10 @@ func ValidateSpecConsistency(spec api.RenovateJobSpec) error {
 	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
 		return violationf(ReasonInvalidSpec, "spec.githubAppReference requires spec.provider.name github, on the RenovateJob or on the template it references")
 	}
+	if len(spec.Repositories) > 0 &&
+		(len(spec.DiscoveryFilters) > 0 || len(spec.DiscoverTopics) > 0 || spec.GetSkipForks() || spec.GetSkipPendingDeletion()) {
+		return violationf(ReasonInvalidSpec, "spec.repositories cannot be combined with discoveryFilters, discoverTopics, skipForks or skipPendingDeletion on the RenovateJob or on the template it references")
+	}
 	return nil
 }
 

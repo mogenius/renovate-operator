@@ -153,6 +153,7 @@ func (worker *fakeGithubAppToken) CreateGithubAppToken(appID, installationID, pe
 
 type fakeDiscovery struct {
 	createDiscoveryJobFn func(ctx context.Context, job api.RenovateJob) (string, error)
+	syncStaticProjectsFn func(ctx context.Context, job api.RenovateJob, scheduleAll bool) error
 }
 
 func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
@@ -160,6 +161,12 @@ func (f *fakeDiscovery) CreateDiscoveryJob(ctx context.Context, renovateJob api.
 		return f.createDiscoveryJobFn(ctx, renovateJob)
 	}
 	return "gen-1", nil
+}
+func (f *fakeDiscovery) SyncStaticProjects(ctx context.Context, renovateJob api.RenovateJob, scheduleAll bool) error {
+	if f.syncStaticProjectsFn != nil {
+		return f.syncStaticProjectsFn(ctx, renovateJob, scheduleAll)
+	}
+	return nil
 }
 func (f *fakeDiscovery) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	return api.JobStatusCompleted, nil
@@ -372,6 +379,48 @@ func TestReconcile_CreateSchedule(t *testing.T) {
 	}
 	if res.RequeueAfter != 1*time.Minute {
 		t.Fatalf("expected RequeueAfter 1m, got %v", res.RequeueAfter)
+	}
+}
+
+// Test: a job with a static repository list syncs it during reconcile, before
+// any cron tick, so a spec edit shows up immediately.
+func TestReconcile_SyncsStaticRepositories(t *testing.T) {
+	mgr := &fakeManager{}
+	mgr.getFn = func(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
+		return &api.RenovateJob{
+			Name: name, Namespace: namespace,
+			Spec: api.RenovateJobSpec{
+				Schedule:     "*/5 * * * *",
+				Image:        "renovate/renovate",
+				Parallelism:  1,
+				Provider:     &api.RenovateProvider{Name: "github"},
+				Repositories: []string{"acme/one"},
+			},
+		}, nil
+	}
+
+	var synced []string
+	disc := &fakeDiscovery{
+		syncStaticProjectsFn: func(ctx context.Context, job api.RenovateJob, scheduleAll bool) error {
+			synced = job.Spec.Repositories
+			return nil
+		},
+	}
+
+	reconciler := &RenovateJobReconciler{
+		Manager:   mgr,
+		Scheduler: &fakeScheduler{},
+		Discovery: disc,
+		GithubApp: &fakeGithubAppToken{},
+		K8sClient: buildFakeK8sClient(t),
+		Policy:    policy.Policy{Disabled: true},
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{Name: "test", Namespace: "default"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(synced) != 1 || synced[0] != "acme/one" {
+		t.Fatalf("expected static repositories to be synced, got %v", synced)
 	}
 }
 

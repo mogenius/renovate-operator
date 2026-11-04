@@ -4,6 +4,10 @@ Autodiscovery is a feature that automatically finds and catalogs projects across
 that Renovate should manage. Instead of manually specifying each project, you can configure filters
 or topics to let renovate discover them for you.
 
+If you already know the exact set of repositories, see
+[Static Repositories](./static-repositories.md) instead — it skips discovery and
+creates the projects straight from `spec.repositories`.
+
 ## How it works
 
 When you configure a `RenovateJob` with autodiscovery settings, the operator will:

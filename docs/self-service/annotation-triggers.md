@@ -49,6 +49,8 @@ kubectl annotate renovatejob <name> -n <namespace> \
 
 The operator starts a discovery job, which runs Renovate in autodiscover mode and reconciles the resulting project list into the `RenovateJob` status. The annotation is removed once the job is created successfully. While the `RenovateJob` is [suspended](../operations/suspend.md), the annotation is left in place and the discovery runs once the job is resumed.
 
+On a job with [static repositories](../configuration/static-repositories.md), no discovery job runs: the annotation reconciles `spec.repositories` into `RenovateProject` resources instead.
+
 ## Schedule all projects immediately
 
 Marks every non-running project as `Scheduled` so the executor dispatches them on the next tick (within 10 seconds). Projects that are currently `Running` are left untouched.

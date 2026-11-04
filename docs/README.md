@@ -23,6 +23,7 @@ RenovateJob and Operator Settings to customize your experience.
 | Guide                                                       |                                                             |
 | ----------------------------------------------------------- | ----------------------------------------------------------- |
 | [Autodiscovery](./configuration/autodiscovery.md)             | Filters, topics, fork and pending-deletion exclusion        |
+| [Static Repositories](./configuration/static-repositories.md) | Explicit project list that skips autodiscovery              |
 | [Shared Templates](./configuration/shared-templates.md)       | Inherit common RenovateJob config from a template           |
 | [Authentication](./configuration/auth.md)                     | OIDC, GitHub OAuth, access control                          |
 | [Renovate Configuration](./configuration/renovate-config.md)  | Inline or ConfigMap-based Renovate config file              |

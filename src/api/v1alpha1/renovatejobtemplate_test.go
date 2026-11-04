@@ -85,6 +85,27 @@ func TestMergeTemplateSpec_OverlayReplacesPerField(t *testing.T) {
 	}
 }
 
+func TestMergeTemplateSpec_Repositories(t *testing.T) {
+	base := RenovateJobSpec{Repositories: []string{"template/one"}}
+	overlay := RenovateJobSpec{Repositories: []string{"job/one", "job/two"}}
+
+	got := MergeTemplateSpec(base, overlay)
+
+	if len(got.Repositories) != 2 || got.Repositories[0] != "job/one" || got.Repositories[1] != "job/two" {
+		t.Errorf("repositories: expected the job's list to replace the template's, got %v", got.Repositories)
+	}
+	got.Repositories[0] = "mutated"
+	if overlay.Repositories[0] != "job/one" {
+		t.Error("merge aliased the job's Repositories slice")
+	}
+
+	// A job without the field inherits the template's list.
+	got = MergeTemplateSpec(base, RenovateJobSpec{})
+	if len(got.Repositories) != 1 || got.Repositories[0] != "template/one" {
+		t.Errorf("repositories: expected inherited value, got %v", got.Repositories)
+	}
+}
+
 func TestMergeTemplateSpec_DoesNotMutateInputs(t *testing.T) {
 	base := RenovateJobSpec{ExtraEnv: []corev1.EnvVar{{Name: "A"}}}
 	overlay := RenovateJobSpec{DiscoveryFilters: []string{"x"}}

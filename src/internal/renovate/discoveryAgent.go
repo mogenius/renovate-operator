@@ -11,6 +11,7 @@ import (
 	"renovate-operator/internal/policy"
 	"renovate-operator/internal/types"
 	"renovate-operator/metricStore"
+	"strings"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -33,7 +34,14 @@ type DiscoveryAgent interface {
 	// non-running projects once the job completes (true for cron, false for UI-triggered).
 	// Completion is handled reactively by the job controller via ProcessDiscoveryJobResult.
 	// A suspended RenovateJob gets ErrRenovateJobSuspended and no job.
+	// A RenovateJob with spec.repositories creates no job: the static list is synced
+	// into RenovateProject objects instead (see SyncStaticProjects).
 	CreateDiscoveryJob(ctx context.Context, renovateJob api.RenovateJob, options DiscoveryJobOptions) (string, error)
+	// SyncStaticProjects reconciles the RenovateProject objects of a job that uses
+	// spec.repositories instead of autodiscovery. It is a no-op for jobs without a
+	// static list. scheduleAll queues every non-running project, like a completed
+	// discovery run does.
+	SyncStaticProjects(ctx context.Context, renovateJob api.RenovateJob, scheduleAll bool) error
 	// GetDiscoveryJobStatus retrieves the current status of the discovery job for the given RenovateJob CRD.
 	GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error)
 	// ProcessDiscoveryJobResult handles completion of a discovery k8s Job: extracts discovered projects,
@@ -129,6 +137,21 @@ func (e *discoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *
 		return fmt.Errorf("failed to load RenovateJob: %w", err)
 	}
 
+	// The job switched to a static repository list while this discovery job was in
+	// flight. Its result is stale and must not overwrite the list.
+	if len(renovateJob.Spec.Repositories) > 0 {
+		log.FromContext(ctx).V(1).Info("ignoring discovery result: the RenovateJob now uses a static repository list", "renovateJob", jobId.Name)
+		if err := crdManager.MarkJobProcessed(ctx, e.client, k8sJob); err != nil {
+			log.FromContext(ctx).Error(err, "failed to mark stale discovery job as processed", "job", k8sJob.Name)
+		}
+		if config.GetValue("DELETE_SUCCESSFUL_JOBS") == "true" {
+			if err := crdManager.DeleteJob(ctx, e.client, k8sJob); err != nil {
+				log.FromContext(ctx).Error(err, "failed to delete stale discovery job", "job", renovateJob.Fullname())
+			}
+		}
+		return nil
+	}
+
 	rawLogs, err := e.logReader.GetSucceededJobLog(ctx, k8sJob)
 	if err != nil {
 		// Pod may already be gone (operator restart replaying old jobs, or TTL cleanup).
@@ -195,6 +218,12 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 		return "", ErrRenovateJobSuspended
 	}
 
+	// A static repository list replaces autodiscovery: reconcile the projects
+	// directly instead of scanning the platform for them.
+	if len(renovateJob.Spec.Repositories) > 0 {
+		return "", e.SyncStaticProjects(ctx, renovateJob, options.TriggerAllProjects)
+	}
+
 	name := renovateJob.Fullname()
 	v, _ := e.syncer.LoadOrStore(name, &sync.RWMutex{})
 	lock := v.(*sync.RWMutex)
@@ -258,4 +287,91 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	metricStore.IncJobDispatched(ctx, renovateJob.Namespace, renovateJob.Name, "discovery")
 
 	return generation, nil
+}
+
+// SyncStaticProjects implements DiscoveryAgent.
+func (e *discoveryAgent) SyncStaticProjects(ctx context.Context, renovateJob api.RenovateJob, scheduleAll bool) error {
+	if len(renovateJob.Spec.Repositories) == 0 {
+		return nil
+	}
+
+	name := renovateJob.Fullname()
+	v, _ := e.syncer.LoadOrStore(name, &sync.RWMutex{})
+	lock := v.(*sync.RWMutex)
+	lock.Lock()
+	defer lock.Unlock()
+
+	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+	projects := normalizeRepositories(renovateJob.Spec.Repositories)
+
+	existing, err := e.manager.GetProjectsForRenovateJob(ctx, jobId)
+	if err != nil {
+		return fmt.Errorf("failed to list projects: %w", err)
+	}
+	changed := !sameProjectSet(existing, projects)
+	var removedProjects []string
+	if changed {
+		removedProjects, err = e.manager.ReconcileProjects(ctx, &renovateJob, projects)
+		if err != nil {
+			return fmt.Errorf("failed to reconcile projects: %w", err)
+		}
+	}
+	// Sync webhooks when the project list changed, and on every scheduled run so a
+	// webhook config change propagates like it does after a discovery run.
+	// A webhook sync problem must not block the project list; the next sync retries.
+	if changed || scheduleAll {
+		if err := e.manager.SyncWebhooks(ctx, jobId, removedProjects); err != nil {
+			log.FromContext(ctx).Error(err, "failed to sync webhooks", "renovateJob", renovateJob.Name)
+		}
+	}
+
+	metricStore.SetDiscoveredRepositories(renovateJob.Namespace, renovateJob.Name, len(projects))
+
+	if scheduleAll {
+		isNotRunning := func(p crdManager.RenovateProjectStatus) bool {
+			return p.Status != api.JobStatusRunning
+		}
+		if err := e.manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, &types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled,
+		}); err != nil {
+			return fmt.Errorf("failed to schedule projects: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// normalizeRepositories trims and dedupes a static repository list, preserving order.
+func normalizeRepositories(repositories []string) []string {
+	seen := make(map[string]struct{}, len(repositories))
+	normalized := make([]string, 0, len(repositories))
+	for _, repository := range repositories {
+		repository = strings.TrimSpace(repository)
+		if repository == "" {
+			continue
+		}
+		if _, ok := seen[repository]; ok {
+			continue
+		}
+		seen[repository] = struct{}{}
+		normalized = append(normalized, repository)
+	}
+	return normalized
+}
+
+// sameProjectSet reports whether the existing projects are exactly the desired ones.
+func sameProjectSet(existing []crdManager.RenovateProjectStatus, desired []string) bool {
+	if len(existing) != len(desired) {
+		return false
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, project := range existing {
+		existingSet[project.Name] = struct{}{}
+	}
+	for _, project := range desired {
+		if _, ok := existingSet[project]; !ok {
+			return false
+		}
+	}
+	return true
 }

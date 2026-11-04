@@ -25,6 +25,7 @@ import (
 type fakeJobManager struct {
 	getJobFn                     func(ctx context.Context, name, namespace string) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
+	getProjectsFn                func(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error)
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
 	updateProjectStatusFn        func(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
@@ -71,6 +72,9 @@ func (f *fakeJobManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]a
 	return f.ListRenovateJobsFull(ctx)
 }
 func (f *fakeJobManager) GetProjectsForRenovateJob(ctx context.Context, job crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+	if f.getProjectsFn != nil {
+		return f.getProjectsFn(ctx, job)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeJobManager) UpdateProjectStatus(ctx context.Context, project string, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -419,5 +423,206 @@ func TestProcessDiscoveryJobResult_RunningJob(t *testing.T) {
 		Name:      "job1",
 	}); err != nil {
 		t.Fatalf("expected nil error for running job, got: %v", err)
+	}
+}
+
+func TestSyncStaticProjects_CreatesProjects(t *testing.T) {
+	scheme := runtime.NewScheme()
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	var reconciled []string
+	scheduled := false
+	mgr := &fakeJobManager{
+		getProjectsFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+			return nil, nil
+		},
+		reconcileProjectsFn: func(_ context.Context, _ *api.RenovateJob, projects []string) error {
+			reconciled = projects
+			return nil
+		},
+		updateProjectStatusBatchedFn: func(_ context.Context, _ func(p crdManager.RenovateProjectStatus) bool, _ crdManager.RenovateJobIdentifier, _ *types.RenovateStatusUpdate) error {
+			scheduled = true
+			return nil
+		},
+	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, nil, policy.Policy{}).(*discoveryAgent)
+
+	job := &api.RenovateJob{}
+	job.Name = "job1"
+	job.Namespace = "ns"
+	job.Spec.Repositories = []string{"acme/one", " acme/two ", "acme/one"}
+
+	if err := da.SyncStaticProjects(context.Background(), *job, false); err != nil {
+		t.Fatalf("SyncStaticProjects returned error: %v", err)
+	}
+	if len(reconciled) != 2 || reconciled[0] != "acme/one" || reconciled[1] != "acme/two" {
+		t.Fatalf("expected normalized projects [acme/one acme/two], got %v", reconciled)
+	}
+	if scheduled {
+		t.Fatal("expected no scheduling when scheduleAll is false")
+	}
+}
+
+func TestSyncStaticProjects_SchedulesAllWhenRequested(t *testing.T) {
+	scheme := runtime.NewScheme()
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	var status *types.RenovateStatusUpdate
+	mgr := &fakeJobManager{
+		getProjectsFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+			return nil, nil
+		},
+		updateProjectStatusBatchedFn: func(_ context.Context, _ func(p crdManager.RenovateProjectStatus) bool, _ crdManager.RenovateJobIdentifier, s *types.RenovateStatusUpdate) error {
+			status = s
+			return nil
+		},
+	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, nil, policy.Policy{}).(*discoveryAgent)
+
+	job := &api.RenovateJob{}
+	job.Name = "job1"
+	job.Namespace = "ns"
+	job.Spec.Repositories = []string{"acme/one"}
+
+	if err := da.SyncStaticProjects(context.Background(), *job, true); err != nil {
+		t.Fatalf("SyncStaticProjects returned error: %v", err)
+	}
+	if status == nil || status.Status != api.JobStatusScheduled {
+		t.Fatalf("expected all projects to be scheduled, got %v", status)
+	}
+}
+
+func TestSyncStaticProjects_NoOpWhenUnchanged(t *testing.T) {
+	scheme := runtime.NewScheme()
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	reconciled := false
+	mgr := &fakeJobManager{
+		getProjectsFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+			return []crdManager.RenovateProjectStatus{{Name: "acme/one"}, {Name: "acme/two"}}, nil
+		},
+		reconcileProjectsFn: func(_ context.Context, _ *api.RenovateJob, _ []string) error {
+			reconciled = true
+			return nil
+		},
+	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, nil, policy.Policy{}).(*discoveryAgent)
+
+	job := &api.RenovateJob{}
+	job.Name = "job1"
+	job.Namespace = "ns"
+	job.Spec.Repositories = []string{"acme/one", "acme/two"}
+
+	if err := da.SyncStaticProjects(context.Background(), *job, false); err != nil {
+		t.Fatalf("SyncStaticProjects returned error: %v", err)
+	}
+	if reconciled {
+		t.Fatal("expected no reconciliation when the project set is unchanged")
+	}
+}
+
+func TestCreateDiscoveryJob_StaticRepositories(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	_ = config.InitializeConfigModule([]config.ConfigItemDescription{
+		{Key: "JOB_TIMEOUT_SECONDS", Optional: true, Default: "1"},
+	})
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&batchv1.Job{}).Build()
+
+	var reconciled []string
+	mgr := &fakeJobManager{
+		getProjectsFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) ([]crdManager.RenovateProjectStatus, error) {
+			return nil, nil
+		},
+		reconcileProjectsFn: func(_ context.Context, _ *api.RenovateJob, projects []string) error {
+			reconciled = projects
+			return nil
+		},
+	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, nil, policy.Policy{}).(*discoveryAgent)
+
+	rj := &api.RenovateJob{}
+	rj.Name = "job1"
+	rj.Namespace = "ns"
+	rj.Spec.Repositories = []string{"acme/one"}
+
+	generation, err := da.CreateDiscoveryJob(context.Background(), *rj, DiscoveryJobOptions{TriggerAllProjects: true})
+	if err != nil {
+		t.Fatalf("CreateDiscoveryJob returned error: %v", err)
+	}
+	if generation != "" {
+		t.Fatalf("expected no discovery job generation, got %q", generation)
+	}
+	if len(reconciled) != 1 || reconciled[0] != "acme/one" {
+		t.Fatalf("expected the static list to be reconciled, got %v", reconciled)
+	}
+
+	jobList := &batchv1.JobList{}
+	if err := c.List(context.Background(), jobList); err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobList.Items) != 0 {
+		t.Fatalf("expected no discovery job to be created, got %d", len(jobList.Items))
+	}
+}
+
+func TestProcessDiscoveryJobResult_IgnoresStaleResultForStaticRepositories(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add api scheme: %v", err)
+	}
+	if err := batchv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add batch scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+
+	k8sJob := &batchv1.Job{
+		Name: "job1-discovery-abc", Namespace: "ns",
+		Status: batchv1.JobStatus{
+			Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(k8sJob).Build()
+
+	mgr := &fakeJobManager{
+		getJobFn: func(_ context.Context, name, namespace string) (*api.RenovateJob, error) {
+			job := &api.RenovateJob{}
+			job.Name = name
+			job.Namespace = namespace
+			job.Spec.Repositories = []string{"acme/one"}
+			return job, nil
+		},
+		reconcileProjectsFn: func(_ context.Context, _ *api.RenovateJob, _ []string) error {
+			t.Fatal("a stale discovery result must not reconcile projects")
+			return nil
+		},
+	}
+	lr := &fakePodLogReader{
+		getSucceededJobLogFn: func(_ context.Context, _ *batchv1.Job) (string, error) {
+			t.Fatal("a stale discovery result must not be read")
+			return "", nil
+		},
+	}
+	da := NewDiscoveryAgent(scheme, c, testLogger, mgr, lr, policy.Policy{}).(*discoveryAgent)
+
+	if err := da.ProcessDiscoveryJobResult(context.Background(), k8sJob, crdManager.RenovateJobIdentifier{
+		Namespace: "ns",
+		Name:      "job1",
+	}); err != nil {
+		t.Fatalf("ProcessDiscoveryJobResult returned error: %v", err)
 	}
 }
