@@ -289,24 +289,14 @@ class DashboardPage {
     await sent;
   }
 
-  /** The toolbar's Suspend all button. */
-  get suspendAllButton() {
-    return this.toolbar.getByTestId("suspend-all");
+  /** The toolbar's Suspend/Resume toggle; its label flips with whether every job you can suspend already is. */
+  get suspendResumeAllButton() {
+    return this.toolbar.getByTestId("suspend-resume-all");
   }
 
-  /** The toolbar's Resume all button. */
-  get resumeAllButton() {
-    return this.toolbar.getByTestId("resume-all");
-  }
-
-  /** Clicks Suspend all and resolves once the page has posted, like toggleSuspend. */
-  async suspendAll() {
-    await this.#clickAndAwaitSuspend(this.suspendAllButton);
-  }
-
-  /** Clicks Resume all and resolves once the page has posted. */
-  async resumeAll() {
-    await this.#clickAndAwaitSuspend(this.resumeAllButton);
+  /** Clicks the suspend/resume toggle and resolves once the page has posted, like toggleSuspend. */
+  async toggleSuspendAll() {
+    await this.#clickAndAwaitSuspend(this.suspendResumeAllButton);
   }
 
   /** The main half of the split trigger button in a job card's title row. */
