@@ -8,24 +8,18 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  
+
 jobs:
   release-please:
-    runs-on: self-hosted
-    steps:
-      - name: Generate a token
-        id: generate-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_SECRET }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          token: ${{ steps.generate-token.outputs.token }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+    uses: mogenius/github-actions/.github/workflows/release-please.yml@d567182ba5527eb86ae25fa5467ae03ef0dac965 # v1.11.0
+    with:
+      config_file: release-please-config.json
+      manifest_file: .release-please-manifest.json
+    secrets:
+      APP_ID: ${{ secrets.RELEASE_APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_SECRET }}
