@@ -255,7 +255,8 @@
         const raw = params.get("levels") ?? (() => {
           try { return localStorage.getItem(LEVELS_STORAGE_KEY); } catch { return null; }
         })();
-        if (!raw) return new Set(ALL_LEVELS);
+        if (raw === null) return new Set(ALL_LEVELS);
+        if (raw.trim() === "") return new Set();
         const requested = raw.split(",").map(s => s.trim().toUpperCase()).filter(s => ALL_LEVELS.includes(s));
         return requested.length > 0 ? new Set(requested) : new Set(ALL_LEVELS);
       }, []);
@@ -332,7 +333,7 @@
         if (pinnedRef.current && bottomSentinelRef.current) {
           bottomSentinelRef.current.scrollIntoView();
         }
-      }, [filteredLogs]);
+      }, [logs]);
 
       useEffect(() => {
         requestAnimationFrame(updateScrollState);
