@@ -30,6 +30,10 @@ func (f *fakeDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, job api.Ren
 	return "discovery", nil
 }
 
+func (f *fakeDiscoveryAgent) SyncStaticProjects(ctx context.Context, job api.RenovateJob, scheduleAll bool) error {
+	return nil
+}
+
 func (f *fakeDiscoveryAgent) GetDiscoveryJobStatus(ctx context.Context, job *api.RenovateJob) (api.RenovateProjectStatus, error) {
 	if f.statusFunc != nil {
 		return f.statusFunc(ctx, job)

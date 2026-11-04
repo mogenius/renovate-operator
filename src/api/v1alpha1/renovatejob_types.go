@@ -16,6 +16,7 @@ import (
 // RenovateJobSpec defines the desired state of RenovateJob
 // +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 // +kubebuilder:validation:XValidation:rule="!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii() == 'github'",message="githubAppReference requires provider.name github"
+// +kubebuilder:validation:XValidation:rule="!has(self.repositories) || (!has(self.discoveryFilters) && !has(self.discoverTopics) && !(has(self.skipForks) && self.skipForks) && !(has(self.skipPendingDeletion) && self.skipPendingDeletion))",message="repositories cannot be combined with discoveryFilters, discoverTopics, skipForks or skipPendingDeletion"
 type RenovateJobSpec struct {
 	// TemplateRef inherits shared configuration from a RenovateJobTemplate (in the
 	// same namespace) or a cluster-scoped ClusterRenovateJobTemplate. Fields set on
@@ -47,6 +48,17 @@ type RenovateJobSpec struct {
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	// Topics to discover projects from, will be concatenated using , separator
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
+	// Static list of repositories to manage instead of autodiscovery. When set,
+	// no discovery job runs: RenovateProject objects are created straight from
+	// this list. Each entry is the platform's full project path (e.g.
+	// "group/subgroup/repo"). Mutually exclusive with discoveryFilters,
+	// discoverTopics, skipForks and skipPendingDeletion.
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=1000
+	// +kubebuilder:validation:items:MaxLength=250
+	// +kubebuilder:validation:items:Pattern=`^[^\s/]+(/[^\s/]+)+$`
+	Repositories []string `json:"repositories,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API.
 	// A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
 	// +optional
@@ -391,6 +403,10 @@ func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	if in.DiscoverTopics != nil {
 		out.DiscoverTopics = make([]string, len(in.DiscoverTopics))
 		copy(out.DiscoverTopics, in.DiscoverTopics)
+	}
+	if in.Repositories != nil {
+		out.Repositories = make([]string, len(in.Repositories))
+		copy(out.Repositories, in.Repositories)
 	}
 	if in.SkipForks != nil {
 		out.SkipForks = new(bool)

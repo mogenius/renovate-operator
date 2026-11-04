@@ -13,6 +13,8 @@ func specWithServiceAccount(name string) api.RenovateJobSpec {
 	return api.RenovateJobSpec{ServiceAccount: &api.RenovateJobServiceAccount{Name: name}}
 }
 
+func ptr[T any](v T) *T { return &v }
+
 func TestValidateJobSpecServiceAccount(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -190,6 +192,12 @@ func TestValidateSpecConsistency(t *testing.T) {
 		{name: "provider name is case-insensitive", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "GitHub"}, GithubAppReference: ref}, valid: true},
 		{name: "other provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}, GithubAppReference: ref}, valid: false},
 		{name: "no provider", spec: api.RenovateJobSpec{GithubAppReference: ref}, valid: false},
+		{name: "repositories only", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}}, valid: true},
+		{name: "repositories with discoveryFilters", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}, DiscoveryFilters: []string{"org/*"}}, valid: false},
+		{name: "repositories with discoverTopics", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}, DiscoverTopics: []string{"renovate"}}, valid: false},
+		{name: "repositories with skipForks", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}, SkipForks: ptr(true)}, valid: false},
+		{name: "repositories with explicit skipForks false", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}, SkipForks: ptr(false)}, valid: true},
+		{name: "repositories with skipPendingDeletion", spec: api.RenovateJobSpec{Repositories: []string{"org/repo"}, SkipPendingDeletion: ptr(true)}, valid: false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -3206,7 +3206,7 @@
               </div>
 
               {/* Config info icon */}
-              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0) && (
+              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0 || job.repositories?.length > 0) && (
                 <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                   <svg
                     ref={infoIconRef}
@@ -3223,8 +3223,19 @@
                     <div
                       style={{ position: "fixed", top: infoTooltipPos.top, left: infoTooltipPos.left, transform: "translateX(-50%)" }}
                       className="z-50 w-64 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-3 text-left pointer-events-none"
+                      data-testid="job-config-tooltip"
                     >
                       <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-l border-t border-gray-200 dark:border-slate-600 rotate-45" />
+                      {job.repositories?.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Repositories</p>
+                          <ul className="space-y-0.5">
+                            {job.repositories.map((r, i) => (
+                              <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 truncate" title={r}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {job.discoveryFilters?.length > 0 && (
                         <div className="mb-2">
                           <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discovery Filters</p>
@@ -3308,6 +3319,7 @@
                   </button>
                 )}
 
+                {!(job.repositories?.length > 0) && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -3343,6 +3355,7 @@
                     {job.discoveryRunning ? "Running..." : "Run Discovery"}
                   </span>
                 </button>
+                )}
 
                 <div className="flex items-stretch shadow-sm rounded-lg overflow-hidden">
                   <button

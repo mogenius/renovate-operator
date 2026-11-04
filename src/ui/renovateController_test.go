@@ -183,6 +183,10 @@ func (m *mockDiscoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob
 	return "", nil
 }
 
+func (m *mockDiscoveryAgent) SyncStaticProjects(ctx context.Context, renovateJob api.RenovateJob, scheduleAll bool) error {
+	return nil
+}
+
 func (m *mockDiscoveryAgent) ProcessDiscoveryJobResult(ctx context.Context, k8sJob *batchv1.Job, jobId crdmanager.RenovateJobIdentifier) error {
 	return nil
 }

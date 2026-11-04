@@ -3460,6 +3460,20 @@ spec:
                 x-kubernetes-validations:
                 - message: exactly one of inline and configMapRef must be set
                   rule: has(self.inline) != has(self.configMapRef)
+              repositories:
+                description: |-
+                  Static list of repositories to manage instead of autodiscovery. When set,
+                  no discovery job runs: RenovateProject objects are created straight from
+                  this list. Each entry is the platform's full project path (e.g.
+                  "group/subgroup/repo"). Mutually exclusive with discoveryFilters,
+                  discoverTopics, skipForks and skipPendingDeletion.
+                items:
+                  maxLength: 250
+                  pattern: ^[^\s/]+(/[^\s/]+)+$
+                  type: string
+                maxItems: 1000
+                minItems: 1
+                type: array
               resources:
                 description: Resource requirements for the renovate container
                 properties:
@@ -4568,6 +4582,11 @@ spec:
             - message: githubAppReference requires provider.name github
               rule: '!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii()
                 == ''github'''
+            - message: repositories cannot be combined with discoveryFilters, discoverTopics,
+                skipForks or skipPendingDeletion
+              rule: '!has(self.repositories) || (!has(self.discoveryFilters) && !has(self.discoverTopics)
+                && !(has(self.skipForks) && self.skipForks) && !(has(self.skipPendingDeletion)
+                && self.skipPendingDeletion))'
           status:
             description: RenovateJobStatus defines the observed state of RenovateJob
             properties:

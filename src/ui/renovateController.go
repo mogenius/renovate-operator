@@ -41,6 +41,9 @@ type RenovateJobInfo struct {
 	Permissions      []string `json:"permissions"`
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	DiscoverTopics   []string `json:"discoverTopics,omitempty"`
+	// Repositories is the static project list of a job that skips autodiscovery.
+	// The UI hides the discovery button for such jobs.
+	Repositories []string `json:"repositories,omitempty"`
 	// Suspended mirrors spec.suspend: no new run starts, and triggers only queue
 	// projects. A suspended job has no NextSchedule.
 	Suspended bool `json:"suspended,omitempty"`
@@ -368,6 +371,7 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 			Permissions:      decisions[i].permissions(),
 			DiscoveryFilters: renovateJob.Spec.DiscoveryFilters,
 			DiscoverTopics:   renovateJob.Spec.DiscoverTopics,
+			Repositories:     renovateJob.Spec.Repositories,
 		})
 	}
 
@@ -680,7 +684,11 @@ func (s *Server) runDiscoveryForProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	writeSuccess(w, SuccessResult{Message: "discovery job started"})
+	message := "discovery job started"
+	if len(job.Spec.Repositories) > 0 {
+		message = "repositories synced"
+	}
+	writeSuccess(w, SuccessResult{Message: message})
 	s.logger.V(2).Info("Successfully started discovery for RenovateJob", "renovateJob", params.name, "namespace", params.namespace)
 }
 

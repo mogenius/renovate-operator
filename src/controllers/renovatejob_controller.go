@@ -111,6 +111,14 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		r.ensureWebhookCleanupFinalizer(ctx, logger, renovateJob, effectiveJob)
+		// A static repository list is synced here as well, so a spec edit shows up
+		// in the UI without waiting for the next cron tick. The sync is a no-op when
+		// the list already matches the existing projects.
+		if len(effectiveJob.Spec.Repositories) > 0 {
+			if err := r.Discovery.SyncStaticProjects(ctx, *effectiveJob, false); err != nil {
+				logger.Error(err, "failed to sync static repositories")
+			}
+		}
 		r.resetOrphanedRunning(ctx, renovateJob)
 		if effectiveJob.Spec.GetSuspend() {
 			// The first reconcile after resuming registers it again. The token and

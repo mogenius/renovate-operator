@@ -430,6 +430,7 @@ export function buildRenovateJob({
   name,
   namespace = "renovate",
   projects = [],
+  repositories = [],
   cronExpression = "0 2 * * *",
   discoveryStatus = "Completed",
   platform = "github",
@@ -455,6 +456,10 @@ export function buildRenovateJob({
     role,
     permissions,
   };
+  // Like the operator: `repositories` is only sent when the job uses a static list.
+  if (repositories.length) {
+    job.repositories = repositories;
+  }
   // Like the operator: `suspended` is only sent when true, and a suspended job
   // has no next run to report.
   if (suspended) {
