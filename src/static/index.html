@@ -263,8 +263,8 @@
       // list, fed by event delegation, so a job with thousands of projects
       // does not pay for thousands of timers and portals. Rows name their
       // project in data-project-row; cells holding controls opt out with
-      // data-no-tooltip.
-      const TOOLTIP_DELAY_MS = 500;
+      // data-no-tooltip. Opens after the same TOOLTIP_DELAY_MS that
+      // components/Tooltip.js defines.
 
       function useProjectDurationTooltip(projects) {
         // Name of the row the tooltip shows for, once the delay ran out. The row
