@@ -3,13 +3,18 @@
 // and the bubble is rendered into document.body through a portal, so no layout
 // container can clip it. The trigger sits in a wrapper <span>: that keeps the
 // trigger's own layout intact while giving the hover/focus listeners an element
-// that still fires even when the trigger is a disabled button. `content` takes
-// precedence; otherwise `label` reads before any `keys`, which render as
-// keycaps. With neither, the trigger renders without a tooltip.
+// that still fires even when the trigger is a disabled button. The wrapper is
+// `min-w-0` so a `truncate` trigger inside a flex row still shrinks: a flex item
+// otherwise refuses to go below its content width and the ellipsis never shows.
+// `content` takes precedence; otherwise `label` reads before any `keys`, which
+// render as keycaps. With neither, the trigger renders without a tooltip.
 //
 // Opening is delayed a moment, like the native title tooltip, so brushing past
 // a control does not flash its bubble; leaving or blurring closes immediately.
+// Shared with the hand-rolled "Last Run Duration" tooltip in index.html so both
+// open after the same pause.
 const TOOLTIP_DELAY_MS = 500;
+window.TOOLTIP_DELAY_MS = TOOLTIP_DELAY_MS;
 
 function Tooltip({ content, label, keys = [], variant = "dark", className = "", children }) {
   const { useState, useRef, useLayoutEffect, useEffect, useCallback, isValidElement, cloneElement } = React;
@@ -74,7 +79,7 @@ function Tooltip({ content, label, keys = [], variant = "dark", className = "", 
     <>
       <span
         ref={triggerRef}
-        className={`inline-flex ${className}`}
+        className={`inline-flex min-w-0 ${className}`}
         onMouseEnter={openTooltip}
         onMouseLeave={closeTooltip}
         onFocus={openTooltip}
