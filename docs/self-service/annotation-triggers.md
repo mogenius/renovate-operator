@@ -12,6 +12,7 @@ Annotation triggers let you imperatively kick off actions on a `RenovateJob` or 
 | `renovate-operator.mogenius.com/discovery`    | `"true"`                | Starts a discovery run to refresh the project list  |
 | `renovate-operator.mogenius.com/schedule-all` | `"true"`                | Sets all non-running projects to `Scheduled`        |
 | `renovate-operator.mogenius.com/schedule`     | `"org/repo1,org/repo2"` | Sets the listed non-running projects to `Scheduled` |
+| `renovate-operator.mogenius.com/refresh-webhook-auth` | any non-empty value | Re-applies the webhook auth token to the job's repository hooks |
 
 Multiple triggers can be set simultaneously on a `RenovateJob` — the operator processes all of them in a single reconcile.
 
@@ -69,9 +70,21 @@ kubectl annotate renovatejob <name> -n <namespace> \
 
 Whitespace around commas is trimmed, so `"org/repo1, org/repo2"` works too.
 
+## Rotate the webhook auth token
+
+The webhook auth token is write-only on the Git platform, so the operator cannot detect a rotated value by comparing hook configuration. After changing the secret referenced by `spec.webhook.authentication.secretRef`, re-apply it to every hook of the job with:
+
+```sh
+kubectl annotate renovatejob <name> -n <namespace> \
+  "renovate-operator.mogenius.com/refresh-webhook-auth=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --overwrite
+```
+
+Any non-empty value triggers the refresh; use a fresh value for each rotation. The annotation is removed once the hooks have been updated, and kept when the update fails so the next reconcile retries it. The job must have `spec.webhook.sync.enabled` and `spec.webhook.authentication.enabled` set, otherwise there is nothing to refresh.
+
 ## Combining triggers
 
-All three can be set at once. The operator handles them in this order: discovery → schedule-all → schedule.
+All of them can be set at once. The operator handles them in this order: discovery → schedule-all → schedule → refresh-webhook-auth.
 
 ```sh
 kubectl annotate renovatejob <name> -n <namespace> \

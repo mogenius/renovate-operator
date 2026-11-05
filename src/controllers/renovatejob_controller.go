@@ -431,6 +431,15 @@ func (r *RenovateJobReconciler) handleAnnotationTriggers(ctx context.Context, lo
 		}
 	}
 
+	if annotations[api.TriggerWebhookAuthRefreshAnnotationKey] != "" {
+		if err := r.Manager.RefreshWebhookAuth(ctx, jobId); err != nil {
+			logger.Error(err, "failed to refresh webhook auth")
+		} else {
+			logger.V(1).Info("webhook auth refreshed via annotation")
+			toRemove = append(toRemove, api.TriggerWebhookAuthRefreshAnnotationKey)
+		}
+	}
+
 	if len(toRemove) == 0 {
 		return
 	}

@@ -39,6 +39,8 @@ type fakeManager struct {
 	resolveEffectiveFn           func(ctx context.Context, job *api.RenovateJob) (*api.RenovateJob, error)
 	reconcileProjectsFn          func(ctx context.Context, job *api.RenovateJob, projects []string) error
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
+	listEffectiveFn              func(ctx context.Context) ([]api.RenovateJob, error)
+	refreshWebhookAuthFn         func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
 }
@@ -50,6 +52,9 @@ func (f *fakeManager) ListRenovateJobsFull(ctx context.Context) ([]api.RenovateJ
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeManager) ListEffectiveRenovateJobsFull(ctx context.Context) ([]api.RenovateJob, error) {
+	if f.listEffectiveFn != nil {
+		return f.listEffectiveFn(ctx)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeManager) GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error) {
@@ -106,6 +111,13 @@ func (f *fakeManager) GetProjectsByStatus(ctx context.Context, job crdManager.Re
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeManager) SyncWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier, removedProjects []string) error {
+	return nil
+}
+
+func (f *fakeManager) RefreshWebhookAuth(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
+	if f.refreshWebhookAuthFn != nil {
+		return f.refreshWebhookAuthFn(ctx, job)
+	}
 	return nil
 }
 
@@ -501,6 +513,61 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 	}
 	if _, ok := renovateJob.Annotations[api.TriggerScheduleAllAnnotationKey]; ok {
 		t.Fatal("expected schedule-all annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_WebhookAuthRefresh verifies that the refresh
+// annotation re-applies the webhook auth token and is removed on success.
+func TestHandleAnnotationTriggers_WebhookAuthRefresh(t *testing.T) {
+	var refreshed crdManager.RenovateJobIdentifier
+	mgr := &fakeManager{
+		refreshWebhookAuthFn: func(_ context.Context, job crdManager.RenovateJobIdentifier) error {
+			refreshed = job
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		api.TriggerWebhookAuthRefreshAnnotationKey: "2026-11-05T00:00:00Z",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
+
+	if refreshed.Name != "test" || refreshed.Namespace != "default" {
+		t.Fatalf("unexpected refresh target: %+v", refreshed)
+	}
+	if _, ok := renovateJob.Annotations[api.TriggerWebhookAuthRefreshAnnotationKey]; ok {
+		t.Fatal("expected the refresh annotation to be removed after processing")
+	}
+}
+
+// TestHandleAnnotationTriggers_WebhookAuthRefreshFailure verifies a failed
+// refresh keeps the annotation, so the next reconcile retries it.
+func TestHandleAnnotationTriggers_WebhookAuthRefreshFailure(t *testing.T) {
+	mgr := &fakeManager{
+		refreshWebhookAuthFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
+			return fmt.Errorf("platform unavailable")
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		api.TriggerWebhookAuthRefreshAnnotationKey: "2026-11-05T00:00:00Z",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
+
+	if _, ok := renovateJob.Annotations[api.TriggerWebhookAuthRefreshAnnotationKey]; !ok {
+		t.Fatal("expected the refresh annotation to stay after a failed refresh")
 	}
 }
 

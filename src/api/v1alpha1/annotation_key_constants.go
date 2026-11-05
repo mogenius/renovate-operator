@@ -40,6 +40,11 @@ const (
 	// TriggerScheduleAnnotationKey sets the listed non-running projects to
 	// Scheduled. Its value is a comma-separated list of project names.
 	TriggerScheduleAnnotationKey = GroupName + "/schedule"
+	// TriggerWebhookAuthRefreshAnnotationKey re-applies the webhook auth token
+	// of the job to its repository hooks. Any non-empty value triggers it; use a
+	// fresh value (e.g. a timestamp) for a later rotation, since the operator
+	// removes the annotation once the refresh succeeds.
+	TriggerWebhookAuthRefreshAnnotationKey = GroupName + "/refresh-webhook-auth"
 )
 
 // TokenExpiresAtAnnotationKey records an RFC3339 expiry on a Secret holding a

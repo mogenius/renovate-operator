@@ -80,6 +80,10 @@ type RenovateJobManager interface {
 	// reported by ReconcileProjects). Stateless: hooks are identified by their
 	// delivery URL on the platform.
 	SyncWebhooks(ctx context.Context, job RenovateJobIdentifier, removedProjects []string) error
+	// RefreshWebhookAuth re-applies the webhook auth token to the hooks of
+	// every project of the RenovateJob, so a rotated secret takes effect
+	// without waiting for configuration drift.
+	RefreshWebhookAuth(ctx context.Context, job RenovateJobIdentifier) error
 	// CleanupWebhooks removes the operator's webhook from every project of the
 	// RenovateJob. Called by the deletion finalizer.
 	CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error
@@ -472,7 +476,43 @@ func (r *renovateJobManager) SyncWebhooks(ctx context.Context, job RenovateJobId
 		return nil
 	}
 
-	return r.runWebhookSync(ctx, renovateJob, job, desired, removed)
+	return r.runWebhookSync(ctx, renovateJob, job, desired, removed, false)
+}
+
+// RefreshWebhookAuth re-applies the webhook auth token to the hooks of every
+// project of the job. The token is write-only on the platforms, so a rotated
+// token is pushed to the existing hooks instead of waiting for config drift.
+func (r *renovateJobManager) RefreshWebhookAuth(ctx context.Context, job RenovateJobIdentifier) error {
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
+	var projectList api.RenovateProjectList
+	var listErr error
+	if err == nil {
+		listErr = r.client.List(ctx, &projectList,
+			client.InNamespace(job.Namespace),
+			client.MatchingLabels{api.LabelRenovateJob: job.Name},
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to load renovate job: %w", err)
+	}
+	if listErr != nil {
+		return fmt.Errorf("failed to list RenovateProjects for webhook auth refresh: %w", listErr)
+	}
+
+	webhook := renovateJob.Spec.Webhook
+	if webhook == nil || webhook.Sync == nil || !webhook.Enabled || !webhook.Sync.Enabled {
+		return nil
+	}
+
+	desired := make([]string, 0, len(projectList.Items))
+	for _, p := range projectList.Items {
+		desired = append(desired, p.Spec.Project)
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+
+	return r.runWebhookSync(ctx, renovateJob, job, desired, nil, true)
 }
 
 func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
@@ -499,12 +539,12 @@ func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJo
 	if len(removed) == 0 {
 		return nil
 	}
-	return r.runWebhookSync(ctx, renovateJob, job, nil, removed)
+	return r.runWebhookSync(ctx, renovateJob, job, nil, removed, false)
 }
 
 // runWebhookSync builds the provider client and delivery URL, then runs one
 // webhook sync cycle over the given project sets.
-func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []string) error {
+func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *api.RenovateJob, job RenovateJobIdentifier, desired, removed []string, forceAuthToken bool) error {
 	webhook := renovateJob.Spec.Webhook
 
 	var gitProvider gitProviderClients.GitProviderClient
@@ -550,6 +590,8 @@ func (r *renovateJobManager) runWebhookSync(ctx context.Context, renovateJob *ap
 	opts := webhookSync.Options{
 		WebhookURL: webhookURL,
 		AuthToken:  authToken,
+		// Only a real token can be pushed; without auth the hooks have none.
+		ForceAuthToken: forceAuthToken && authToken != "",
 	}
 	webhookSync.Sync(ctx, r.logger.WithName("webhook-sync"), gitProvider, opts, desired, removed)
 	return nil
