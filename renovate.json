@@ -37,6 +37,11 @@
       "semanticCommitType": "fix"
     },
     {
+      "description": "The ui-test.yaml container image bakes in browsers for a specific playwright-core release; @playwright/test in tests/ui/package.json must match it exactly or the browser tests hang/fail in CI, so bump both together.",
+      "matchPackageNames": ["mcr.microsoft.com/playwright", "@playwright/test"],
+      "groupName": "playwright"
+    },
+    {
       "matchDatasources": ["npm"],
       "semanticCommitType": "fix"
     },
