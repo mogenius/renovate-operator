@@ -180,6 +180,8 @@ func TestValidateJobCoversDestinationsAndSpec(t *testing.T) {
 
 func TestValidateSpecConsistency(t *testing.T) {
 	ref := &api.GithubAppReference{SecretName: "app"}
+	hostRulesRef := &api.GithubAppReference{SecretName: "app", HostRulesSecretName: "club-host-rules"}
+	github := &api.RenovateProvider{Name: "github"}
 	tests := []struct {
 		name  string
 		spec  api.RenovateJobSpec
@@ -190,6 +192,9 @@ func TestValidateSpecConsistency(t *testing.T) {
 		{name: "provider name is case-insensitive", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "GitHub"}, GithubAppReference: ref}, valid: true},
 		{name: "other provider", spec: api.RenovateJobSpec{Provider: &api.RenovateProvider{Name: "gitlab"}, GithubAppReference: ref}, valid: false},
 		{name: "no provider", spec: api.RenovateJobSpec{GithubAppReference: ref}, valid: false},
+		{name: "hostRules without additional config file", spec: api.RenovateJobSpec{Provider: github, GithubAppReference: hostRulesRef, ExtraEnv: []corev1.EnvVar{{Name: "RENOVATE_HOST_RULES", Value: "[]"}}}, valid: true},
+		{name: "hostRules with additional config file", spec: api.RenovateJobSpec{Provider: github, GithubAppReference: hostRulesRef, ExtraEnv: []corev1.EnvVar{{Name: AdditionalConfigFileEnvVar, Value: "/x.json"}}}, valid: false},
+		{name: "additional config file without hostRules", spec: api.RenovateJobSpec{Provider: github, GithubAppReference: ref, ExtraEnv: []corev1.EnvVar{{Name: AdditionalConfigFileEnvVar, Value: "/x.json"}}}, valid: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
