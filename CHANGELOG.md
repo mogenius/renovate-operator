@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.9.0](https://github.com/mogenius/renovate-operator/compare/6.8.0...6.9.0) (2026-11-06)
+
+
+### Features
+
+* **ui:** add floating tooltip component and replace native title attributes ([ac8a1ac](https://github.com/mogenius/renovate-operator/commit/ac8a1ac420945543a92c2a4c37ccdda48c83a638))
+* **ui:** bulk toggles only flip from a uniform state ([8070420](https://github.com/mogenius/renovate-operator/commit/8070420b4c6e045a34af7de6136d98d2be537b6f))
+
+
+### Bug Fixes
+
+* **ui:** let truncated tooltip triggers shrink inside flex rows ([584660c](https://github.com/mogenius/renovate-operator/commit/584660c0f2c0dfd28e64e01aa3cd3f7168345623))
+* **ui:** preserve empty log-level filter and avoid scroll jumps ([9bbab6d](https://github.com/mogenius/renovate-operator/commit/9bbab6de4dbb98ec2764056f391b0b6f55a16df7))
+
 ## [6.8.0](https://github.com/mogenius/renovate-operator/compare/6.7.0...6.8.0) (2026-11-04)
 
 
