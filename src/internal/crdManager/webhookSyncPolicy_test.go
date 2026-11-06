@@ -85,7 +85,7 @@ func TestRunWebhookSyncRefusesWritesToForeignBaseURL(t *testing.T) {
 	job := syncJob("forgejo")
 	job.Spec.Webhook.BaseURL = "https://attacker.example.net"
 
-	err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil)
+	err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil, false)
 	if err == nil {
 		t.Fatal("expected the sync to be refused for a non-allowlisted delivery host")
 	}
@@ -105,7 +105,7 @@ func TestRunWebhookSyncAllowsWritesToAllowlistedBaseURL(t *testing.T) {
 	job := syncJob("forgejo")
 	job.Spec.Webhook.BaseURL = "https://renovate.example.com"
 
-	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil); err != nil {
+	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(provider.created) != 1 {
@@ -127,7 +127,7 @@ func TestRunWebhookSyncStillRemovesHooksUnderForeignBaseURL(t *testing.T) {
 	job := syncJob("forgejo")
 	job.Spec.Webhook.BaseURL = "https://attacker.example.net"
 
-	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, nil, []string{"org/a"}); err != nil {
+	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, nil, []string{"org/a"}, false); err != nil {
 		t.Fatalf("removal must not be blocked by the destination policy, got %v", err)
 	}
 	if len(provider.deleted) != 1 {
@@ -208,7 +208,7 @@ func TestRunWebhookSyncRefusesWritesToForeignEnvBaseURL(t *testing.T) {
 	job := syncJob("forgejo")
 	job.Spec.Webhook.BaseURL = ""
 
-	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil); err == nil {
+	if err := mgr.runWebhookSync(context.Background(), job, RenovateJobIdentifier{Name: "j", Namespace: "n"}, []string{"org/a"}, nil, false); err == nil {
 		t.Fatal("expected a misconfigured WEBHOOK_BASE_URL to be refused too")
 	}
 	if len(provider.created) != 0 {
