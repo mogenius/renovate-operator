@@ -48,8 +48,14 @@ export const PR_ACTIONS = {
   unchanged: "unchanged",
 };
 
-/** api.LogIssue levels — pino levels, 40 renders as "warn", 50 as "error". */
-export const LOG_LEVELS = { warn: 40, error: 50 };
+/**
+ * api.LogIssue levels — pino levels. The parser counts 40 as a warning and everything
+ * from 50 up (fatal 60 included) as an error; the UI renders 40 as "warn", 50+ as "error".
+ */
+export const LOG_LEVELS = { warn: 40, error: 50, fatal: 60 };
+
+/** parser.MaxIssueMessageLen — longer messages are cut there and get a trailing "…". */
+export const MAX_ISSUE_MESSAGE_LENGTH = 256;
 
 export function buildProject({
   name,
@@ -102,8 +108,11 @@ export function buildLogIssues({
   errorCount = 0,
   issues = [],
   truncated = false,
+  // Only set when the run logged at debug level; the parser leaves it out otherwise.
+  hasConfigMigration = undefined,
 } = {}) {
   const logIssues = { warnCount, errorCount };
+  if (hasConfigMigration !== undefined) logIssues.hasConfigMigration = hasConfigMigration;
   if (issues.length) logIssues.issues = issues;
   if (truncated) logIssues.truncated = true;
   return logIssues;
@@ -333,6 +342,124 @@ export const PROJECT_STATE_VARIANTS = [
           }),
         ),
       }),
+    },
+  },
+  {
+    key: "onboarding-with-lookup-failures",
+    description:
+      "not onboarded yet, but its run still warned — the most common 'With Issues' " +
+      "project on a live install, where onboarding repos fail package lookups",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.onboarding,
+      duration: "21s",
+      lastTransition: minutesBeforeLastTransition(1480),
+      prActivity: buildPRActivity({
+        created: 1,
+        prs: [
+          buildPRDetail({ branch: "renovate/configure", number: 1, title: "Configure Renovate", action: PR_ACTIONS.created }),
+        ],
+      }),
+      logIssues: buildLogIssues({
+        warnCount: 1,
+        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" })],
+      }),
+    },
+  },
+  {
+    key: "completed-with-config-warnings",
+    description: "the repository's own Renovate config is at fault, not a dependency",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "29s",
+      lastTransition: minutesBeforeLastTransition(460),
+      logIssues: buildLogIssues({
+        warnCount: 2,
+        hasConfigMigration: true,
+        issues: [
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Found renovate config warnings" }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Config validation errors found in packageRules" }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-deprecation",
+    description: "a deprecation notice only — nothing failed, but it will one day",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "37s",
+      lastTransition: minutesBeforeLastTransition(470),
+      logIssues: buildLogIssues({
+        warnCount: 1,
+        issues: [
+          buildLogIssue({
+            level: LOG_LEVELS.warn,
+            message: "Updating multiple npm lock files is deprecated and support will be removed in future versions.",
+          }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-long-message",
+    description: "a message the parser cut at MAX_ISSUE_MESSAGE_LENGTH and suffixed with '…'",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "44s",
+      lastTransition: minutesBeforeLastTransition(480),
+      logIssues: buildLogIssues({
+        errorCount: 1,
+        issues: [
+          buildLogIssue({
+            level: LOG_LEVELS.error,
+            message:
+              ("Command failed: npm install --package-lock-only --ignore-scripts --no-audit " +
+                "npm ERR! code ERESOLVE npm ERR! ERESOLVE unable to resolve dependency tree " +
+                "npm ERR! While resolving: @acme/web@1.0.0 npm ERR! Found: react@18.3.1 ".repeat(3))
+                .slice(0, MAX_ISSUE_MESSAGE_LENGTH) + "…",
+          }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "failed-with-fatal-auth-error",
+    description: "a fatal (level 60) platform error — counted as an error, rendered as one",
+    project: {
+      status: PROJECT_STATUSES.failed,
+      duration: "3s",
+      lastTransition: minutesBeforeLastTransition(35),
+      logIssues: buildLogIssues({
+        errorCount: 2,
+        issues: [
+          buildLogIssue({ level: LOG_LEVELS.fatal, message: "Authentication failure" }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Repository is not accessible: 403 Forbidden" }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-counts-but-no-messages",
+    description:
+      "warnings counted, but every one had an empty message — the parser stores none, so " +
+      "the row shows the badge without a detail list",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "25s",
+      lastTransition: minutesBeforeLastTransition(490),
+      logIssues: buildLogIssues({ warnCount: 2 }),
+    },
+  },
+  {
+    key: "completed-config-migration-only",
+    description:
+      "the config needs migrating (a debug-level finding) and nothing warned — NOT " +
+      "'With Issues', which only counts level 40 and up",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "31s",
+      lastTransition: minutesBeforeLastTransition(500),
+      logIssues: buildLogIssues({ hasConfigMigration: true }),
     },
   },
   {
