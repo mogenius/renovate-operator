@@ -602,8 +602,8 @@ export function buildRenovateJob({
  *
  * Every card leads with VARIANT_KEYS_IN_EVERY_JOB — including one failing project,
  * so the "failed" stat filter selects a predictable subset of each job — and fills
- * the rest from the remaining states, rotated by job index so no two cards look
- * alike. The result is the payload `just ui-dev` serves as well.
+ * the rest from the remaining states, each card continuing where the previous one
+ * stopped, so no two cards look alike and the dashboard as a whole shows every state. The result is the payload `just ui-dev` serves as well.
  */
 export function buildMultiJobDashboard({ jobCount = 5, projectsPerJob = 12 } = {}) {
   return Array.from({ length: jobCount }, (_, jobIndex) =>
@@ -614,7 +614,8 @@ export function buildMultiJobDashboard({ jobCount = 5, projectsPerJob = 12 } = {
           projectIndex < VARIANT_KEYS_IN_EVERY_JOB.length
             ? VARIANT_KEYS_IN_EVERY_JOB[projectIndex]
             : REMAINING_VARIANT_KEYS[
-                (projectIndex - VARIANT_KEYS_IN_EVERY_JOB.length + jobIndex) %
+                (projectIndex - VARIANT_KEYS_IN_EVERY_JOB.length +
+                  jobIndex * (projectsPerJob - VARIANT_KEYS_IN_EVERY_JOB.length)) %
                   REMAINING_VARIANT_KEYS.length
               ];
         return buildProjectInState(`acme/service-${jobIndex + 1}-${projectIndex + 1}`, variantKey);
