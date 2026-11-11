@@ -892,12 +892,12 @@ func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
 		err := cmd.Run()
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return exitErr.ExitCode(), strings.TrimSpace(stdout.String())
+			return exitErr.ExitCode(), stdout.String()
 		}
 		if err != nil {
 			t.Fatalf("running discovery command: %v", err)
 		}
-		return 0, strings.TrimSpace(stdout.String())
+		return 0, stdout.String()
 	}
 
 	t.Run("emits discovered repos when renovate succeeds", func(t *testing.T) {
@@ -905,8 +905,16 @@ func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("expected exit code 0, got %d", code)
 		}
-		if stdout != reposJSON {
+		if strings.TrimSpace(stdout) != reposJSON {
 			t.Fatalf("expected stdout %q, got %q", reposJSON, stdout)
+		}
+	})
+
+	// The container runtime marks a log line without a newline as partial, so log shippers hold it back.
+	t.Run("ends the discovered repos with a newline", func(t *testing.T) {
+		_, stdout := runDiscovery(t, 0)
+		if !strings.HasSuffix(stdout, "\n") {
+			t.Fatalf("expected stdout to end with a newline, got %q", stdout)
 		}
 	})
 
@@ -915,7 +923,7 @@ func TestNewDiscoveryJob_PropagatesRenovateExitCode(t *testing.T) {
 		if code != 3 {
 			t.Fatalf("expected exit code 3, got %d", code)
 		}
-		if stdout != renovateLogLine {
+		if strings.TrimSpace(stdout) != renovateLogLine {
 			t.Fatalf("expected stdout %q, got %q", renovateLogLine, stdout)
 		}
 	})
