@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"renovate-operator/internal/telemetry"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
@@ -17,6 +18,8 @@ type GitHubOAuthConfig struct {
 	ClientSecret string
 	RedirectURL  string
 	OrgGroups    bool
+	// SessionDuration is the session lifetime; zero uses the 24h default.
+	SessionDuration time.Duration
 }
 
 type GitHubOAuth struct {
@@ -44,6 +47,7 @@ func NewGitHubOAuth(cfg GitHubOAuthConfig, encryptionKey [32]byte, logger logr.L
 	if err != nil {
 		return nil, err
 	}
+	base.sessionTTL = cfg.SessionDuration
 
 	return &GitHubOAuth{
 		baseAuth:     base,

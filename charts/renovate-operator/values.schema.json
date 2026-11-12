@@ -250,6 +250,11 @@
           "description": "DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
           "type": "string"
         },
+        "sessionDuration": {
+          "description": "how long a UI session stays valid after login, as a positive Go duration such as 24h or 168h",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+$"
+        },
         "sessionStore": {
           "description": "session storage when no Valkey is configured; Valkey takes precedence when configured",
           "type": "string",

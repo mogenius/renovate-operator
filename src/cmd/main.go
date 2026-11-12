@@ -130,6 +130,9 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 	// Initialize authentication provider (OIDC or GitHub OAuth)
 	var authProvider ui.AuthProvider
 
+	// Validated at startup, so the parse cannot fail here.
+	sessionDuration, _ := time.ParseDuration(config.GetValue("SESSION_DURATION"))
+
 	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
 		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer oidcCancel()
@@ -147,6 +150,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 			FetchUserInfoGroups: config.GetValue("OIDC_FETCH_USERINFO_GROUPS") == "true",
 			PKCEEnabled:         config.GetValue("OIDC_PKCE_ENABLED") != "false",
 			GroupsClaim:         config.GetValue("OIDC_GROUPS_CLAIM"),
+			SessionDuration:     sessionDuration,
 		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
@@ -163,10 +167,11 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 		}
 	} else if githubClientID != "" && githubClientSecret != "" {
 		ghAuth, ghErr := ui.NewGitHubOAuth(ui.GitHubOAuthConfig{
-			ClientID:     githubClientID,
-			ClientSecret: githubClientSecret,
-			RedirectURL:  config.GetValue("GITHUB_REDIRECT_URL"),
-			OrgGroups:    config.GetValue("GITHUB_ORG_GROUPS") == "true",
+			ClientID:        githubClientID,
+			ClientSecret:    githubClientSecret,
+			RedirectURL:     config.GetValue("GITHUB_REDIRECT_URL"),
+			OrgGroups:       config.GetValue("GITHUB_ORG_GROUPS") == "true",
+			SessionDuration: sessionDuration,
 		}, cookieKey, ctrl.Log.WithName("github-oauth"), sessionStore)
 		assert.NoError(ghErr, "failed to initialize GitHub OAuth provider")
 		authProvider = ghAuth
@@ -539,6 +544,21 @@ func main() {
 			Validate: func(value string) error {
 				if value != "cookie" && value != "memory" {
 					return fmt.Errorf("'SESSION_STORE' must be either 'cookie' or 'memory', got %q", value)
+				}
+				return nil
+			},
+		},
+		{
+			Key:      "SESSION_DURATION",
+			Optional: true,
+			Default:  "24h",
+			Validate: func(value string) error {
+				d, err := time.ParseDuration(value)
+				if err != nil {
+					return fmt.Errorf("'SESSION_DURATION' must be a Go duration such as \"24h\" or \"168h\": %w", err)
+				}
+				if d <= 0 {
+					return fmt.Errorf("'SESSION_DURATION' must be positive, got %q", value)
 				}
 				return nil
 			},

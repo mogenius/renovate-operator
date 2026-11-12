@@ -23,7 +23,9 @@ const (
 	sessionCookieName   = "renovate_session"
 	stateCookieName     = "oauth_state"
 	authCompletedCookie = "auth_completed"
-	sessionDuration     = 24 * time.Hour
+	// defaultSessionDuration is how long a session stays valid when no explicit
+	// duration is configured (SESSION_DURATION).
+	defaultSessionDuration = 24 * time.Hour
 	// maxCookieSize is the per-cookie limit browsers enforce on name plus
 	// value; larger cookies are silently discarded.
 	maxCookieSize = 4096
@@ -94,6 +96,16 @@ type baseAuth struct {
 	gcm          cipher.AEAD
 	logger       logr.Logger
 	sessionStore SessionStore
+	// sessionTTL is the session lifetime; zero means defaultSessionDuration.
+	sessionTTL time.Duration
+}
+
+// sessionDuration returns the configured session lifetime.
+func (b *baseAuth) sessionDuration() time.Duration {
+	if b.sessionTTL > 0 {
+		return b.sessionTTL
+	}
+	return defaultSessionDuration
 }
 
 // ComputeEncryptionKey derives a 32-byte AES key from a session secret.
@@ -327,7 +339,7 @@ func (b *baseAuth) buildCompleteURL(ctx context.Context, email, name string, opt
 		Email:   email,
 		Name:    name,
 		Groups:  []string{},
-		Expiry:  time.Now().Add(sessionDuration).Unix(),
+		Expiry:  time.Now().Add(b.sessionDuration()).Unix(),
 	}
 	for _, opt := range opts {
 		opt(&session)
@@ -403,7 +415,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 
 		ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
 		if ttl <= 0 {
-			ttl = sessionDuration
+			ttl = b.sessionDuration()
 		}
 		if err := b.sessionStore.Save(r.Context(), newSessionID, *session, ttl); err != nil {
 			b.logger.Error(err, "failed to save rotated session")
@@ -427,7 +439,7 @@ func (b *baseAuth) handleComplete(w http.ResponseWriter, r *http.Request) {
 		Name:     sessionCookieName,
 		Value:    freshCookie,
 		Path:     cookiePath(),
-		MaxAge:   int(sessionDuration.Seconds()),
+		MaxAge:   int(b.sessionDuration().Seconds()),
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
@@ -591,7 +603,7 @@ func (b *baseAuth) encryptSession(ctx context.Context, session sessionData) (str
 
 	ttl := time.Duration(session.Expiry-time.Now().Unix()) * time.Second
 	if ttl <= 0 {
-		ttl = sessionDuration
+		ttl = b.sessionDuration()
 	}
 	if err := b.sessionStore.Save(ctx, sessionID, session, ttl); err != nil {
 		return "", fmt.Errorf("failed to save session: %w", err)

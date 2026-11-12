@@ -41,6 +41,8 @@ type OIDCConfig struct {
 	FetchUserInfoGroups bool
 	PKCEEnabled         bool
 	GroupsClaim         string
+	// SessionDuration is the session lifetime; zero uses the 24h default.
+	SessionDuration time.Duration
 }
 
 type OIDCAuth struct {
@@ -132,6 +134,7 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 	if err != nil {
 		return nil, err
 	}
+	base.sessionTTL = cfg.SessionDuration
 
 	// Parse the group filter policy if provided
 	groupFilterConfig, err := NewGroupFilterConfig(cfg.AllowedGroupPrefix, cfg.AllowedGroupPattern)

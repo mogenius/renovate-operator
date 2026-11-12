@@ -286,6 +286,8 @@ spec:
             {{- end }}
             - name: SESSION_STORE
               value: {{ .Values.auth.sessionStore | quote }}
+            - name: SESSION_DURATION
+              value: {{ .Values.auth.sessionDuration | quote }}
             - name: VALKEY_FORWARD_CACHE_TO_JOBS
               value: {{ .Values.config.forwardCacheToJobs | quote }}
             {{- if .Values.auth.defaultAllowedGroups }}

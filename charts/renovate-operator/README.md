@@ -59,6 +59,7 @@ Kubernetes: `>=1.29.0-0`
 | auth.oidc.redirectUrl | string | `""` | optional: OIDC redirect URL (auto-detected from ingress host if empty) |
 | auth.oidc.secretKey | string | `"client-secret"` | key in the existing secret that contains the OIDC client secret |
 | auth.oidc.sessionSecretKey | string | `""` | optional: session encryption secret (auto-generated if empty, but sessions won't survive pod restarts) |
+| auth.sessionDuration | string | `"24h"` | how long a UI session stays valid after login, as a Go duration (e.g. "24h", "168h" for 7 days). |
 | auth.sessionStore | string | `"cookie"` | session storage when no Valkey is configured: "cookie" keeps the encrypted session in the browser cookie (subject to the ~4 KB browser limit), "memory" keeps it in the operator process (lost on restart, requires replicaCount 1). Valkey takes precedence when configured. |
 | authorization.defaults | object | `{"adminGroups":[],"adminUsers":[],"anonymousRead":false,"anonymousReadLogs":false,"readerGroups":[],"readerUsers":[]}` | adding to it, so a per-job spec.access can narrow access as well as widen it. |
 | authorization.defaults.adminGroups | list | `[]` | groups granted full access (view plus trigger, cancel and discovery) |
