@@ -369,3 +369,46 @@ func TestIsPublicPath(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionDuration_DefaultAndConfigured(t *testing.T) {
+	for name, tc := range map[string]struct {
+		ttl  time.Duration
+		want time.Duration
+	}{
+		"unset uses 24h default": {0, 24 * time.Hour},
+		"configured 7 days":      {7 * 24 * time.Hour, 7 * 24 * time.Hour},
+	} {
+		t.Run(name, func(t *testing.T) {
+			base, err := newBaseAuth(testEncryptionKey(t), logr.Discard(), NewMemorySessionStore())
+			if err != nil {
+				t.Fatalf("newBaseAuth: %v", err)
+			}
+			base.sessionTTL = tc.ttl
+
+			before := time.Now()
+			completeURL, err := base.buildCompleteURL(context.Background(), "user@example.com", "User")
+			if err != nil {
+				t.Fatalf("buildCompleteURL: %v", err)
+			}
+			w := httptest.NewRecorder()
+			base.handleComplete(w, httptest.NewRequest(http.MethodGet, completeURL, nil))
+
+			c := sessionCookie(w)
+			if c == nil {
+				t.Fatal("no session cookie set")
+			}
+			if got := time.Duration(c.MaxAge) * time.Second; got != tc.want {
+				t.Errorf("cookie MaxAge = %v, want %v", got, tc.want)
+			}
+
+			session, err := base.decryptSession(context.Background(), c.Value)
+			if err != nil {
+				t.Fatalf("decryptSession: %v", err)
+			}
+			gotExpiry := time.Unix(session.Expiry, 0)
+			if gotExpiry.Before(before.Add(tc.want).Add(-time.Second)) || gotExpiry.After(time.Now().Add(tc.want).Add(time.Second)) {
+				t.Errorf("session expiry = %v, want about now+%v", gotExpiry, tc.want)
+			}
+		})
+	}
+}

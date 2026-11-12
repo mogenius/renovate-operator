@@ -56,3 +56,22 @@ tests:
       sessionStore: redis
   asserts:
   - failedTemplate: {}
+
+- it: Defaults the session duration to 24h
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: SESSION_DURATION
+        value: 24h
+
+- it: Renders a custom session duration
+  set:
+    auth:
+      sessionDuration: 168h
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: SESSION_DURATION
+        value: 168h

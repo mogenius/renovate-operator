@@ -130,7 +130,14 @@ The operator requests the `read:user` and `user:email` scopes, plus `read:org` w
 
 ## Session Security
 
-Sessions expire after **24 hours**. Three session storage modes are available:
+Sessions expire after **24 hours** by default. The lifetime can be changed with `auth.sessionDuration` (a Go duration, e.g. `168h` for 7 days):
+
+```yaml
+auth:
+  sessionDuration: 168h   # default 24h
+```
+
+Three session storage modes are available:
 
 **Cookie-based** (default, `auth.sessionStore: cookie`): the full session is AES-256-GCM encrypted and stored directly in the browser cookie. This is stateless: sessions survive pod restarts (given a static session secret) and require no external infrastructure. The cookie is bound by the ~4096 byte browser limit. With OIDC the session also holds the raw ID token, which is sent as `id_token_hint` on logout (required by Okta) and carries the provider's full, unfiltered groups claim, so users in many groups exceed the limit quickly. A session over the limit is rejected at login with an error and a log entry naming the cookie size.
 
