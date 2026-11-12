@@ -14,6 +14,7 @@ import (
 type mockWebhookManager struct {
 	listRenovateJobsFullFunc            func(ctx context.Context) ([]api.RenovateJob, error)
 	updateProjectStatusFunc             func(ctx context.Context, project string, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
+	updateProjectStatusBatchedFunc      func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	isWebhookTokenValidFunc             func(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error)
 	isWebhookSignatureValidFunc         func(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error)
 	isWebhookStandardSignatureValidFunc func(ctx context.Context, job crdmanager.RenovateJobIdentifier, msgID, timestamp, signature string, body []byte) (bool, error)
@@ -141,6 +142,9 @@ func (m *mockWebhookManager) GetProjectsByStatus(ctx context.Context, job crdman
 }
 
 func (m *mockWebhookManager) UpdateProjectStatusBatched(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
+	if m.updateProjectStatusBatchedFunc != nil {
+		return m.updateProjectStatusBatchedFunc(ctx, fn, jobId, status)
+	}
 	return nil
 }
 

@@ -112,6 +112,28 @@ curl -X POST \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
+## Trigger every project of a job
+
+Add `all=true` to schedule every project of one RenovateJob in a single call, the same way the
+UI's "Trigger All" button does. A typical caller is the release pipeline of a shared library: once
+the new version is published, it asks Renovate to look at every repository that may depend on it.
+
+```sh
+curl -X POST \
+  "https://webhook.example.com/webhook/v1/schedule?all=true&job=renovate-secure&namespace=renovate-operator" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+- `job` and `namespace` are required and name the RenovateJob exactly; `project` must not be set.
+- The job must have webhook authentication enabled. On a job without it, the request is rejected
+  with `401 Unauthorized`, so an unauthenticated endpoint cannot be used to start every run of a job.
+- Every project that is not currently running is scheduled at the same priority as a single
+  `/schedule` call. A project that is running is left alone, as it is for a single call; its next
+  scheduled run picks up the change.
+- A `200 OK` means the projects were queued. They start as the job's `parallelism` allows, and
+  not at all while the job is suspended.
+- On `500 Internal Server Error` some projects may already be queued. Repeating the request is safe.
+
 ## Job resolution
 
 All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`, `/gitea`) use the same resolution logic to find the target RenovateJob:
@@ -121,6 +143,9 @@ All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`, `/gitea`) 
 3. Filter to jobs that have the incoming project in their discovered project list.
 4. If authentication is enabled on a job, validate the request credential against it.
 5. The first job that passes authentication (or has authentication disabled) is used.
+
+`/schedule?all=true` does not search: it uses the job named by `namespace` and `job`, as described in
+[Trigger every project of a job](#trigger-every-project-of-a-job).
 
 If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If no job contains the project at all, the request is rejected with `404 Not Found`.
 
