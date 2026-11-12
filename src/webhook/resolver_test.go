@@ -269,3 +269,149 @@ func TestFindAndAuthenticateJobKeepsCheckerErrorCause(t *testing.T) {
 		t.Errorf("a plain mismatch should return the bare sentinel, got %v", err)
 	}
 }
+
+func TestAuthenticateJobForAllProjects(t *testing.T) {
+	tests := []struct {
+		name      string
+		entries   []testJobEntry
+		listerErr error
+		namespace string
+		jobName   string
+		checker   AuthChecker
+		wantId    crdmanager.RenovateJobIdentifier
+		wantErr   error // nil = success expected
+	}{
+		{
+			name:      "auth enabled checker passes",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantId:    crdmanager.RenovateJobIdentifier{Name: "job1", Namespace: "ns1"},
+		},
+		{
+			name:      "job without discovered projects still resolves",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true)},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantId:    crdmanager.RenovateJobIdentifier{Name: "job1", Namespace: "ns1"},
+		},
+		{
+			name: "only the named job in the named namespace is used",
+			entries: []testJobEntry{
+				makeEntry("job1", "ns2", true, false, "org/repo"),
+				makeEntry("job2", "ns1", true, false, "org/repo"),
+				makeEntry("job1", "ns1", true, true, "org/repo"),
+			},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantId:    crdmanager.RenovateJobIdentifier{Name: "job1", Namespace: "ns1"},
+		},
+		{
+			name:      "unknown job",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job2",
+			checker:   passingChecker,
+			wantErr:   ErrNoMatchingJob,
+		},
+		{
+			name:      "job name matches in another namespace only",
+			entries:   []testJobEntry{makeEntry("job1", "ns2", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantErr:   ErrNoMatchingJob,
+		},
+		{
+			name:      "webhook disabled",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", false, false, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantErr:   ErrNoMatchingJob,
+		},
+		{
+			name:      "auth disabled is refused even with a credential",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, false, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantErr:   ErrAuthenticationRequired,
+		},
+		{
+			name:      "auth enabled no credential",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   nil,
+			wantErr:   ErrAuthenticationFailed,
+		},
+		{
+			name:      "auth enabled checker fails",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   failingChecker,
+			wantErr:   ErrAuthenticationFailed,
+		},
+		{
+			name:      "auth enabled checker returns error",
+			entries:   []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   errorChecker,
+			wantErr:   ErrAuthenticationFailed,
+		},
+		{
+			name:      "lister error is returned",
+			listerErr: errors.New("list failed"),
+			namespace: "ns1",
+			jobName:   "job1",
+			checker:   passingChecker,
+			wantErr:   errors.New("list failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lister := &mockJobLister{entries: tt.entries, err: tt.listerErr}
+			id, err := AuthenticateJobForAllProjects(context.Background(), lister, tt.namespace, tt.jobName, tt.checker)
+
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("expected error %v, got nil", tt.wantErr)
+				}
+				if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
+					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if id != tt.wantId {
+				t.Errorf("expected %+v, got %+v", tt.wantId, id)
+			}
+		})
+	}
+}
+
+// A job without webhook authentication must be answered like a failed credential check, and
+// the checker's error must survive for the log line.
+func TestAuthenticateJobForAllProjectsErrors(t *testing.T) {
+	if !errors.Is(ErrAuthenticationRequired, ErrAuthenticationFailed) {
+		t.Error("ErrAuthenticationRequired should match ErrAuthenticationFailed")
+	}
+
+	lister := &mockJobLister{entries: []testJobEntry{makeEntry("job1", "ns1", true, true)}}
+	_, err := AuthenticateJobForAllProjects(context.Background(), lister, "ns1", "job1", errorChecker)
+	if !errors.Is(err, ErrAuthenticationFailed) {
+		t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "ns1/job1: auth error") {
+		t.Errorf("expected the checker's cause in %q", err.Error())
+	}
+}

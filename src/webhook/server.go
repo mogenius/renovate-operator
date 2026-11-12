@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
@@ -98,6 +99,19 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	const provider = "schedule"
 
+	if all := r.URL.Query().Get("all"); all != "" {
+		scheduleAll, err := strconv.ParseBool(all)
+		if err != nil {
+			metricStore.IncWebhookRequest(ctx, provider, "rejected")
+			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid all query parameter, expected true or false"})
+			return
+		}
+		if scheduleAll {
+			s.runRenovateForAllProjects(w, r)
+			return
+		}
+	}
+
 	project := r.URL.Query().Get("project")
 	if project == "" {
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
@@ -141,6 +155,72 @@ func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	w.WriteHeader(http.StatusOK)
 	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
+}
+
+// runRenovateForAllProjects handles /schedule?all=true: it schedules every project of the
+// RenovateJob named by the job and namespace query parameters, like the UI's "Trigger All", for
+// callers such as a library's release pipeline that cannot hold a UI session.
+//
+// The job must be named exactly and must have webhook authentication enabled (see
+// AuthenticateJobForAllProjects). Each project is scheduled as a single /schedule call would do
+// it: a running project is left alone, the others are queued at priority 1.
+func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const provider = "schedule"
+
+	query := r.URL.Query()
+	if query.Get("project") != "" {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "project and all query parameters are mutually exclusive"})
+		return
+	}
+	namespace := query.Get("namespace")
+	jobName := query.Get("job")
+	if namespace == "" || jobName == "" {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "all requires the job and namespace query parameters"})
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	checker := buildAuthCheckerFromRequest(r, body, s.manager)
+	jobId, err := AuthenticateJobForAllProjects(ctx, s.manager, namespace, jobName, checker)
+	if err != nil {
+		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.logger.Info("webhook resolve failed", "renovateJob", jobName, "namespace", namespace, "all", true, "error", err)
+		s.handleResolverError(w, err)
+		return
+	}
+
+	isNotRunning := func(p crdmanager.RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning }
+	err = s.manager.UpdateProjectStatusBatched(
+		ctx,
+		isNotRunning,
+		jobId,
+		&types.RenovateStatusUpdate{
+			Status:   api.JobStatusScheduled,
+			Priority: 1,
+		},
+	)
+	if err != nil {
+		// The batch goes on past a failed project, so the others may already be scheduled;
+		// repeating the request is safe.
+		s.logger.Error(err, "Failed to schedule all projects", "renovateJob", jobId.Name, "namespace", jobId.Namespace)
+		metricStore.IncWebhookRequest(ctx, provider, "rejected")
+		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to schedule all projects"})
+		return
+	}
+
+	metricStore.IncWebhookRequest(ctx, provider, "accepted")
+	w.WriteHeader(http.StatusOK)
+	s.logger.V(2).Info("Successfully triggered Renovate for all projects", "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
 }
 
 // recordResolverAuthFailure emits the appropriate webhook auth-failure metric for an
