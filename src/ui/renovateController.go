@@ -35,12 +35,14 @@ type RenovateJobInfo struct {
 	// Accepted is false when the operator's policy refuses this job, in which case
 	// nothing runs for it and AcceptedMessage says what to fix. Jobs reconciled by an
 	// older operator have no condition yet and are reported as accepted.
-	Accepted         bool     `json:"accepted"`
-	AcceptedMessage  string   `json:"acceptedMessage,omitempty"`
-	Role             string   `json:"role,omitempty"`
-	Permissions      []string `json:"permissions"`
-	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
-	DiscoverTopics   []string `json:"discoverTopics,omitempty"`
+	Accepted           bool     `json:"accepted"`
+	AcceptedMessage    string   `json:"acceptedMessage,omitempty"`
+	Role               string   `json:"role,omitempty"`
+	Permissions        []string `json:"permissions"`
+	DiscoveryFilters   []string `json:"discoveryFilters,omitempty"`
+	DiscoverTopics     []string `json:"discoverTopics,omitempty"`
+	IgnoreRepositories []string `json:"ignoreRepositories,omitempty"`
+	IgnoreTopics       []string `json:"ignoreTopics,omitempty"`
 	// Suspended mirrors spec.suspend: no new run starts, and triggers only queue
 	// projects. A suspended job has no NextSchedule.
 	Suspended bool `json:"suspended,omitempty"`
@@ -352,22 +354,24 @@ func (s *Server) getRenovateJobs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		result = append(result, RenovateJobInfo{
-			Name:             renovateJob.Name,
-			Namespace:        renovateJob.Namespace,
-			Accepted:         accepted,
-			AcceptedMessage:  acceptedMessage,
-			Suspended:        renovateJob.Spec.GetSuspend(),
-			SuspendFromUI:    s.accessDefaults.SuspendFromUI,
-			NextSchedule:     nextSchedule,
-			Projects:         projects,
-			CronExpression:   renovateJob.Spec.Schedule,
-			DiscoveryStatus:  discoveryStatus,
-			Platform:         platform,
-			PlatformEndpoint: platformEndpoint,
-			Role:             decisions[i].Role.String(),
-			Permissions:      decisions[i].permissions(),
-			DiscoveryFilters: renovateJob.Spec.DiscoveryFilters,
-			DiscoverTopics:   renovateJob.Spec.DiscoverTopics,
+			Name:               renovateJob.Name,
+			Namespace:          renovateJob.Namespace,
+			Accepted:           accepted,
+			AcceptedMessage:    acceptedMessage,
+			Suspended:          renovateJob.Spec.GetSuspend(),
+			SuspendFromUI:      s.accessDefaults.SuspendFromUI,
+			NextSchedule:       nextSchedule,
+			Projects:           projects,
+			CronExpression:     renovateJob.Spec.Schedule,
+			DiscoveryStatus:    discoveryStatus,
+			Platform:           platform,
+			PlatformEndpoint:   platformEndpoint,
+			Role:               decisions[i].Role.String(),
+			Permissions:        decisions[i].permissions(),
+			DiscoveryFilters:   renovateJob.Spec.DiscoveryFilters,
+			DiscoverTopics:     renovateJob.Spec.DiscoverTopics,
+			IgnoreRepositories: renovateJob.Spec.IgnoreRepositories,
+			IgnoreTopics:       renovateJob.Spec.IgnoreTopics,
 		})
 	}
 

@@ -47,6 +47,17 @@ type RenovateJobSpec struct {
 	DiscoveryFilters []string `json:"discoveryFilters,omitempty"`
 	// Topics to discover projects from, will be concatenated using , separator
 	DiscoverTopics []string `json:"discoverTopics,omitempty"`
+	// Repositories to exclude from this job after discovery. Each entry is a
+	// case-insensitive minimatch-style glob matched against the full project path
+	// (for example "org/legacy-*"). A pattern without "/" also matches the
+	// repository name on its own.
+	// +optional
+	IgnoreRepositories []string `json:"ignoreRepositories,omitempty"`
+	// Repository topics that exclude a repository from this job after discovery.
+	// Matching is case-insensitive. Platforms that do not expose topics keep the
+	// repository (fail-open).
+	// +optional
+	IgnoreTopics []string `json:"ignoreTopics,omitempty"`
 	// If true, forked repositories discovered during autodiscovery will be excluded by querying the platform API.
 	// A pointer so an unset value inherits from templateRef while an explicit false overrides an inherited true.
 	// +optional
@@ -391,6 +402,14 @@ func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	if in.DiscoverTopics != nil {
 		out.DiscoverTopics = make([]string, len(in.DiscoverTopics))
 		copy(out.DiscoverTopics, in.DiscoverTopics)
+	}
+	if in.IgnoreRepositories != nil {
+		out.IgnoreRepositories = make([]string, len(in.IgnoreRepositories))
+		copy(out.IgnoreRepositories, in.IgnoreRepositories)
+	}
+	if in.IgnoreTopics != nil {
+		out.IgnoreTopics = make([]string, len(in.IgnoreTopics))
+		copy(out.IgnoreTopics, in.IgnoreTopics)
 	}
 	if in.SkipForks != nil {
 		out.SkipForks = new(bool)

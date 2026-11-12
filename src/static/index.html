@@ -3175,7 +3175,7 @@
               </div>
 
               {/* Config info icon */}
-              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0) && (
+              {(job.discoveryFilters?.length > 0 || job.discoverTopics?.length > 0 || job.ignoreRepositories?.length > 0 || job.ignoreTopics?.length > 0) && (
                 <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                   <Tooltip
                     variant="light"
@@ -3193,10 +3193,30 @@
                           </div>
                         )}
                         {job.discoverTopics?.length > 0 && (
-                          <div>
+                          <div className="mb-2">
                             <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Discover Topics</p>
                             <ul className="space-y-0.5">
                               {job.discoverTopics.map((t, i) => (
+                                <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 break-all">{t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {job.ignoreRepositories?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Ignored Repositories</p>
+                            <ul className="space-y-0.5">
+                              {job.ignoreRepositories.map((r, i) => (
+                                <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 break-all">{r}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {job.ignoreTopics?.length > 0 && (
+                          <div>
+                            <p className="text-[0.688rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">Ignored Topics</p>
+                            <ul className="space-y-0.5">
+                              {job.ignoreTopics.map((t, i) => (
                                 <li key={i} className="font-mono text-xs text-gray-800 dark:text-slate-200 break-all">{t}</li>
                               ))}
                             </ul>

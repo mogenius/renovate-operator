@@ -9,6 +9,28 @@ import (
 	"testing"
 )
 
+func TestGetRepositoryInfo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/repos/org/repo1" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"fork": true, "topics": ["renovate", "archived"]}`))
+	}))
+	defer srv.Close()
+
+	c := &ForgejoClient{Endpoint: srv.URL, Token: "test-token", HTTPClient: srv.Client()}
+	got, err := c.GetRepositoryInfo(context.Background(), "org/repo1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Fork {
+		t.Error("expected fork to be reported")
+	}
+	if len(got.Topics) != 2 || got.Topics[0] != "renovate" || got.Topics[1] != "archived" {
+		t.Errorf("expected topics [renovate archived], got %v", got.Topics)
+	}
+}
+
 func TestListRepoWebhooks(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/api/v1/repos/org/repo1/hooks", func(w http.ResponseWriter, r *http.Request) {

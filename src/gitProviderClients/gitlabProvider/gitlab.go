@@ -44,6 +44,7 @@ func (c *GitLabClient) GetRepositoryInfo(ctx context.Context, project string) (g
 		ForkedFromProject   *json.RawMessage `json:"forked_from_project"`
 		MarkedForDeletionAt *string          `json:"marked_for_deletion_at"`
 		MarkedForDeletionOn *string          `json:"marked_for_deletion_on"`
+		Topics              []string         `json:"topics"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&proj); err != nil {
 		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode GitLab API response for %s: %w", project, err)
@@ -54,6 +55,7 @@ func (c *GitLabClient) GetRepositoryInfo(ctx context.Context, project string) (g
 	return gitProviderClients.RepositoryInfo{
 		Fork:            proj.ForkedFromProject != nil,
 		PendingDeletion: pendingDeletion,
+		Topics:          proj.Topics,
 	}, nil
 }
 

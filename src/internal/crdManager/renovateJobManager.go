@@ -362,20 +362,33 @@ func buildRenovateProject(job *api.RenovateJob, project string) *api.RenovatePro
 
 func (r *renovateJobManager) ReconcileProjects(ctx context.Context, renovateJob *api.RenovateJob, projects []string) ([]string, error) {
 
-	if (renovateJob.Spec.GetSkipForks() || renovateJob.Spec.GetSkipPendingDeletion()) && r.gitProviderClientFactory != nil {
-		providerClient, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
-		if err != nil {
-			r.logger.Error(err, "Failed to create git provider client for project filtering")
-		} else {
-			newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, renovateJob.Spec.GetSkipForks(), renovateJob.Spec.GetSkipPendingDeletion())
+	spec := renovateJob.Spec
+	needsProvider := spec.GetSkipForks() || spec.GetSkipPendingDeletion() || len(spec.IgnoreTopics) > 0
+	if len(spec.IgnoreRepositories) > 0 || needsProvider {
+		var providerClient gitProviderClients.GitProviderClient
+		if needsProvider && r.gitProviderClientFactory != nil {
+			client, err := r.gitProviderClientFactory.NewClient(ctx, renovateJob)
 			if err != nil {
-				r.logger.Error(err, "Failed to filter discovered repositories")
+				r.logger.Error(err, "Failed to create git provider client for project filtering")
 			} else {
-				r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
-				projects = newProjects
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
-				metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
+				providerClient = client
 			}
+		}
+		newProjects, stats, err := gitProviderClients.FilterProjects(ctx, providerClient, r.logger, projects, gitProviderClients.FilterOptions{
+			SkipForks:           spec.GetSkipForks(),
+			SkipPendingDeletion: spec.GetSkipPendingDeletion(),
+			IgnoreRepositories:  spec.IgnoreRepositories,
+			IgnoreTopics:        spec.IgnoreTopics,
+		})
+		if err != nil {
+			r.logger.Error(err, "Failed to filter discovered repositories")
+		} else {
+			r.logger.V(2).Info("Filtered discovered repositories", "remaining", len(newProjects))
+			projects = newProjects
+			metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "fork", stats.ForksRemoved)
+			metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "pending_deletion", stats.PendingRemoved)
+			metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "ignored_repository", stats.IgnoredRepositoriesRemoved)
+			metricStore.AddRepositoriesFiltered(ctx, renovateJob.Namespace, renovateJob.Name, "ignored_topic", stats.IgnoredTopicsRemoved)
 		}
 	}
 

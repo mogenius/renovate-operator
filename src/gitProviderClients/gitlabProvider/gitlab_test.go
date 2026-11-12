@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"renovate-operator/gitProviderClients"
 	"testing"
 )
@@ -45,6 +46,11 @@ func TestGetRepositoryInfo(t *testing.T) {
 			body: `{"forked_from_project": {"id": 1}, "marked_for_deletion_at": "2026-01-01"}`,
 			want: gitProviderClients.RepositoryInfo{Fork: true, PendingDeletion: true},
 		},
+		{
+			name: "topics",
+			body: `{"topics": ["renovate", "archived"]}`,
+			want: gitProviderClients.RepositoryInfo{Topics: []string{"renovate", "archived"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -62,7 +68,7 @@ func TestGetRepositoryInfo(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("expected %+v, got %+v", tt.want, got)
 			}
 		})

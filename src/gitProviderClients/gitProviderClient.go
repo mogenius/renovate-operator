@@ -17,13 +17,16 @@ type GitProviderClient interface {
 
 // RepositoryInfo captures repo attributes used to decide whether to skip a
 // project during discovery. Not every provider exposes every attribute;
-// unsupported attributes are reported as false.
+// unsupported attributes are reported as their zero value (false, nil).
 type RepositoryInfo struct {
 	// Fork is true if the repository is a fork.
 	Fork bool
 	// PendingDeletion is true if the repository is marked for delayed deletion.
 	// Only GitLab exposes this state.
 	PendingDeletion bool
+	// Topics is the list of topics (tags) attached to the repository. Providers
+	// that do not expose topics return nil.
+	Topics []string
 }
 
 type Repository struct {

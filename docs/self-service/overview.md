@@ -111,6 +111,11 @@ discoverTopics:
 A repository tagged with both `renovate` and `renovate-ignore` is skipped. Quote entries starting
 with `!` in YAML.
 
+Alternatively, keep `discoverTopics` purely inclusive and list opt-out topics separately in
+[`ignoreTopics`](../configuration/autodiscovery.md#ignoring-topics). That also lets you ignore
+specific repositories by name with
+[`ignoreRepositories`](../configuration/autodiscovery.md#ignoring-repositories).
+
 ### Troubleshooting
 
 **The repo didn't show up after discovery.**
