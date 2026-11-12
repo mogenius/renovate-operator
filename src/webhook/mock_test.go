@@ -8,6 +8,9 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // mockWebhookManager is used by webhook integration tests.
@@ -98,7 +101,16 @@ func (m *mockWebhookManager) StreamLogsForProject(ctx context.Context, jobId crd
 }
 
 func (m *mockWebhookManager) GetRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {
-	return nil, nil
+	jobs, err := m.ListRenovateJobsFull(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range jobs {
+		if jobs[i].Name == name && jobs[i].Namespace == namespace {
+			return &jobs[i], nil
+		}
+	}
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "renovatejobs"}, name)
 }
 
 func (m *mockWebhookManager) GetRawRenovateJob(ctx context.Context, name, namespace string) (*api.RenovateJob, error) {

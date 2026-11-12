@@ -9,6 +9,8 @@ import (
 
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // ErrNoMatchingJob is returned when no RenovateJob matches the namespace/job/project filters.
@@ -88,61 +90,48 @@ func FindAndAuthenticateJob(
 	return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
 }
 
-// ErrAuthenticationRequired is returned by AuthenticateJobForAllProjects for a job whose
-// webhook has authentication disabled. It matches ErrAuthenticationFailed, so callers answer
-// it like any other failed credential check.
-var ErrAuthenticationRequired = fmt.Errorf("%w: scheduling every project requires webhook authentication on the job", ErrAuthenticationFailed)
+type jobGetter interface {
+	// Effective spec: a job's webhook block may be inherited from a template.
+	GetRenovateJob(ctx context.Context, name string, namespace string) (*api.RenovateJob, error)
+}
 
-// AuthenticateJobForAllProjects resolves the RenovateJob namespace/jobName for a request that
-// schedules every project of that job, and authenticates the request against it.
-//
-// Unlike FindAndAuthenticateJob it does not search: namespace and jobName name exactly one job
-// and no project takes part in the lookup. It is also stricter, since one request reaches every
-// repository of the job: the job's webhook must have authentication enabled and checker must
-// pass. A job without authentication is refused with ErrAuthenticationRequired instead of being
-// let through.
-//
-// Returns ErrNoMatchingJob when the job does not exist or its webhook is disabled, and
-// ErrAuthenticationFailed (wrapping the checker's error, if any) when the credential is missing
-// or does not match.
+// AuthenticateJobForAllProjects authenticates a request against the RenovateJob
+// namespace/jobName, looked up exactly. Its webhook must be enabled and, unlike
+// FindAndAuthenticateJob, must have authentication enabled, since one request reaches every
+// project of the job. Returns ErrNoMatchingJob or ErrAuthenticationFailed (wrapping the cause).
 func AuthenticateJobForAllProjects(
 	ctx context.Context,
-	manager jobLister,
+	manager jobGetter,
 	namespace string,
 	jobName string,
 	checker AuthChecker,
 ) (crdmanager.RenovateJobIdentifier, error) {
-	jobs, err := manager.ListEffectiveRenovateJobsFull(ctx)
+	job, err := manager.GetRenovateJob(ctx, jobName, namespace)
+	if apierrors.IsNotFound(err) {
+		return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
+	}
 	if err != nil {
 		return crdmanager.RenovateJobIdentifier{}, err
 	}
-
-	for _, job := range jobs {
-		if job.Namespace != namespace || job.Name != jobName {
-			continue
-		}
-		if job.Spec.Webhook == nil || !job.Spec.Webhook.Enabled {
-			return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
-		}
-		if job.Spec.Webhook.Authentication == nil || !job.Spec.Webhook.Authentication.Enabled {
-			return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationRequired
-		}
-		if checker == nil {
-			return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
-		}
-
-		id := crdmanager.RenovateJobIdentifier{Name: job.Name, Namespace: job.Namespace}
-		ok, err := checker(ctx, id)
-		if err != nil {
-			return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %s/%s: %w", ErrAuthenticationFailed, id.Namespace, id.Name, err)
-		}
-		if !ok {
-			return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
-		}
-		return id, nil
+	if job.Spec.Webhook == nil || !job.Spec.Webhook.Enabled {
+		return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
+	}
+	if job.Spec.Webhook.Authentication == nil || !job.Spec.Webhook.Authentication.Enabled {
+		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %s/%s has webhook authentication disabled", ErrAuthenticationFailed, namespace, jobName)
+	}
+	if checker == nil {
+		return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
 	}
 
-	return crdmanager.RenovateJobIdentifier{}, ErrNoMatchingJob
+	id := crdmanager.RenovateJobIdentifier{Name: jobName, Namespace: namespace}
+	ok, err := checker(ctx, id)
+	if err != nil {
+		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %s/%s: %w", ErrAuthenticationFailed, namespace, jobName, err)
+	}
+	if !ok {
+		return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
+	}
+	return id, nil
 }
 
 func filterCandidates(ctx context.Context, manager jobLister, jobs []api.RenovateJob, namespace, jobName, project string) []api.RenovateJob {
