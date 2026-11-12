@@ -9,7 +9,9 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // testJobEntry bundles a RenovateJob with the project names it owns (stored in
@@ -46,6 +48,19 @@ func (m *mockJobLister) GetProjectsForRenovateJob(_ context.Context, job crdmana
 		}
 	}
 	return nil, nil
+}
+
+func (m *mockJobLister) GetRenovateJob(_ context.Context, name, namespace string) (*api.RenovateJob, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for _, e := range m.entries {
+		if e.job.Name == name && e.job.Namespace == namespace {
+			job := e.job
+			return &job, nil
+		}
+	}
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "renovatejobs"}, name)
 }
 
 func makeEntry(name, namespace string, webhookEnabled, authEnabled bool, projects ...string) testJobEntry {
@@ -280,6 +295,7 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 		checker   AuthChecker
 		wantId    crdmanager.RenovateJobIdentifier
 		wantErr   error // nil = success expected
+		wantMsg   string
 	}{
 		{
 			name:      "auth enabled checker passes",
@@ -339,7 +355,8 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 			namespace: "ns1",
 			jobName:   "job1",
 			checker:   passingChecker,
-			wantErr:   ErrAuthenticationRequired,
+			wantErr:   ErrAuthenticationFailed,
+			wantMsg:   "ns1/job1 has webhook authentication disabled",
 		},
 		{
 			name:      "auth enabled no credential",
@@ -364,14 +381,15 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 			jobName:   "job1",
 			checker:   errorChecker,
 			wantErr:   ErrAuthenticationFailed,
+			wantMsg:   "ns1/job1: auth error",
 		},
 		{
-			name:      "lister error is returned",
-			listerErr: errors.New("list failed"),
+			name:      "lookup error is returned",
+			listerErr: errors.New("get failed"),
 			namespace: "ns1",
 			jobName:   "job1",
 			checker:   passingChecker,
-			wantErr:   errors.New("list failed"),
+			wantErr:   errors.New("get failed"),
 		},
 	}
 
@@ -387,6 +405,9 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
+				if !strings.Contains(err.Error(), tt.wantMsg) {
+					t.Errorf("expected %q in %q", tt.wantMsg, err.Error())
+				}
 				return
 			}
 			if err != nil {
@@ -396,22 +417,5 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 				t.Errorf("expected %+v, got %+v", tt.wantId, id)
 			}
 		})
-	}
-}
-
-// A job without webhook authentication must be answered like a failed credential check, and
-// the checker's error must survive for the log line.
-func TestAuthenticateJobForAllProjectsErrors(t *testing.T) {
-	if !errors.Is(ErrAuthenticationRequired, ErrAuthenticationFailed) {
-		t.Error("ErrAuthenticationRequired should match ErrAuthenticationFailed")
-	}
-
-	lister := &mockJobLister{entries: []testJobEntry{makeEntry("job1", "ns1", true, true)}}
-	_, err := AuthenticateJobForAllProjects(context.Background(), lister, "ns1", "job1", errorChecker)
-	if !errors.Is(err, ErrAuthenticationFailed) {
-		t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "ns1/job1: auth error") {
-		t.Errorf("expected the checker's cause in %q", err.Error())
 	}
 }

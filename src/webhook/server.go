@@ -95,90 +95,37 @@ func (s *Server) Run() {
 	}()
 }
 
+// runRenovate handles /schedule: one project, or with all=true every project of the job named
+// exactly by job and namespace (see AuthenticateJobForAllProjects).
 func (s *Server) runRenovate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	const provider = "schedule"
 
-	if all := r.URL.Query().Get("all"); all != "" {
-		scheduleAll, err := strconv.ParseBool(all)
-		if err != nil {
-			metricStore.IncWebhookRequest(ctx, provider, "rejected")
-			s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid all query parameter, expected true or false"})
-			return
-		}
-		if scheduleAll {
-			s.runRenovateForAllProjects(w, r)
-			return
-		}
-	}
-
-	project := r.URL.Query().Get("project")
-	if project == "" {
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project query parameter"})
-		return
-	}
-
-	namespace := r.URL.Query().Get("namespace")
-	jobName := r.URL.Query().Get("job")
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read request body"})
-		return
-	}
-
-	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
-	if err != nil {
-		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.handleResolverError(w, err)
-		return
-	}
-
-	err = s.manager.UpdateProjectStatus(
-		ctx,
-		project,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		return
-	}
-
-	metricStore.IncWebhookRequest(ctx, provider, "accepted")
-	w.WriteHeader(http.StatusOK)
-	s.logger.V(2).Info("Successfully triggered Renovate for project", "project", project, "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
-}
-
-// runRenovateForAllProjects handles /schedule?all=true: it schedules every project of the
-// RenovateJob named by the job and namespace query parameters, like the UI's "Trigger All", for
-// callers such as a library's release pipeline that cannot hold a UI session.
-//
-// The job must be named exactly and must have webhook authentication enabled (see
-// AuthenticateJobForAllProjects). Each project is scheduled as a single /schedule call would do
-// it: a running project is left alone, the others are queued at priority 1.
-func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	const provider = "schedule"
-
 	query := r.URL.Query()
-	if query.Get("project") != "" {
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "project and all query parameters are mutually exclusive"})
-		return
-	}
+	project := query.Get("project")
 	namespace := query.Get("namespace")
 	jobName := query.Get("job")
-	if namespace == "" || jobName == "" {
+
+	var all bool
+	var invalid string
+	if v := query.Get("all"); v != "" {
+		var err error
+		if all, err = strconv.ParseBool(v); err != nil {
+			invalid = "invalid all query parameter, expected true or false"
+		}
+	}
+	switch {
+	case invalid != "":
+	case all && project != "":
+		invalid = "project and all query parameters are mutually exclusive"
+	case all && (namespace == "" || jobName == ""):
+		invalid = "all requires the job and namespace query parameters"
+	case !all && project == "":
+		invalid = "missing project query parameter"
+	}
+	if invalid != "" {
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "all requires the job and namespace query parameters"})
+		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": invalid})
 		return
 	}
 
@@ -190,41 +137,49 @@ func (s *Server) runRenovateForAllProjects(w http.ResponseWriter, r *http.Reques
 	}
 
 	checker := buildAuthCheckerFromRequest(r, body, s.manager)
-	jobId, err := AuthenticateJobForAllProjects(ctx, s.manager, namespace, jobName, checker)
+	var jobId crdmanager.RenovateJobIdentifier
+	if all {
+		jobId, err = AuthenticateJobForAllProjects(ctx, s.manager, namespace, jobName, checker)
+	} else {
+		jobId, err = FindAndAuthenticateJob(ctx, s.manager, namespace, jobName, project, checker)
+	}
 	if err != nil {
 		s.recordResolverAuthFailure(ctx, provider, err, signatureWasUsed(r))
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.logger.Info("webhook resolve failed", "renovateJob", jobName, "namespace", namespace, "all", true, "error", err)
+		s.logger.Info("webhook resolve failed", "project", project, "all", all, "renovateJob", jobName, "namespace", namespace, "error", err)
 		s.handleResolverError(w, err)
 		return
 	}
 
-	isNotRunning := func(p crdmanager.RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning }
-	err = s.manager.UpdateProjectStatusBatched(
-		ctx,
-		isNotRunning,
-		jobId,
-		&types.RenovateStatusUpdate{
-			Status:   api.JobStatusScheduled,
-			Priority: 1,
-		},
-	)
-	if err != nil {
-		// The batch goes on past a failed project, so the others may already be scheduled;
-		// repeating the request is safe.
-		s.logger.Error(err, "Failed to schedule all projects", "renovateJob", jobId.Name, "namespace", jobId.Namespace)
-		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to schedule all projects"})
-		return
+	status := &types.RenovateStatusUpdate{
+		Status:   api.JobStatusScheduled,
+		Priority: 1,
+	}
+	if all {
+		isNotRunning := func(p crdmanager.RenovateProjectStatus) bool { return p.Status != api.JobStatusRunning }
+		if err := s.manager.UpdateProjectStatusBatched(ctx, isNotRunning, jobId, status); err != nil {
+			// The batch goes on past a failed project, so the others may already be scheduled;
+			// repeating the request is safe.
+			s.logger.Error(err, "Failed to schedule all projects", "renovateJob", jobId.Name, "namespace", jobId.Namespace)
+			metricStore.IncWebhookRequest(ctx, provider, "rejected")
+			s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to schedule all projects"})
+			return
+		}
+	} else {
+		err = s.manager.UpdateProjectStatus(ctx, project, jobId, status)
+		if s.handleUpdateProjectStatusError(w, err, project, jobId.Name, jobId.Namespace) {
+			metricStore.IncWebhookRequest(ctx, provider, "rejected")
+			return
+		}
 	}
 
 	metricStore.IncWebhookRequest(ctx, provider, "accepted")
 	w.WriteHeader(http.StatusOK)
-	s.logger.V(2).Info("Successfully triggered Renovate for all projects", "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
+	s.logger.V(2).Info("Successfully triggered Renovate", "project", project, "all", all, "renovateJob", jobId.Name, "namespace", jobId.Namespace, "priority", 1)
 }
 
 // recordResolverAuthFailure emits the appropriate webhook auth-failure metric for an
-// error returned by FindAndAuthenticateJob:
+// error returned by FindAndAuthenticateJob or AuthenticateJobForAllProjects:
 //   - ErrNoMatchingJob       -> "no_matching_job"
 //   - ErrAuthenticationFailed -> "auth_failed"
 //   - any other surfaced error (e.g. secret/credential resolution) -> "secret_error"
