@@ -58,6 +58,7 @@
     <script type="text/babel" src="components/Tooltip.js"></script>
     <script type="text/babel" src="components/ShortcutsModal.js"></script>
     <script type="text/babel" src="components/DebugRunModal.js"></script>
+    <script type="text/babel" src="components/IssueRefinement.js"></script>
 
     <link rel="stylesheet" href="css/styles.css" />
   </head>
@@ -763,6 +764,17 @@
           persistStatFilter(null);
         }, []);
 
+        // PROTOTYPE: the facets that narrow "With Issues" (components/IssueRefinement.js).
+        // They only apply while that badge is selected, and are dropped when it is not.
+        const [issueRefinement, setIssueRefinement] = useState(() => readIssueRefinementFromUrl());
+        const appliedIssueRefinement = selectedStatFilter === "withIssues" ? issueRefinement : null;
+        useEffect(() => {
+          if (selectedStatFilter !== "withIssues") setIssueRefinement(EMPTY_ISSUE_REFINEMENT);
+        }, [selectedStatFilter]);
+        useEffect(() => {
+          writeIssueRefinementToUrl(issueRefinement);
+        }, [issueRefinement]);
+
         const [showShortcuts, setShowShortcuts] = useState(false);
         // { job, project } while the "Debug run" dialog is open
         const [debugRunTarget, setDebugRunTarget] = useState(null);
@@ -809,7 +821,8 @@
           return jobs
             .map((job) => {
               const projects = (Array.isArray(job.projects) ? job.projects : [])
-                .filter((project) => projectMatchesStatFilter(project, selectedStatFilter));
+                .filter((project) => projectMatchesStatFilter(project, selectedStatFilter))
+                .filter((project) => projectMatchesIssueRefinement(project, appliedIssueRefinement));
 
               return {
                 ...job,
@@ -817,7 +830,10 @@
               };
             })
             .filter((job) => job.projects.length > 0);
-        }, [jobs, selectedStatFilter]);
+        }, [jobs, selectedStatFilter, appliedIssueRefinement]);
+
+        const projectsWithIssues = useMemo(() => jobs.flatMap((job) =>
+          (Array.isArray(job.projects) ? job.projects : []).filter(projectHasIssues)), [jobs]);
 
         const filteredProjectCount = useMemo(() => {
           return filteredJobs.reduce(
@@ -1547,9 +1563,17 @@
                   borderClass="border-amber-300 dark:border-amber-600"
                   onClick={() => toggleStatFilter("withIssues")}
                   selected={selectedStatFilter === "withIssues"}
-                  title="Show only jobs with warnings or errors"
+                  title="Show only jobs with warnings or errors, then narrow them by severity, category and repository state"
                 />
               </div>
+
+              {selectedStatFilter === "withIssues" && (
+                <IssueRefinementBar
+                  projects={projectsWithIssues}
+                  refinement={issueRefinement}
+                  onChange={setIssueRefinement}
+                />
+              )}
 
               {(!loading || jobs.length > 0) && (
                 <div className="flex items-center gap-2">
@@ -1701,6 +1725,9 @@
                     job{searchFilteredJobs.length === 1 ? "" : "s"}
                     {selectedStatFilter && (
                       <>{" "}with status <span className="font-semibold text-primary">{STAT_FILTER_LABELS[selectedStatFilter]}</span></>
+                    )}
+                    {issueRefinementIsActive(appliedIssueRefinement) && (
+                      <>{" "}({describeIssueRefinement(appliedIssueRefinement)})</>
                     )}
                     {searchTerm.trim() && (
                       <>{" "}matching <span className="font-semibold">"{searchTerm.trim()}"</span></>
@@ -2194,6 +2221,9 @@
           </svg>
         ) : null;
 
+        // PROTOTYPE: what the issues are about, next to how many there are.
+        badges.push(<IssueCategoryChips key="categories" project={{ logIssues }} />);
+
         if (!hasDetails) {
           return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>;
         }
@@ -2235,7 +2265,10 @@
               rel="noopener"
               className="group flex items-start gap-2 text-sm rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 -mx-1 px-1 py-0.5 transition-colors"
             >
-              <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 50 ? "error" : "warn"}</span>
+              <span className={`flex-shrink-0 ${issueLevelBadgeClass(issue.level)}`}>{issue.level >= 60 ? "fatal" : issue.level >= 50 ? "error" : "warn"}</span>
+              <span className="flex-shrink-0 rounded border border-gray-200 px-1.5 py-px text-[0.625rem] font-medium text-gray-500 dark:border-slate-600 dark:text-slate-400">
+                {ISSUE_CATEGORY_BY_KEY[categorizeIssueMessage(issue.message)].label}
+              </span>
               <span className="text-gray-700 dark:text-slate-300 break-all text-xs">
                 {displayIssueMessage(issue.message)}
                 <span className="inline-flex items-center gap-0.5 ml-1.5 text-primary hover:underline whitespace-nowrap">
