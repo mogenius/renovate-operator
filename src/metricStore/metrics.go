@@ -520,7 +520,8 @@ func SetDiscoveredRepositories(namespace, job string, count int) {
 	discoveredRepositories.WithLabelValues(namespace, job).Set(float64(count))
 }
 
-// AddRepositoriesFiltered counts repositories dropped by a filter. reason is "fork" or "pending_deletion".
+// AddRepositoriesFiltered counts repositories dropped by a filter. reason is
+// "fork", "pending_deletion", "ignored_repository" or "ignored_topic".
 func AddRepositoriesFiltered(ctx context.Context, namespace, job, reason string, count int) {
 	if count <= 0 {
 		return

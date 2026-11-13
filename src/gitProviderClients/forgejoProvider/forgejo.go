@@ -55,13 +55,14 @@ func (c *ForgejoClient) GetRepositoryInfo(ctx context.Context, project string) (
 	}
 
 	var repo struct {
-		Fork bool `json:"fork"`
+		Fork   bool     `json:"fork"`
+		Topics []string `json:"topics"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
 		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode forgejo API response for %s: %w", project, err)
 	}
 	// Forgejo has no pending-deletion state.
-	return gitProviderClients.RepositoryInfo{Fork: repo.Fork}, nil
+	return gitProviderClients.RepositoryInfo{Fork: repo.Fork, Topics: repo.Topics}, nil
 }
 
 func (c *ForgejoClient) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
