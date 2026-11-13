@@ -1,5 +1,27 @@
 # Changelog
 
+## [6.9.0](https://github.com/mogenius/renovate-operator/compare/6.8.0...6.9.0) (2026-11-13)
+
+
+### Features
+
+* **operator:** make the UI session duration configurable ([f76d24d](https://github.com/mogenius/renovate-operator/commit/f76d24da70d01ddd912de48c0e533118254fc4e2))
+* **ui:** add floating tooltip component and replace native title attributes ([ac8a1ac](https://github.com/mogenius/renovate-operator/commit/ac8a1ac420945543a92c2a4c37ccdda48c83a638))
+* **ui:** bulk toggles only flip from a uniform state ([8070420](https://github.com/mogenius/renovate-operator/commit/8070420b4c6e045a34af7de6136d98d2be537b6f))
+* **webhook:** schedule every project of a job with /schedule?all=true ([8b681fe](https://github.com/mogenius/renovate-operator/commit/8b681fe551593f9cd864c067b2799bdc6bb1d139))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([4f8467f](https://github.com/mogenius/renovate-operator/commit/4f8467f5bbb9e93a42dfa08717e9fb8a91fd7047))
+* **deps:** update aws-sdk-go-v2 monorepo ([af68809](https://github.com/mogenius/renovate-operator/commit/af688092fabb0c0a5924f18933356bbb67aba759))
+* **deps:** update golang docker tag to v1.27.4 ([31f1104](https://github.com/mogenius/renovate-operator/commit/31f1104d0c2edfa5e3bbb0f814ba1e738f45c264))
+* **deps:** update module golang.org/x/oauth2 to v0.38.0 ([f751562](https://github.com/mogenius/renovate-operator/commit/f7515624d3719727dd72770101c5ea9ebab71a0e))
+* **deps:** update node.js to v26.13.1 ([f2dc5fe](https://github.com/mogenius/renovate-operator/commit/f2dc5fef13e8a09c8ddd4abcc7fc65083c408c3a))
+* **operator:** end the discovered repositories output with a newline ([c5f05df](https://github.com/mogenius/renovate-operator/commit/c5f05df767f6ad622193ddb1c99fca1f5172d0ad))
+* **ui:** let truncated tooltip triggers shrink inside flex rows ([584660c](https://github.com/mogenius/renovate-operator/commit/584660c0f2c0dfd28e64e01aa3cd3f7168345623))
+* **ui:** preserve empty log-level filter and avoid scroll jumps ([9bbab6d](https://github.com/mogenius/renovate-operator/commit/9bbab6de4dbb98ec2764056f391b0b6f55a16df7))
+
 ## [6.8.0](https://github.com/mogenius/renovate-operator/compare/6.7.0...6.8.0) (2026-11-04)
 
 
