@@ -75,6 +75,49 @@ spec:
                 - pemSecretKey
                 - secretName
                 type: object
+              hostRules:
+                description: |-
+                  Shares installation tokens with every generated RenovateJob as Renovate
+                  hostRules, so a run for one account can read repositories of another,
+                  e.g. to resolve presets.
+                properties:
+                  enabled:
+                    description: |-
+                      Mounts the hostRules as a Renovate additional config file
+                      (RENOVATE_ADDITIONAL_CONFIG_FILE) into every generated RenovateJob.
+                    type: boolean
+                  installations:
+                    description: |-
+                      Installations whose tokens are shared, selected from every installation
+                      of the App independent of spec.installations. Every installation matches
+                      when unset or when include is empty; exclude takes precedence over
+                      include.
+                    properties:
+                      accountTypes:
+                        description: Account types to include. Every type matches
+                          when empty.
+                        items:
+                          enum:
+                          - User
+                          - Organization
+                          type: string
+                        type: array
+                      exclude:
+                        description: Account logins to exclude. Takes precedence over
+                          include.
+                        items:
+                          type: string
+                        type: array
+                      include:
+                        description: Account logins to include. Every account matches
+                          when empty.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                required:
+                - enabled
+                type: object
               installations:
                 description: |-
                   Narrows which installations get a RenovateJob. Every installation of

@@ -44,6 +44,30 @@ type GitHubAppInstallationSetSpec struct {
 	// endpoint.
 	// +optional
 	Webhook *GitHubAppInstallationSetWebhook `json:"webhook,omitempty"`
+	// Shares installation tokens with every generated RenovateJob as Renovate
+	// hostRules, so a run for one account can read repositories of another,
+	// e.g. to resolve presets.
+	// +optional
+	HostRules *GitHubAppInstallationSetHostRules `json:"hostRules,omitempty"`
+}
+
+// GitHubAppInstallationSetHostRules selects the installations whose tokens are
+// shared as Renovate hostRules with every RenovateJob of the set.
+type GitHubAppInstallationSetHostRules struct {
+	// Mounts the hostRules as a Renovate additional config file
+	// (RENOVATE_ADDITIONAL_CONFIG_FILE) into every generated RenovateJob.
+	Enabled bool `json:"enabled"`
+	// Installations whose tokens are shared, selected from every installation
+	// of the App independent of spec.installations. Every installation matches
+	// when unset or when include is empty; exclude takes precedence over
+	// include.
+	// +optional
+	Installations *GitHubAppInstallationFilter `json:"installations,omitempty"`
+}
+
+// IsEnabled reports whether hostRules are configured and enabled.
+func (in *GitHubAppInstallationSetHostRules) IsEnabled() bool {
+	return in != nil && in.Enabled
 }
 
 // GitHubAppCredentialsReference points at the keys of a Secret holding a
@@ -207,6 +231,14 @@ func (in *GitHubAppInstallationSetSpec) DeepCopyInto(out *GitHubAppInstallationS
 		if in.Webhook.SecretRef != nil {
 			out.Webhook.SecretRef = new(RenovateSecretKeyReference)
 			*out.Webhook.SecretRef = *in.Webhook.SecretRef
+		}
+	}
+	if in.HostRules != nil {
+		out.HostRules = new(GitHubAppInstallationSetHostRules)
+		*out.HostRules = *in.HostRules
+		if in.HostRules.Installations != nil {
+			out.HostRules.Installations = new(GitHubAppInstallationFilter)
+			in.HostRules.Installations.DeepCopyInto(out.HostRules.Installations)
 		}
 	}
 }

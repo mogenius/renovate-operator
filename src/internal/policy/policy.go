@@ -139,8 +139,23 @@ func ValidateSpecConsistency(spec api.RenovateJobSpec) error {
 	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
 		return violationf(ReasonInvalidSpec, "spec.githubAppReference requires spec.provider.name github, on the RenovateJob or on the template it references")
 	}
+	// The operator passes the shared hostRules to Renovate through this
+	// variable, and spec.extraEnv takes precedence over the operator's env, so
+	// a user value would silently drop them.
+	if spec.GithubAppReference != nil && spec.GithubAppReference.HostRulesSecretName != "" {
+		for _, env := range spec.ExtraEnv {
+			if env.Name == AdditionalConfigFileEnvVar {
+				return violationf(ReasonInvalidSpec, "spec.extraEnv must not set %s while spec.githubAppReference.hostRulesSecretName is set, on the RenovateJob or on the template it references", AdditionalConfigFileEnvVar)
+			}
+		}
+	}
 	return nil
 }
+
+// AdditionalConfigFileEnvVar is the Renovate variable naming a second global
+// config file, merged after RENOVATE_CONFIG_FILE and before env and CLI config.
+// The operator uses it for the hostRules a GitHubAppInstallationSet shares.
+const AdditionalConfigFileEnvVar = "RENOVATE_ADDITIONAL_CONFIG_FILE"
 
 // ValidateJobSpec checks what the resulting pod is allowed to be. The absolute
 // invariants (no hostPath, no privileged, no privilege escalation) are enforced by

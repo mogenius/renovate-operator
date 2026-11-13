@@ -44,6 +44,9 @@ const (
 	// LabelValueComponentGitHubAppCredentials marks the generated Secret holding
 	// a GitHub App's credentials for one installation.
 	LabelValueComponentGitHubAppCredentials = "github-app-credentials"
+	// LabelValueComponentGitHubAppHostRules marks the generated Secret holding
+	// the shared hostRules of a GitHubAppInstallationSet.
+	LabelValueComponentGitHubAppHostRules = "github-app-host-rules"
 )
 
 // FinalizerWebhookCleanup marks RenovateJobs whose synced webhooks must be

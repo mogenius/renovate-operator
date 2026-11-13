@@ -217,6 +217,11 @@ type GithubAppReference struct {
 	AppIdSecretKey          string `json:"appIdSecretKey"`
 	InstallationIdSecretKey string `json:"installationIdSecretKey"`
 	PemSecretKey            string `json:"pemSecretKey"`
+	// Secret holding a Renovate additional config file with hostRules, mounted
+	// read-only and passed to Renovate as RENOVATE_ADDITIONAL_CONFIG_FILE. Set
+	// by a GitHubAppInstallationSet with hostRules enabled.
+	// +optional
+	HostRulesSecretName string `json:"hostRulesSecretName,omitempty"`
 }
 
 // security context for either the pod or the container.
