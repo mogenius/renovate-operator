@@ -208,6 +208,9 @@ func (f *fakeProjectManager) SyncWebhooks(_ context.Context, _ crdManager.Renova
 func (f *fakeProjectManager) RefreshWebhookAuth(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
 	return fmt.Errorf("not implemented")
 }
+func (f *fakeProjectManager) WebhookAuthTokenHash(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+	return "", fmt.Errorf("not implemented")
+}
 func (f *fakeProjectManager) CleanupWebhooks(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
 	return fmt.Errorf("not implemented")
 }

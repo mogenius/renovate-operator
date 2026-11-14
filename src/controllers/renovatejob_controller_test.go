@@ -41,6 +41,7 @@ type fakeManager struct {
 	cleanupWebhooksFn            func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
 	listEffectiveFn              func(ctx context.Context) ([]api.RenovateJob, error)
 	refreshWebhookAuthFn         func(ctx context.Context, job crdManager.RenovateJobIdentifier) error
+	webhookAuthTokenHashFn       func(ctx context.Context, job crdManager.RenovateJobIdentifier) (string, error)
 	updateProjectStatusBatchedFn func(ctx context.Context, fn func(p crdManager.RenovateProjectStatus) bool, job crdManager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error
 	getProjectsByStatusFn        func(ctx context.Context, job crdManager.RenovateJobIdentifier, status api.RenovateProjectStatus) ([]crdManager.RenovateProjectStatus, error)
 }
@@ -119,6 +120,12 @@ func (f *fakeManager) RefreshWebhookAuth(ctx context.Context, job crdManager.Ren
 		return f.refreshWebhookAuthFn(ctx, job)
 	}
 	return nil
+}
+func (f *fakeManager) WebhookAuthTokenHash(ctx context.Context, job crdManager.RenovateJobIdentifier) (string, error) {
+	if f.webhookAuthTokenHashFn != nil {
+		return f.webhookAuthTokenHashFn(ctx, job)
+	}
+	return "", nil
 }
 
 func (f *fakeManager) CleanupWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
@@ -516,11 +523,76 @@ func TestHandleAnnotationTriggers_ScheduleAll(t *testing.T) {
 	}
 }
 
-// TestHandleAnnotationTriggers_WebhookAuthRefresh verifies that the refresh
-// annotation re-applies the webhook auth token and is removed on success.
-func TestHandleAnnotationTriggers_WebhookAuthRefresh(t *testing.T) {
+// TestSyncWebhookAuthHash_StampOnFirstSighting verifies the first reconcile
+// records the token hash without pushing anything: the hooks were created with
+// the current token, so there is nothing to rotate.
+func TestSyncWebhookAuthHash_StampOnFirstSighting(t *testing.T) {
+	var refreshed bool
+	mgr := &fakeManager{
+		webhookAuthTokenHashFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+			return "hash-one", nil
+		},
+		refreshWebhookAuthFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
+			refreshed = true
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", nil)
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.syncWebhookAuthHash(context.Background(), logr.Discard(), renovateJob)
+
+	if refreshed {
+		t.Fatal("the first sighting must only record the hash, not push the token")
+	}
+	if got := renovateJob.Annotations[api.WebhookAuthHashAnnotationKey]; got != "hash-one" {
+		t.Fatalf("expected the hash to be stamped, got %q", got)
+	}
+}
+
+// TestSyncWebhookAuthHash_MatchIsANoOp verifies an unchanged token leaves the
+// job untouched.
+func TestSyncWebhookAuthHash_MatchIsANoOp(t *testing.T) {
+	var refreshed bool
+	mgr := &fakeManager{
+		webhookAuthTokenHashFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+			return "hash-one", nil
+		},
+		refreshWebhookAuthFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
+			refreshed = true
+			return nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", map[string]string{
+		api.WebhookAuthHashAnnotationKey: "hash-one",
+	})
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.syncWebhookAuthHash(context.Background(), logr.Discard(), renovateJob)
+
+	if refreshed {
+		t.Fatal("a matching hash must not trigger a token push")
+	}
+}
+
+// TestSyncWebhookAuthHash_MismatchRotatesAndUpdates verifies a rotated secret
+// triggers the token push and records the new hash.
+func TestSyncWebhookAuthHash_MismatchRotatesAndUpdates(t *testing.T) {
 	var refreshed crdManager.RenovateJobIdentifier
 	mgr := &fakeManager{
+		webhookAuthTokenHashFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+			return "hash-two", nil
+		},
 		refreshWebhookAuthFn: func(_ context.Context, job crdManager.RenovateJobIdentifier) error {
 			refreshed = job
 			return nil
@@ -528,7 +600,7 @@ func TestHandleAnnotationTriggers_WebhookAuthRefresh(t *testing.T) {
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		api.TriggerWebhookAuthRefreshAnnotationKey: "2026-11-05T00:00:00Z",
+		api.WebhookAuthHashAnnotationKey: "hash-one",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -536,27 +608,30 @@ func TestHandleAnnotationTriggers_WebhookAuthRefresh(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t, renovateJob),
 	}
 
-	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
+	reconciler.syncWebhookAuthHash(context.Background(), logr.Discard(), renovateJob)
 
 	if refreshed.Name != "test" || refreshed.Namespace != "default" {
 		t.Fatalf("unexpected refresh target: %+v", refreshed)
 	}
-	if _, ok := renovateJob.Annotations[api.TriggerWebhookAuthRefreshAnnotationKey]; ok {
-		t.Fatal("expected the refresh annotation to be removed after processing")
+	if got := renovateJob.Annotations[api.WebhookAuthHashAnnotationKey]; got != "hash-two" {
+		t.Fatalf("expected the annotation to record the new hash, got %q", got)
 	}
 }
 
-// TestHandleAnnotationTriggers_WebhookAuthRefreshFailure verifies a failed
-// refresh keeps the annotation, so the next reconcile retries it.
-func TestHandleAnnotationTriggers_WebhookAuthRefreshFailure(t *testing.T) {
+// TestSyncWebhookAuthHash_PushFailureKeepsStaleHash verifies a failed push
+// leaves the old hash in place, so the next reconcile retries the rotation.
+func TestSyncWebhookAuthHash_PushFailureKeepsStaleHash(t *testing.T) {
 	mgr := &fakeManager{
+		webhookAuthTokenHashFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+			return "hash-two", nil
+		},
 		refreshWebhookAuthFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) error {
 			return fmt.Errorf("platform unavailable")
 		},
 	}
 
 	renovateJob := makeRenovateJob("test", "default", map[string]string{
-		api.TriggerWebhookAuthRefreshAnnotationKey: "2026-11-05T00:00:00Z",
+		api.WebhookAuthHashAnnotationKey: "hash-one",
 	})
 	reconciler := &RenovateJobReconciler{
 		Discovery: &fakeDiscovery{},
@@ -564,10 +639,38 @@ func TestHandleAnnotationTriggers_WebhookAuthRefreshFailure(t *testing.T) {
 		K8sClient: buildFakeK8sClient(t, renovateJob),
 	}
 
-	reconciler.handleAnnotationTriggers(context.Background(), logr.Discard(), renovateJob, renovateJob)
+	reconciler.syncWebhookAuthHash(context.Background(), logr.Discard(), renovateJob)
 
-	if _, ok := renovateJob.Annotations[api.TriggerWebhookAuthRefreshAnnotationKey]; !ok {
-		t.Fatal("expected the refresh annotation to stay after a failed refresh")
+	if got := renovateJob.Annotations[api.WebhookAuthHashAnnotationKey]; got != "hash-one" {
+		t.Fatalf("expected the stale hash to survive a failed push, got %q", got)
+	}
+}
+
+// TestSyncWebhookAuthHash_DisabledSyncIsSkipped verifies jobs without webhook
+// sync are left completely untouched.
+func TestSyncWebhookAuthHash_DisabledSyncIsSkipped(t *testing.T) {
+	var asked bool
+	mgr := &fakeManager{
+		webhookAuthTokenHashFn: func(_ context.Context, _ crdManager.RenovateJobIdentifier) (string, error) {
+			asked = true
+			return "", nil
+		},
+	}
+
+	renovateJob := makeRenovateJob("test", "default", nil)
+	reconciler := &RenovateJobReconciler{
+		Discovery: &fakeDiscovery{},
+		Manager:   mgr,
+		K8sClient: buildFakeK8sClient(t, renovateJob),
+	}
+
+	reconciler.syncWebhookAuthHash(context.Background(), logr.Discard(), renovateJob)
+
+	if !asked {
+		t.Fatal("expected the manager to be consulted")
+	}
+	if _, ok := renovateJob.Annotations[api.WebhookAuthHashAnnotationKey]; ok {
+		t.Fatal("no hash annotation must be stamped when webhook sync is disabled")
 	}
 }
 

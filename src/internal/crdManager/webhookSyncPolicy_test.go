@@ -68,6 +68,10 @@ func (f stubFactory) NewClientWithTokenRef(context.Context, *api.RenovateJob, *a
 	return f.provider, nil
 }
 
+func (f stubFactory) ReadWebhookAuthToken(context.Context, *api.RenovateJob, *api.RenovateSecretKeyReference) (string, error) {
+	return "", nil
+}
+
 func syncManager(t *testing.T, provider gitProviderClients.GitProviderClient, allowedHosts ...string) *renovateJobManager {
 	t.Helper()
 	return &renovateJobManager{

@@ -40,12 +40,14 @@ const (
 	// TriggerScheduleAnnotationKey sets the listed non-running projects to
 	// Scheduled. Its value is a comma-separated list of project names.
 	TriggerScheduleAnnotationKey = GroupName + "/schedule"
-	// TriggerWebhookAuthRefreshAnnotationKey re-applies the webhook auth token
-	// of the job to its repository hooks. Any non-empty value triggers it; use a
-	// fresh value (e.g. a timestamp) for a later rotation, since the operator
-	// removes the annotation once the refresh succeeds.
-	TriggerWebhookAuthRefreshAnnotationKey = GroupName + "/refresh-webhook-auth"
 )
+
+// WebhookAuthHashAnnotationKey carries the SHA-256 of the webhook auth token
+// the operator last pushed to the job's repository hooks. The token is
+// write-only on every platform, so comparing this hash against the secret's
+// current value is the only drift signal that survives a rotation. The
+// operator stamps and updates it on its own; it is not a user trigger.
+const WebhookAuthHashAnnotationKey = GroupName + "/webhook-auth-hash"
 
 // TokenExpiresAtAnnotationKey records an RFC3339 expiry on a Secret holding a
 // generated GitHub App token, so it can be renewed before it lapses.

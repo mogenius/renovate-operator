@@ -106,6 +106,10 @@ func (m *mockRenovateJobManager) RefreshWebhookAuth(ctx context.Context, job crd
 	return nil
 }
 
+func (m *mockRenovateJobManager) WebhookAuthTokenHash(ctx context.Context, job crdmanager.RenovateJobIdentifier) (string, error) {
+	return "", nil
+}
+
 func (m *mockRenovateJobManager) CleanupWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier) error {
 	return nil
 }

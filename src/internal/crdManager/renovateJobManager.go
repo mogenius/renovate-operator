@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -84,6 +85,13 @@ type RenovateJobManager interface {
 	// every project of the RenovateJob, so a rotated secret takes effect
 	// without waiting for configuration drift.
 	RefreshWebhookAuth(ctx context.Context, job RenovateJobIdentifier) error
+	// WebhookAuthTokenHash returns the SHA-256 hex of the webhook auth token
+	// the webhook sync would push, or "" when the job has no webhook sync (or
+	// no secret reference). The token is write-only on every platform, so the
+	// hash annotation on the RenovateJob is the only drift signal that
+	// survives a rotation. Reads the secret with a plain get, so the chart's
+	// restricted Secret RBAC stays sufficient.
+	WebhookAuthTokenHash(ctx context.Context, job RenovateJobIdentifier) (string, error)
 	// CleanupWebhooks removes the operator's webhook from every project of the
 	// RenovateJob. Called by the deletion finalizer.
 	CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error
@@ -513,6 +521,29 @@ func (r *renovateJobManager) RefreshWebhookAuth(ctx context.Context, job Renovat
 	}
 
 	return r.runWebhookSync(ctx, renovateJob, job, desired, nil, true)
+}
+
+// WebhookAuthTokenHash returns the SHA-256 hex of the webhook auth token the
+// webhook sync would push, or "" when the job has no webhook sync. Resolution
+// matches what the sync itself uses, so hashing the same value the hooks would
+// receive.
+func (r *renovateJobManager) WebhookAuthTokenHash(ctx context.Context, job RenovateJobIdentifier) (string, error) {
+	renovateJob, err := r.loadEffectiveJob(ctx, job.Name, job.Namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to load renovate job: %w", err)
+	}
+
+	webhook := renovateJob.Spec.Webhook
+	if webhook == nil || !webhook.Enabled || webhook.Sync == nil || !webhook.Sync.Enabled || webhook.Sync.SecretRef == nil {
+		return "", nil
+	}
+
+	token, err := r.gitProviderClientFactory.ReadWebhookAuthToken(ctx, renovateJob, webhook.Sync.SecretRef)
+	if err != nil {
+		return "", fmt.Errorf("failed to read webhook auth token: %w", err)
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func (r *renovateJobManager) CleanupWebhooks(ctx context.Context, job RenovateJobIdentifier) error {
