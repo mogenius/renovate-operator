@@ -52,6 +52,14 @@ func (f *fakeJobManager) SyncWebhooks(ctx context.Context, job crdManager.Renova
 	return nil
 }
 
+func (f *fakeJobManager) RefreshWebhookAuth(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
+	return nil
+}
+
+func (f *fakeJobManager) WebhookAuthTokenHash(ctx context.Context, job crdManager.RenovateJobIdentifier) (string, error) {
+	return "", nil
+}
+
 func (f *fakeJobManager) CleanupWebhooks(ctx context.Context, job crdManager.RenovateJobIdentifier) error {
 	return nil
 }

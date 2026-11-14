@@ -42,6 +42,13 @@ const (
 	TriggerScheduleAnnotationKey = GroupName + "/schedule"
 )
 
+// WebhookAuthHashAnnotationKey carries the SHA-256 of the webhook auth token
+// the operator last pushed to the job's repository hooks. The token is
+// write-only on every platform, so comparing this hash against the secret's
+// current value is the only drift signal that survives a rotation. The
+// operator stamps and updates it on its own; it is not a user trigger.
+const WebhookAuthHashAnnotationKey = GroupName + "/webhook-auth-hash"
+
 // TokenExpiresAtAnnotationKey records an RFC3339 expiry on a Secret holding a
 // generated GitHub App token, so it can be renewed before it lapses.
 const TokenExpiresAtAnnotationKey = GroupName + "/token-expires-at"
