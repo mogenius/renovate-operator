@@ -658,10 +658,11 @@
           : "Requires admin access";
 
       const DASHBOARD_SHORTCUTS = [
-        [['j', 'k'], 'Navigate job cards'],
+        [['j', 'k'], 'Navigate job cards (hovering also focuses)'],
         [['Space'], 'Expand / collapse focused card'],
         [['↑', '↓'], 'Navigate projects in card'],
         [['t'], 'Trigger focused project'],
+        [['T'], 'Trigger all projects in focused card'],
         [['e'], 'Expand / collapse all cards'],
         [['r'], 'Refresh'],
         [['/'], 'Focus search'],
@@ -1359,6 +1360,7 @@
                 break;
               case 'j':
                 e.preventDefault();
+                setFocusedProjectName(null);
                 setFocusedJobIndex((prev) => {
                   if (searchFilteredJobs.length === 0) return null;
                   return prev === null ? 0 : Math.min(prev + 1, searchFilteredJobs.length - 1);
@@ -1366,6 +1368,7 @@
                 break;
               case 'k':
                 e.preventDefault();
+                setFocusedProjectName(null);
                 setFocusedJobIndex((prev) => {
                   if (searchFilteredJobs.length === 0) return null;
                   return prev === null ? 0 : Math.max(prev - 1, 0);
@@ -1411,6 +1414,14 @@
                 if (project) triggerRenovate(job, project);
                 break;
               }
+              case 'T': {
+                e.preventDefault();
+                // Clicking the card's own button keeps its scope, permission and disabled checks in one place.
+                // Caps Lock also yields 'T'; a mass trigger requires an explicit Shift.
+                if (focusedJobIndex === null || !e.shiftKey) break;
+                jobCardRefsRef.current[focusedJobIndex]?.querySelector('[data-testid="trigger-all"]')?.click();
+                break;
+              }
               case 'e':
                 e.preventDefault();
                 toggleAllJobs();
@@ -1425,18 +1436,32 @@
           return () => document.removeEventListener('keydown', handleKeyDown);
         }, [showShortcuts, debugRunTarget, selectedStatFilter, clearStatFilter, searchFilteredJobs, focusedJobIndex, focusedProjectName, focusedCardProjects, toggledJobCardKeys, toggleAllJobs, loadJobs, toggleJobCardExpansion, triggerRenovate]);
 
+        // The pointer moves the same focus as the keyboard, so shortcuts always act on what carries the focus ring.
         useEffect(() => {
-          if (focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex]) {
-            jobCardRefsRef.current[focusedJobIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          let last = null;
+          const handleMouseMove = (e) => {
+            // Chromium dispatches mousemove when content scrolls under a resting pointer; only real movement counts.
+            if (last && last[0] === e.screenX && last[1] === e.screenY) return;
+            last = [e.screenX, e.screenY];
+            const idx = jobCardRefsRef.current.findIndex((el) => el?.contains(e.target));
+            if (idx === -1) return;
+            setFocusedJobIndex(idx);
+            setFocusedProjectName(e.target.closest('[data-project-row]')?.dataset.projectRow ?? null);
+          };
+          document.addEventListener('mousemove', handleMouseMove);
+          return () => document.removeEventListener('mousemove', handleMouseMove);
+        }, []);
+
+        useEffect(() => {
+          const card = focusedJobIndex !== null && jobCardRefsRef.current[focusedJobIndex];
+          if (card && !card.matches(':hover')) {
+            card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           }
         }, [focusedJobIndex]);
 
         useEffect(() => {
-          setFocusedProjectName(null);
-        }, [focusedJobIndex]);
-
-        useEffect(() => {
           setFocusedJobIndex(null);
+          setFocusedProjectName(null);
         }, [searchFilteredJobs]);
 
         // A fresh install (no jobs at all) is sent to the dedicated /setup
@@ -2993,7 +3018,7 @@
           if (!focusedProjectName) return;
           const row = findRenderedRow(focusedProjectName);
           if (row) {
-            row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (!row.matches(':hover')) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             return;
           }
           const index = projectNames.indexOf(focusedProjectName);

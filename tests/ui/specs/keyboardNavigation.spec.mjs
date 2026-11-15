@@ -126,6 +126,105 @@ test.describe("keyboard navigation — dashboard", () => {
     await expect(cardRows.nth(0)).toHaveClass(/ring-primary/);
   });
 
+  const pressTrigger = async (page) => {
+    const sent = page.waitForRequest(
+      (request) => request.method() === "POST" && /\/api\/v1\/renovate$/.test(request.url()),
+    );
+    await page.keyboard.press("t");
+    await sent;
+  };
+
+  test("t triggers the arrow-focused project", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+    const row = dashboard.jobCard("team-01").locator("table tbody tr").nth(1);
+
+    await dashboard.page.keyboard.press("j");
+    await expect(dashboard.jobCard("team-01")).toHaveClass(/border-primary/);
+    await dashboard.page.keyboard.press("ArrowDown");
+    await dashboard.page.keyboard.press("ArrowDown");
+    await expect(row).toHaveClass(/ring-primary/);
+    await pressTrigger(dashboard.page);
+
+    expect(dashboard.triggerRequests).toEqual([
+      expect.objectContaining({ renovateJob: "team-01", project: await row.getAttribute("data-project-row") }),
+    ]);
+  });
+
+  test("hovering a project moves the focus there, and t triggers it", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+    const row = dashboard.jobCard("team-02").locator("table tbody tr").nth(2);
+
+    await dashboard.page.keyboard.press("j");
+    await expect(dashboard.jobCard("team-01")).toHaveClass(/border-primary/);
+
+    await row.hover();
+    await expect(dashboard.jobCard("team-02")).toHaveClass(/border-primary/);
+    await expect(dashboard.jobCard("team-01")).not.toHaveClass(/border-primary/);
+    await expect(row).toHaveClass(/ring-primary/);
+    await pressTrigger(dashboard.page);
+
+    expect(dashboard.triggerRequests).toEqual([
+      expect.objectContaining({ renovateJob: "team-02", project: await row.getAttribute("data-project-row") }),
+    ]);
+  });
+
+  const pressTriggerAll = async (page) => {
+    const sent = page.waitForRequest(
+      (request) => request.method() === "POST" && request.url().includes("/api/v1/renovate/all"),
+    );
+    await page.keyboard.press("Shift+T");
+    await sent;
+  };
+
+  test("T triggers all projects of the j/k-focused card", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+
+    await dashboard.page.keyboard.press("j");
+    await dashboard.page.keyboard.press("j");
+    await expect(dashboard.jobCard("team-02")).toHaveClass(/border-primary/);
+    await pressTriggerAll(dashboard.page);
+
+    expect(dashboard.triggerAllRequests).toEqual([expect.objectContaining({ renovateJob: "team-02" })]);
+  });
+
+  test("T without Shift (Caps Lock) does not trigger all projects", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+
+    await dashboard.page.keyboard.press("j");
+    await expect(dashboard.jobCard("team-01")).toHaveClass(/border-primary/);
+    await dashboard.page.keyboard.press("T");
+    // The Shift+T request lands after any request the bare T would have sent.
+    await pressTriggerAll(dashboard.page);
+
+    expect(dashboard.triggerAllRequests).toEqual([expect.objectContaining({ renovateJob: "team-01" })]);
+  });
+
+  test("T triggers all projects of the hovered card", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+
+    await dashboard.jobCard("team-03").locator("table tbody tr").first().hover();
+    await expect(dashboard.jobCard("team-03")).toHaveClass(/border-primary/);
+    await pressTriggerAll(dashboard.page);
+
+    expect(dashboard.triggerAllRequests).toEqual([expect.objectContaining({ renovateJob: "team-03" })]);
+  });
+
+  test("keyboard navigation continues from the hovered project", async ({ dashboard }) => {
+    await dashboard.open(SMALL());
+    const rows = dashboard.jobCard("team-02").locator("table tbody tr");
+
+    await rows.nth(1).hover();
+    await expect(rows.nth(1)).toHaveClass(/ring-primary/);
+
+    await dashboard.page.keyboard.press("ArrowDown");
+    await expect(rows.nth(2)).toHaveClass(/ring-primary/);
+    await expect(rows.nth(1)).not.toHaveClass(/ring-primary/);
+
+    await dashboard.page.keyboard.press("j");
+    await expect(dashboard.jobCard("team-03")).toHaveClass(/border-primary/);
+    await expect(rows.nth(2)).not.toHaveClass(/ring-primary/);
+  });
+
   test("e toggles all visible cards between collapsed and expanded", async ({ dashboard }) => {
     await dashboard.open(SMALL());
 
