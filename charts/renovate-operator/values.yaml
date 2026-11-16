@@ -267,7 +267,7 @@ auth:
     issuerUrl: ""
     # -- OIDC client ID
     clientId: ""
-    # -- name of an existing secret containing the OIDC client secret
+    # -- name of an existing secret containing the OIDC client secret. Leave empty for a public client, which requires pkceEnabled
     existingSecret: ""
     # -- key in the existing secret that contains the OIDC client secret
     secretKey: "client-secret"

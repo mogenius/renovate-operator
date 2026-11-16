@@ -18,7 +18,7 @@ auth:
     enabled: true
     issuerUrl: "https://accounts.google.com"   # OIDC provider issuer URL
     clientId: "your-client-id"
-    existingSecret: "oidc-secret"              # Kubernetes secret name
+    existingSecret: "oidc-secret"              # Kubernetes secret name; leave empty for a public client
     secretKey: "client-secret"                 # Key inside the secret
     sessionSecretKey: ""                       # Optional: key for session encryption secret
     redirectUrl: ""                            # Optional: auto-detected from ingress
@@ -46,13 +46,30 @@ stringData:
 
 ### OIDC Provider Setup
 
-Register a confidential OAuth client with your identity provider and set the callback URL to:
+Register an OAuth client with your identity provider and set the callback URL to:
 
 ```
 https://<your-operator-host>/auth/callback
 ```
 
 Required scopes: `openid`, `email`, `profile`
+
+#### Public Clients (PKCE without a client secret)
+
+The client can be confidential (with a secret) or public (without one). For a public client, leave `existingSecret` empty and keep `pkceEnabled: true` (the default):
+
+```yaml
+auth:
+  oidc:
+    enabled: true
+    issuerUrl: "https://keycloak.example.org/realms/main"
+    clientId: "renovate-operator"
+    pkceEnabled: true
+```
+
+Without a secret, the code exchange sends only `client_id` and the PKCE `code_verifier`, with no `client_secret` and no Basic auth header. In Keycloak, turn off **Client authentication** for the client and set **Proof Key for Code Exchange Code Challenge Method** to `S256`.
+
+A public client relies on PKCE to protect the code exchange, so the operator will not start if `OIDC_CLIENT_SECRET` is empty and `OIDC_PKCE_ENABLED` is `false`. The Helm chart rejects that combination at render time. `sessionSecretKey` is read from `existingSecret`, so a public client cannot use it. Without it, the session key is generated at startup and sessions don't survive pod restarts.
 
 #### Additional Scopes
 

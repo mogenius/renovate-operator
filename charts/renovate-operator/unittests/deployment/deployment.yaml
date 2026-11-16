@@ -489,3 +489,58 @@ tests:
       content:
         name: AUTHORIZATION_SUSPEND_FROM_UI
         value: "true"
+
+- it: OIDC public client renders no OIDC_CLIENT_SECRET when existingSecret is empty
+  set:
+    auth:
+      oidc:
+        enabled: true
+        issuerUrl: https://keycloak.example.org/realms/main
+        clientId: renovate-operator
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      any: true
+      content:
+        name: OIDC_CLIENT_SECRET
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_PKCE_ENABLED
+        value: "true"
+
+- it: OIDC renders OIDC_CLIENT_SECRET from existingSecret
+  set:
+    auth:
+      oidc:
+        enabled: true
+        existingSecret: my-oidc-secret
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: my-oidc-secret
+            key: client-secret
+
+- it: OIDC without existingSecret fails when PKCE is disabled
+  set:
+    auth:
+      oidc:
+        enabled: true
+        pkceEnabled: false
+  asserts:
+  - failedTemplate:
+      errorPattern: "auth.oidc.existingSecret is required when auth.oidc.pkceEnabled is false"
+
+- it: OIDC sessionSecretKey without existingSecret fails
+  set:
+    auth:
+      oidc:
+        enabled: true
+        sessionSecretKey: session-secret
+  asserts:
+  - failedTemplate:
+      errorPattern: "auth.oidc.sessionSecretKey requires auth.oidc.existingSecret"

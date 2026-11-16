@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -59,7 +60,14 @@ type OIDCAuth struct {
 	groupsClaim         string
 }
 
+var ErrOIDCPublicClientWithoutPKCE = errors.New("OIDC client secret is empty and PKCE is disabled: set a client secret, or enable PKCE to use a public client")
+
 func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, logger logr.Logger, sessionStore SessionStore) (*OIDCAuth, error) {
+	publicClient := cfg.ClientSecret == ""
+	if publicClient && !cfg.PKCEEnabled {
+		return nil, ErrOIDCPublicClientWithoutPKCE
+	}
+
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
@@ -108,6 +116,11 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig, encryptionKey [32]byte, lo
 		RedirectURL:  cfg.RedirectURL,
 		Endpoint:     provider.Endpoint(),
 		Scopes:       scopes,
+	}
+	if publicClient {
+		// Public clients must not send a Basic auth header.
+		oauth2Cfg.Endpoint.AuthStyle = oauth2.AuthStyleInParams
+		logger.Info("OIDC public client configured, relying on PKCE")
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.ClientID})

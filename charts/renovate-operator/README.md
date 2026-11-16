@@ -48,7 +48,7 @@ Kubernetes: `>=1.29.0-0`
 | auth.oidc.caCert.mountPath | string | `"/etc/ssl/certs/oidc-ca.crt"` | mount path for the CA certificate inside the operator container |
 | auth.oidc.clientId | string | `""` | OIDC client ID |
 | auth.oidc.enabled | bool | `false` | whether to enable OIDC authentication for the UI |
-| auth.oidc.existingSecret | string | `""` | name of an existing secret containing the OIDC client secret |
+| auth.oidc.existingSecret | string | `""` | name of an existing secret containing the OIDC client secret. Leave empty for a public client, which requires pkceEnabled |
 | auth.oidc.fetchUserInfoGroups | bool | `false` | optional: fetch groups from the OIDC userinfo endpoint and merge with ID token groups (for providers that only expose groups via userinfo) |
 | auth.oidc.groupsClaim | string | `""` | Set this if your provider emits groups under a namespaced claim, e.g. "https://example.com/groups". |
 | auth.oidc.insecureSkipVerify | bool | `false` | optional: skip TLS verification for the OIDC provider (not recommended for production) |

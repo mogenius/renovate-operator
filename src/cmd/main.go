@@ -82,9 +82,11 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 	oidcClientSecret := config.GetValue("OIDC_CLIENT_SECRET")
 	githubClientID := config.GetValue("GITHUB_CLIENT_ID")
 	githubClientSecret := config.GetValue("GITHUB_CLIENT_SECRET")
+	// Without a client secret OIDC runs as a public client (requires PKCE).
+	oidcEnabled := oidcIssuer != "" && oidcClientID != ""
 
 	var sessionSecret string
-	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
+	if oidcEnabled {
 		sessionSecret = config.GetValue("OIDC_SESSION_SECRET")
 	} else if githubClientID != "" && githubClientSecret != "" {
 		sessionSecret = config.GetValue("GITHUB_SESSION_SECRET")
@@ -133,7 +135,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 	// Validated at startup, so the parse cannot fail here.
 	sessionDuration, _ := time.ParseDuration(config.GetValue("SESSION_DURATION"))
 
-	if oidcIssuer != "" && oidcClientID != "" && oidcClientSecret != "" {
+	if oidcEnabled {
 		oidcCtx, oidcCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer oidcCancel()
 		oidcAuth, oidcErr := ui.NewOIDCAuth(oidcCtx, ui.OIDCConfig{
@@ -154,7 +156,7 @@ func initAuth(valkeyConf kvstore.ValkeyConfig) authSetup {
 		}, cookieKey, ctrl.Log.WithName("oidc"), sessionStore)
 		assert.NoError(oidcErr, "failed to initialize OIDC provider")
 		authProvider = oidcAuth
-		log.Info("OIDC authentication enabled", "issuer", oidcIssuer)
+		log.Info("OIDC authentication enabled", "issuer", oidcIssuer, "publicClient", oidcClientSecret == "")
 
 		// Log group filtering configuration
 		if config.GetValue("OIDC_ALLOWED_GROUP_PREFIX") != "" {

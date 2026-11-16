@@ -132,12 +132,19 @@ spec:
               value: {{ .Values.auth.oidc.issuerUrl | quote }}
             - name: OIDC_CLIENT_ID
               value: {{ .Values.auth.oidc.clientId | quote }}
+            {{- if .Values.auth.oidc.existingSecret }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.oidc.existingSecret }}
                   key: {{ .Values.auth.oidc.secretKey | default "client-secret" }}
+            {{- else if not .Values.auth.oidc.pkceEnabled }}
+            {{- fail "auth.oidc.existingSecret is required when auth.oidc.pkceEnabled is false (a public client without a secret needs PKCE)" }}
+            {{- end }}
             {{- if .Values.auth.oidc.sessionSecretKey }}
+            {{- if not .Values.auth.oidc.existingSecret }}
+            {{- fail "auth.oidc.sessionSecretKey requires auth.oidc.existingSecret" }}
+            {{- end }}
             - name: OIDC_SESSION_SECRET
               valueFrom:
                 secretKeyRef:
