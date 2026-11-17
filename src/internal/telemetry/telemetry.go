@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	otellog "go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -133,7 +132,7 @@ func SetupOTelSDK(ctx context.Context, version string) (shutdown func(context.Co
 	// partial failure doesn't leave globals pointing at shut-down providers.
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetMeterProvider(meterProvider)
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 	otelEnabled.Store(true)
 
 	return shutdown, true, nil
@@ -146,7 +145,7 @@ func SetupOTelSDK(ctx context.Context, version string) (shutdown func(context.Co
 // (see SetupOTelSDK's enabled return value).
 func NewOTelLogSink(name string) *otellogr.LogSink {
 	return otellogr.NewLogSink(name,
-		otellogr.WithLoggerProvider(global.GetLoggerProvider()),
+		otellogr.WithLoggerProvider(otel.GetLoggerProvider()),
 		otellogr.WithLevelSeverity(func(level int) otellog.Severity {
 			switch {
 			case level <= 0:
