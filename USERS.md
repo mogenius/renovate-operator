@@ -25,6 +25,13 @@ Only add yourself if you are running the operator in a permanent deployment (not
 
 ## Adopters
 
+### BIG direkt gesund
+Running the operator on Kubernetes to keep dependencies updated across our self-managed GitLab, split into one RenovateJob per GitLab group.
+- **Providers**: GitLab
+- **Repositories**: ~200
+- **Link**: https://www.big-direkt.de
+- **Contact**: @tibuntu
+
 ### Claranet France
 Running the operator on Kubernetes to keep dependencies updated across our self-managed GitLab, sweeping every repository hourly.
 - **Providers**: GitLab
