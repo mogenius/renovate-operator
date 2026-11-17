@@ -54,6 +54,20 @@ export const PR_ACTIONS = {
  */
 export const LOG_LEVELS = { warn: 40, error: 50, fatal: 60 };
 
+/**
+ * api.LogIssueCategory — what parser.categorizeIssue (src/internal/parser/issueCategory.go)
+ * files a warning or error under. Each fixture message below carries the category that
+ * function gives it.
+ */
+export const ISSUE_CATEGORIES = {
+  config: "config",
+  deprecation: "deprecation",
+  platform: "platform",
+  lookup: "lookup",
+  branches: "branches",
+  other: "other",
+};
+
 /** parser.MaxIssueMessageLen — longer messages are cut there and get a trailing "…". */
 export const MAX_ISSUE_MESSAGE_LENGTH = 256;
 
@@ -112,9 +126,13 @@ export function buildLogIssues({
   abandonedDependencies = [],
   // Only set when the run logged at debug level; the parser leaves it out otherwise.
   hasConfigMigration = undefined,
+  // Every warning and error line by category, so it adds up to warnCount + errorCount and
+  // covers lines `issues` leaves out. Absent on statuses written before categories existed.
+  categoryCounts = null,
 } = {}) {
   const logIssues = { warnCount, errorCount };
   if (hasConfigMigration !== undefined) logIssues.hasConfigMigration = hasConfigMigration;
+  if (categoryCounts) logIssues.categoryCounts = categoryCounts;
   if (issues.length) logIssues.issues = issues;
   if (truncated) logIssues.truncated = true;
   if (abandonedCount !== null) logIssues.abandonedCount = abandonedCount;
@@ -122,9 +140,11 @@ export function buildLogIssues({
   return logIssues;
 }
 
-/** api.LogIssue */
-export function buildLogIssue({ level = LOG_LEVELS.warn, message }) {
-  return { level, message };
+/** api.LogIssue — `category` is absent on statuses written before categories existed. */
+export function buildLogIssue({ level = LOG_LEVELS.warn, message, category = null }) {
+  const issue = { level, message };
+  if (category) issue.category = category;
+  return issue;
 }
 
 /**
@@ -183,12 +203,13 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "11s",
       lastTransition: minutesBeforeLastTransition(30),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 2, branches: 1 },
         errorCount: 2,
         warnCount: 1,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Failed to look up npm package @acme/ui" }),
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Error updating branch: update failure" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Failed to look up npm package @acme/ui", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Error updating branch: update failure", category: ISSUE_CATEGORIES.branches }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures", category: ISSUE_CATEGORIES.lookup }),
         ],
       }),
     },
@@ -277,11 +298,12 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "26s",
       lastTransition: minutesBeforeLastTransition(400),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 2, branches: 1 },
         warnCount: 3,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package file has unsupported registry" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Dependency lookup failure for internal/tooling" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Branch has been modified externally" }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package file has unsupported registry", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Dependency lookup failure for internal/tooling", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Branch has been modified externally", category: ISSUE_CATEGORIES.branches }),
         ],
       }),
     },
@@ -304,12 +326,13 @@ export const PROJECT_STATE_VARIANTS = [
         ],
       }),
       logIssues: buildLogIssues({
+        categoryCounts: { branches: 1, platform: 1, other: 1 },
         errorCount: 1,
         warnCount: 2,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Artifact update error in package-lock.json" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Registry rate limit reached, retrying" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Ignoring pinned dependency internal/base" }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Artifact update error in package-lock.json", category: ISSUE_CATEGORIES.branches }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Registry rate limit reached, retrying", category: ISSUE_CATEGORIES.platform }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Ignoring pinned dependency internal/base", category: ISSUE_CATEGORIES.other }),
         ],
       }),
     },
@@ -336,6 +359,7 @@ export const PROJECT_STATE_VARIANTS = [
         ),
       }),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 40 },
         warnCount: 34,
         errorCount: 6,
         truncated: true,
@@ -343,6 +367,7 @@ export const PROJECT_STATE_VARIANTS = [
           buildLogIssue({
             level: index % 2 === 0 ? LOG_LEVELS.warn : LOG_LEVELS.error,
             message: `Dependency lookup failure for vendor/module-${index + 1}`,
+            category: ISSUE_CATEGORIES.lookup,
           }),
         ),
       }),
@@ -364,8 +389,9 @@ export const PROJECT_STATE_VARIANTS = [
         ],
       }),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 1 },
         warnCount: 1,
-        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" })],
+        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures", category: ISSUE_CATEGORIES.lookup })],
       }),
     },
   },
@@ -377,11 +403,12 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "29s",
       lastTransition: minutesBeforeLastTransition(460),
       logIssues: buildLogIssues({
+        categoryCounts: { config: 2 },
         warnCount: 2,
         hasConfigMigration: true,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Found renovate config warnings" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Config validation errors found in packageRules" }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Found renovate config warnings", category: ISSUE_CATEGORIES.config }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Config validation errors found in packageRules", category: ISSUE_CATEGORIES.config }),
         ],
       }),
     },
@@ -394,11 +421,13 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "37s",
       lastTransition: minutesBeforeLastTransition(470),
       logIssues: buildLogIssues({
+        categoryCounts: { deprecation: 1 },
         warnCount: 1,
         issues: [
           buildLogIssue({
             level: LOG_LEVELS.warn,
             message: "Updating multiple npm lock files is deprecated and support will be removed in future versions.",
+            category: ISSUE_CATEGORIES.deprecation,
           }),
         ],
       }),
@@ -412,6 +441,7 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "44s",
       lastTransition: minutesBeforeLastTransition(480),
       logIssues: buildLogIssues({
+        categoryCounts: { branches: 1 },
         errorCount: 1,
         issues: [
           buildLogIssue({
@@ -421,6 +451,7 @@ export const PROJECT_STATE_VARIANTS = [
                 "npm ERR! code ERESOLVE npm ERR! ERESOLVE unable to resolve dependency tree " +
                 "npm ERR! While resolving: @acme/web@1.0.0 npm ERR! Found: react@18.3.1 ".repeat(3))
                 .slice(0, MAX_ISSUE_MESSAGE_LENGTH) + "…",
+            category: ISSUE_CATEGORIES.branches,
           }),
         ],
       }),
@@ -434,10 +465,11 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "3s",
       lastTransition: minutesBeforeLastTransition(35),
       logIssues: buildLogIssues({
+        categoryCounts: { platform: 2 },
         errorCount: 2,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.fatal, message: "Authentication failure" }),
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Repository is not accessible: 403 Forbidden" }),
+          buildLogIssue({ level: LOG_LEVELS.fatal, message: "Authentication failure", category: ISSUE_CATEGORIES.platform }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Repository is not accessible: 403 Forbidden", category: ISSUE_CATEGORIES.platform }),
         ],
       }),
     },
@@ -451,7 +483,22 @@ export const PROJECT_STATE_VARIANTS = [
       renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
       duration: "25s",
       lastTransition: minutesBeforeLastTransition(490),
-      logIssues: buildLogIssues({ warnCount: 2 }),
+      logIssues: buildLogIssues({ warnCount: 2, categoryCounts: { other: 2 } }),
+    },
+  },
+  {
+    key: "completed-with-issues-before-categories",
+    description:
+      "a status written before the operator categorised issues — no categoryCounts and no " +
+      "category on the message, so the UI files it under 'Other' until the next run",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "23s",
+      lastTransition: minutesBeforeLastTransition(510),
+      logIssues: buildLogIssues({
+        warnCount: 1,
+        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" })],
+      }),
     },
   },
   {

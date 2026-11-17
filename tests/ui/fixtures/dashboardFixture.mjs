@@ -64,17 +64,19 @@ class DashboardPage {
    * @param renovateJobs payload served for /api/v1/renovatejobs
    * @param statFilter   value for the ?filter= query parameter
    * @param search       value for the ?search= query parameter
+   * @param query        further query parameters, e.g. { issues: "lookup", severity: "error" }
    * @param expectedJobCount how many cards should render; defaults to every job,
    *        which is not the case when a filter or search hides some of them.
    */
   async open(
     renovateJobs,
-    { statFilter = null, search = null, expectedJobCount = renovateJobs.length } = {},
+    { statFilter = null, search = null, query: extraQuery = {}, expectedJobCount = renovateJobs.length } = {},
   ) {
     await this.stubApi(renovateJobs);
     const query = new URLSearchParams();
     if (statFilter) query.set("filter", statFilter);
     if (search) query.set("search", search);
+    for (const [name, value] of Object.entries(extraQuery)) query.set(name, value);
     await this.page.goto(query.size ? `${DASHBOARD_PATH}?${query}` : DASHBOARD_PATH);
     // Babel compiles the page's JSX in the browser, so wait for real content
     // rather than a load event.
@@ -177,6 +179,26 @@ class DashboardPage {
   async statValue(label) {
     const value = await this.statBadge(label).locator("span").last().textContent();
     return Number(value);
+  }
+
+  /** The bar of facets that narrows "With Issues"; only rendered while that badge is selected. */
+  get issueRefinement() {
+    return this.page.getByRole("group", { name: "Refine With Issues" });
+  }
+
+  /** One chip in that bar, e.g. "Lookup failures" or "Errors only"; its name ends in its count. */
+  issueRefinementChip(label) {
+    return this.issueRefinement.getByRole("button", { name: new RegExp(`^${label}\\s*\\d+$`) });
+  }
+
+  /** The number an issue refinement chip shows. */
+  async issueRefinementChipCount(label) {
+    return Number(await this.issueRefinementChip(label).locator("span").last().textContent());
+  }
+
+  /** The query parameters of the page's current URL. */
+  currentQuery() {
+    return new URL(this.page.url()).searchParams;
   }
 
   get toggleAllButton() {
