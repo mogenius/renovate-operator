@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-operator:
-    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@24e7c2cfc24de271da3425a92db9303355518a5e # v1.14.1
+    uses: mogenius/github-actions/.github/workflows/build-multiarch.yml@c67a630f9cb0aa11a4573a9f12438bf7e5e203eb # v1.15.0
     secrets: inherit
     with:
       version: ${{ github.ref_name }}
