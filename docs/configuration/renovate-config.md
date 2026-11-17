@@ -81,3 +81,7 @@ The ConfigMap must live in the same namespace as the `RenovateJob`.
 - The config volume is named `renovate-config-file`. An `extraVolumes` entry with
   the same name would conflict.
 - Don't put credentials in the config file; ConfigMaps are not Secrets!
+- Jobs set `RENOVATE_PR_FOOTER` to credit the Renovate Operator. Override it with an
+  `extraEnv` entry, or per repository with `prFooter` in its Renovate config (`""` removes
+  the footer). A `prFooter` in the config file above does not win, since env vars take
+  precedence over it.

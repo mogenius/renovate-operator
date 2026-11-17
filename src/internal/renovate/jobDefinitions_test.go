@@ -1044,3 +1044,24 @@ func TestS3CredentialSecretKeyNames(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultPrFooter(t *testing.T) {
+	findValue := func(envs []v1.EnvVar) string {
+		for _, env := range envs {
+			if env.Name == "RENOVATE_PR_FOOTER" {
+				return env.Value
+			}
+		}
+		t.Fatalf("expected RENOVATE_PR_FOOTER env var")
+		return ""
+	}
+
+	if got := findValue(getDefaultEnvVars(&api.RenovateJob{}, "")); got != defaultPrFooter {
+		t.Errorf("expected default footer, got %q", got)
+	}
+
+	extra := []v1.EnvVar{{Name: "RENOVATE_PR_FOOTER", Value: "custom"}}
+	if got := findValue(mergeEnvVars(extra, getDefaultEnvVars(&api.RenovateJob{}, ""))); got != "custom" {
+		t.Errorf("expected extraEnv to override footer, got %q", got)
+	}
+}
