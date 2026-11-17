@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -46,6 +47,7 @@ func (s *Server) serveHTML(w http.ResponseWriter, r *http.Request, path string) 
 	base := BasePath()
 	injection := fmt.Sprintf("<head>\n    <base href=\"%s/\">\n    <script>window.__BASE_PATH__ = %q;</script>", base, base)
 	html := strings.Replace(string(data), "<head>", injection, 1)
+	html = versionVendoredAssets(html, s.version)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -58,6 +60,16 @@ var vendoredAssets = map[string]struct{}{
 	"/js/babel.min.js":        {},
 	"/js/react-bundle.esm.js": {},
 	"/js/tailwind.min.js":     {},
+}
+
+func versionVendoredAssets(html, version string) string {
+	query := "?v=" + url.QueryEscape(version)
+	replacements := make([]string, 0, 2*len(vendoredAssets))
+	for asset := range vendoredAssets {
+		ref := strings.TrimPrefix(asset, "/")
+		replacements = append(replacements, ref, ref+query)
+	}
+	return strings.NewReplacer(replacements...).Replace(html)
 }
 
 func cacheControl(next http.Handler) http.Handler {
