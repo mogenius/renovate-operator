@@ -1,7 +1,7 @@
 # -- override the fullname of created resources
 fullnameOverride: ""
 
-# -- number of operator replicas. Leader election is enabled automatically when > 1
+# -- number of operator replicas. Leader election is always enabled, so only one replica runs the executor and scheduler, including during a rolling update
 replicaCount: 1
 
 crd:

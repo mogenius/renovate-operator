@@ -51,7 +51,6 @@ rules:
     resources: ["configmaps"]
     verbs: ["get", "create", "update", "delete", "list", "watch"]
 
-  {{- if gt (int .Values.replicaCount) 1 }}
   # Allow leader election via coordination leases
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -61,5 +60,4 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
-  {{- end }}
 {{- end }}

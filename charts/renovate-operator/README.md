@@ -159,7 +159,7 @@ Kubernetes: `>=1.29.0-0`
 | probes.readiness | object | `{"timeoutSeconds":5}` | readiness probe timings |
 | rbac.ownNamespaceOnly | bool | `false` | support is disabled (no cluster-scoped RBAC, no watch). |
 | rbac.watchNamespace | string | `""` | optional: specify a custom namespace to watch (defaults to the release namespace when ownNamespaceOnly is true) |
-| replicaCount | int | `1` | number of operator replicas. Leader election is enabled automatically when > 1 |
+| replicaCount | int | `1` | number of operator replicas. Leader election is always enabled, so only one replica runs the executor and scheduler, including during a rolling update |
 | resources | object | `{}` | resources for the operator pod |
 | route | object | `{"additionalRules":[],"annotations":{},"enabled":false,"group":"","hostnames":[],"kind":"Service","labels":{},"listenerset":{"allowedRoutes":{"namespaces":{"from":"Same"}},"annotations":{},"enabled":false,"hostname":"","labels":{},"listenerName":"https","listeners":[],"parentRef":{},"port":443,"protocol":"HTTPS","tls":{"enabled":false,"mode":"Terminate","secretName":""}},"parentRefs":[],"weight":1}` | HTTPRoute for the operator web ui |
 | route.additionalRules | list | `[]` | Any custom rules you want to specify |
