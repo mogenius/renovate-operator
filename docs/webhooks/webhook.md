@@ -151,6 +151,29 @@ If multiple jobs match, authentication is tried on each — the first to authent
 
 Providing `namespace` and `job` narrows the search and is useful when multiple RenovateJobs could own the same project.
 
+## Run-again checkbox in the Dependency Dashboard
+
+The GitHub, GitLab, Gitea and Forgejo webhooks schedule a run when a checkbox in the Dependency
+Dashboard is ticked. Self-hosted Renovate does not add a "run again" checkbox to the dashboard on its
+own, so add one through the dashboard footer. The `<!-- manual job -->` marker is what the webhook
+recognises:
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: my-renovate-job
+  namespace: renovate-operator
+spec:
+  # ... other configuration ...
+  extraEnv:
+    - name: RENOVATE_DEPENDENCY_DASHBOARD
+      value: '{"footer": "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository"}'
+```
+
+Older Renovate versions read the footer from `RENOVATE_DEPENDENCY_DASHBOARD_FOOTER` instead. Newer
+versions still accept it but log `env config has been migrated into dependencyDashboard` on every run.
+
 ## Notes and best practices
 
 - Prefer HTTPS for the webhook ingress and restrict access to trusted networks when possible.
