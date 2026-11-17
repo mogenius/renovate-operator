@@ -123,10 +123,8 @@ spec:
               value: {{ $webhookBaseUrl | quote }}
             {{- end }}
             {{- end }}
-            {{- if gt (int .Values.replicaCount) 1 }}
             - name: LEADER_ELECTION_ID
               value: "{{ include "renovate-operator.fullname" . }}-leader"
-            {{- end }}
             {{- if .Values.auth.oidc.enabled }}
             - name: OIDC_ISSUER_URL
               value: {{ .Values.auth.oidc.issuerUrl | quote }}

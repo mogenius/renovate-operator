@@ -544,3 +544,21 @@ tests:
   asserts:
   - failedTemplate:
       errorPattern: "auth.oidc.sessionSecretKey requires auth.oidc.existingSecret"
+
+- it: Enables leader election with a single replica
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: LEADER_ELECTION_ID
+        value: renovate-operator-unittest-renovate-operator-leader
+
+- it: Enables leader election with several replicas
+  set:
+    replicaCount: 3
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: LEADER_ELECTION_ID
+        value: renovate-operator-unittest-renovate-operator-leader
