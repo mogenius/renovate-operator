@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1395,5 +1396,74 @@ func TestParseRenovateLogsRepositoryChangedAbort(t *testing.T) {
 	}
 	if result.LogIssues == nil {
 		t.Error("LogIssues = nil, want non-nil (logs were parsed)")
+	}
+}
+
+func TestParseRenovateLogs_Abandoned(t *testing.T) {
+	stats := `{"name":"renovate","hostname":"h","pid":1,"level":20,"logContext":"abc","repository":"foo/bar",` +
+		`"npm":{"left-pad":"2016-03-24T00:00:00Z","request":"2020-02-11T00:00:00Z"},` +
+		`"docker":{"library/busybox":"2019-01-01T00:00:00Z"},` +
+		`"msg":"Abandoned package statistics","time":"2026-11-18T00:00:00.000Z","v":0}`
+
+	tests := []struct {
+		name      string
+		logs      string
+		wantCount *int
+		wantDeps  []string
+	}{
+		{
+			name:      "no debug logs - unknown",
+			logs:      `{"level":30,"msg":"Repository finished"}`,
+			wantCount: nil,
+		},
+		{
+			name:      "debug logs without statistics line - zero",
+			logs:      `{"level":20,"msg":"Repository timing splits (milliseconds)"}`,
+			wantCount: new(0),
+		},
+		{
+			name:      "statistics line - counted and sorted, metadata ignored",
+			logs:      stats,
+			wantCount: new(3),
+			wantDeps:  []string{"docker/library/busybox", "npm/left-pad", "npm/request"},
+		},
+		{
+			name:      "repeated statistics line - deduplicated",
+			logs:      stats + "\n" + stats,
+			wantCount: new(3),
+			wantDeps:  []string{"docker/library/busybox", "npm/left-pad", "npm/request"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			li := ParseRenovateLogs(tt.logs).LogIssues
+			if li == nil {
+				t.Fatal("LogIssues is nil, want non-nil")
+			}
+			got := li.AbandonedCount
+			if (got == nil) != (tt.wantCount == nil) || (got != nil && *got != *tt.wantCount) {
+				t.Errorf("AbandonedCount = %v, want %v", got, tt.wantCount)
+			}
+			if !slices.Equal(li.AbandonedDependencies, tt.wantDeps) {
+				t.Errorf("AbandonedDependencies = %v, want %v", li.AbandonedDependencies, tt.wantDeps)
+			}
+		})
+	}
+}
+
+func TestParseRenovateLogs_AbandonedTruncated(t *testing.T) {
+	var pkgs []string
+	for i := range MaxAbandonedDependencies + 5 {
+		pkgs = append(pkgs, fmt.Sprintf(`"pkg%03d":"2016-01-01T00:00:00Z"`, i))
+	}
+	logs := `{"level":20,"msg":"Abandoned package statistics","npm":{` + strings.Join(pkgs, ",") + `}}`
+
+	li := ParseRenovateLogs(logs).LogIssues
+	if li.AbandonedCount == nil || *li.AbandonedCount != MaxAbandonedDependencies+5 {
+		t.Errorf("AbandonedCount = %v, want %d", li.AbandonedCount, MaxAbandonedDependencies+5)
+	}
+	if len(li.AbandonedDependencies) != MaxAbandonedDependencies {
+		t.Errorf("len(AbandonedDependencies) = %d, want %d", len(li.AbandonedDependencies), MaxAbandonedDependencies)
 	}
 }

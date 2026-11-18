@@ -304,6 +304,7 @@ func (e *renovateExecutor) ProcessProjectJobResult(ctx context.Context, k8sJob *
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "warn", newProjectStatus.LogIssues.WarnCount)
 		metricStore.SetLogIssues(jobId.Namespace, jobId.Name, project, "error", newProjectStatus.LogIssues.ErrorCount)
 		metricStore.SetConfigMigrationNeeded(jobId.Namespace, jobId.Name, project, newProjectStatus.LogIssues.HasConfigMigration)
+		metricStore.SetAbandonedDependencies(jobId.Namespace, jobId.Name, project, newProjectStatus.LogIssues.AbandonedCount)
 	}
 
 	// Pull request activity (Group E/L). A nil PRActivity means the run yielded no

@@ -102,10 +102,14 @@ export function buildLogIssues({
   errorCount = 0,
   issues = [],
   truncated = false,
+  abandonedCount = null,
+  abandonedDependencies = [],
 } = {}) {
   const logIssues = { warnCount, errorCount };
   if (issues.length) logIssues.issues = issues;
   if (truncated) logIssues.truncated = true;
+  if (abandonedCount !== null) logIssues.abandonedCount = abandonedCount;
+  if (abandonedDependencies.length) logIssues.abandonedDependencies = abandonedDependencies;
   return logIssues;
 }
 

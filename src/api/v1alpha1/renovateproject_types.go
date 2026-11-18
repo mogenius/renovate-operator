@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"slices"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -48,6 +50,12 @@ type LogIssues struct {
 	HasConfigMigration *bool      `json:"hasConfigMigration,omitempty"`
 	Issues             []LogIssue `json:"issues,omitempty"`
 	Truncated          bool       `json:"truncated,omitempty"`
+	// AbandonedCount is the number of dependencies Renovate flagged as abandoned
+	// (abandonmentThreshold). Nil when the run had no debug logs, so the count is unknown.
+	AbandonedCount *int `json:"abandonedCount,omitempty"`
+	// AbandonedDependencies lists abandoned dependencies as "datasource/package",
+	// sorted and capped; AbandonedCount exceeding its length means it was truncated.
+	AbandonedDependencies []string `json:"abandonedDependencies,omitempty"`
 }
 
 type RenovateProjectStatus string
@@ -153,6 +161,10 @@ func (in *RenovateProject) DeepCopyInto(out *RenovateProject) {
 			out.Status.LogIssues.Issues = make([]LogIssue, len(in.Status.LogIssues.Issues))
 			copy(out.Status.LogIssues.Issues, in.Status.LogIssues.Issues)
 		}
+		if in.Status.LogIssues.AbandonedCount != nil {
+			out.Status.LogIssues.AbandonedCount = new(*in.Status.LogIssues.AbandonedCount)
+		}
+		out.Status.LogIssues.AbandonedDependencies = slices.Clone(in.Status.LogIssues.AbandonedDependencies)
 	}
 	if in.Status.ExecutionOptions != nil {
 		out.Status.ExecutionOptions = new(RenovateExecutionOptions)

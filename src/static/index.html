@@ -2196,8 +2196,24 @@
         return `${base} bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700`;
       };
 
+      // ponytail: native title tooltip for the package list; a richer popover if lists get long
+      function AbandonedBadge({ count, dependencies }) {
+        const deps = dependencies || [];
+        const more = count - deps.length;
+        const title = "Abandoned dependencies (no release within abandonmentThreshold):\n"
+          + deps.join("\n") + (more > 0 ? `\n… and ${more} more` : "");
+        return (
+          <span
+            title={title}
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-600"
+          >
+            {count} abandoned
+          </span>
+        );
+      }
+
       function IssuesBadges({ logIssues, expanded, onToggle, projectName }) {
-        if (!logIssues || (logIssues.warnCount === 0 && logIssues.errorCount === 0)) {
+        if (!logIssues || (logIssues.warnCount === 0 && logIssues.errorCount === 0 && !logIssues.abandonedCount)) {
           return <span className="text-gray-400 dark:text-slate-500 text-sm">-</span>;
         }
 
@@ -2208,6 +2224,9 @@
         );
         if (logIssues.warnCount > 0) badges.push(
           <span key="warn" className={issueLevelBadgeClass(40)}>{logIssues.warnCount} warn{logIssues.warnCount !== 1 ? "s" : ""}</span>
+        );
+        if (logIssues.abandonedCount > 0) badges.push(
+          <AbandonedBadge key="abandoned" count={logIssues.abandonedCount} dependencies={logIssues.abandonedDependencies} />
         );
 
         const chevron = hasDetails ? (
@@ -2750,7 +2769,7 @@
               </div>
             )}
             {/* Issues section */}
-            {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0) && (
+            {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0 || project.logIssues?.abandonedCount > 0) && (
               <div className="flex items-center gap-2" data-no-tooltip="true">
                 <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
                 <IssuesBadges
