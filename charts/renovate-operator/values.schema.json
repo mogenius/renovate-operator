@@ -151,7 +151,7 @@
       "type": "string"
     },
     "replicaCount": {
-      "description": "number of operator replicas; leader election is enabled automatically when > 1",
+      "description": "number of operator replicas; leader election is always enabled, so only one replica runs the executor and scheduler, including during a rolling update",
       "type": "integer",
       "minimum": 0
     },
