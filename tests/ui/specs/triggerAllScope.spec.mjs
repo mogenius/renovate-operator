@@ -15,7 +15,15 @@ import { test, expect } from "../fixtures/dashboardFixture.mjs";
 import {
   buildDashboardWithEveryProjectState,
   buildDashboardWithNestedProjectPaths,
+  PROJECT_STATE_VARIANTS,
+  PROJECT_STATUSES,
 } from "../fixtures/renovateJobsFixture.mjs";
+
+// Read from the catalogue rather than spelled out, so adding a failed state there
+// does not silently change what this spec means.
+const FAILED_PROJECT_NAMES = PROJECT_STATE_VARIANTS
+  .filter((variant) => variant.project.status === PROJECT_STATUSES.failed)
+  .map((variant) => `acme/${variant.key}`);
 
 test.describe("trigger all scope", () => {
   test("triggers every project when nothing is filtered", async ({ dashboard }) => {
@@ -56,7 +64,8 @@ test.describe("trigger all scope", () => {
     await dashboard.open(buildDashboardWithEveryProjectState(), { statFilter: "failed" });
 
     const visible = await dashboard.projectNamesInJob("job-all-states");
-    expect(visible).toEqual(["acme/failed-with-errors"]);
+    expect(FAILED_PROJECT_NAMES.length).toBeGreaterThan(0);
+    expect([...visible].sort()).toEqual([...FAILED_PROJECT_NAMES].sort());
 
     await dashboard.triggerAll("job-all-states");
 
@@ -64,7 +73,7 @@ test.describe("trigger all scope", () => {
       {
         renovateJob: "job-all-states",
         namespace: "renovate",
-        projects: ["acme/failed-with-errors"],
+        projects: visible,
       },
     ]);
   });
