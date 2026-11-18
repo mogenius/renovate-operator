@@ -20,6 +20,13 @@ const MaxLogIssues = 20
 // MaxIssueMessageLen is the maximum length of a single issue message.
 const MaxIssueMessageLen = 256
 
+// MaxAbandonedDependencies is the maximum number of abandoned dependency names stored.
+const MaxAbandonedDependencies = 50
+
+// abandonedStatsMsg is the debug line Renovate logs once per repository when
+// abandonmentThreshold flagged packages; its fields are {datasource: {package: lastRelease}}.
+const abandonedStatsMsg = "Abandoned package statistics"
+
 // renovateResultRepositoryChanged is Renovate's "Repository finished" result when it
 // aborted the run because the repository changed while it was being renovated.
 const renovateResultRepositoryChanged = "repository-changed"
@@ -143,6 +150,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	var issues []api.LogIssue
 	seenMessages := make(map[string]bool)
 	issuesTruncated := false
+	abandoned := make(map[string]bool)
 
 	scanner := bufio.NewScanner(strings.NewReader(logs))
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max
@@ -195,6 +203,9 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 
 		// Dispatch by message type (mutually exclusive)
 		switch {
+		case entry.Msg == abandonedStatsMsg:
+			collectAbandoned(line, abandoned)
+
 		case entry.Msg == "Repository finished":
 			var finished repositoryFinishedEntry
 			if err := json.Unmarshal([]byte(line), &finished); err == nil {
@@ -328,11 +339,51 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		}
 		if hasDebugLog {
 			logIssues.HasConfigMigration = &hasConfigMigration
+			// Renovate only logs the statistics line when something is abandoned,
+			// so with debug logs present its absence means zero.
+			logIssues.AbandonedCount = new(len(abandoned))
+			logIssues.AbandonedDependencies = sortedCapped(abandoned, MaxAbandonedDependencies)
 		}
 		result.LogIssues = logIssues
 	}
 
 	return result
+}
+
+// collectAbandoned adds "datasource/package" for every package in an
+// "Abandoned package statistics" line. Bunyan merges the report into the top
+// level of the log object, so datasources are the fields whose value is an
+// object of strings; metadata fields (name, time, logContext, ...) are scalars.
+func collectAbandoned(line string, into map[string]bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(line), &fields); err != nil {
+		return
+	}
+	for datasource, raw := range fields {
+		var pkgs map[string]string
+		if json.Unmarshal(raw, &pkgs) != nil {
+			continue
+		}
+		for pkg := range pkgs {
+			into[datasource+"/"+pkg] = true
+		}
+	}
+}
+
+// sortedCapped returns the set's keys sorted, capped at limit; nil when empty.
+func sortedCapped(set map[string]bool, limit int) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(set))
+	for k := range set {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > limit {
+		keys = keys[:limit]
+	}
+	return keys
 }
 
 // isActiveBranchResult reports whether a branch from a summary source

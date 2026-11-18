@@ -78,6 +78,7 @@ A RenovateJob with no schedule (suspended, refused by the policy, or deleted) ha
 |---------------------------------------|-------|------------------------------------------------------------------------------|---------------------------------------------------------|
 | renovate_operator_log_issues          | Gauge | WARN/ERROR log entry counts in the last run, by `level` (`warn`/`error`)     | `renovate_namespace`, `renovate_job`, `project`, `level`|
 | renovate_operator_dependency_issues   | Gauge | Whether the last run had WARN/ERROR log entries (1=issues, 0=clean)          | `renovate_namespace`, `renovate_job`, `project`         |
+| renovate_operator_abandoned_dependencies | Gauge | Dependencies Renovate flagged as abandoned in the last run (see [Abandoned dependencies](#abandoned-dependencies)) | `renovate_namespace`, `renovate_job`, `project` |
 
 ## Webhook integrity
 
@@ -115,6 +116,19 @@ detect issues by parsing Renovate's JSON log output. This includes:
 sets `RENOVATE_LOG_FORMAT=json` by default for all Renovate jobs. If you override this via
 `extraEnv` in your RenovateJob spec, these metrics will not function correctly and will
 always report 0.
+
+## Abandoned dependencies
+
+When a repository sets Renovate's [`abandonmentThreshold`](https://docs.renovatebot.com/configuration-options/#abandonmentthreshold),
+Renovate logs the packages whose last release is older than the threshold. The operator
+counts them per project: the UI shows an "N abandoned" badge in the Issues column (hover
+it for the package list, capped at 50), the project status carries
+`logIssues.abandonedCount` / `logIssues.abandonedDependencies`, and
+`renovate_operator_abandoned_dependencies` exports the count.
+
+Renovate logs this at debug level only, so it needs `RENOVATE_LOG_LEVEL=debug` (via
+`extraEnv`). Without debug logs the count is unknown: the status field is omitted and the
+metric is not exported. Package names are never used as metric labels.
 
 ## Example Prometheus Alerting Rules
 
