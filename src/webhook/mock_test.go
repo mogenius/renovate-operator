@@ -125,6 +125,14 @@ func (m *mockWebhookManager) SyncWebhooks(ctx context.Context, job crdmanager.Re
 	return nil
 }
 
+func (m *mockWebhookManager) RefreshWebhookAuth(ctx context.Context, job crdmanager.RenovateJobIdentifier) error {
+	return nil
+}
+
+func (m *mockWebhookManager) WebhookAuthTokenHash(ctx context.Context, job crdmanager.RenovateJobIdentifier) (string, error) {
+	return "", nil
+}
+
 func (m *mockWebhookManager) CleanupWebhooks(ctx context.Context, job crdmanager.RenovateJobIdentifier) error {
 	return nil
 }

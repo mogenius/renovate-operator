@@ -32,6 +32,10 @@ type GitProviderClientFactory interface {
 	// platform credentials. If the reference's key is empty, the common
 	// Renovate token key names are tried.
 	NewClientWithTokenRef(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (gitProviderClients.GitProviderClient, error)
+	// ReadWebhookAuthToken returns the webhook auth token the webhook sync
+	// would push for the given secret key reference, so callers can hash or
+	// compare it without building a platform client.
+	ReadWebhookAuthToken(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (string, error)
 }
 
 type gitProviderClientFactory struct {
@@ -82,35 +86,45 @@ func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, jo
 		return nil, err
 	}
 
+	token, err := f.ReadWebhookAuthToken(ctx, job, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildClient(platform, endpoint, token)
+}
+
+// ReadWebhookAuthToken resolves the webhook auth token for the given secret
+// key reference: either the named key or, with an empty key, the first of the
+// well-known Renovate token keys present in the secret. Only reads the secret
+// (a plain get), so the chart's restricted Secret RBAC stays sufficient.
+func (f *gitProviderClientFactory) ReadWebhookAuthToken(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (string, error) {
+	if ref == nil || ref.Name == "" {
+		return "", fmt.Errorf("secret reference must have a name")
+	}
+
 	secret := &corev1.Secret{}
 	err := f.client.Get(ctx, client.ObjectKey{
 		Name:      ref.Name,
 		Namespace: job.Namespace,
 	}, secret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get secret %s: %w", ref.Name, err)
+		return "", fmt.Errorf("failed to get secret %s: %w", ref.Name, err)
 	}
 
 	if err := f.policy.ValidateReferencedSecret(secret); err != nil {
 		metricStore.IncPolicyDenial(ctx, "secret_ref")
-		return nil, err
+		return "", err
 	}
 
-	var token string
 	if ref.Key != "" {
 		val, ok := secret.Data[ref.Key]
 		if !ok || len(val) == 0 {
-			return nil, fmt.Errorf("secret key %s not found in secret %s", ref.Key, ref.Name)
+			return "", fmt.Errorf("secret key %s not found in secret %s", ref.Key, ref.Name)
 		}
-		token = string(val)
-	} else {
-		token, err = tokenFromSecret(secret, ref.Name)
-		if err != nil {
-			return nil, err
-		}
+		return string(val), nil
 	}
-
-	return buildClient(platform, endpoint, token)
+	return tokenFromSecret(secret, ref.Name)
 }
 
 // validateEndpoint bounds the host the platform client will authenticate to. An
