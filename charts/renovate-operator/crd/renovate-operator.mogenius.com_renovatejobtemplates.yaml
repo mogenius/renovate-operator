@@ -3335,6 +3335,23 @@ spec:
                 - pemSecretKey
                 - secretName
                 type: object
+              ignoreRepositories:
+                description: |-
+                  Repositories to exclude from this job after discovery. Each entry is a
+                  case-insensitive minimatch-style glob matched against the full project path
+                  (for example "org/legacy-*"). A pattern without "/" also matches the
+                  repository name on its own.
+                items:
+                  type: string
+                type: array
+              ignoreTopics:
+                description: |-
+                  Repository topics that exclude a repository from this job after discovery.
+                  Matching is case-insensitive. Platforms that do not expose topics keep the
+                  repository (fail-open).
+                items:
+                  type: string
+                type: array
               image:
                 description: |-
                   Renovate Docker image to use. Required, but may be inherited from templateRef,

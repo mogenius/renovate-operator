@@ -40,13 +40,14 @@ func (c *GitHubClient) GetRepositoryInfo(ctx context.Context, project string) (g
 	}
 
 	var repo struct {
-		Fork bool `json:"fork"`
+		Fork   bool     `json:"fork"`
+		Topics []string `json:"topics"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
 		return gitProviderClients.RepositoryInfo{}, fmt.Errorf("failed to decode GitHub API response for %s: %w", project, err)
 	}
 	// GitHub deletes repositories immediately and has no pending-deletion state.
-	return gitProviderClients.RepositoryInfo{Fork: repo.Fork}, nil
+	return gitProviderClients.RepositoryInfo{Fork: repo.Fork, Topics: repo.Topics}, nil
 }
 
 func (c *GitHubClient) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {

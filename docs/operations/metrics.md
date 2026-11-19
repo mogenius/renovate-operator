@@ -48,7 +48,7 @@ metrics for free (`controller_runtime_reconcile_*`, workqueue depth/latency,
 |-----------------------------------------------|---------|--------------------------------------------------------|-------------------------------------------------|
 | renovate_operator_discovery_jobs_total        | Counter | Discovery Jobs completed by status                     | `renovate_namespace`, `renovate_job`, `status`  |
 | renovate_operator_discovered_repositories     | Gauge   | Repositories seen by the last discovery run            | `renovate_namespace`, `renovate_job`            |
-| renovate_operator_repositories_filtered_total | Counter | Repositories dropped by filters (`fork`/`pending_deletion`) | `renovate_namespace`, `renovate_job`, `reason` |
+| renovate_operator_repositories_filtered_total | Counter | Repositories dropped by filters (`fork`/`pending_deletion`/`ignored_repository`/`ignored_topic`) | `renovate_namespace`, `renovate_job`, `reason` |
 
 ## Scheduler
 

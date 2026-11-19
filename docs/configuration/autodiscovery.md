@@ -62,6 +62,66 @@ In this example, projects tagged with `renovate` will be discovered.
 
 Refer to [Renovate's documentation](https://docs.renovatebot.com/self-hosted-configuration/#autodiscovertopics) for detailed syntax.
 
+### Ignoring Repositories
+
+`ignoreRepositories` excludes repositories from the job after discovery. It accepts a single entry
+or a list, so you can skip one repository or a whole set without changing your discovery filters.
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-group1
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  discoveryFilters:
+    - "Group1/*"
+  ignoreRepositories:
+    - "Group1/legacy-api"
+    - "Group1/archived-*"
+  ...
+```
+
+Entries are case-insensitive minimatch-style globs matched against the full project path
+(`org/repo`). A pattern without `/` also matches the repository name on its own, so `legacy-*`
+excludes `Group1/legacy-api`. Ignored repositories are removed before any platform API call, so
+this works on every platform and needs no `secretRef`.
+
+### Ignoring Topics
+
+`ignoreTopics` excludes repositories that carry any of the listed topics (tags), for example to
+skip repositories marked `archived` or `deprecated`.
+
+```yaml
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-group1
+  namespace: renovate-operator
+spec:
+  schedule: "0 * * * *"
+  ignoreTopics:
+    - archived
+    - deprecated
+  secretRef: renovate-secret
+  provider:
+    name: github
+  ...
+```
+
+Matching is case-insensitive. Because topics are read from the platform, this field has the same
+`secretRef` / `provider` requirements as `skipForks`. If the platform does not expose topics, the
+repository is kept (fail-open).
+
+| Platform    | Topics source                                              |
+|-------------|------------------------------------------------------------|
+| `github`    | `GET /repos/{owner}/{repo}` — checks `topics`              |
+| `gitlab`    | `GET /projects/{path}` — checks `topics`                   |
+| `gitea`     | `GET /api/v1/repos/{owner}/{repo}` — checks `topics`       |
+| `forgejo`   | Same as Gitea                                              |
+| `bitbucket` | Not exposed by the Bitbucket Cloud API — nothing is removed |
+
 ### Excluding Forked Repositories
 
 When using autodiscovery, forked repositories are included by default. This can lead to unnecessary

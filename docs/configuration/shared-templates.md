@@ -83,6 +83,9 @@ Inheritance is resolved **per top-level field**:
   unset; set any of them to `false` explicitly to override an inherited `true`.
   A template's `suspend: true` therefore pauses every job using it, see
   [Suspending a RenovateJob](../operations/suspend.md).
+- `ignoreRepositories` and `ignoreTopics` follow the same list rule as
+  `discoveryFilters`: unset inherits the template's list, while setting either on
+  the job replaces the template's list wholesale.
 - `access` and the deprecated `allowedGroups` are two spellings of the same access
   control. A job that sets **either** replaces the template's access control
   entirely, dropping the inherited spelling too, so the effective job never carries

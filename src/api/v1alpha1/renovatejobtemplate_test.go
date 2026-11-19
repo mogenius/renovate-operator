@@ -10,13 +10,15 @@ func ptr[T any](v T) *T { return &v }
 
 func TestMergeTemplateSpec_InheritsUnsetFields(t *testing.T) {
 	base := RenovateJobSpec{
-		Schedule:    "0 */6 * * *",
-		Image:       "renovate/renovate:latest",
-		Parallelism: 4,
-		Provider:    &RenovateProvider{Name: "github"},
-		SecretRef:   "shared-secret",
-		ExtraEnv:    []corev1.EnvVar{{Name: "LOG_LEVEL", Value: "debug"}},
-		SkipForks:   ptr(true),
+		Schedule:           "0 */6 * * *",
+		Image:              "renovate/renovate:latest",
+		Parallelism:        4,
+		Provider:           &RenovateProvider{Name: "github"},
+		SecretRef:          "shared-secret",
+		ExtraEnv:           []corev1.EnvVar{{Name: "LOG_LEVEL", Value: "debug"}},
+		SkipForks:          ptr(true),
+		IgnoreRepositories: []string{"org/legacy-*"},
+		IgnoreTopics:       []string{"archived"},
 	}
 	overlay := RenovateJobSpec{
 		// Only the per-job bits are set; everything else inherits.
@@ -43,6 +45,12 @@ func TestMergeTemplateSpec_InheritsUnsetFields(t *testing.T) {
 	if len(got.DiscoveryFilters) != 1 || got.DiscoveryFilters[0] != "org/*" {
 		t.Errorf("discoveryFilters: expected the job's own value, got %v", got.DiscoveryFilters)
 	}
+	if len(got.IgnoreRepositories) != 1 || got.IgnoreRepositories[0] != "org/legacy-*" {
+		t.Errorf("ignoreRepositories: expected inherited value, got %v", got.IgnoreRepositories)
+	}
+	if len(got.IgnoreTopics) != 1 || got.IgnoreTopics[0] != "archived" {
+		t.Errorf("ignoreTopics: expected inherited value, got %v", got.IgnoreTopics)
+	}
 	if len(got.ExtraEnv) != 1 || got.ExtraEnv[0].Name != "LOG_LEVEL" {
 		t.Errorf("extraEnv: expected inherited value, got %v", got.ExtraEnv)
 	}
@@ -50,18 +58,22 @@ func TestMergeTemplateSpec_InheritsUnsetFields(t *testing.T) {
 
 func TestMergeTemplateSpec_OverlayReplacesPerField(t *testing.T) {
 	base := RenovateJobSpec{
-		Schedule:    "0 */6 * * *",
-		Image:       "renovate/renovate:37",
-		Parallelism: 4,
-		ExtraEnv:    []corev1.EnvVar{{Name: "FROM_TEMPLATE", Value: "1"}},
-		SkipForks:   ptr(true),
+		Schedule:           "0 */6 * * *",
+		Image:              "renovate/renovate:37",
+		Parallelism:        4,
+		ExtraEnv:           []corev1.EnvVar{{Name: "FROM_TEMPLATE", Value: "1"}},
+		SkipForks:          ptr(true),
+		IgnoreRepositories: []string{"org/template-*"},
+		IgnoreTopics:       []string{"template-topic"},
 	}
 	overlay := RenovateJobSpec{
-		Schedule:    "*/5 * * * *",
-		Image:       "renovate/renovate:38",
-		Parallelism: 1,
-		ExtraEnv:    []corev1.EnvVar{{Name: "FROM_JOB", Value: "1"}},
-		SkipForks:   ptr(false),
+		Schedule:           "*/5 * * * *",
+		Image:              "renovate/renovate:38",
+		Parallelism:        1,
+		ExtraEnv:           []corev1.EnvVar{{Name: "FROM_JOB", Value: "1"}},
+		SkipForks:          ptr(false),
+		IgnoreRepositories: []string{"org/job-*"},
+		IgnoreTopics:       []string{"job-topic"},
 	}
 
 	got := MergeTemplateSpec(base, overlay)
@@ -82,6 +94,12 @@ func TestMergeTemplateSpec_OverlayReplacesPerField(t *testing.T) {
 	// The whole reason skipForks is a pointer: an explicit false must override an inherited true.
 	if got.SkipForks == nil || *got.SkipForks {
 		t.Errorf("skipForks: expected explicit false to override inherited true, got %v", got.SkipForks)
+	}
+	if len(got.IgnoreRepositories) != 1 || got.IgnoreRepositories[0] != "org/job-*" {
+		t.Errorf("ignoreRepositories: expected the job's list to replace the template's, got %v", got.IgnoreRepositories)
+	}
+	if len(got.IgnoreTopics) != 1 || got.IgnoreTopics[0] != "job-topic" {
+		t.Errorf("ignoreTopics: expected the job's list to replace the template's, got %v", got.IgnoreTopics)
 	}
 }
 
