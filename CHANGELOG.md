@@ -1,5 +1,26 @@
 # Changelog
 
+## [6.10.0](https://github.com/mogenius/renovate-operator/compare/6.9.0...6.10.0) (2026-11-19)
+
+
+### Features
+
+* default PR footer to credit Renovate Operator ([9636645](https://github.com/mogenius/renovate-operator/commit/963664570e83d7d64aec6099be5eeed9fa993b62))
+* surface abandoned dependencies from Renovate's abandonmentThreshold ([e677370](https://github.com/mogenius/renovate-operator/commit/e67737062c36fdd497d28503ff15759273a6a1d3))
+* **ui:** support public OIDC clients (PKCE without client secret) ([e4d7955](https://github.com/mogenius/renovate-operator/commit/e4d79553b210a5493f0eab90fbf40b2740b3149f)), closes [#833](https://github.com/mogenius/renovate-operator/issues/833)
+* **ui:** unify pointer and keyboard focus, add T shortcut ([854d16e](https://github.com/mogenius/renovate-operator/commit/854d16e05638bf737b6d5e638a4576e7c0da53fb))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/aws-sdk-go-v2/* ([29f26ae](https://github.com/mogenius/renovate-operator/commit/29f26ae9f551d53d1fbe0fa7c3356a55f13c82d0))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.3 ([fee988e](https://github.com/mogenius/renovate-operator/commit/fee988e1abe5b09d302b31e136766744d9e66ecc))
+* **helm:** correct ListenerSet apiVersion  ([9080113](https://github.com/mogenius/renovate-operator/commit/90801139af18948adc6c9bcf9ef4c8c04b7dce3c))
+* **helm:** enable leader election with a single replica ([13de005](https://github.com/mogenius/renovate-operator/commit/13de0059e12da8ee04204180c526621c47f4622b))
+* **telemetry:** use otel.SetLoggerProvider instead of the deprecated log/global ([de74f48](https://github.com/mogenius/renovate-operator/commit/de74f48b3b0ed7fe2e328ec8e346ede1ba5da16d))
+* **ui:** mobile badges are no longer getting squashed on mobile view ([9999a29](https://github.com/mogenius/renovate-operator/commit/9999a29ffccd93903082fd480f309f2343f1f8db))
+* **ui:** stop serving stale vendored assets after an upgrade ([1118272](https://github.com/mogenius/renovate-operator/commit/1118272934338bf03a78a7a28ce7d2ef75d4ff9e))
+
 ## [6.9.0](https://github.com/mogenius/renovate-operator/compare/6.8.0...6.9.0) (2026-11-13)
 
 
