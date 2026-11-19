@@ -36,11 +36,34 @@ func validateProjectStatusScheduled(projectStatus *api.RenovateProjectState, des
 		if desiredStatus.Priority > projectStatus.Priority {
 			projectStatus.Priority = desiredStatus.Priority
 		}
+	} else if desiredStatus.Priority > projectStatus.Priority && desiredStatus.ExecutionOptions == nil {
+		// A webhook or UI trigger for a project that is already running asks for a run
+		// that sees what changed after this one started (a merge Renovate itself just made,
+		// a checkbox ticked mid-run). Keep its priority as a pending follow-up, which
+		// finishRun turns into a new queue entry when this run ends. The running project
+		// itself is left untouched, LastTransition included. A one-off run with its own
+		// options is not remembered: those options would otherwise outlive the request.
+		projectStatus.Priority = desiredStatus.Priority
 	}
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
 	updateLogIssues(projectStatus, desiredStatus.LogIssues)
 	return projectStatus
+}
+
+// finishRun moves a Running project to its final status, or back to Scheduled when a
+// trigger arrived during the run (a non-zero Priority, see validateProjectStatusScheduled),
+// keeping that priority so the follow-up is dispatched ahead of the cron backlog.
+func finishRun(projectStatus *api.RenovateProjectState, final api.RenovateProjectStatus) {
+	if projectStatus.Status != api.JobStatusRunning {
+		return
+	}
+	if projectStatus.Priority > 0 {
+		projectStatus.Status = api.JobStatusScheduled
+	} else {
+		projectStatus.Status = final
+	}
+	projectStatus.LastTransition = metav1.Now()
 }
 
 func validateProjectStatusRunning(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
@@ -58,11 +81,7 @@ func validateProjectStatusRunning(projectStatus *api.RenovateProjectState, desir
 }
 
 func validateProjectStatusCompleted(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
-	if projectStatus.Status == api.JobStatusRunning {
-		projectStatus.Status = api.JobStatusCompleted
-		projectStatus.Priority = 0
-		projectStatus.LastTransition = metav1.Now()
-	}
+	finishRun(projectStatus, api.JobStatusCompleted)
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)
@@ -71,11 +90,7 @@ func validateProjectStatusCompleted(projectStatus *api.RenovateProjectState, des
 }
 
 func validateProjectStatusFailed(projectStatus *api.RenovateProjectState, desiredStatus *types.RenovateStatusUpdate) *api.RenovateProjectState {
-	if projectStatus.Status == api.JobStatusRunning {
-		projectStatus.Status = api.JobStatusFailed
-		projectStatus.Priority = 0
-		projectStatus.LastTransition = metav1.Now()
-	}
+	finishRun(projectStatus, api.JobStatusFailed)
 	projectStatus.Duration = desiredStatus.Duration
 	updateRenovateResultStatus(projectStatus, desiredStatus.RenovateResultStatus)
 	updatePRActivity(projectStatus, desiredStatus.PRActivity)

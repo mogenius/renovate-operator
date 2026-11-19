@@ -2,9 +2,12 @@ package utils
 
 import (
 	"testing"
+	"time"
 
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/internal/types"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGetUpdateStatusForProject(t *testing.T) {
@@ -104,14 +107,92 @@ func TestGetUpdateStatusForProject_Priority(t *testing.T) {
 		}
 	})
 
-	t.Run("Cannot schedule a running project, priority unchanged", func(t *testing.T) {
+	t.Run("Scheduling a running project keeps it running and records the higher priority", func(t *testing.T) {
 		proj := &api.RenovateProjectState{Status: api.JobStatusRunning, Priority: 1}
 		result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 2})
 		if result.Status != api.JobStatusRunning {
 			t.Errorf("expected status to remain running, got %v", result.Status)
 		}
+		if result.Priority != 2 {
+			t.Errorf("expected the pending follow-up at priority 2, got %d", result.Priority)
+		}
+	})
+}
+
+func TestTriggerDuringRunQueuesFollowUp(t *testing.T) {
+	startedAt := metav1.NewTime(time.Now().Add(-time.Minute))
+	duration := "1m 2s"
+
+	running := func() *api.RenovateProjectState {
+		return &api.RenovateProjectState{Status: api.JobStatusRunning, LastTransition: startedAt}
+	}
+
+	t.Run("a webhook during a run is remembered without touching the run", func(t *testing.T) {
+		result := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 1})
+
+		if result.Status != api.JobStatusRunning {
+			t.Fatalf("expected the project to stay running, got %v", result.Status)
+		}
 		if result.Priority != 1 {
-			t.Errorf("expected priority to remain 1, got %d", result.Priority)
+			t.Fatalf("expected a pending follow-up at priority 1, got %d", result.Priority)
+		}
+		if !result.LastTransition.Equal(&startedAt) {
+			t.Fatalf("expected LastTransition to keep the run's start time, got %v", result.LastTransition)
+		}
+	})
+
+	t.Run("a cron re-queue during a run is not a follow-up", func(t *testing.T) {
+		result := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{Status: api.JobStatusScheduled})
+
+		if result.Priority != 0 {
+			t.Fatalf("expected no follow-up for a priority 0 trigger, got priority %d", result.Priority)
+		}
+	})
+
+	t.Run("a one-off run requested during a run is not remembered", func(t *testing.T) {
+		result := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{
+			Status: api.JobStatusScheduled, Priority: 2, ExecutionOptions: &api.RenovateExecutionOptions{DryRun: true},
+		})
+
+		if result.Priority != 0 || result.ExecutionOptions != nil {
+			t.Fatalf("expected the one-off request to be ignored, got priority %d and options %+v", result.Priority, result.ExecutionOptions)
+		}
+	})
+
+	for _, final := range []api.RenovateProjectStatus{api.JobStatusCompleted, api.JobStatusFailed} {
+		t.Run("a follow-up re-queues the project once the run is "+string(final), func(t *testing.T) {
+			proj := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 1})
+			result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: final, Duration: &duration})
+
+			if result.Status != api.JobStatusScheduled {
+				t.Fatalf("expected the project to be scheduled again, got %v", result.Status)
+			}
+			if result.Priority != 1 {
+				t.Fatalf("expected the follow-up to keep priority 1, got %d", result.Priority)
+			}
+			if !result.LastTransition.After(startedAt.Time) {
+				t.Fatalf("expected LastTransition to move to the re-queue time, got %v", result.LastTransition)
+			}
+			if result.Duration == nil || *result.Duration != duration {
+				t.Fatalf("expected the finished run's duration to be recorded, got %v", result.Duration)
+			}
+		})
+
+		t.Run("without a follow-up the run ends "+string(final), func(t *testing.T) {
+			result := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{Status: final, Duration: &duration})
+
+			if result.Status != final || result.Priority != 0 {
+				t.Fatalf("expected %v at priority 0, got %v at priority %d", final, result.Status, result.Priority)
+			}
+		})
+	}
+
+	t.Run("cancelling a run drops its follow-up", func(t *testing.T) {
+		proj := GetUpdateStatusForProject(running(), &types.RenovateStatusUpdate{Status: api.JobStatusScheduled, Priority: 1})
+		result := GetUpdateStatusForProject(proj, &types.RenovateStatusUpdate{Status: api.JobStatusCancelled})
+
+		if result.Status != api.JobStatusCancelled || result.Priority != 0 {
+			t.Fatalf("expected cancelled at priority 0, got %v at priority %d", result.Status, result.Priority)
 		}
 	})
 }
