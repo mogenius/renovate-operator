@@ -21,7 +21,7 @@ function StatBadge({
 
   if (isInteractive) {
     return (
-      <Tooltip content={tooltip}>
+      <Tooltip content={tooltip} className="flex-shrink-0">
         <button
           type="button"
           onClick={onClick}
@@ -36,7 +36,7 @@ function StatBadge({
   }
 
   return (
-    <Tooltip content={tooltip}>
+    <Tooltip content={tooltip} className="flex-shrink-0">
       <div className={className}>
         <span className="text-[0.625rem] text-gray-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">{label}</span>
         <span className={`text-sm font-bold ${valueClass} tabular-nums`}>{value}</span>
