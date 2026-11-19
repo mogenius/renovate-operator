@@ -2139,10 +2139,10 @@
       function PRRowItem({ pr, projectName, platform, platformEndpoint }) {
         const prUrl = buildSinglePRUrl(platform, platformEndpoint, projectName, pr.number);
         return (
-          <div className="flex items-center gap-2 text-sm">
-            <span className={prActionBadgeClass(pr.action)}>{pr.action}</span>
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <span className={`${prActionBadgeClass(pr.action)} flex-shrink-0`}>{pr.action}</span>
             {prUrl ? (
-              <Tooltip content={pr.title || prUrl}>
+              <Tooltip content={pr.title || prUrl} className="min-w-0 flex-1">
                 <a
                   href={prUrl}
                   target="_blank"
@@ -2153,7 +2153,7 @@
                 </a>
               </Tooltip>
             ) : (
-              <Tooltip content={pr.title}>
+              <Tooltip content={pr.title} className="min-w-0 flex-1">
                 <span className="text-gray-700 dark:text-slate-300 truncate text-xs">{pr.title || "Untitled PR"}</span>
               </Tooltip>
             )}
@@ -2724,10 +2724,10 @@
             data-project-row={project.name}
             className={`p-4 space-y-3 ${pending ? "bg-amber-50/60 dark:bg-amber-900/10 border-l-4 border-amber-400 dark:border-amber-500" : ""}`}
           >
-            <div className="flex items-start justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className={`font-medium ${pending ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
+                  <p className={`font-medium min-w-0 [overflow-wrap:anywhere] ${pending ? "text-gray-500 dark:text-slate-400" : "text-gray-900 dark:text-slate-100"}`}>
                     {project.name}
                   </p>
                   {pending && (
@@ -2742,12 +2742,12 @@
                   </p>
                 )}
               </div>
-              <StatusBadge status={project.status} className="ml-2" />
+              <StatusBadge status={project.status} className="shrink-0" />
             </div>
             {/* PR Activity section */}
             {project.prActivity?.prs?.length > 0 && (
-              <div className="flex items-center gap-2" data-no-tooltip="true">
-                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Activity:</span>
+              <div className="flex items-start gap-2 flex-wrap" data-no-tooltip="true">
+                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium shrink-0 pt-0.5">Activity:</span>
                 <PRActivityBadges
                   prActivity={project.prActivity}
                   expanded={prExpanded}
@@ -2770,8 +2770,8 @@
             )}
             {/* Issues section */}
             {(project.logIssues?.warnCount > 0 || project.logIssues?.errorCount > 0 || project.logIssues?.abandonedCount > 0) && (
-              <div className="flex items-center gap-2" data-no-tooltip="true">
-                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Issues:</span>
+              <div className="flex items-start gap-2 flex-wrap" data-no-tooltip="true">
+                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium shrink-0 pt-0.5">Issues:</span>
                 <IssuesBadges
                   logIssues={project.logIssues}
                   expanded={issuesExpanded}
