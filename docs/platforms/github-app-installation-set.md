@@ -109,6 +109,7 @@ generated for it.
 | `installations.accountTypes` | `User` and/or `Organization`. All types match when empty.                                         |
 | `resyncInterval`             | How often installations are listed. Defaults to `10m`, minimum `1m`.                              |
 | `webhook`                    | Resync immediately on installation events, see below.                                             |
+| `hostRules`                  | Share installation tokens with every generated `RenovateJob`, see below.                          |
 
 Logins match case-insensitively.
 
@@ -153,6 +154,65 @@ releases a suspend it set itself: a `RenovateJob` you suspended stays suspended.
 
 If listing installations fails, the set reports `Ready=False` with reason
 `ListInstallationsFailed` and keeps the existing `RenovateJob`s.
+
+## Shared hostRules
+
+Each generated `RenovateJob` reads only the repositories of its own
+installation. With `hostRules` enabled, every generated `RenovateJob` also gets
+the tokens of other installations of the App, so a run for one account can
+resolve presets and GitHub API lookups hosted in another:
+
+```yaml
+spec:
+  installations:
+    include: [org-a, org-b]      # RenovateJobs for org-a and org-b only
+  hostRules:
+    enabled: true
+    installations:               # optional, every installation when unset
+      exclude: [sandbox-org]
+```
+
+`hostRules.installations` takes the same `include`, `exclude` and
+`accountTypes` as `installations`, and selects from every installation of the
+App, independent of `spec.installations`. In the example above an installation
+on `presets-org` gets no `RenovateJob`, and its token is still shared.
+Suspended installations are skipped.
+
+The operator mints one token per selected installation into the Secret
+`<set>-github-app-host-rules-<hash>`, owned by the set, and renews it 30
+minutes before the earliest token expires. The Secret holds a Renovate config
+file with one rule per installation, scoped to that account's repositories:
+
+```json
+{
+  "hostRules": [
+    { "matchHost": "https://api.github.com/repos/presets-org/", "hostType": "github", "token": "ghs_…" }
+  ]
+}
+```
+
+Each generated `RenovateJob` mounts it read-only through
+`githubAppReference.hostRulesSecretName` at
+`/etc/renovate-operator/host-rules/host-rules.json` and passes it to Renovate as
+`RENOVATE_ADDITIONAL_CONFIG_FILE`. Renovate concatenates `hostRules` from its
+config file, the additional config file and `RENOVATE_HOST_RULES`, so host rules
+of the template stay in effect next to the shared ones, whether set through
+`renovateConfig` or `extraEnv`.
+
+- **Renovate version:** `RENOVATE_ADDITIONAL_CONFIG_FILE` exists since Renovate
+  41.62.0. Older images ignore it and run without the shared tokens.
+- **Conflict:** a `RENOVATE_ADDITIONAL_CONFIG_FILE` in `extraEnv` would replace
+  the operator's value. Such a `RenovateJob` is refused with `Accepted=False`
+  and reason `InvalidSpec`.
+- **Volume name:** `renovate-host-rules` is reserved; an `extraVolumes` entry
+  with the same name conflicts.
+- **Security:** every pod of every generated `RenovateJob` holds every shared
+  token. Narrow `hostRules.installations` to the accounts other runs need to
+  read.
+
+Disabling `hostRules` empties the Secret and removes the mount from the
+generated `RenovateJob`s. A failed token renewal keeps the previous tokens and
+reports `Ready=False` with reason `PartiallySynced`.
 
 ## Immediate resync via webhook
 
@@ -209,7 +269,8 @@ generated credentials Secrets within that minute.
 If the source Secret is deleted, loses a key, or is refused by the policy, the
 operator empties the generated credentials Secrets and removes their `allow-ref`
 label, so the generated `RenovateJob`s can't mint new tokens. It also empties
-their token Secrets, so runs started afterwards get no token. Runs already in
+their token Secrets and the shared hostRules Secret, so runs started afterwards
+get no token. Runs already in
 progress keep the token they started with until it expires, at most an hour
 later. The `RenovateJob`s themselves are kept, and the credentials are written
 back once the source Secret is usable again.

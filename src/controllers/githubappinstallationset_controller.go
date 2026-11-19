@@ -58,14 +58,18 @@ const (
 )
 
 // GitHubAppInstallationSetReconciler generates one RenovateJob, plus a Secret
-// holding its App credentials, per installation of a GitHub App.
+// holding its App credentials, per installation of a GitHub App. With hostRules
+// enabled it also maintains one Secret of shared installation tokens that every
+// generated RenovateJob mounts.
 type GitHubAppInstallationSetReconciler struct {
 	K8sClient client.Client
 	// APIReader reads generated RenovateJobs uncached: a job created by the
 	// previous reconcile may not be in the informer cache yet, and missing it
 	// would create a duplicate.
-	APIReader               client.Reader
-	Installations           github.InstallationLister
+	APIReader     client.Reader
+	Installations github.InstallationLister
+	// Tokens mints the installation tokens shared through hostRules.
+	Tokens                  github.InstallationTokenMinter
 	Policy                  policy.Policy
 	ClusterTemplatesEnabled bool
 }
@@ -103,6 +107,9 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 			if revokeErr := r.revokeCredentialsSecrets(ctx, set); revokeErr != nil {
 				logger.Error(revokeErr, "failed to revoke generated credentials of GitHubAppInstallationSet")
 			}
+			if revokeErr := r.emptyHostRulesSecret(ctx, set); revokeErr != nil {
+				logger.Error(revokeErr, "failed to revoke shared hostRules of GitHubAppInstallationSet")
+			}
 			// Forces every copy to be rewritten once the source is usable
 			// again, even when the source itself is unchanged, as when the
 			// policy starts allowing it.
@@ -114,9 +121,12 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 	interval := resyncInterval(set)
 	installations := slices.Clone(set.Status.Installations)
 	synced := needsInstallationSync(set, interval, time.Now())
+	// listed stays nil without a sync; hostRules then list only when their
+	// tokens need renewing.
+	var listed []github.AppInstallation
 	if synced {
 		_, endpoint := utils.GetPlatformAndEndpoint(set.Spec.RenovateProvider())
-		listed, err := r.Installations.ListInstallations(ctx, creds.appID, creds.pem, endpoint)
+		listed, err = r.Installations.ListInstallations(ctx, creds.appID, creds.pem, endpoint)
 		if err != nil {
 			// Generated RenovateJobs are kept: a GitHub outage must not wipe
 			// every installation's project history.
@@ -125,8 +135,14 @@ func (r *GitHubAppInstallationSetReconciler) Reconcile(ctx context.Context, req 
 		installations = filterInstallations(listed, set.Spec.Installations)
 	}
 
+	var failures []string
+	// Before the RenovateJobs, so their pods find the Secret they mount.
+	if err := r.ensureHostRules(ctx, set, creds, listed); err != nil {
+		failures = append(failures, err.Error())
+	}
+
 	refreshCredentials := synced || set.Status.CredentialsResourceVersion != creds.resourceVersion
-	failures := r.ensureRenovateJobs(ctx, set, creds, installations, refreshCredentials)
+	failures = append(failures, r.ensureRenovateJobs(ctx, set, creds, installations, refreshCredentials)...)
 
 	set.Status.Installations = installations
 	if synced {
@@ -409,6 +425,9 @@ func (r *GitHubAppInstallationSetReconciler) ensureRenovateJob(ctx context.Conte
 		AppIdSecretKey:          credentialsAppIDKey,
 		InstallationIdSecretKey: credentialsInstallationIDKey,
 		PemSecretKey:            credentialsPemKey,
+	}
+	if set.Spec.HostRules.IsEnabled() {
+		job.Spec.GithubAppReference.HostRulesSecretName = github.GetNameForGithubAppHostRulesSecret(set.Name)
 	}
 	// A suspended installation cannot mint tokens. The annotation records that
 	// the set, not a user, suspended the job, so only that suspend is released
