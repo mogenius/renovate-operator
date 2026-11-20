@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   release-please:
-    uses: mogenius/github-actions/.github/workflows/release-please.yml@8c32f9928164b14c8856b40cdda5825d60236726 # v1.16.1
+    uses: mogenius/github-actions/.github/workflows/release-please.yml@0ce40293b9ae0d99d3502c6537f2b3cd27a740c0 # v1.16.2
     with:
       config_file: release-please-config.json
       manifest_file: .release-please-manifest.json
