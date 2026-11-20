@@ -461,15 +461,7 @@
       "description": "bundled valkey subchart; keys beyond the ones listed here are passed through to the subchart",
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "existingSecret": {
-          "description": "DEPRECATED: use externalKeyValueStore.existingSecret.name instead",
-          "type": "string"
-        },
-        "existingSecretKey": {
-          "description": "DEPRECATED: use externalKeyValueStore.existingSecret.urlKey instead",
-          "type": "string"
-        }
+        "enabled": { "type": "boolean" }
       }
     },
     "s3": {

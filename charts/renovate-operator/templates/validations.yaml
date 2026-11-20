@@ -1,0 +1,4 @@
+{{- /* Render-time checks on values; this template produces no resources. */}}
+{{- if or .Values.valkey.existingSecret .Values.valkey.existingSecretKey }}
+{{- fail "valkey.existingSecret and valkey.existingSecretKey were removed; use externalKeyValueStore.existingSecret.name and externalKeyValueStore.existingSecret.urlKey instead" }}
+{{- end }}

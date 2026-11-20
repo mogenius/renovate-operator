@@ -191,9 +191,10 @@ valkey:
 **Option 2: Valkey URL from an existing secret**
 
 ```yaml
-valkey:
-  existingSecret: "my-valkey-secret"
-  existingSecretKey: "valkey-url"   # key containing e.g. "redis://:password@valkey:6379/0"
+externalKeyValueStore:
+  existingSecret:
+    name: "my-valkey-secret"
+    urlKey: "valkey-url"   # key containing e.g. "redis://:password@valkey:6379/0"
 ```
 
 For TLS connections, use the `rediss://` scheme in the secret value.
