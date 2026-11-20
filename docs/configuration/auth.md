@@ -184,7 +184,7 @@ valkey:
       default:
         password: ""
         permissions: "~* &* +@all"
-  dataStorage:
+  persistence:
     enabled: false  # sessions are ephemeral
 ```
 
