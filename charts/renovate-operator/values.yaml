@@ -485,7 +485,7 @@ logging:
   format: "json"
 
 # -- optional: connection to an external redis-protocol-compatible key value store (e.g. Redis / Valkey)
-# -- Takes precedence over the deprecated valkey.existingSecret and the bundled valkey instance.
+# -- Takes precedence over the bundled valkey instance.
 # -- Active when host or existingSecret.name is set.
 externalKeyValueStore:
   # -- whether the connection should be made with TLS encryption enabled (rediss://)
@@ -523,14 +523,6 @@ valkey:
   # Enable Valkey for session storage. When enabled, the operator will create a Valkey deployment and use it to store sessions.
   enabled: false
 
-  # -- DEPRECATED: use externalKeyValueStore.existingSecret instead; will be removed in a future release.
-  # -- name of an existing secret containing the Valkey URL for session storage
-  # -- Use this to provide a Valkey URL (e.g., "redis://:password@valkey:6379/0") via a Kubernetes secret
-  # -- When set, sessions are stored in Valkey (recommended for multi-replica deployments)
-  existingSecret: ""
-  # -- DEPRECATED: use externalKeyValueStore.existingSecret.urlKey instead; will be removed in a future release.
-  # -- key in the existing secret that contains the Valkey URL
-  existingSecretKey: "valkey-url"
   auth:
     # Enable ACL-based authentication
     # IMPORTANT: When authentication is enabled, the 'default' user MUST be defined in either
@@ -546,8 +538,11 @@ valkey:
         password: ""
         passwordKey: ""
         permissions: "~* &* +@all"
-  dataStorage:
+  persistence:
     enabled: false
+  # The subchart defaults to Recreate (a ReadWriteOnce volume cannot move to a new pod during a rolling update).
+  # Without persistence, RollingUpdate keeps upgrades free of downtime; switch to Recreate when enabling persistence.
+  deploymentStrategy: RollingUpdate
   metrics:
     enabled: false
     serviceMonitor:

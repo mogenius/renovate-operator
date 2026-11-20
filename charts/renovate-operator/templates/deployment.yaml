@@ -266,12 +266,6 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
-            {{- else if .Values.valkey.existingSecret }}
-            - name: VALKEY_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.valkey.existingSecret }}
-                  key: {{ .Values.valkey.existingSecretKey | default "valkey-url" }}
             {{- else if .Values.valkey.enabled }}
             - name: VALKEY_HOST
               value: "{{ .Release.Name }}-valkey"
@@ -285,7 +279,7 @@ spec:
                   key: {{ .Values.valkey.auth.aclUsers.default.passwordKey | default "default-password" }}
             {{- end }}
             {{- end }}
-            {{- $valkeyConfigured := or $ekv.host $ekv.existingSecret.name .Values.valkey.existingSecret .Values.valkey.enabled }}
+            {{- $valkeyConfigured := or $ekv.host $ekv.existingSecret.name .Values.valkey.enabled }}
             {{- if and (eq .Values.auth.sessionStore "memory") (not $valkeyConfigured) (gt (int .Values.replicaCount) 1) }}
             {{- fail "auth.sessionStore=memory does not share sessions across replicas; set replicaCount to 1 or configure Valkey" }}
             {{- end }}

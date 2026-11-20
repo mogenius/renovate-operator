@@ -330,30 +330,6 @@ tests:
         name: VALKEY_TLS
         value: "true"
 
-- it: External key value store takes precedence over deprecated valkey.existingSecret
-  set:
-    valkey:
-      existingSecret: legacy-secret
-    externalKeyValueStore:
-      host: valkey.example.com
-      existingSecret:
-        name: my-kv-secret
-        passwordKey: password
-  asserts:
-  - contains:
-      path: spec.template.spec.containers[0].env
-      content:
-        name: VALKEY_HOST
-        value: valkey.example.com
-  - notContains:
-      path: spec.template.spec.containers[0].env
-      content:
-        name: VALKEY_URL
-        valueFrom:
-          secretKeyRef:
-            name: legacy-secret
-            key: valkey-url
-
 - it: Joins default access group lists into comma-separated env values
   set:
     authorization:
