@@ -546,8 +546,11 @@ valkey:
         password: ""
         passwordKey: ""
         permissions: "~* &* +@all"
-  dataStorage:
+  persistence:
     enabled: false
+  # The subchart defaults to Recreate (a ReadWriteOnce volume cannot move to a new pod during a rolling update).
+  # Without persistence, RollingUpdate keeps upgrades free of downtime; switch to Recreate when enabling persistence.
+  deploymentStrategy: RollingUpdate
   metrics:
     enabled: false
     serviceMonitor:

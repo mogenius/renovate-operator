@@ -24,7 +24,7 @@ Kubernetes: `>=1.29.0-0`
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://valkey.io/valkey-helm/ | valkey | 0.12.1 |
+| https://valkey.io/valkey-helm/ | valkey | 1.0.0 |
 
 ## Values
 
@@ -208,7 +208,7 @@ Kubernetes: `>=1.29.0-0`
 | telemetry.protocol | string | `"grpc"` | OTLP protocol for the operator. Only "grpc" is currently supported. |
 | tolerations | list | `[]` | tolerations for the operator pod |
 | topologySpreadConstraints | list | `[]` | topologySpreadConstraints for the operator pod |
-| valkey | object | `{"auth":{"aclUsers":{"default":{"password":"","passwordKey":"","permissions":"~* &* +@all"}},"enabled":true,"usersExistingSecret":""},"dataStorage":{"enabled":false},"enabled":false,"existingSecret":"","existingSecretKey":"valkey-url","metrics":{"enabled":false,"serviceMonitor":{"enabled":false}}}` | optional: deploy a Valkey instance for session storage (recommended for multi-replica) |
+| valkey | object | `{"auth":{"aclUsers":{"default":{"password":"","passwordKey":"","permissions":"~* &* +@all"}},"enabled":true,"usersExistingSecret":""},"deploymentStrategy":"RollingUpdate","enabled":false,"existingSecret":"","existingSecretKey":"valkey-url","metrics":{"enabled":false,"serviceMonitor":{"enabled":false}},"persistence":{"enabled":false}}` | optional: deploy a Valkey instance for session storage (recommended for multi-replica) |
 | valkey.existingSecret | string | `""` | When set, sessions are stored in Valkey (recommended for multi-replica deployments) |
 | valkey.existingSecretKey | string | `"valkey-url"` | key in the existing secret that contains the Valkey URL |
 | webhook.baseUrl | string | `""` | optional: override the webhook base URL (WEBHOOK_BASE_URL), e.g. when the ingress or gateway is behind a proxy. |
