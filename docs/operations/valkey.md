@@ -89,8 +89,6 @@ stringData:
 
 When `urlKey` is set, all other `externalKeyValueStore` values are ignored.
 
-> **Deprecated:** `valkey.existingSecret` / `valkey.existingSecretKey` configure the same URL-via-secret connection and are superseded by `externalKeyValueStore.existingSecret`; they will be removed in a future release.
-
 ### Credentials in separate secret fields
 
 When the credentials arrive as separate secret fields rather than a ready-made URL — for example the [Aiven operator](https://aiven.github.io/aiven-operator/)'s `ServiceUser` secret with its `SERVICEUSER_*` keys — configure the fields individually and the operator constructs the connection URL. Each of host, port, and username can come from the secret (`existingSecret.{param}Key`) or be set as a clear value (`{param}`); the password can only come from the secret:

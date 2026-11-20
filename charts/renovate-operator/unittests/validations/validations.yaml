@@ -1,0 +1,30 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: Values validations
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/validations.yaml
+tests:
+- it: Renders nothing with default values
+  asserts:
+  - hasDocuments:
+      count: 0
+
+- it: Fails when the removed valkey.existingSecret is set
+  set:
+    valkey:
+      existingSecret: legacy-secret
+  asserts:
+  - failedTemplate:
+      errorMessage: valkey.existingSecret and valkey.existingSecretKey were removed; use externalKeyValueStore.existingSecret.name and externalKeyValueStore.existingSecret.urlKey instead
+
+- it: Fails when the removed valkey.existingSecretKey is set
+  set:
+    valkey:
+      existingSecretKey: valkey-url
+  asserts:
+  - failedTemplate:
+      errorMessage: valkey.existingSecret and valkey.existingSecretKey were removed; use externalKeyValueStore.existingSecret.name and externalKeyValueStore.existingSecret.urlKey instead
