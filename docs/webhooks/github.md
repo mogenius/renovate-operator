@@ -35,13 +35,14 @@ spec:
 6. Select individual events:
    - **Pull requests** (for PR checkbox interactions)
    - **Issues** (for Dependency Dashboard interactions)
+   - **Pushes** (only with [`triggerOnPush`](#push-events-opt-in))
 7. Ensure **Active** is checked
 
 GitHub App `installation` and `installation_repositories` events sent to this endpoint go to `GitHubAppInstallationSet`s first, see [GitHub App — Every Installation](../platforms/github-app-installation-set.md#immediate-resync-via-webhook). An `installation` event also starts [repository lifecycle discovery](#repository-lifecycle-events-automatic-discovery), whether or not a set verifies it. An `installation_repositories` event no set verifies is answered `200` and ignored, since it may belong to another App sharing the URL.
 
 The operator automatically finds the RenovateJob that owns the repository by matching the incoming repository name against discovered projects. If you have multiple RenovateJobs and want to target a specific one, append `namespace` and/or `job` as query parameters:
 
-```
+```text
 https://your-webhook-host/webhook/v1/github?namespace=renovate-operator&job=my-renovate-job
 ```
 
@@ -74,3 +75,32 @@ and the configured webhook authentication apply as usual.
 The endpoint answers `202 Accepted` and lists the RenovateJobs whose discovery was started.
 Events that match no job, a job whose discovery is already running, or a suspended job are
 acknowledged with `200 OK` so GitHub does not mark the delivery as failed and retry it.
+
+### Push events (opt-in)
+
+A RenovateJob can also run Renovate for a project when a commit is pushed to the project's
+default branch, for example a direct push that changes `renovate.json` or a dependency file. Merged
+pull requests already trigger a run; this covers pushes that do not go through a pull request.
+
+Enable it per job with `triggerOnPush`:
+
+```yaml
+spec:
+  webhook:
+    enabled: true
+    triggerOnPush: true
+```
+
+When webhook sync is enabled, the operator adds the **Pushes** event to the webhooks it manages
+for this job, and removes it again when `triggerOnPush` is turned off. For manually configured
+webhooks or GitHub Apps, subscribe to **Pushes** yourself.
+
+Only pushes to the repository's default branch schedule a run. Pushes to other branches (including
+Renovate's own `renovate/*` branches), tags, and branch deletions are ignored. Matching, the
+`namespace` and `job` query parameters, and authentication work as for the checkbox events, but
+only jobs with `triggerOnPush` are candidates. A push that no such job owns is acknowledged with
+`200 OK`, so a subscription broader than the opted-in jobs does not produce failed deliveries.
+
+`triggerOnPush` is supported for the `github` provider only. The API rejects it on a RenovateJob
+or template whose provider is set to anything else, and the operator refuses a RenovateJob whose
+effective spec (after merging its template) sets it without `provider.name: github`.

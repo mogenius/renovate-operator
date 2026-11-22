@@ -16,6 +16,7 @@ import (
 // RenovateJobSpec defines the desired state of RenovateJob
 // +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 // +kubebuilder:validation:XValidation:rule="!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii() == 'github'",message="githubAppReference requires provider.name github"
+// +kubebuilder:validation:XValidation:rule="!has(self.webhook) || !has(self.webhook.triggerOnPush) || !self.webhook.triggerOnPush || !has(self.provider) || self.provider.name.lowerAscii() == 'github'",message="webhook.triggerOnPush requires provider.name github"
 type RenovateJobSpec struct {
 	// TemplateRef inherits shared configuration from a RenovateJobTemplate (in the
 	// same namespace) or a cluster-scoped ClusterRenovateJobTemplate. Fields set on
@@ -244,7 +245,12 @@ type RenovateWebhook struct {
 	// than the operator-wide default provides.
 	// +optional
 	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
-	BaseURL        string               `json:"baseUrl,omitempty"`
+	BaseURL string `json:"baseUrl,omitempty"`
+	// Schedule a Renovate run for a project when a commit is pushed to its
+	// default branch. GitHub only. Webhook sync subscribes the operator's
+	// hooks to push events only while this is set.
+	// +optional
+	TriggerOnPush  bool                 `json:"triggerOnPush,omitempty"`
 	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
 	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
 }

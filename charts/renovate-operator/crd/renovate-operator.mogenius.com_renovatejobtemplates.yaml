@@ -4546,6 +4546,12 @@ spec:
                     required:
                     - enabled
                     type: object
+                  triggerOnPush:
+                    description: |-
+                      Schedule a Renovate run for a project when a commit is pushed to its
+                      default branch. GitHub only. Webhook sync subscribes the operator's
+                      hooks to push events only while this is set.
+                    type: boolean
                 required:
                 - enabled
                 type: object
@@ -4557,6 +4563,9 @@ spec:
             - message: githubAppReference requires provider.name github
               rule: '!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii()
                 == ''github'''
+            - message: webhook.triggerOnPush requires provider.name github
+              rule: '!has(self.webhook) || !has(self.webhook.triggerOnPush) || !self.webhook.triggerOnPush
+                || !has(self.provider) || self.provider.name.lowerAscii() == ''github'''
         type: object
     served: true
     storage: true

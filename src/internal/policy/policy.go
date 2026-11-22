@@ -139,6 +139,9 @@ func ValidateSpecConsistency(spec api.RenovateJobSpec) error {
 	if spec.GithubAppReference != nil && !spec.Provider.Is("github") {
 		return violationf(ReasonInvalidSpec, "spec.githubAppReference requires spec.provider.name github, on the RenovateJob or on the template it references")
 	}
+	if spec.Webhook != nil && spec.Webhook.TriggerOnPush && !spec.Provider.Is("github") {
+		return violationf(ReasonInvalidSpec, "spec.webhook.triggerOnPush requires spec.provider.name github, on the RenovateJob or on the template it references")
+	}
 	return nil
 }
 

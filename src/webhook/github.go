@@ -51,6 +51,9 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	case "repository":
 		s.githubRepositoryEvent(ctx, w, r, body)
 		return
+	case "push":
+		s.githubPushEvent(ctx, w, r, body)
+		return
 	case githubEventInstallation, githubEventInstallationRepositories:
 		s.githubInstallationWebhook(w, r, body, event)
 		return

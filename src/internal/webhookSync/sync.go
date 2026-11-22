@@ -30,7 +30,8 @@ import (
 const maxConcurrentRequests = 10
 
 // Options configures a webhook sync run. The events a hook subscribes to are
-// not configurable: each provider applies its own fixed, minimal set.
+// chosen by the provider client: each applies its own minimal set, which the
+// factory derives from the job's webhook settings.
 type Options struct {
 	// WebhookURL is the full delivery URL (including namespace/job query
 	// parameters). It identifies hooks managed by the operator.
