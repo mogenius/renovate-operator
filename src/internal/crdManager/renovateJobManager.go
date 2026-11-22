@@ -534,15 +534,19 @@ func (r *renovateJobManager) WebhookAuthTokenHash(ctx context.Context, job Renov
 	}
 
 	webhook := renovateJob.Spec.Webhook
-	if webhook == nil || !webhook.Enabled || webhook.Sync == nil || !webhook.Sync.Enabled || webhook.Sync.SecretRef == nil {
+	if webhook == nil || !webhook.Enabled || webhook.Sync == nil || !webhook.Sync.Enabled ||
+		webhook.Authentication == nil || !webhook.Authentication.Enabled || webhook.Authentication.SecretRef == nil {
 		return "", nil
 	}
 
-	token, err := r.gitProviderClientFactory.ReadWebhookAuthToken(ctx, renovateJob, webhook.Sync.SecretRef)
+	tokens, err := r.getRenovateJobTokens(ctx, renovateJob)
 	if err != nil {
 		return "", fmt.Errorf("failed to read webhook auth token: %w", err)
 	}
-	sum := sha256.Sum256([]byte(token))
+	if len(tokens) == 0 || tokens[0] == "" {
+		return "", nil
+	}
+	sum := sha256.Sum256([]byte(tokens[0]))
 	return hex.EncodeToString(sum[:]), nil
 }
 
