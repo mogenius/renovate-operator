@@ -81,3 +81,11 @@ Day-2 concerns: observability, storage, and cost allocation.
 | Guide                                        |                                          |
 | -------------------------------------------- | ---------------------------------------- |
 | [v5 → v6](./migration/migration-v5-to-v6.md) | Policy engine and access control changes |
+
+## Design
+
+Research and plans for features that are not (fully) built yet.
+
+| Document                                                        |                                                          |
+| --------------------------------------------------------------- | -------------------------------------------------------- |
+| [Stat badge refinements](./design/stat-badge-refinements.md)    | Narrowing every dashboard badge the way With Issues is   |
