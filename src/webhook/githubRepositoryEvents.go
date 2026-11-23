@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -126,6 +127,7 @@ func installationRepositories(payload GitHubInstallationEvent) []string {
 type discoveryOutcome struct {
 	matched, authenticated, started, running, suspended, failed int
 	startedJobs                                                 []string
+	checkErrs                                                   []error
 }
 
 // runDiscoveryForRepositories starts a discovery for every webhook-enabled
@@ -155,9 +157,13 @@ func (s *Server) runDiscoveryForRepositories(ctx context.Context, w http.Respons
 		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": "no matching renovate job"})
 	case outcome.authenticated == 0:
-		s.recordResolverAuthFailure(ctx, provider, ErrAuthenticationFailed, signatureWasUsed(r))
+		authErr := ErrAuthenticationFailed
+		if len(outcome.checkErrs) > 0 {
+			authErr = fmt.Errorf("%w: %w", ErrCredentialCheckFailed, errors.Join(outcome.checkErrs...))
+		}
+		s.recordResolverAuthFailure(ctx, provider, authErr, signatureWasUsed(r))
 		metricStore.IncWebhookRequest(ctx, provider, "rejected")
-		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		s.handleResolverError(w, authErr)
 	case outcome.started == 0:
 		metricStore.IncWebhookRequest(ctx, provider, "ignored")
 		s.writeJSON(w, http.StatusOK, map[string]any{
@@ -198,7 +204,11 @@ func (s *Server) startDiscoveries(ctx context.Context, r *http.Request, body []b
 				continue
 			}
 			ok, err := checker(ctx, id)
-			if err != nil || !ok {
+			if err != nil {
+				outcome.checkErrs = append(outcome.checkErrs, fmt.Errorf("%s/%s: %w", id.Namespace, id.Name, err))
+				continue
+			}
+			if !ok {
 				continue
 			}
 		}
