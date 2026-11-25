@@ -108,6 +108,9 @@ func (s *Server) giteaWebhook(w http.ResponseWriter, r *http.Request) {
 		s.handleResolverError(w, err)
 		return
 	}
+	if s.ignoreTriggerEvent(ctx, w, provider, jobId, giteaTriggerEvent(event, &payload)) {
+		return
+	}
 
 	s.logger.Info("received Gitea event", "event", event, "repository", project, "action", payload.Action)
 	err = s.manager.UpdateProjectStatus(
@@ -146,7 +149,7 @@ func isValidGiteaEvent(event string, payload *GiteaEvent) (bool, string) {
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
 		}
-		if payload.PullRequest.Merged {
+		if isGiteaMergeEvent(event, payload) {
 			return true, ""
 		}
 		if payload.PullRequest.Body == "" {
@@ -169,5 +172,25 @@ func isValidGiteaEvent(event string, payload *GiteaEvent) (bool, string) {
 
 	default:
 		return false, "unsupported event type: " + event
+	}
+}
+
+func isGiteaMergeEvent(event string, payload *GiteaEvent) bool {
+	return event == "pull_request" && payload.PullRequest != nil && payload.PullRequest.Merged
+}
+
+// giteaTriggerEvent normalizes an event that passed isValidGiteaEvent.
+func giteaTriggerEvent(event string, payload *GiteaEvent) triggerEvent {
+	switch {
+	case event == "issues":
+		return triggerEvent{issue: api.IssueEdited}
+	case isGiteaMergeEvent(event, payload):
+		return triggerEvent{pullRequest: api.PullRequestMerged}
+	case payload.Action == "closed":
+		return triggerEvent{pullRequest: api.PullRequestClosed}
+	case payload.Action == "reopened":
+		return triggerEvent{pullRequest: api.PullRequestReopened}
+	default:
+		return triggerEvent{pullRequest: api.PullRequestEdited}
 	}
 }

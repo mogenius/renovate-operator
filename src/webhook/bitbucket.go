@@ -24,6 +24,9 @@ import (
 // Deliveries are authenticated via the hook secret, which Bitbucket uses to
 // sign the payload into the X-Hub-Signature header (sha256=<hmac>).
 
+// bitbucketEventMerged is Bitbucket's event key for a merged pull request.
+const bitbucketEventMerged = "pullrequest:fulfilled"
+
 type BitbucketEvent struct {
 	PullRequest *BitbucketPullRequest `json:"pullrequest,omitempty"`
 	Repository  BitbucketRepository   `json:"repository"`
@@ -87,6 +90,9 @@ func (s *Server) bitbucketWebhook(w http.ResponseWriter, r *http.Request) {
 		s.handleResolverError(w, err)
 		return
 	}
+	if s.ignoreTriggerEvent(ctx, w, provider, jobId, bitbucketTriggerEvent(event)) {
+		return
+	}
 
 	s.logger.Info("received Bitbucket event", "event", event, "repository", project)
 	err = s.manager.UpdateProjectStatus(
@@ -113,7 +119,7 @@ func isValidBitbucketEvent(event string, payload *BitbucketEvent) (bool, string)
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
 		}
-		if event == "pullrequest:fulfilled" {
+		if event == bitbucketEventMerged {
 			return true, ""
 		}
 		if !isRenovateContent(payload.PullRequest.Description) {
@@ -128,5 +134,17 @@ func isValidBitbucketEvent(event string, payload *BitbucketEvent) (bool, string)
 
 	default:
 		return false, "unsupported event type: " + event
+	}
+}
+
+// bitbucketTriggerEvent normalizes an event that passed isValidBitbucketEvent.
+func bitbucketTriggerEvent(event string) triggerEvent {
+	switch event {
+	case bitbucketEventMerged:
+		return triggerEvent{pullRequest: api.PullRequestMerged}
+	case "pullrequest:rejected":
+		return triggerEvent{pullRequest: api.PullRequestClosed}
+	default:
+		return triggerEvent{pullRequest: api.PullRequestEdited}
 	}
 }

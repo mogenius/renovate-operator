@@ -243,6 +243,7 @@ Kubernetes: `>=1.29.0-0`
 | webhook.route.listenerset.tls.secretName | string | `""` | name of the TLS secret; defaults to <fullname>-webhook-tls |
 | webhook.route.parentRefs | list | `[]` | parentRefs to place on the HTTPRoute |
 | webhook.route.weight | int | `1` | weight to place on the HTTPRoute |
+| webhook.triggerOnEvent | object | `{}` | platform events that trigger a Renovate run (WEBHOOK_TRIGGER_ON_EVENT), e.g. `{pullRequest: [edited, merged], issues: [edited]}`. Values: pullRequest edited, merged, closed, reopened; issues edited, closed. Empty triggers on every event. RenovateJobs can override this with spec.webhook.triggerOnEvent. |
 | webhook.unifiedWebhookHost | bool | `false` | if set to true the ui host will be used for webhooks |
 
 ----------------------------------------------

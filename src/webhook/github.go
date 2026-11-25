@@ -86,6 +86,9 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		s.handleResolverError(w, err)
 		return
 	}
+	if s.ignoreTriggerEvent(ctx, w, provider, jobId, gitHubTriggerEvent(&payload)) {
+		return
+	}
 
 	s.logger.Info("received github event", "repository", project, "action", payload.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
@@ -115,7 +118,7 @@ func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
 		return false, "event is neither pull request nor issue"
 	}
 
-	if payload.PullRequest != nil && payload.PullRequest.Merged {
+	if isGitHubMergeEvent(payload) {
 		return true, ""
 	}
 
@@ -135,4 +138,24 @@ func isValidGitHubEvent(payload *GitHubEvent) (bool, string) {
 		return false, "not a valid renovate checkbox change"
 	}
 	return true, ""
+}
+
+func isGitHubMergeEvent(payload *GitHubEvent) bool {
+	return payload.PullRequest != nil && payload.PullRequest.Merged
+}
+
+// gitHubTriggerEvent normalizes an event that passed isValidGitHubEvent.
+func gitHubTriggerEvent(payload *GitHubEvent) triggerEvent {
+	switch {
+	case isGitHubMergeEvent(payload):
+		return triggerEvent{pullRequest: api.PullRequestMerged}
+	case payload.PullRequest != nil && payload.Action == "closed":
+		return triggerEvent{pullRequest: api.PullRequestClosed}
+	case payload.PullRequest != nil:
+		return triggerEvent{pullRequest: api.PullRequestEdited}
+	case payload.Action == "closed":
+		return triggerEvent{issue: api.IssueClosed}
+	default:
+		return triggerEvent{issue: api.IssueEdited}
+	}
 }

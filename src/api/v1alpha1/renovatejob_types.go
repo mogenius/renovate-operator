@@ -244,9 +244,14 @@ type RenovateWebhook struct {
 	// than the operator-wide default provides.
 	// +optional
 	// +kubebuilder:validation:Pattern=`^https?://[^?#]+$`
-	BaseURL        string               `json:"baseUrl,omitempty"`
-	Authentication *RenovateWebhookAuth `json:"authentication,omitempty"`
-	Sync           *RenovateWebhookSync `json:"sync,omitempty"`
+	BaseURL string `json:"baseUrl,omitempty"`
+	// Platform events that trigger a Renovate run for the repository. When
+	// set, replaces the operator-wide WEBHOOK_TRIGGER_ON_EVENT setting as a
+	// whole; when unset, that setting applies (default: every event).
+	// +optional
+	TriggerOnEvent *WebhookTriggerEvents `json:"triggerOnEvent,omitempty"`
+	Authentication *RenovateWebhookAuth  `json:"authentication,omitempty"`
+	Sync           *RenovateWebhookSync  `json:"sync,omitempty"`
 }
 
 // configuration for syncing webhooks onto the repositories discovered for this
@@ -479,6 +484,12 @@ func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	if in.Webhook != nil {
 		out.Webhook = new(RenovateWebhook)
 		*out.Webhook = *in.Webhook
+		if in.Webhook.TriggerOnEvent != nil {
+			out.Webhook.TriggerOnEvent = &WebhookTriggerEvents{
+				PullRequest: append([]PullRequestTriggerEvent(nil), in.Webhook.TriggerOnEvent.PullRequest...),
+				Issues:      append([]IssueTriggerEvent(nil), in.Webhook.TriggerOnEvent.Issues...),
+			}
+		}
 		if in.Webhook.Authentication != nil {
 			out.Webhook.Authentication = new(RenovateWebhookAuth)
 			*out.Webhook.Authentication = *in.Webhook.Authentication
