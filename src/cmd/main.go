@@ -206,13 +206,6 @@ func parseAccessDefaults(log logr.Logger) ui.AccessDefaults {
 		SuspendFromUI:         config.GetValue("AUTHORIZATION_SUSPEND_FROM_UI") == "true",
 	}
 
-	// The deprecated DEFAULT_ALLOWED_GROUPS granted what is now admin access.
-	if legacy := parseGroupList(config.GetValue("DEFAULT_ALLOWED_GROUPS")); len(legacy) > 0 {
-		log.Info("DEFAULT_ALLOWED_GROUPS is deprecated, use AUTHORIZATION_DEFAULT_ADMIN_GROUPS (authorization.defaults.adminGroups)",
-			"groups", legacy)
-		defaults.AdminGroups = append(defaults.AdminGroups, legacy...)
-	}
-
 	log.Info("Default access configured",
 		"authorizationEnabled", !defaults.AuthorizationDisabled,
 		"readerGroups", defaults.ReaderGroups,
@@ -450,12 +443,6 @@ func main() {
 			Key:      "GITHUB_ORG_GROUPS",
 			Optional: true,
 			Default:  "false",
-		},
-		{
-			// Deprecated: use DEFAULT_ADMIN_GROUPS
-			Key:      "DEFAULT_ALLOWED_GROUPS",
-			Optional: true,
-			Default:  "",
 		},
 		{
 			Key:      "AUTHORIZATION_DEFAULT_READER_GROUPS",

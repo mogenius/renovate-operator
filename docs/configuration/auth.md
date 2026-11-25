@@ -439,7 +439,7 @@ the UI treats this as an unenforceable configuration: see below.
 Group rules configured against an identity provider that supplies no groups
 cannot be enforced. Today that means GitHub OAuth with `auth.github.orgGroups`
 disabled while either `authorization.defaults.*Groups` or any job's
-`spec.access.*Groups` / `spec.allowedGroups` is set. Configuring only
+`spec.access.*Groups` is set. Configuring only
 `adminUsers` / `readerUsers` never triggers it, since those need no groups.
 
 While the operator is in this state:
@@ -481,27 +481,6 @@ all leaves every job hidden.
 Both are matched case-insensitively, because group names are normalized to lowercase before filtering, so `allowedGroupPrefix: "Renovate-"` and `allowedGroupPattern: "^Team-Renovate$"` work the same as their lowercase spellings. The pattern is compiled with the case-insensitive flag rather than lowercased, so escapes keep their meaning: `\D`, `\S`, `\W`, `\B` and `\p{Lu}` are not rewritten.
 
 When a filter is configured and a user has no group left after it, the login is refused, so watch for `WARNING: All user groups filtered out by validation` in the operator log. It reports the count after each of the three layers, which distinguishes a provider sending no groups (`original_count: 0`) from a policy that rejects them all (`after_policy: 0`).
-
-### Deprecated: allowedGroups
-
-`spec.allowedGroups` and `auth.defaultAllowedGroups` still work and are treated
-as admin groups. They are mutually exclusive with `spec.access`: setting both on
-one RenovateJob is rejected by the API server, and if an older CRD without that
-validation accepts it, the operator treats the job as inaccessible rather than
-guessing.
-
-```yaml
-# before
-spec:
-  allowedGroups:
-    - team-devops
-
-# after
-spec:
-  access:
-    adminGroups:
-      - team-devops
-```
 
 ### Security considerations
 

@@ -52,7 +52,7 @@ type RenovateJobInfo struct {
 func (s *Server) decideJobAccess(r *http.Request, job *api.RenovateJob) accessDecision {
 	decision := adminDecision()
 	if s.auth != nil {
-		decision = resolveAccess(job, getSessionFromContext(r), s.accessDefaults, s.logger)
+		decision = resolveAccess(job, getSessionFromContext(r), s.accessDefaults)
 	}
 	// Whatever grants admin, the suspend button also needs the install to opt in.
 	decision.CanSuspend = decision.canWrite() && s.accessDefaults.SuspendFromUI

@@ -14,7 +14,6 @@ import (
 )
 
 // RenovateJobSpec defines the desired state of RenovateJob
-// +kubebuilder:validation:XValidation:rule="!(has(self.allowedGroups) && has(self.access))",message="allowedGroups and access are mutually exclusive; migrate allowedGroups to access.adminGroups"
 // +kubebuilder:validation:XValidation:rule="!has(self.githubAppReference) || !has(self.provider) || self.provider.name.lowerAscii() == 'github'",message="githubAppReference requires provider.name github"
 type RenovateJobSpec struct {
 	// TemplateRef inherits shared configuration from a RenovateJobTemplate (in the
@@ -101,10 +100,6 @@ type RenovateJobSpec struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// DNS Policy for the renovate pods
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
-	// Deprecated: use Access.AdminGroups. Groups granted full access to this
-	// RenovateJob when authentication is enabled. Mutually exclusive with Access.
-	// +optional
-	AllowedGroups []string `json:"allowedGroups,omitempty"`
 	// Access control for this RenovateJob in the web UI when authentication is
 	// enabled. If empty or not set, the job is hidden from all users.
 	// +optional
@@ -511,10 +506,6 @@ func (in *RenovateJobSpec) DeepCopyInto(out *RenovateJobSpec) {
 	if in.ImagePullSecrets != nil {
 		out.ImagePullSecrets = make([]corev1.LocalObjectReference, len(in.ImagePullSecrets))
 		copy(out.ImagePullSecrets, in.ImagePullSecrets)
-	}
-	if in.AllowedGroups != nil {
-		out.AllowedGroups = make([]string, len(in.AllowedGroups))
-		copy(out.AllowedGroups, in.AllowedGroups)
 	}
 	if in.Access != nil {
 		out.Access = new(RenovateJobAccess)

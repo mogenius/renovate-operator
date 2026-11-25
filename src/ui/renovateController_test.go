@@ -571,16 +571,6 @@ func TestFilterReadableJobs(t *testing.T) {
 			wantRoles:   []string{"admin"},
 		},
 		{
-			name: "deprecated allowedGroups still grants admin",
-			jobs: []api.RenovateJob{
-				{Name: "job1", Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-legacy"}},
-			wantJobs:    []string{"job1"},
-			wantRoles:   []string{"admin"},
-		},
-		{
 			name: "group names are matched case-insensitively",
 			jobs: []api.RenovateJob{
 				{Name: "job1", Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"Team-Admin"}}}},
@@ -629,21 +619,6 @@ func TestFilterReadableJobs(t *testing.T) {
 			},
 			authEnabled: true,
 			defaults:    AccessDefaults{AnonymousRead: true},
-			wantJobs:    []string{},
-		},
-		{
-			name: "access and deprecated allowedGroups together fail closed",
-			jobs: []api.RenovateJob{
-				{
-					Name: "job1",
-					Spec: api.RenovateJobSpec{
-						AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
-						Access:        &api.RenovateJobAccess{AdminGroups: adminGroups},
-					},
-				},
-			},
-			authEnabled: true,
-			session:     &sessionData{Groups: []string{"team-legacy", "team-admin"}},
 			wantJobs:    []string{},
 		},
 	}
@@ -714,7 +689,7 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "authenticated user with matching group",
 			jobs: []api.RenovateJob{
-				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}}},
 			},
 			sessionGroups: []string{"team-a"},
 			authEnabled:   true,
@@ -723,7 +698,7 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "authenticated user without matching group",
 			jobs: []api.RenovateJob{
-				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}}},
 			},
 			sessionGroups: []string{"team-b"},
 			authEnabled:   true,
@@ -732,8 +707,8 @@ func TestGetRenovateJobs_WithAuthorization(t *testing.T) {
 		{
 			name: "auth disabled - all jobs visible",
 			jobs: []api.RenovateJob{
-				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-a"}}},
-				{Name: "job2", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", AllowedGroups: []string{"team-b"}}},
+				{Name: "job1", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}}},
+				{Name: "job2", Namespace: "default", Spec: api.RenovateJobSpec{Schedule: "0 0 * * *", Access: &api.RenovateJobAccess{AdminGroups: []string{"team-b"}}}},
 			},
 			sessionGroups: nil,
 			authEnabled:   false,
@@ -859,7 +834,7 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 			name: "authorized user can access logs",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-a"},
 			authEnabled:    true,
@@ -869,7 +844,7 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -909,7 +884,7 @@ func TestGetRenovateJobLogs_Authorization(t *testing.T) {
 			name: "auth disabled - all users can access",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    false,
@@ -964,7 +939,7 @@ func TestAuthorizeJobAccess_DirectBypassAttempt(t *testing.T) {
 
 	job := &api.RenovateJob{
 		Name: "secret-job", Namespace: "default",
-		Spec: api.RenovateJobSpec{AllowedGroups: []string{"admin"}},
+		Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"admin"}}},
 	}
 
 	mockManager := &mockRenovateJobManager{
@@ -1038,7 +1013,7 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 			name: "authorized user can trigger all projects",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-a"},
 			authEnabled:    true,
@@ -1048,7 +1023,7 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 			name: "user without access gets 404 so the job's existence stays hidden",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    true,
@@ -1068,7 +1043,7 @@ func TestRunRenovateForAllProjects_Authorization(t *testing.T) {
 			name: "auth disabled - all users can trigger",
 			job: &api.RenovateJob{
 				Name: "job1", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-a"}},
+				Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-a"}}},
 			},
 			userGroups:     []string{"team-b"},
 			authEnabled:    false,

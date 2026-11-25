@@ -6,8 +6,6 @@ import (
 	"time"
 
 	api "renovate-operator/api/v1alpha1"
-
-	"github.com/go-logr/logr"
 )
 
 // accessCheckTTL is how long a misconfiguration verdict is reused. Short enough
@@ -204,9 +202,6 @@ func detectLockedOutJobs(provider AuthProvider, defaults AccessDefaults, jobs []
 }
 
 func jobConfiguresGroups(job *api.RenovateJob) bool {
-	if len(job.Spec.AllowedGroups) > 0 { //nolint:staticcheck // deprecated field is intentionally still honoured
-		return true
-	}
 	if job.Spec.Access == nil {
 		return false
 	}
@@ -266,14 +261,6 @@ func resolveEffectiveAccess(job *api.RenovateJob, defaults AccessDefaults) effec
 		anonymousReadLogs: defaults.AnonymousReadLogs,
 	}
 
-	// The deprecated allowedGroups is an alias for access.adminGroups. The CRD
-	// rejects setting both, so reaching here with allowedGroups means access is
-	// absent.
-	if len(job.Spec.AllowedGroups) > 0 { //nolint:staticcheck // deprecated field is intentionally still honoured
-		eff.adminGroups = normalizeGroups(job.Spec.AllowedGroups) //nolint:staticcheck // deprecated field is intentionally still honoured
-		return eff
-	}
-
 	access := job.Spec.Access
 	if access == nil {
 		return eff
@@ -317,16 +304,10 @@ func anyEffectiveAnonymousRead(jobs []api.RenovateJob, defaults AccessDefaults) 
 	return false
 }
 
-// conflictingAccessLogged remembers the jobs whose conflicting access
-// configuration has already been reported, keyed by namespace/name. Entries are
-// never removed: the set is bounded by the number of RenovateJobs, and a job that
-// stops conflicting stops reaching the log anyway.
-var conflictingAccessLogged sync.Map
-
 // resolveAccess evaluates a session against a job's effective access
 // configuration. A nil session represents a request without authentication,
 // which only anonymous read can satisfy.
-func resolveAccess(job *api.RenovateJob, session *sessionData, defaults AccessDefaults, logger logr.Logger) accessDecision {
+func resolveAccess(job *api.RenovateJob, session *sessionData, defaults AccessDefaults) accessDecision {
 	if job == nil {
 		return accessDecision{}
 	}
@@ -338,21 +319,6 @@ func resolveAccess(job *api.RenovateJob, session *sessionData, defaults AccessDe
 	// logs in may see.
 	if defaults.AuthorizationDisabled && session != nil {
 		return adminDecision()
-	}
-
-	// Normally unreachable: the CRD's CEL rule rejects this combination. It is
-	// still possible when the CRD is managed outside the chart and has not been
-	// upgraded, in which case there is no safe way to guess which surface wins.
-	if len(job.Spec.AllowedGroups) > 0 && job.Spec.Access != nil { //nolint:staticcheck // deprecated field is intentionally still honoured
-		// Once per job, not once per request: this runs on the endpoints the
-		// dashboard polls, so logging every time would drown the log in repeats
-		// of a message that only needs saying once.
-		if _, seen := conflictingAccessLogged.LoadOrStore(job.Namespace+"/"+job.Name, struct{}{}); !seen {
-			logger.Error(nil, "access rules ignored, job treated as inaccessible: allowedGroups and access are mutually exclusive",
-				"resource", job.Name,
-				"namespace", job.Namespace)
-		}
-		return accessDecision{}
 	}
 
 	eff := resolveEffectiveAccess(job, defaults)

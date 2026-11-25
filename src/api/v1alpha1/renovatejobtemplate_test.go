@@ -113,36 +113,6 @@ func TestMergeTemplateSpec_ClearsTemplateRef(t *testing.T) {
 	}
 }
 
-func TestMergeTemplateSpec_AccessControlIsMutuallyExclusive(t *testing.T) {
-	// Template uses the deprecated allowedGroups, job migrates to access. The merged
-	// spec must carry only the job's access, never both (the CRD forbids both on one
-	// object and the effective spec is never validated by the API server).
-	base := RenovateJobSpec{AllowedGroups: []string{"legacy-admins"}}
-	overlay := RenovateJobSpec{Access: &RenovateJobAccess{AdminGroups: []string{"platform"}}}
-
-	got := MergeTemplateSpec(base, overlay)
-
-	if got.AllowedGroups != nil {
-		t.Errorf("expected inherited allowedGroups to be dropped when the job sets access, got %v", got.AllowedGroups)
-	}
-	if got.Access == nil || len(got.Access.AdminGroups) != 1 || got.Access.AdminGroups[0] != "platform" {
-		t.Errorf("expected the job's access to win, got %v", got.Access)
-	}
-
-	// The reverse: template uses access, job sets the deprecated allowedGroups.
-	base = RenovateJobSpec{Access: &RenovateJobAccess{AdminGroups: []string{"platform"}}}
-	overlay = RenovateJobSpec{AllowedGroups: []string{"team"}}
-
-	got = MergeTemplateSpec(base, overlay)
-
-	if got.Access != nil {
-		t.Errorf("expected inherited access to be dropped when the job sets allowedGroups, got %v", got.Access)
-	}
-	if len(got.AllowedGroups) != 1 || got.AllowedGroups[0] != "team" {
-		t.Errorf("expected the job's allowedGroups to win, got %v", got.AllowedGroups)
-	}
-}
-
 func TestRenovateJobTemplateRef_IsCluster(t *testing.T) {
 	if (&RenovateJobTemplateRef{Kind: KindClusterRenovateJobTemplate}).IsCluster() != true {
 		t.Error("expected cluster ref to report IsCluster")

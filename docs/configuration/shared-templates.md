@@ -83,11 +83,9 @@ Inheritance is resolved **per top-level field**:
   unset; set any of them to `false` explicitly to override an inherited `true`.
   A template's `suspend: true` therefore pauses every job using it, see
   [Suspending a RenovateJob](../operations/suspend.md).
-- `access` and the deprecated `allowedGroups` are two spellings of the same access
-  control. A job that sets **either** replaces the template's access control
-  entirely, dropping the inherited spelling too, so the effective job never carries
-  both. The operator-wide access defaults still apply underneath, so the resolution
-  order is **operator defaults → template → job**.
+- A job that sets `access` replaces the template's `access` entirely. The
+  operator-wide access defaults still apply underneath, so the resolution order is
+  **operator defaults → template → job**.
 
 `schedule`, `image`, `provider` and `parallelism` are required on the *effective*
 job. Supply them on the `RenovateJob`, the template, or both — but if none does,

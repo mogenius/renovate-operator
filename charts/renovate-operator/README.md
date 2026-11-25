@@ -31,7 +31,6 @@ Kubernetes: `>=1.29.0-0`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` | affinity for the operator pod |
-| auth.defaultAllowedGroups | string | `""` | DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration |
 | auth.github.clientId | string | `""` | GitHub OAuth App client ID |
 | auth.github.enabled | bool | `false` | whether to enable GitHub OAuth authentication for the UI (mutually exclusive with OIDC) |
 | auth.github.existingSecret | string | `""` | name of an existing secret containing the GitHub OAuth client secret |

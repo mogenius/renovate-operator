@@ -95,11 +95,8 @@ func TestResolveAccess(t *testing.T) {
 			wantPermissions: []string{permLogs},
 		},
 		{
-			name: "authorization disabled overrides a conflicting access configuration for a session",
-			job: &api.RenovateJob{Spec: api.RenovateJobSpec{
-				AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
-				Access:        &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}},
-			}},
+			name:            "authorization disabled overrides group rules for a session",
+			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{Access: &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}}}},
 			session:         &sessionData{Email: "nobody@example.com"},
 			defaults:        AccessDefaults{AuthorizationDisabled: true},
 			wantRole:        roleAdmin,
@@ -233,23 +230,6 @@ func TestResolveAccess(t *testing.T) {
 			wantPermissions: []string{},
 		},
 		{
-			name:            "deprecated allowedGroups is an alias for adminGroups",
-			job:             &api.RenovateJob{Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}}, //nolint:staticcheck // deprecated field is intentionally still honoured
-			session:         &sessionData{Groups: []string{"team-legacy"}},
-			wantRole:        roleAdmin,
-			wantPermissions: []string{permLogs, permTrigger, permTriggerAll, permCancel, permDiscovery},
-		},
-		{
-			name: "deprecated allowedGroups next to access fails closed",
-			job: &api.RenovateJob{Spec: api.RenovateJobSpec{
-				AllowedGroups: []string{"team-legacy"}, //nolint:staticcheck // deprecated field is intentionally still honoured
-				Access:        &api.RenovateJobAccess{AdminGroups: []string{"team-admin"}},
-			}},
-			session:         &sessionData{Groups: []string{"team-legacy", "team-admin"}},
-			wantRole:        roleNone,
-			wantPermissions: []string{},
-		},
-		{
 			name:            "nil job is never accessible",
 			job:             nil,
 			session:         &sessionData{Groups: []string{"team-admin"}},
@@ -261,7 +241,7 @@ func TestResolveAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			decision := resolveAccess(tt.job, tt.session, tt.defaults, logr.Discard())
+			decision := resolveAccess(tt.job, tt.session, tt.defaults)
 
 			if decision.Role != tt.wantRole {
 				t.Errorf("role = %q, want %q", decision.Role.String(), tt.wantRole.String())
@@ -411,16 +391,6 @@ func TestDetectAccessMisconfiguration(t *testing.T) {
 			provider: groupless,
 			defaults: AccessDefaults{ReaderGroups: []string{"team-reader"}, AuthorizationDisabled: true},
 			jobs:     []api.RenovateJob{groupsJob("job1")},
-		},
-		{
-			name:     "groupless provider with deprecated allowedGroups is not enforceable",
-			provider: groupless,
-			jobs: []api.RenovateJob{{
-				Name: "legacy", Namespace: "default",
-				Spec: api.RenovateJobSpec{AllowedGroups: []string{"team-legacy"}}, //nolint:staticcheck // deprecated field is intentionally still honoured
-			}},
-			wantReason:       ReasonGroupsUnsupported,
-			wantAffectedJobs: []string{"default/legacy"},
 		},
 	}
 
