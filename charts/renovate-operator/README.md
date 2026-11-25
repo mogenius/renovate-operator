@@ -1,6 +1,6 @@
 # renovate-operator
 
-![Version: 6.10.0](https://img.shields.io/badge/Version-6.10.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 6.10.0](https://img.shields.io/badge/AppVersion-6.10.0-informational?style=flat-square)
+![Version: 7.0.0](https://img.shields.io/badge/Version-7.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 7.0.0](https://img.shields.io/badge/AppVersion-7.0.0-informational?style=flat-square)
 
 Chart to deploy the renovate operator to your cluster
 
@@ -83,7 +83,7 @@ Kubernetes: `>=1.29.0-0`
 | crd.image.pullPolicy | string | `"IfNotPresent"` |  |
 | crd.image.registry | string | `"registry.k8s.io"` |  |
 | crd.image.repository | string | `"kubectl"` |  |
-| crd.image.tag | string | `"v1.37.2"` |  |
+| crd.image.tag | string | `"v1.37.3"` |  |
 | crd.install | bool | `true` | whether to install the CRD or not, set to false if you want to install the CRD separately |
 | crd.mode | string | `"hook"` |  |
 | crd.securityContext.container.allowPrivilegeEscalation | bool | `false` |  |
