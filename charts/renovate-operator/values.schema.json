@@ -246,10 +246,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "defaultAllowedGroups": {
-          "description": "DEPRECATED: use authorization.defaults.adminGroups. Comma-separated list of default groups granted full access to RenovateJobs without explicit access configuration",
-          "type": "string"
-        },
         "sessionDuration": {
           "description": "how long a UI session stays valid after login, as a positive Go duration such as 24h or 168h",
           "type": "string",

@@ -134,9 +134,8 @@ type GroupFilterConfig struct {
 // LAYER 2 lowercases every group before LAYER 3 sees it, so a policy carrying
 // any uppercase character can never match and the user is left with no groups.
 // The same reasoning already applies to the other two group inputs: the
-// operator lowercases DEFAULT_ALLOWED_GROUPS as it parses it, and
-// filterRenovateJobsByGroups runs a RenovateJob's spec.allowedGroups through
-// normalizeGroups. This makes the prefix and pattern consistent with those.
+// operator lowercases the default access groups as it parses them, and
+// a RenovateJob's spec.access groups run through normalizeGroups. This makes the prefix and pattern consistent with those.
 //
 // The prefix is a literal, so it is simply lowercased. The pattern is compiled
 // case-insensitively instead, because lowercasing a regex source rewrites the

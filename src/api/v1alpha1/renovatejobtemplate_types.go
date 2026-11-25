@@ -163,12 +163,7 @@ func MergeTemplateSpec(base, overlay RenovateJobSpec) RenovateJobSpec {
 	if ov.DNSPolicy != "" {
 		merged.DNSPolicy = ov.DNSPolicy
 	}
-	// allowedGroups (deprecated) and access are two spellings of the same access
-	// control, mutually exclusive on any one object. A job that sets either replaces
-	// the template's access control wholesale, dropping the inherited spelling too,
-	// so the merged spec never carries both.
-	if ov.AllowedGroups != nil || ov.Access != nil {
-		merged.AllowedGroups = ov.AllowedGroups
+	if ov.Access != nil {
 		merged.Access = ov.Access
 	}
 	if ov.ScratchVolume != nil {

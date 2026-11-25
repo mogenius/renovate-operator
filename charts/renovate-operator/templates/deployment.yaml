@@ -289,10 +289,6 @@ spec:
               value: {{ .Values.auth.sessionDuration | quote }}
             - name: VALKEY_FORWARD_CACHE_TO_JOBS
               value: {{ .Values.config.forwardCacheToJobs | quote }}
-            {{- if .Values.auth.defaultAllowedGroups }}
-            - name: DEFAULT_ALLOWED_GROUPS
-              value: {{ .Values.auth.defaultAllowedGroups | quote }}
-            {{- end }}
             - name: POLICY_ENABLED
               value: {{ .Values.policy.enabled | quote }}
             - name: POLICY_ALLOWED_HOSTS
