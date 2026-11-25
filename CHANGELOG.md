@@ -1,5 +1,29 @@
 # Changelog
 
+## [7.0.0](https://github.com/mogenius/renovate-operator/compare/6.10.0...7.0.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** spec.allowedGroups no longer exists. The API server drops it from stored objects on their next write, and jobs that relied on it are hidden in the UI until they set access.adminGroups instead. Installs that set auth.defaultAllowedGroups are rejected by the values schema. Use authorization.defaults.adminGroups instead
+* **chart:** the deprecated valkey.existingSecret and valkey.existingSecretKey values have been removed. Installations that provide the Valkey connection URL through these keys must switch to externalKeyValueStore.existingSecret.name (the secret name) and externalKeyValueStore.existingSecret.urlKey (the key holding the URL). The chart now refuses to render while either removed key is set, so the operator cannot silently lose its Valkey connection. Example migration: valkey.existingSecret: my-secret / valkey.existingSecretKey: valkey-url becomes externalKeyValueStore.existingSecret.name: my-secret / externalKeyValueStore.existingSecret.urlKey: valkey-url.
+* **chart:** only affects installations with the bundled Valkey subchart enabled (valkey.enabled: true). The subchart's values changed in v1.0.0; migrate any valkey.* overrides following https://github.com/valkey-io/valkey-helm/blob/main/valkey/UPGRADE.md and do not upgrade with --reuse-values.
+
+### Features
+
+* **auth:** remove deprecated allowedGroups access settings ([9c0db8e](https://github.com/mogenius/renovate-operator/commit/9c0db8ed41e036d3d25b7ca5fa8e6378e508edcf))
+* **chart:** remove deprecated valkey.existingSecret values ([4ca431c](https://github.com/mogenius/renovate-operator/commit/4ca431c0b68e2e94427ebce00db13022d79dda9b))
+* **chart:** update bundled valkey subchart to v1.0.0 ([10ccd02](https://github.com/mogenius/renovate-operator/commit/10ccd023db7ecfa3ea92328dfdf5e5bc9e30f8c1))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.41.0 ([abf306b](https://github.com/mogenius/renovate-operator/commit/abf306b40a7178e0f094e1bbde87604b81f84817))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.21 ([37e8125](https://github.com/mogenius/renovate-operator/commit/37e8125a9c121543acf773e6ba5c3a622b065b5a))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/credentials to v1.21.3 ([e631520](https://github.com/mogenius/renovate-operator/commit/e631520a6ce80c93aa4f9c85ee0b51bbd8d72611))
+* **deps:** update module github.com/valkey-io/valkey-go to v1.0.80 ([1fbed7c](https://github.com/mogenius/renovate-operator/commit/1fbed7c5f2d136a095f2a9dad59b673870b78eb3))
+* **deps:** update registry.k8s.io/kubectl docker tag to v1.37.3 ([829f9d3](https://github.com/mogenius/renovate-operator/commit/829f9d3cbeb430e2de679b7d1490dfa81c2ae5ac))
+
 ## [6.10.0](https://github.com/mogenius/renovate-operator/compare/6.9.0...6.10.0) (2026-11-19)
 
 
