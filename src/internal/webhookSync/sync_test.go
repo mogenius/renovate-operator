@@ -122,6 +122,26 @@ func TestSyncReusesExistingWebhook(t *testing.T) {
 	}
 }
 
+func TestSyncPushesRotatedAuthToken(t *testing.T) {
+	client := newFakeClient()
+	client.hooks["org/a"] = []gitProviderClients.Webhook{
+		{ID: "7", URL: testOpts.WebhookURL, Active: true, EventsUpToDate: true},
+	}
+
+	rotated := testOpts
+	rotated.AuthToken = "rotated"
+	rotated.ForceAuthToken = true
+
+	Sync(context.Background(), logr.Discard(), client, rotated, []string{"org/a"}, nil)
+
+	if len(client.created) != 0 {
+		t.Errorf("expected no hook creation, got %v", client.created)
+	}
+	if len(client.updated) != 1 {
+		t.Fatalf("expected the up-to-date hook to receive the rotated token, got %v", client.updated)
+	}
+}
+
 func TestSyncUpdatesDriftedWebhook(t *testing.T) {
 	client := newFakeClient()
 	// over-subscribed hook, e.g. created before event narrowing existed

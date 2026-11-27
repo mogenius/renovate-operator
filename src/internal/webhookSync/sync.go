@@ -37,6 +37,10 @@ type Options struct {
 	WebhookURL string
 	// AuthToken is optional; providers attach it in their platform-specific way.
 	AuthToken string
+	// ForceAuthToken pushes AuthToken to hooks that are otherwise up to date.
+	// The token is write-only on every platform, so a rotated token cannot be
+	// detected by drift; this is how a rotation reaches the existing hooks.
+	ForceAuthToken bool
 }
 
 // Sync ensures the operator's webhook exists on every project in desired and
@@ -124,15 +128,18 @@ func ensureWebhook(ctx context.Context, logger logr.Logger, client gitProviderCl
 		if found, err := identityOf(hook.URL); err != nil || found != wanted {
 			continue
 		}
-		if hook.URL == opts.WebhookURL && hook.Active && hook.EventsUpToDate {
+		if hook.URL == opts.WebhookURL && hook.Active && hook.EventsUpToDate && !opts.ForceAuthToken {
 			return nil
 		}
 		if _, err := client.UpdateRepoWebhook(ctx, project, hook.ID, desired); err != nil {
 			return err
 		}
-		if hook.URL != opts.WebhookURL {
+		switch {
+		case hook.URL != opts.WebhookURL:
 			logger.Info("updated webhook whose delivery URL changed", "repo", project, "hookID", hook.ID, "from", hook.URL, "to", opts.WebhookURL)
-		} else {
+		case opts.ForceAuthToken && hook.URL == opts.WebhookURL && hook.Active && hook.EventsUpToDate:
+			logger.Info("updated webhook auth token", "repo", project, "hookID", hook.ID)
+		default:
 			logger.Info("updated webhook whose configuration drifted", "repo", project, "hookID", hook.ID)
 		}
 		return nil

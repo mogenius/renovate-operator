@@ -27,6 +27,7 @@ var ownedKeys = map[string]string{
 	"TriggerDiscoveryAnnotationKey":        TriggerDiscoveryAnnotationKey,
 	"TriggerScheduleAllAnnotationKey":      TriggerScheduleAllAnnotationKey,
 	"TriggerScheduleAnnotationKey":         TriggerScheduleAnnotationKey,
+	"WebhookAuthHashAnnotationKey":         WebhookAuthHashAnnotationKey,
 	"TokenExpiresAtAnnotationKey":          TokenExpiresAtAnnotationKey,
 	"RenovateConfigMapAnnotationKey":       RenovateConfigMapAnnotationKey,
 	"FinalizerWebhookCleanup":              FinalizerWebhookCleanup,

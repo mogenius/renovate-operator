@@ -69,9 +69,21 @@ kubectl annotate renovatejob <name> -n <namespace> \
 
 Whitespace around commas is trimmed, so `"org/repo1, org/repo2"` works too.
 
+## Webhook auth token rotation
+
+The webhook auth token is write-only on the Git platform, so the operator cannot detect a rotated value by comparing hook configuration. Instead, the operator keeps a SHA-256 hash of the token in the `renovate-operator.mogenius.com/webhook-auth-hash` annotation on the `RenovateJob` and compares it on every reconcile. When the hash no longer matches the secret referenced by `spec.webhook.authentication.secretRef`, the new token is pushed to every hook of the job automatically and the annotation is updated.
+
+In practice this means rotating the secret is all you have to do:
+
+```sh
+kubectl patch secret <secret-name> -n <namespace> -p '{"stringData": {"token": "<new-token>"}}'
+```
+
+No annotation is needed. Within about a minute (the regular reconcile interval) the operator notices the change and re-applies the token to all hooks. The annotation is managed entirely by the operator — do not set or edit it yourself. Reading the secret only needs a plain `get`, so the chart's restricted Secret RBAC is sufficient.
+
 ## Combining triggers
 
-All three can be set at once. The operator handles them in this order: discovery → schedule-all → schedule.
+All of them can be set at once. The operator handles them in this order: discovery → schedule-all → schedule.
 
 ```sh
 kubectl annotate renovatejob <name> -n <namespace> \

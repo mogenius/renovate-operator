@@ -126,6 +126,7 @@ func (r *RenovateJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "failed to ensure renovate config configmap")
 		}
 		r.handleAnnotationTriggers(ctx, logger, renovateJob, effectiveJob)
+		r.syncWebhookAuthHash(ctx, logger, renovateJob)
 		span.SetStatus(codes.Ok, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	} else if errors.IsNotFound(err) {
@@ -449,6 +450,57 @@ func parseAnnotationProjectList(s string) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+// syncWebhookAuthHash keeps the webhook auth token in step with its secret
+// without any human interaction. The job carries the SHA-256 of the token the
+// hooks were last given as an annotation; a mismatch against the secret's
+// current value means the token was rotated, and the new one is pushed to every
+// hook on the spot. The token is write-only on every platform, so this hash is
+// the only drift signal that survives a rotation, and reading the secret with a
+// plain get keeps the chart's restricted Secret RBAC untouched. Runs on every
+// reconcile (the job requeues every minute), so a rotation lands within a
+// minute of the secret change.
+func (r *RenovateJobReconciler) syncWebhookAuthHash(ctx context.Context, logger logr.Logger, renovateJob *api.RenovateJob) {
+	jobId := crdManager.RenovateJobIdentifier{Name: renovateJob.Name, Namespace: renovateJob.Namespace}
+
+	hash, err := r.Manager.WebhookAuthTokenHash(ctx, jobId)
+	if err != nil {
+		logger.Error(err, "failed to hash the webhook auth token")
+		return
+	}
+	if hash == "" {
+		// No webhook sync (or no secret reference) on this job.
+		return
+	}
+
+	annotated := renovateJob.Annotations[api.WebhookAuthHashAnnotationKey]
+	switch annotated {
+	case hash:
+		return
+	case "":
+		// First sighting: the hooks already carry the current token (they were
+		// created with it), so stamping the hash is all that is needed.
+		if err := crdManager.AddAnnotation(ctx, r.K8sClient, renovateJob, api.WebhookAuthHashAnnotationKey, hash); err != nil {
+			logger.Error(err, "failed to stamp the webhook auth hash annotation")
+		} else {
+			logger.V(1).Info("webhook auth hash recorded")
+		}
+		return
+	}
+
+	// Hash mismatch: the secret changed under the same reference, i.e. the
+	// token was rotated. Push it to every hook, then record the new hash.
+	if err := r.Manager.RefreshWebhookAuth(ctx, jobId); err != nil {
+		// The stale annotation stays, so the next reconcile retries the push.
+		logger.Error(err, "failed to push the rotated webhook auth token")
+		return
+	}
+	if err := crdManager.AddAnnotation(ctx, r.K8sClient, renovateJob, api.WebhookAuthHashAnnotationKey, hash); err != nil {
+		logger.Error(err, "failed to record the rotated webhook auth hash; the push succeeded, the annotation catches up on the next reconcile")
+	} else {
+		logger.Info("rotated webhook auth token pushed to all hooks")
+	}
 }
 
 // templateRefKey renders the index/lookup key for a templateRef, defaulting the
