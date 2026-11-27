@@ -84,6 +84,61 @@ func TestCreateRepoWebhook(t *testing.T) {
 	}
 }
 
+func TestPushEventsSubscription(t *testing.T) {
+	var written []string
+	handler := http.NewServeMux()
+	handler.HandleFunc("/repos/org/repo1/hooks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var payload githubHook
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			written = payload.Events
+			payload.ID = 42
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(payload)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]githubHook{
+			{ID: 1, Events: []string{"issues", "pull_request"}, Active: true},
+			{ID: 2, Events: []string{"pull_request", "push", "issues"}, Active: true},
+		})
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	tests := []struct {
+		name       string
+		pushEvents bool
+		wantEvents []string
+		upToDate   map[string]bool
+	}{
+		{"without push", false, []string{"issues", "pull_request"}, map[string]bool{"1": true, "2": false}},
+		{"with push", true, []string{"issues", "pull_request", "push"}, map[string]bool{"1": false, "2": true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(srv.URL)
+			client.PushEvents = tt.pushEvents
+
+			if _, err := client.CreateRepoWebhook(context.Background(), "org/repo1", gitProviderClients.CreateWebhookOptions{URL: "https://example.com/webhook", Active: true}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !eventsEqual(written, tt.wantEvents) {
+				t.Errorf("expected subscription %v, got %v", tt.wantEvents, written)
+			}
+
+			hooks, err := client.ListRepoWebhooks(context.Background(), "org/repo1")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, hook := range hooks {
+				if hook.EventsUpToDate != tt.upToDate[hook.ID] {
+					t.Errorf("hook %s: expected EventsUpToDate=%v, got %v", hook.ID, tt.upToDate[hook.ID], hook.EventsUpToDate)
+				}
+			}
+		})
+	}
+}
+
 func TestUpdateRepoWebhook(t *testing.T) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/repos/org/repo1/hooks/42", func(w http.ResponseWriter, r *http.Request) {

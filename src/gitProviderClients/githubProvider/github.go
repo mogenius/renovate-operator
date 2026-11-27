@@ -17,6 +17,9 @@ type GitHubClient struct {
 	Endpoint   string
 	Token      string
 	HTTPClient *http.Client
+	// PushEvents adds the push event to the subscription of operator-managed
+	// hooks, for jobs with spec.webhook.triggerOnPush.
+	PushEvents bool
 }
 
 func (c *GitHubClient) GetRepositoryInfo(ctx context.Context, project string) (gitProviderClients.RepositoryInfo, error) {
@@ -79,16 +82,22 @@ type githubHookConfig struct {
 	Secret string `json:"secret,omitempty"`
 }
 
-// githubWebhookEvents is the fixed subscription for operator-managed hooks:
-// the issue and pull request events used by the Renovate checkbox triggers.
-var githubWebhookEvents = []string{"issues", "pull_request"}
+// webhookEvents is the subscription for operator-managed hooks: the issue and
+// pull request events used by the Renovate checkbox and merge triggers, plus
+// push when the job opted into push triggers.
+func (c *GitHubClient) webhookEvents() []string {
+	if c.PushEvents {
+		return []string{"issues", "pull_request", "push"}
+	}
+	return []string{"issues", "pull_request"}
+}
 
-func (h githubHook) toWebhook() gitProviderClients.Webhook {
+func (c *GitHubClient) toWebhook(h githubHook) gitProviderClients.Webhook {
 	return gitProviderClients.Webhook{
 		ID:             strconv.FormatInt(h.ID, 10),
 		URL:            h.Config.URL,
 		Active:         h.Active,
-		EventsUpToDate: eventsEqual(h.Events, githubWebhookEvents),
+		EventsUpToDate: eventsEqual(h.Events, c.webhookEvents()),
 	}
 }
 
@@ -130,7 +139,7 @@ func (c *GitHubClient) ListRepoWebhooks(ctx context.Context, project string) ([]
 			break
 		}
 		for _, hook := range hooks {
-			allHooks = append(allHooks, hook.toWebhook())
+			allHooks = append(allHooks, c.toWebhook(hook))
 		}
 		if len(hooks) < limit {
 			break
@@ -149,7 +158,7 @@ func (c *GitHubClient) CreateRepoWebhook(ctx context.Context, project string, op
 			ContentType: "json",
 			Secret:      opts.AuthToken,
 		},
-		Events: githubWebhookEvents,
+		Events: c.webhookEvents(),
 		Active: opts.Active,
 	}
 
@@ -167,7 +176,7 @@ func (c *GitHubClient) CreateRepoWebhook(ctx context.Context, project string, op
 	if err := decodeResponse(resp, &hook); err != nil {
 		return nil, fmt.Errorf("creating webhook: %w", err)
 	}
-	result := hook.toWebhook()
+	result := c.toWebhook(hook)
 	return &result, nil
 }
 
@@ -178,7 +187,7 @@ func (c *GitHubClient) UpdateRepoWebhook(ctx context.Context, project string, ho
 			ContentType: "json",
 			Secret:      opts.AuthToken,
 		},
-		Events: githubWebhookEvents,
+		Events: c.webhookEvents(),
 		Active: opts.Active,
 	}
 
@@ -196,7 +205,7 @@ func (c *GitHubClient) UpdateRepoWebhook(ctx context.Context, project string, ho
 	if err := decodeResponse(resp, &hook); err != nil {
 		return nil, fmt.Errorf("updating webhook: %w", err)
 	}
-	result := hook.toWebhook()
+	result := c.toWebhook(hook)
 	return &result, nil
 }
 

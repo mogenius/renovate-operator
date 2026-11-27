@@ -64,7 +64,7 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return nil, fmt.Errorf("failed to read platform token for fork filtering: %w", err)
 	}
 
-	return buildClient(platform, endpoint, token)
+	return buildClient(platform, endpoint, token, triggersOnPush(job))
 }
 
 func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, job *api.RenovateJob, ref *api.RenovateSecretKeyReference) (gitProviderClients.GitProviderClient, error) {
@@ -110,7 +110,11 @@ func (f *gitProviderClientFactory) NewClientWithTokenRef(ctx context.Context, jo
 		}
 	}
 
-	return buildClient(platform, endpoint, token)
+	return buildClient(platform, endpoint, token, triggersOnPush(job))
+}
+
+func triggersOnPush(job *api.RenovateJob) bool {
+	return job.Spec.Webhook != nil && job.Spec.Webhook.TriggerOnPush
 }
 
 // validateEndpoint bounds the host the platform client will authenticate to. An
@@ -126,7 +130,9 @@ func (f *gitProviderClientFactory) validateEndpoint(ctx context.Context, endpoin
 	return nil
 }
 
-func buildClient(platform, endpoint, token string) (gitProviderClients.GitProviderClient, error) {
+// buildClient creates the platform client. pushEvents only affects GitHub, the
+// one platform whose push events the webhook server handles.
+func buildClient(platform, endpoint, token string, pushEvents bool) (gitProviderClients.GitProviderClient, error) {
 
 	httpClient := &http.Client{
 		Timeout:   10 * time.Second,
@@ -135,7 +141,7 @@ func buildClient(platform, endpoint, token string) (gitProviderClients.GitProvid
 
 	switch platform {
 	case "github":
-		return &githubProvider.GitHubClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
+		return &githubProvider.GitHubClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient, PushEvents: pushEvents}, nil
 	case "gitlab":
 		return &gitlabProvider.GitLabClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	case "gitea":

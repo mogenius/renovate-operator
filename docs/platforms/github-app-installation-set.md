@@ -186,7 +186,9 @@ only consider sets in that namespace.
 
 The same URL also handles the pull request and issue events described in
 [GitHub webhooks](../webhooks/github.md). To use both, enable `webhook` and
-`webhook.authentication` in the template with the same secret.
+`webhook.authentication` in the template with the same secret. For
+[push triggers](../webhooks/github.md#push-events-opt-in), also set
+`webhook.triggerOnPush` in the template and subscribe the App to **Push** events.
 
 ## Policy
 
