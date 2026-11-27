@@ -48,8 +48,28 @@ export const PR_ACTIONS = {
   unchanged: "unchanged",
 };
 
-/** api.LogIssue levels — pino levels, 40 renders as "warn", 50 as "error". */
-export const LOG_LEVELS = { warn: 40, error: 50 };
+/**
+ * api.LogIssue levels — pino levels. The parser counts 40 as a warning and everything
+ * from 50 up (fatal 60 included) as an error; the UI renders 40 as "warn", 50+ as "error".
+ */
+export const LOG_LEVELS = { warn: 40, error: 50, fatal: 60 };
+
+/**
+ * api.LogIssueCategory — what parser.categorizeIssue (src/internal/parser/issueCategory.go)
+ * files a warning or error under. Each fixture message below carries the category that
+ * function gives it.
+ */
+export const ISSUE_CATEGORIES = {
+  config: "config",
+  deprecation: "deprecation",
+  platform: "platform",
+  lookup: "lookup",
+  branches: "branches",
+  other: "other",
+};
+
+/** parser.MaxIssueMessageLen — longer messages are cut there and get a trailing "…". */
+export const MAX_ISSUE_MESSAGE_LENGTH = 256;
 
 export function buildProject({
   name,
@@ -104,8 +124,15 @@ export function buildLogIssues({
   truncated = false,
   abandonedCount = null,
   abandonedDependencies = [],
+  // Only set when the run logged at debug level; the parser leaves it out otherwise.
+  hasConfigMigration = undefined,
+  // Every warning and error line by category, so it adds up to warnCount + errorCount and
+  // covers lines `issues` leaves out. Absent on statuses written before categories existed.
+  categoryCounts = null,
 } = {}) {
   const logIssues = { warnCount, errorCount };
+  if (hasConfigMigration !== undefined) logIssues.hasConfigMigration = hasConfigMigration;
+  if (categoryCounts) logIssues.categoryCounts = categoryCounts;
   if (issues.length) logIssues.issues = issues;
   if (truncated) logIssues.truncated = true;
   if (abandonedCount !== null) logIssues.abandonedCount = abandonedCount;
@@ -113,9 +140,11 @@ export function buildLogIssues({
   return logIssues;
 }
 
-/** api.LogIssue */
-export function buildLogIssue({ level = LOG_LEVELS.warn, message }) {
-  return { level, message };
+/** api.LogIssue — `category` is absent on statuses written before categories existed. */
+export function buildLogIssue({ level = LOG_LEVELS.warn, message, category = null }) {
+  const issue = { level, message };
+  if (category) issue.category = category;
+  return issue;
 }
 
 /**
@@ -174,12 +203,13 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "11s",
       lastTransition: minutesBeforeLastTransition(30),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 2, branches: 1 },
         errorCount: 2,
         warnCount: 1,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Failed to look up npm package @acme/ui" }),
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Error updating branch: update failure" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Failed to look up npm package @acme/ui", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Error updating branch: update failure", category: ISSUE_CATEGORIES.branches }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures", category: ISSUE_CATEGORIES.lookup }),
         ],
       }),
     },
@@ -268,11 +298,12 @@ export const PROJECT_STATE_VARIANTS = [
       duration: "26s",
       lastTransition: minutesBeforeLastTransition(400),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 2, branches: 1 },
         warnCount: 3,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package file has unsupported registry" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Dependency lookup failure for internal/tooling" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Branch has been modified externally" }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Package file has unsupported registry", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Dependency lookup failure for internal/tooling", category: ISSUE_CATEGORIES.lookup }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Branch has been modified externally", category: ISSUE_CATEGORIES.branches }),
         ],
       }),
     },
@@ -295,12 +326,13 @@ export const PROJECT_STATE_VARIANTS = [
         ],
       }),
       logIssues: buildLogIssues({
+        categoryCounts: { branches: 1, platform: 1, other: 1 },
         errorCount: 1,
         warnCount: 2,
         issues: [
-          buildLogIssue({ level: LOG_LEVELS.error, message: "Artifact update error in package-lock.json" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Registry rate limit reached, retrying" }),
-          buildLogIssue({ level: LOG_LEVELS.warn, message: "Ignoring pinned dependency internal/base" }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Artifact update error in package-lock.json", category: ISSUE_CATEGORIES.branches }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Registry rate limit reached, retrying", category: ISSUE_CATEGORIES.platform }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Ignoring pinned dependency internal/base", category: ISSUE_CATEGORIES.other }),
         ],
       }),
     },
@@ -327,6 +359,7 @@ export const PROJECT_STATE_VARIANTS = [
         ),
       }),
       logIssues: buildLogIssues({
+        categoryCounts: { lookup: 40 },
         warnCount: 34,
         errorCount: 6,
         truncated: true,
@@ -334,9 +367,150 @@ export const PROJECT_STATE_VARIANTS = [
           buildLogIssue({
             level: index % 2 === 0 ? LOG_LEVELS.warn : LOG_LEVELS.error,
             message: `Dependency lookup failure for vendor/module-${index + 1}`,
+            category: ISSUE_CATEGORIES.lookup,
           }),
         ),
       }),
+    },
+  },
+  {
+    key: "onboarding-with-lookup-failures",
+    description:
+      "not onboarded yet, but its run still warned — the most common 'With Issues' " +
+      "project on a live install, where onboarding repos fail package lookups",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.onboarding,
+      duration: "21s",
+      lastTransition: minutesBeforeLastTransition(1480),
+      prActivity: buildPRActivity({
+        created: 1,
+        prs: [
+          buildPRDetail({ branch: "renovate/configure", number: 1, title: "Configure Renovate", action: PR_ACTIONS.created }),
+        ],
+      }),
+      logIssues: buildLogIssues({
+        categoryCounts: { lookup: 1 },
+        warnCount: 1,
+        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures", category: ISSUE_CATEGORIES.lookup })],
+      }),
+    },
+  },
+  {
+    key: "completed-with-config-warnings",
+    description: "the repository's own Renovate config is at fault, not a dependency",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "29s",
+      lastTransition: minutesBeforeLastTransition(460),
+      logIssues: buildLogIssues({
+        categoryCounts: { config: 2 },
+        warnCount: 2,
+        hasConfigMigration: true,
+        issues: [
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Found renovate config warnings", category: ISSUE_CATEGORIES.config }),
+          buildLogIssue({ level: LOG_LEVELS.warn, message: "Config validation errors found in packageRules", category: ISSUE_CATEGORIES.config }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-deprecation",
+    description: "a deprecation notice only — nothing failed, but it will one day",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "37s",
+      lastTransition: minutesBeforeLastTransition(470),
+      logIssues: buildLogIssues({
+        categoryCounts: { deprecation: 1 },
+        warnCount: 1,
+        issues: [
+          buildLogIssue({
+            level: LOG_LEVELS.warn,
+            message: "Updating multiple npm lock files is deprecated and support will be removed in future versions.",
+            category: ISSUE_CATEGORIES.deprecation,
+          }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-long-message",
+    description: "a message the parser cut at MAX_ISSUE_MESSAGE_LENGTH and suffixed with '…'",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "44s",
+      lastTransition: minutesBeforeLastTransition(480),
+      logIssues: buildLogIssues({
+        categoryCounts: { branches: 1 },
+        errorCount: 1,
+        issues: [
+          buildLogIssue({
+            level: LOG_LEVELS.error,
+            message:
+              ("Command failed: npm install --package-lock-only --ignore-scripts --no-audit " +
+                "npm ERR! code ERESOLVE npm ERR! ERESOLVE unable to resolve dependency tree " +
+                "npm ERR! While resolving: @acme/web@1.0.0 npm ERR! Found: react@18.3.1 ".repeat(3))
+                .slice(0, MAX_ISSUE_MESSAGE_LENGTH) + "…",
+            category: ISSUE_CATEGORIES.branches,
+          }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "failed-with-fatal-auth-error",
+    description: "a fatal (level 60) platform error — counted as an error, rendered as one",
+    project: {
+      status: PROJECT_STATUSES.failed,
+      duration: "3s",
+      lastTransition: minutesBeforeLastTransition(35),
+      logIssues: buildLogIssues({
+        categoryCounts: { platform: 2 },
+        errorCount: 2,
+        issues: [
+          buildLogIssue({ level: LOG_LEVELS.fatal, message: "Authentication failure", category: ISSUE_CATEGORIES.platform }),
+          buildLogIssue({ level: LOG_LEVELS.error, message: "Repository is not accessible: 403 Forbidden", category: ISSUE_CATEGORIES.platform }),
+        ],
+      }),
+    },
+  },
+  {
+    key: "completed-with-counts-but-no-messages",
+    description:
+      "warnings counted, but every one had an empty message — the parser stores none, so " +
+      "the row shows the badge without a detail list",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "25s",
+      lastTransition: minutesBeforeLastTransition(490),
+      logIssues: buildLogIssues({ warnCount: 2, categoryCounts: { other: 2 } }),
+    },
+  },
+  {
+    key: "completed-with-issues-before-categories",
+    description:
+      "a status written before the operator categorised issues — no categoryCounts and no " +
+      "category on the message, so the UI files it under 'Other' until the next run",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "23s",
+      lastTransition: minutesBeforeLastTransition(510),
+      logIssues: buildLogIssues({
+        warnCount: 1,
+        issues: [buildLogIssue({ level: LOG_LEVELS.warn, message: "Package lookup failures" })],
+      }),
+    },
+  },
+  {
+    key: "completed-config-migration-only",
+    description:
+      "the config needs migrating (a debug-level finding) and nothing warned — NOT " +
+      "'With Issues', which only counts level 40 and up",
+    project: {
+      renovateResultStatus: RENOVATE_RESULT_STATUSES.done,
+      duration: "31s",
+      lastTransition: minutesBeforeLastTransition(500),
+      logIssues: buildLogIssues({ hasConfigMigration: true }),
     },
   },
   {
@@ -479,8 +653,8 @@ export function buildRenovateJob({
  *
  * Every card leads with VARIANT_KEYS_IN_EVERY_JOB — including one failing project,
  * so the "failed" stat filter selects a predictable subset of each job — and fills
- * the rest from the remaining states, rotated by job index so no two cards look
- * alike. The result is the payload `just ui-dev` serves as well.
+ * the rest from the remaining states, each card continuing where the previous one
+ * stopped, so no two cards look alike and the dashboard as a whole shows every state. The result is the payload `just ui-dev` serves as well.
  */
 export function buildMultiJobDashboard({ jobCount = 5, projectsPerJob = 12 } = {}) {
   return Array.from({ length: jobCount }, (_, jobIndex) =>
@@ -491,7 +665,8 @@ export function buildMultiJobDashboard({ jobCount = 5, projectsPerJob = 12 } = {
           projectIndex < VARIANT_KEYS_IN_EVERY_JOB.length
             ? VARIANT_KEYS_IN_EVERY_JOB[projectIndex]
             : REMAINING_VARIANT_KEYS[
-                (projectIndex - VARIANT_KEYS_IN_EVERY_JOB.length + jobIndex) %
+                (projectIndex - VARIANT_KEYS_IN_EVERY_JOB.length +
+                  jobIndex * (projectsPerJob - VARIANT_KEYS_IN_EVERY_JOB.length)) %
                   REMAINING_VARIANT_KEYS.length
               ];
         return buildProjectInState(`acme/service-${jobIndex + 1}-${projectIndex + 1}`, variantKey);

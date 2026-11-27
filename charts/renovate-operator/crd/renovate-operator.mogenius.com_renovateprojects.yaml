@@ -108,6 +108,14 @@ spec:
                     items:
                       type: string
                     type: array
+                  categoryCounts:
+                    additionalProperties:
+                      type: integer
+                    description: |-
+                      CategoryCounts counts every warning and error line by category, like WarnCount and
+                      ErrorCount do, so it also covers the lines Issues leaves out. Its values add up to
+                      WarnCount + ErrorCount.
+                    type: object
                   errorCount:
                     type: integer
                   hasConfigMigration:
@@ -117,6 +125,10 @@ spec:
                       description: LogIssue represents a single warning or error from
                         Renovate logs.
                       properties:
+                        category:
+                          description: Category is empty on statuses written before
+                            issues were categorised.
+                          type: string
                         level:
                           type: integer
                         message:

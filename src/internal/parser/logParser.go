@@ -146,6 +146,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 
 	// Issue accumulation
 	var warnCount, errorCount int
+	var categoryCounts map[api.LogIssueCategory]int
 	var hasConfigMigration, hasDebugLog bool
 	var issues []api.LogIssue
 	seenMessages := make(map[string]bool)
@@ -176,6 +177,13 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			} else {
 				warnCount++
 			}
+			// Classified on the whole message, before it is cut, and for every line, so the
+			// per-category counts add up to warnCount + errorCount.
+			category := categorizeIssue(entry.Msg)
+			if categoryCounts == nil {
+				categoryCounts = make(map[api.LogIssueCategory]int)
+			}
+			categoryCounts[category]++
 			msg := entry.Msg
 			if len(msg) > MaxIssueMessageLen {
 				msg = msg[:MaxIssueMessageLen] + "…"
@@ -183,7 +191,7 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			if msg != "" && !seenMessages[msg] {
 				seenMessages[msg] = true
 				if len(issues) < MaxLogIssues {
-					issues = append(issues, api.LogIssue{Level: entry.Level, Message: msg})
+					issues = append(issues, api.LogIssue{Level: entry.Level, Message: msg, Category: category})
 				} else {
 					issuesTruncated = true
 				}
@@ -332,10 +340,11 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 			result.PRActivity = buildPRActivity(branchMap)
 		}
 		logIssues := &api.LogIssues{
-			WarnCount:  warnCount,
-			ErrorCount: errorCount,
-			Issues:     issues,
-			Truncated:  issuesTruncated,
+			WarnCount:      warnCount,
+			ErrorCount:     errorCount,
+			CategoryCounts: categoryCounts,
+			Issues:         issues,
+			Truncated:      issuesTruncated,
 		}
 		if hasDebugLog {
 			logIssues.HasConfigMigration = &hasConfigMigration

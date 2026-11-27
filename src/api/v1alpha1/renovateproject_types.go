@@ -37,19 +37,45 @@ type PRActivity struct {
 	Truncated     bool       `json:"truncated,omitempty"`
 }
 
+// LogIssueCategory says what a warning or error from Renovate logs is about, so the UI can
+// tell a broken repository config apart from a registry outage or a deprecation notice.
+type LogIssueCategory string
+
+const (
+	// LogIssueCategoryConfig: the repository's Renovate config, or a preset it extends.
+	LogIssueCategoryConfig LogIssueCategory = "config"
+	// LogIssueCategoryDeprecation: works today, will stop working in a later Renovate version.
+	LogIssueCategoryDeprecation LogIssueCategory = "deprecation"
+	// LogIssueCategoryPlatform: authentication, permissions or rate limits of the Git platform
+	// or a registry.
+	LogIssueCategoryPlatform LogIssueCategory = "platform"
+	// LogIssueCategoryLookup: a dependency's versions could not be looked up.
+	LogIssueCategoryLookup LogIssueCategory = "lookup"
+	// LogIssueCategoryBranches: creating or updating a branch, a lock file or another artifact failed.
+	LogIssueCategoryBranches LogIssueCategory = "branches"
+	// LogIssueCategoryOther: not recognised, including lines without a message.
+	LogIssueCategoryOther LogIssueCategory = "other"
+)
+
 // LogIssue represents a single warning or error from Renovate logs.
 type LogIssue struct {
 	Level   int    `json:"level"`
 	Message string `json:"message"`
+	// Category is empty on statuses written before issues were categorised.
+	Category LogIssueCategory `json:"category,omitempty"`
 }
 
 // LogIssues contains aggregate counts and individual issue messages from a Renovate run.
 type LogIssues struct {
-	WarnCount          int        `json:"warnCount"`
-	ErrorCount         int        `json:"errorCount"`
-	HasConfigMigration *bool      `json:"hasConfigMigration,omitempty"`
-	Issues             []LogIssue `json:"issues,omitempty"`
-	Truncated          bool       `json:"truncated,omitempty"`
+	WarnCount          int   `json:"warnCount"`
+	ErrorCount         int   `json:"errorCount"`
+	HasConfigMigration *bool `json:"hasConfigMigration,omitempty"`
+	// CategoryCounts counts every warning and error line by category, like WarnCount and
+	// ErrorCount do, so it also covers the lines Issues leaves out. Its values add up to
+	// WarnCount + ErrorCount.
+	CategoryCounts map[LogIssueCategory]int `json:"categoryCounts,omitempty"`
+	Issues         []LogIssue               `json:"issues,omitempty"`
+	Truncated      bool                     `json:"truncated,omitempty"`
 	// AbandonedCount is the number of dependencies Renovate flagged as abandoned
 	// (abandonmentThreshold). Nil when the run had no debug logs, so the count is unknown.
 	AbandonedCount *int `json:"abandonedCount,omitempty"`
@@ -156,6 +182,12 @@ func (in *RenovateProject) DeepCopyInto(out *RenovateProject) {
 		if in.Status.LogIssues.HasConfigMigration != nil {
 			out.Status.LogIssues.HasConfigMigration = new(bool)
 			*out.Status.LogIssues.HasConfigMigration = *in.Status.LogIssues.HasConfigMigration
+		}
+		if in.Status.LogIssues.CategoryCounts != nil {
+			out.Status.LogIssues.CategoryCounts = make(map[LogIssueCategory]int, len(in.Status.LogIssues.CategoryCounts))
+			for category, count := range in.Status.LogIssues.CategoryCounts {
+				out.Status.LogIssues.CategoryCounts[category] = count
+			}
 		}
 		if in.Status.LogIssues.Issues != nil {
 			out.Status.LogIssues.Issues = make([]LogIssue, len(in.Status.LogIssues.Issues))

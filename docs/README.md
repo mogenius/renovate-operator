@@ -62,7 +62,7 @@ Day-2 concerns: observability, storage, and cost allocation.
 | Guide                                                      |                                            |
 | ---------------------------------------------------------- | ------------------------------------------ |
 | [Metrics](./operations/metrics.md)                         | Prometheus metrics and alerting rules      |
-| [PR Activity](./operations/pr-activity.md)                 | Tracking open PRs and dependency issues    |
+| [PR Activity](./operations/pr-activity.md)                 | Tracking open PRs, log issues and their categories, and the With Issues filter |
 | [Valkey / Redis](./operations/valkey.md)                   | Session storage, log storage, and caching  |
 | [S3 Object Storage](./operations/s3.md)                    | Log archival and Renovate cache forwarding |
 | [Pod Label Templates](./operations/pod-label-templates.md) | Templated labels for cost allocation       |
@@ -81,3 +81,11 @@ Day-2 concerns: observability, storage, and cost allocation.
 | Guide                                        |                                          |
 | -------------------------------------------- | ---------------------------------------- |
 | [v5 → v6](./migration/migration-v5-to-v6.md) | Policy engine and access control changes |
+
+## Design
+
+Research and plans for features that are not (fully) built yet.
+
+| Document                                                        |                                                          |
+| --------------------------------------------------------------- | -------------------------------------------------------- |
+| [Stat badge refinements](./design/stat-badge-refinements.md)    | Narrowing every dashboard badge the way With Issues is   |
