@@ -4550,6 +4550,35 @@ spec:
                     required:
                     - enabled
                     type: object
+                  triggerOnEvent:
+                    description: |-
+                      Platform events that trigger a Renovate run for the repository. When
+                      set, replaces the operator-wide WEBHOOK_TRIGGER_ON_EVENT setting as a
+                      whole; when unset, that setting applies (default: every event).
+                    properties:
+                      issues:
+                        items:
+                          description: |-
+                            IssueTriggerEvent is an issue (Dependency Dashboard) event that can trigger
+                            a Renovate run.
+                          enum:
+                          - edited
+                          - closed
+                          type: string
+                        type: array
+                      pullRequest:
+                        items:
+                          description: |-
+                            PullRequestTriggerEvent is a pull/merge request event that can trigger a
+                            Renovate run. Platforms that lack an event never send it.
+                          enum:
+                          - edited
+                          - merged
+                          - closed
+                          - reopened
+                          type: string
+                        type: array
+                    type: object
                 required:
                 - enabled
                 type: object

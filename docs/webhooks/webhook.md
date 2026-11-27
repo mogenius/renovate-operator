@@ -174,6 +174,52 @@ spec:
 Older Renovate versions read the footer from `RENOVATE_DEPENDENCY_DASHBOARD_FOOTER` instead. Newer
 versions still accept it but log `env config has been migrated into dependencyDashboard` on every run.
 
+## Choosing which events trigger a run
+
+By default every supported platform event schedules a run. Events are grouped by kind; GitLab merge
+requests count as `pullRequest`:
+
+| Event | Fires when | Platforms |
+|---|---|---|
+| `pullRequest: edited` | a Renovate checkbox is ticked in the PR/MR description | all |
+| `pullRequest: merged` | any PR/MR is merged | all |
+| `pullRequest: closed` | a Renovate PR is closed without merging | GitHub, Gitea, Forgejo, Bitbucket |
+| `pullRequest: reopened` | a Renovate PR is reopened | Gitea, Forgejo |
+| `issues: edited` | a checkbox is ticked in the Dependency Dashboard | GitHub, GitLab, Gitea, Forgejo |
+| `issues: closed` | the Dependency Dashboard is closed with a checkbox ticked | GitHub |
+
+To narrow this for the whole operator, set the Helm value `webhook.triggerOnEvent` (environment
+variable `WEBHOOK_TRIGGER_ON_EVENT`, as JSON):
+
+```yaml
+webhook:
+  triggerOnEvent:
+    pullRequest:
+      - edited
+    issues:
+      - edited
+```
+
+A RenovateJob (or template) can set its own list with `spec.webhook.triggerOnEvent`. When set, it
+replaces the operator-wide list as a whole: a kind left out triggers on nothing, and
+`triggerOnEvent: {}` turns off every platform event for the job. Calls to `/webhook/v1/schedule` are
+not affected.
+
+```yaml
+spec:
+  webhook:
+    enabled: true
+    triggerOnEvent:
+      pullRequest:
+        - edited
+        - merged
+      issues:
+        - edited
+```
+
+Events filtered out this way are answered with `200 OK` and a reason such as
+`"trigger event disabled: pullRequest.merged"`.
+
 ## Notes and best practices
 
 - Prefer HTTPS for the webhook ingress and restrict access to trusted networks when possible.

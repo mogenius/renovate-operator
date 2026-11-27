@@ -314,6 +314,16 @@ func main() {
 			Optional: true,
 		},
 		{
+			Key:      "WEBHOOK_TRIGGER_ON_EVENT",
+			Optional: true,
+			Validate: func(value string) error {
+				if _, err := api.ParseWebhookTriggerEvents(value); err != nil {
+					return fmt.Errorf("'WEBHOOK_TRIGGER_ON_EVENT': %w", err)
+				}
+				return nil
+			},
+		},
+		{
 			Key:      "WEBHOOK_SERVER_UNIFIED_HOST",
 			Optional: true,
 			Default:  "false",
@@ -935,7 +945,8 @@ func main() {
 
 	if config.GetValue("WEBHOOK_SERVER_ENABLED") != "false" {
 		webhookServer := webhook.NewWebookServer(jobMgr, discovery, ctrl.Log.WithName("webhook")).
-			WithInstallationSets(mgr.GetClient(), guardRails)
+			WithInstallationSets(mgr.GetClient(), guardRails).
+			WithTriggerEvents(webhookTriggerEvents())
 
 		if config.GetValue("WEBHOOK_SERVER_UNIFIED_HOST") == "false" {
 			webhookServer.Run()
@@ -1065,4 +1076,10 @@ func operatorNamespace() string {
 		return ""
 	}
 	return strings.TrimSpace(string(ns))
+}
+
+func webhookTriggerEvents() api.WebhookTriggerEvents {
+	events, err := api.ParseWebhookTriggerEvents(config.GetValue("WEBHOOK_TRIGGER_ON_EVENT"))
+	assert.NoError(err, "invalid WEBHOOK_TRIGGER_ON_EVENT") // validated at config init
+	return events
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -32,6 +33,54 @@ type Server struct {
 	server           *http.Server
 	installationSets client.Client
 	policy           policy.Policy
+	// operator-wide trigger events for jobs that leave
+	// spec.webhook.triggerOnEvent unset; nil means every event
+	triggerEvents *api.WebhookTriggerEvents
+}
+
+// WithTriggerEvents sets the trigger events for jobs that leave
+// spec.webhook.triggerOnEvent unset.
+func (s *Server) WithTriggerEvents(events api.WebhookTriggerEvents) *Server {
+	s.triggerEvents = &events
+	return s
+}
+
+// triggerEvent is a platform event normalized across providers, e.g.
+// pullRequest/merged for a merged GitLab merge request.
+type triggerEvent struct {
+	pullRequest api.PullRequestTriggerEvent
+	issue       api.IssueTriggerEvent
+}
+
+func (e triggerEvent) String() string {
+	if e.pullRequest != "" {
+		return "pullRequest." + string(e.pullRequest)
+	}
+	return "issues." + string(e.issue)
+}
+
+// ignoreTriggerEvent answers the request and returns true when ev must not
+// trigger jobId. Fails open: if the job can't be read, the event triggers.
+func (s *Server) ignoreTriggerEvent(ctx context.Context, w http.ResponseWriter, provider string, jobId crdmanager.RenovateJobIdentifier, ev triggerEvent) bool {
+	job, err := s.manager.GetRenovateJob(ctx, jobId.Name, jobId.Namespace)
+	if err != nil {
+		s.logger.Error(err, "failed to read RenovateJob for its trigger events, triggering anyway", "renovateJob", jobId.Name, "namespace", jobId.Namespace)
+		return false
+	}
+	allowed := s.triggerEvents
+	if job.Spec.Webhook != nil && job.Spec.Webhook.TriggerOnEvent != nil {
+		allowed = job.Spec.Webhook.TriggerOnEvent
+	}
+	if allowed == nil ||
+		(ev.pullRequest != "" && slices.Contains(allowed.PullRequest, ev.pullRequest)) ||
+		(ev.issue != "" && slices.Contains(allowed.Issues, ev.issue)) {
+		return false
+	}
+	reason := "trigger event disabled: " + ev.String()
+	metricStore.IncWebhookRequest(ctx, provider, "ignored")
+	s.logger.Info("ignoring "+provider+" webhook event", "reason", reason, "renovateJob", jobId.Name, "namespace", jobId.Namespace)
+	s.writeJSON(w, http.StatusOK, map[string]string{"message": "event ignored", "reason": reason})
+	return true
 }
 
 // webhookProcessingTimeout bounds how long a delivery is processed once received, whether or

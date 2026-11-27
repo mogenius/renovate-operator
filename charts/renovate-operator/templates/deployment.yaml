@@ -117,6 +117,10 @@ spec:
               value: "true"
             - name: WEBHOOK_SERVER_UNIFIED_HOST
               value: {{ .Values.webhook.unifiedWebhookHost | quote }}
+            {{- with .Values.webhook.triggerOnEvent }}
+            - name: WEBHOOK_TRIGGER_ON_EVENT
+              value: {{ toJson . | quote }}
+            {{- end }}
             {{- $webhookBaseUrl := include "renovate-operator.webhookBaseUrl" . }}
             {{- if $webhookBaseUrl }}
             - name: WEBHOOK_BASE_URL

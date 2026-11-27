@@ -80,6 +80,9 @@ func (s *Server) gitLabWebhook(w http.ResponseWriter, r *http.Request) {
 		s.handleResolverError(w, err)
 		return
 	}
+	if s.ignoreTriggerEvent(ctx, w, provider, jobId, gitLabTriggerEvent(&payload)) {
+		return
+	}
 
 	s.logger.Info("received GitLab event", "repository", project, "action", payload.ObjectAttributes.Action, "priority", 1)
 	err = s.manager.UpdateProjectStatus(
@@ -105,7 +108,7 @@ func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
 		return false, "object kind is not merge_request or issue"
 	}
 
-	if payload.ObjectKind == "merge_request" && payload.ObjectAttributes.Action == "merge" {
+	if isGitLabMergeEvent(payload) {
 		return true, ""
 	}
 
@@ -121,4 +124,20 @@ func isValidGitLabEvent(payload *GitLabEvent) (bool, string) {
 		return false, "not a valid renovate checkbox change"
 	}
 	return true, ""
+}
+
+func isGitLabMergeEvent(payload *GitLabEvent) bool {
+	return payload.ObjectKind == "merge_request" && payload.ObjectAttributes.Action == "merge"
+}
+
+// gitLabTriggerEvent normalizes an event that passed isValidGitLabEvent.
+func gitLabTriggerEvent(payload *GitLabEvent) triggerEvent {
+	switch {
+	case isGitLabMergeEvent(payload):
+		return triggerEvent{pullRequest: api.PullRequestMerged}
+	case payload.ObjectKind == "merge_request":
+		return triggerEvent{pullRequest: api.PullRequestEdited}
+	default:
+		return triggerEvent{issue: api.IssueEdited}
+	}
 }

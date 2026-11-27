@@ -1,0 +1,40 @@
+chart:
+  appVersion: 0.1.0
+  version: 0.1.0
+suite: webhook.triggerOnEvent
+release:
+  name: renovate-operator-unittest
+  namespace: testing
+templates:
+- templates/deployment.yaml
+tests:
+- it: Omits WEBHOOK_TRIGGER_ON_EVENT by default
+  set:
+    webhook.enabled: true
+  asserts:
+  - notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_TRIGGER_ON_EVENT
+      any: true
+
+- it: Renders the selected events as JSON
+  set:
+    webhook.enabled: true
+    webhook.triggerOnEvent:
+      pullRequest: [edited, merged]
+      issues: [edited]
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: WEBHOOK_TRIGGER_ON_EVENT
+        value: '{"issues":["edited"],"pullRequest":["edited","merged"]}'
+
+- it: Rejects unknown events
+  set:
+    webhook.enabled: true
+    webhook.triggerOnEvent:
+      pullRequest: [pushed]
+  asserts:
+  - failedTemplate: {}

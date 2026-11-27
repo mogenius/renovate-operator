@@ -111,6 +111,9 @@ func (s *Server) forgejoWebhook(w http.ResponseWriter, r *http.Request) {
 		s.handleResolverError(w, err)
 		return
 	}
+	if s.ignoreTriggerEvent(ctx, w, provider, jobId, forgejoTriggerEvent(event, &payload)) {
+		return
+	}
 
 	s.logger.Info("received Forgejo event", "event", event, "repository", project, "action", payload.Action)
 	err = s.manager.UpdateProjectStatus(
@@ -149,7 +152,7 @@ func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
 		if payload.PullRequest == nil {
 			return false, "no pull request in payload"
 		}
-		if payload.PullRequest.Merged {
+		if isForgejoMergeEvent(event, payload) {
 			return true, ""
 		}
 		if payload.PullRequest.Body == "" {
@@ -172,5 +175,25 @@ func isValidForgejoEvent(event string, payload *ForgejoEvent) (bool, string) {
 
 	default:
 		return false, "unsupported event type: " + event
+	}
+}
+
+func isForgejoMergeEvent(event string, payload *ForgejoEvent) bool {
+	return event == "pull_request" && payload.PullRequest != nil && payload.PullRequest.Merged
+}
+
+// forgejoTriggerEvent normalizes an event that passed isValidForgejoEvent.
+func forgejoTriggerEvent(event string, payload *ForgejoEvent) triggerEvent {
+	switch {
+	case event == "issues":
+		return triggerEvent{issue: api.IssueEdited}
+	case isForgejoMergeEvent(event, payload):
+		return triggerEvent{pullRequest: api.PullRequestMerged}
+	case payload.Action == "closed":
+		return triggerEvent{pullRequest: api.PullRequestClosed}
+	case payload.Action == "reopened":
+		return triggerEvent{pullRequest: api.PullRequestReopened}
+	default:
+		return triggerEvent{pullRequest: api.PullRequestEdited}
 	}
 }
