@@ -180,3 +180,4 @@ versions still accept it but log `env config has been migrated into dependencyDa
 - Use single-purpose tokens and rotate them periodically.
 - The `project` parameter should be URL-encoded (for example `group/repo` becomes `group%2Frepo`).
 - Projects must have been discovered at least once before webhooks can trigger them — the operator matches the incoming project name against the job's discovered project list.
+- A trigger for a project that is already running is not lost: the project is queued again, at the trigger's priority, as soon as that run ends. This covers the merge events Renovate's own automerge sends while it is still running. Several triggers during one run add a single follow-up run, and cancelling the run drops it. A one-off run with its own options (custom base branch, dry run, debug) requested from the UI during a run is still ignored.
