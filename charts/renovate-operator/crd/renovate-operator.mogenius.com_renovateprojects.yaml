@@ -99,7 +99,8 @@ spec:
                   abandonedCount:
                     description: |-
                       AbandonedCount is the number of dependencies Renovate flagged as abandoned
-                      (abandonmentThreshold). Nil when the run had no debug logs, so the count is unknown.
+                      (abandonmentThreshold). Nil when the run logged neither a report with looked-up
+                      dependencies nor debug logs, so the count is unknown.
                     type: integer
                   abandonedDependencies:
                     description: |-

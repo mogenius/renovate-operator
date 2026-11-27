@@ -126,9 +126,16 @@ it for the package list, capped at 50), the project status carries
 `logIssues.abandonedCount` / `logIssues.abandonedDependencies`, and
 `renovate_operator_abandoned_dependencies` exports the count.
 
-Renovate logs this at debug level only, so it needs `RENOVATE_LOG_LEVEL=debug` (via
-`extraEnv`). Without debug logs the count is unknown: the status field is omitted and the
-metric is not exported. Package names are never used as metric labels.
+The operator reads this from the report Renovate logs at the end of a run
+(`RENOVATE_REPORT_TYPE=logging`, set by default), the same data Renovate's Dependency
+Dashboard uses, so no debug logging is needed. If you override `RENOVATE_REPORT_TYPE` via
+`extraEnv`, it falls back to a line Renovate logs at debug level only
+(`RENOVATE_LOG_LEVEL=debug`). For repositories with several `baseBranches` the report
+covers only the first one; debug logs cover all of them.
+
+When neither source is available, or the run stopped before Renovate looked up
+dependencies, the count is unknown: the status field is omitted and the metric is not
+exported. Package names are never used as metric labels.
 
 ## Example Prometheus Alerting Rules
 
