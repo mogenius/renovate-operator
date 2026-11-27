@@ -129,7 +129,7 @@ func TestFindAndAuthenticateJob(t *testing.T) {
 			entries: []testJobEntry{makeEntry("job1", "ns1", true, true, "org/repo")},
 			project: "org/repo",
 			checker: errorChecker,
-			wantErr: ErrAuthenticationFailed,
+			wantErr: ErrCredentialCheckFailed,
 		},
 		{
 			name:    "single match auth enabled no checker",
@@ -242,7 +242,7 @@ func TestFindAndAuthenticateJob(t *testing.T) {
 					return
 				}
 				// For sentinel errors, check with errors.Is; for generic errors just check non-nil.
-				if errors.Is(tt.wantErr, ErrNoMatchingJob) || errors.Is(tt.wantErr, ErrAuthenticationFailed) {
+				if errors.Is(tt.wantErr, ErrNoMatchingJob) || errors.Is(tt.wantErr, ErrAuthenticationFailed) || errors.Is(tt.wantErr, ErrCredentialCheckFailed) {
 					if !errors.Is(err, tt.wantErr) {
 						t.Errorf("expected error %v, got %v", tt.wantErr, err)
 					}
@@ -260,9 +260,6 @@ func TestFindAndAuthenticateJob(t *testing.T) {
 	}
 }
 
-// A checker that errors (the webhook secret could not be read) is still reported as an
-// authentication failure, but the cause must survive so the "webhook resolve failed" log
-// line says why instead of looking like a credential mismatch.
 func TestFindAndAuthenticateJobKeepsCheckerErrorCause(t *testing.T) {
 	lister := &mockJobLister{entries: []testJobEntry{
 		makeEntry("job1", "ns1", true, true, "org/repo"),
@@ -270,8 +267,8 @@ func TestFindAndAuthenticateJobKeepsCheckerErrorCause(t *testing.T) {
 	}}
 
 	_, err := FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", errorChecker)
-	if !errors.Is(err, ErrAuthenticationFailed) {
-		t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
+	if !errors.Is(err, ErrCredentialCheckFailed) || errors.Is(err, ErrAuthenticationFailed) {
+		t.Fatalf("expected ErrCredentialCheckFailed only, got %v", err)
 	}
 	for _, want := range []string{"ns1/job1: auth error", "ns1/job2: auth error"} {
 		if !strings.Contains(err.Error(), want) {
@@ -282,6 +279,31 @@ func TestFindAndAuthenticateJobKeepsCheckerErrorCause(t *testing.T) {
 	_, err = FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", failingChecker)
 	if err != ErrAuthenticationFailed {
 		t.Errorf("a plain mismatch should return the bare sentinel, got %v", err)
+	}
+}
+
+func TestFindAndAuthenticateJobCheckerErrorOnOneCandidate(t *testing.T) {
+	lister := &mockJobLister{entries: []testJobEntry{
+		makeEntry("job1", "ns1", true, true, "org/repo"),
+		makeEntry("job2", "ns1", true, true, "org/repo"),
+	}}
+	checkerFor := func(job2Valid bool) AuthChecker {
+		return func(_ context.Context, id crdmanager.RenovateJobIdentifier) (bool, error) {
+			if id.Name == "job1" {
+				return false, errors.New("auth error")
+			}
+			return job2Valid, nil
+		}
+	}
+
+	id, err := FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", checkerFor(true))
+	if err != nil || id.Name != "job2" {
+		t.Errorf("expected job2 to authenticate, got id=%+v err=%v", id, err)
+	}
+
+	_, err = FindAndAuthenticateJob(context.Background(), lister, "", "", "org/repo", checkerFor(false))
+	if !errors.Is(err, ErrCredentialCheckFailed) {
+		t.Errorf("expected ErrCredentialCheckFailed, got %v", err)
 	}
 }
 
@@ -380,7 +402,7 @@ func TestAuthenticateJobForAllProjects(t *testing.T) {
 			namespace: "ns1",
 			jobName:   "job1",
 			checker:   errorChecker,
-			wantErr:   ErrAuthenticationFailed,
+			wantErr:   ErrCredentialCheckFailed,
 			wantMsg:   "ns1/job1: auth error",
 		},
 		{

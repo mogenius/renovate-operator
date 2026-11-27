@@ -19,6 +19,8 @@ var ErrNoMatchingJob = errors.New("no matching renovate job found")
 // ErrAuthenticationFailed is returned when candidates were found but none passed authentication.
 var ErrAuthenticationFailed = errors.New("authentication failed")
 
+var ErrCredentialCheckFailed = errors.New("credential check failed")
+
 // AuthChecker validates a credential against a specific RenovateJob.
 type AuthChecker func(ctx context.Context, jobId crdmanager.RenovateJobIdentifier) (bool, error)
 
@@ -42,9 +44,7 @@ type credentialValidator interface {
 // require checker to return true. Returns the first authenticated candidate.
 //
 // Returns ErrNoMatchingJob when no job matches the filters, ErrAuthenticationFailed when
-// candidates exist but none pass authentication. When a checker failed with an error rather
-// than a mismatch (e.g. the webhook secret could not be read), the returned error still
-// matches ErrAuthenticationFailed but also wraps that cause, so it shows up in the logs.
+// candidates exist but none pass authentication, ErrCredentialCheckFailed when a checker errored.
 func FindAndAuthenticateJob(
 	ctx context.Context,
 	manager jobLister,
@@ -85,7 +85,7 @@ func FindAndAuthenticateJob(
 	}
 
 	if len(checkErrs) > 0 {
-		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %w", ErrAuthenticationFailed, errors.Join(checkErrs...))
+		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %w", ErrCredentialCheckFailed, errors.Join(checkErrs...))
 	}
 	return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed
 }
@@ -98,7 +98,7 @@ type jobGetter interface {
 // AuthenticateJobForAllProjects authenticates a request against the RenovateJob
 // namespace/jobName, looked up exactly. Its webhook must be enabled and, unlike
 // FindAndAuthenticateJob, must have authentication enabled, since one request reaches every
-// project of the job. Returns ErrNoMatchingJob or ErrAuthenticationFailed (wrapping the cause).
+// project of the job. Returns ErrNoMatchingJob, ErrAuthenticationFailed or ErrCredentialCheckFailed.
 func AuthenticateJobForAllProjects(
 	ctx context.Context,
 	manager jobGetter,
@@ -126,7 +126,7 @@ func AuthenticateJobForAllProjects(
 	id := crdmanager.RenovateJobIdentifier{Name: jobName, Namespace: namespace}
 	ok, err := checker(ctx, id)
 	if err != nil {
-		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %s/%s: %w", ErrAuthenticationFailed, namespace, jobName, err)
+		return crdmanager.RenovateJobIdentifier{}, fmt.Errorf("%w: %s/%s: %w", ErrCredentialCheckFailed, namespace, jobName, err)
 	}
 	if !ok {
 		return crdmanager.RenovateJobIdentifier{}, ErrAuthenticationFailed

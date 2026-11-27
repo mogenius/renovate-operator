@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -440,6 +441,39 @@ func TestGitHubInstallationEventIgnoresDeletedAction(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+}
+
+func TestGitHubRepositoryEventCredentialCheckError(t *testing.T) {
+	job := makeGitHubRenovateJob("renovate", "job1", "example/*")
+	job.Spec.Webhook.Authentication = &api.RenovateWebhookAuth{Enabled: true}
+	mockManager := &mockWebhookManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return []api.RenovateJob{job}, nil
+		},
+		isWebhookTokenValidFunc: func(ctx context.Context, job crdmanager.RenovateJobIdentifier, token string) (bool, error) {
+			return false, errors.New("secret unavailable")
+		},
+	}
+	discovery := &fakeDiscoveryAgent{
+		createFunc: func(ctx context.Context, job api.RenovateJob, options renovate.DiscoveryJobOptions) (string, error) {
+			t.Error("discovery must not start when the credential could not be checked")
+			return "", nil
+		},
+	}
+	server := &Server{manager: mockManager, discovery: discovery, logger: logr.Discard()}
+
+	body, _ := json.Marshal(GitHubRepositoryEvent{
+		Action:     "created",
+		Repository: GitHubRepository{FullName: "example/repo"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/webhook/v1/github", bytes.NewReader(body))
+	req.Header.Set("X-GitHub-Event", "repository")
+	req.Header.Set("Authorization", "Bearer token")
+	w := httptest.NewRecorder()
+	server.githubWebhook(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d: %s", http.StatusInternalServerError, w.Code, w.Body.String())
 	}
 }
 

@@ -12,9 +12,11 @@ import (
 	api "renovate-operator/api/v1alpha1"
 	crdmanager "renovate-operator/internal/crdManager"
 	"renovate-operator/internal/types"
+	"renovate-operator/metricStore"
 
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // A sender that hangs up before the operator answers (GitLab gives up after 10 seconds) must
@@ -93,6 +95,7 @@ func TestScheduleAllProjects(t *testing.T) {
 		url        string
 		headers    map[string]string
 		jobs       []api.RenovateJob
+		checkErr   error
 		batchErr   error
 		wantStatus int
 		wantBatch  bool
@@ -169,6 +172,22 @@ func TestScheduleAllProjects(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
+			name:       "credential check error",
+			url:        "/webhook/v1/schedule?all=true&job=job1&namespace=ns1",
+			headers:    map[string]string{"Authorization": "Bearer " + token},
+			jobs:       []api.RenovateJob{makeTestAuthRenovateJob("ns1", "job1")},
+			checkErr:   errors.New("secret unavailable"),
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "credential check error on the single project path",
+			url:        "/webhook/v1/schedule?job=job1&namespace=ns1&project=org%2Frepo",
+			headers:    map[string]string{"Authorization": "Bearer " + token},
+			jobs:       []api.RenovateJob{makeTestAuthRenovateJob("ns1", "job1")},
+			checkErr:   errors.New("secret unavailable"),
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
 			name:       "batch failure",
 			url:        "/webhook/v1/schedule?all=true&job=job1&namespace=ns1",
 			headers:    map[string]string{"Authorization": "Bearer " + token},
@@ -203,6 +222,9 @@ func TestScheduleAllProjects(t *testing.T) {
 					return tt.jobs, nil
 				},
 				isWebhookTokenValidFunc: func(ctx context.Context, job crdmanager.RenovateJobIdentifier, got string) (bool, error) {
+					if tt.checkErr != nil {
+						return false, tt.checkErr
+					}
 					return got == token, nil
 				},
 				updateProjectStatusBatchedFunc: func(ctx context.Context, fn func(p crdmanager.RenovateProjectStatus) bool, jobId crdmanager.RenovateJobIdentifier, status *types.RenovateStatusUpdate) error {
@@ -262,4 +284,89 @@ func TestScheduleAllProjects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCredentialCheckErrorIsNotASignatureFailure(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metricStore.Register(reg)
+
+	mockManager := &mockWebhookManager{
+		listRenovateJobsFullFunc: func(ctx context.Context) ([]api.RenovateJob, error) {
+			return []api.RenovateJob{makeTestAuthRenovateJob("ns", "job")}, nil
+		},
+		isWebhookSignatureValidFunc: func(ctx context.Context, job crdmanager.RenovateJobIdentifier, signature string, body []byte) (bool, error) {
+			return false, errors.New("secret unavailable")
+		},
+	}
+	server := &Server{manager: mockManager, logger: logr.Discard()}
+
+	body, err := json.Marshal(GitHubEvent{
+		Action: "edited",
+		PullRequest: &GitHubPullRequest{
+			Body: "Updated body with checkbox - [x] <!-- rebase-check -->If you want to rebase/retry this PR",
+		},
+		Repository: GitHubRepository{FullName: "org/repo"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/webhook/v1/github", bytes.NewReader(body))
+	req.Header.Set("X-GitHub-Event", "pull_request")
+	req.Header.Set("X-Hub-Signature-256", "sha256=0000")
+
+	const authFailures = "renovate_operator_webhook_auth_failures_total"
+	const signatureFailures = "renovate_operator_webhook_signature_verification_failures_total"
+	secretErrors := func() float64 {
+		return counterValue(t, reg, authFailures, map[string]string{"provider": "github", "error_type": "secret_error"})
+	}
+	authFailed := func() float64 {
+		return counterValue(t, reg, authFailures, map[string]string{"provider": "github", "error_type": "auth_failed"})
+	}
+	badSignatures := func() float64 {
+		return counterValue(t, reg, signatureFailures, map[string]string{"provider": "github"})
+	}
+	secretErrorsBefore, authFailedBefore, badSignaturesBefore := secretErrors(), authFailed(), badSignatures()
+
+	w := httptest.NewRecorder()
+	server.githubWebhook(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d: %s", http.StatusInternalServerError, w.Code, w.Body.String())
+	}
+	if got := secretErrors() - secretErrorsBefore; got != 1 {
+		t.Errorf("expected one secret_error auth failure, got %v", got)
+	}
+	if got := authFailed() - authFailedBefore; got != 0 {
+		t.Errorf("expected no auth_failed auth failure, got %v", got)
+	}
+	if got := badSignatures() - badSignaturesBefore; got != 0 {
+		t.Errorf("expected no signature verification failure, got %v", got)
+	}
+}
+
+func counterValue(t *testing.T, reg prometheus.Gatherer, name string, labels map[string]string) float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+	series:
+		for _, m := range family.GetMetric() {
+			got := make(map[string]string, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
+				got[l.GetName()] = l.GetValue()
+			}
+			for k, v := range labels {
+				if got[k] != v {
+					continue series
+				}
+			}
+			return m.GetCounter().GetValue()
+		}
+	}
+	return 0
 }

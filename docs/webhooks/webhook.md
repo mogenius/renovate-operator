@@ -147,7 +147,7 @@ All webhook endpoints (`/schedule`, `/github`, `/gitlab`, `/forgejo`, `/gitea`) 
 `/schedule?all=true` does not search: it uses the job named by `namespace` and `job`, as described in
 [Trigger every project of a job](#trigger-every-project-of-a-job).
 
-If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If no job contains the project at all, the request is rejected with `404 Not Found`.
+If multiple jobs match, authentication is tried on each — the first to authenticate wins. If none authenticate, the request is rejected with `401 Unauthorized`. If none authenticate and a credential could not be checked at all, for example because the webhook secret could not be read, the request fails with `500 Internal Server Error` and is counted as a `secret_error`, not as a failed signature. If no job contains the project at all, the request is rejected with `404 Not Found`.
 
 Providing `namespace` and `job` narrows the search and is useful when multiple RenovateJobs could own the same project.
 
