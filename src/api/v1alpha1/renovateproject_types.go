@@ -51,7 +51,8 @@ type LogIssues struct {
 	Issues             []LogIssue `json:"issues,omitempty"`
 	Truncated          bool       `json:"truncated,omitempty"`
 	// AbandonedCount is the number of dependencies Renovate flagged as abandoned
-	// (abandonmentThreshold). Nil when the run had no debug logs, so the count is unknown.
+	// (abandonmentThreshold). Nil when the run logged neither a report with looked-up
+	// dependencies nor debug logs, so the count is unknown.
 	AbandonedCount *int `json:"abandonedCount,omitempty"`
 	// AbandonedDependencies lists abandoned dependencies as "datasource/package",
 	// sorted and capped; AbandonedCount exceeding its length means it was truncated.

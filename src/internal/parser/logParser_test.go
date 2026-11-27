@@ -1452,6 +1452,94 @@ func TestParseRenovateLogs_Abandoned(t *testing.T) {
 	}
 }
 
+// Renovate's report (RENOVATE_REPORT_TYPE=logging, an info line) carries the looked-up
+// dependencies with the same isAbandoned flag the Dependency Dashboard reads, so
+// abandonment is known without debug logs.
+func TestParseRenovateLogs_AbandonedFromReport(t *testing.T) {
+	report := func(packageFiles string) string {
+		return `{"level":30,"msg":"Printing report","report":{"repositories":{"org/repo":{"branches":[],"packageFiles":` + packageFiles + `}}}}`
+	}
+	abandonedReport := report(`{` +
+		`"npm":[` +
+		`{"packageFile":"package.json","deps":[` +
+		`{"datasource":"npm","depName":"request","packageName":"request","isAbandoned":true},` +
+		`{"datasource":"npm","depName":"lodash","packageName":"lodash","isAbandoned":false},` +
+		`{"datasource":"npm","depName":"left-pad","packageName":"left-pad"}]},` +
+		`{"packageFile":"web/package.json","deps":[` +
+		`{"datasource":"npm","depName":"request","packageName":"request","isAbandoned":true}]}],` +
+		`"dockerfile":[{"packageFile":"Dockerfile","deps":[` +
+		`{"datasource":"docker","depName":"busybox","packageName":"library/busybox","isAbandoned":true},` +
+		`{"datasource":"docker","depName":"no-package-name","isAbandoned":true}]}]}`)
+	debugStats := `{"level":20,"msg":"Abandoned package statistics","npm":{"request":"2020-02-11T00:00:00Z"},"docker":{"mirror/busybox":"2019-01-01T00:00:00Z"}}`
+
+	tests := []struct {
+		name      string
+		logs      string
+		wantCount *int
+		wantDeps  []string
+	}{
+		{
+			name:      "report without debug logs - counted per datasource/package, deduplicated",
+			logs:      abandonedReport,
+			wantCount: new(3),
+			wantDeps:  []string{"docker/library/busybox", "docker/no-package-name", "npm/request"},
+		},
+		{
+			name:      "report with looked-up dependencies, none abandoned - zero",
+			logs:      report(`{"npm":[{"packageFile":"package.json","deps":[{"datasource":"npm","depName":"lodash","packageName":"lodash","isAbandoned":false}]}]}`),
+			wantCount: new(0),
+		},
+		{
+			name:      "report without package files (run stopped before lookup) - unknown",
+			logs:      report(`{}`),
+			wantCount: nil,
+		},
+		{
+			// The statistics line names packages as they were looked up (after
+			// packageRules overrides), so merging both sources could count one twice.
+			name:      "debug statistics line wins over the report",
+			logs:      abandonedReport + "\n" + debugStats,
+			wantCount: new(2),
+			wantDeps:  []string{"docker/mirror/busybox", "npm/request"},
+		},
+		{
+			name: "report line longer than 1 MB is still read",
+			logs: report(`{"npm":[{"packageFile":"` + strings.Repeat("x", 2*1024*1024) + `","deps":[` +
+				`{"datasource":"npm","depName":"request","packageName":"request","isAbandoned":true}]}]}`),
+			wantCount: new(1),
+			wantDeps:  []string{"npm/request"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			li := ParseRenovateLogs(tt.logs).LogIssues
+			if li == nil {
+				t.Fatal("LogIssues is nil, want non-nil")
+			}
+			got := li.AbandonedCount
+			if (got == nil) != (tt.wantCount == nil) || (got != nil && *got != *tt.wantCount) {
+				t.Errorf("AbandonedCount = %v, want %v", got, tt.wantCount)
+			}
+			if !slices.Equal(li.AbandonedDependencies, tt.wantDeps) {
+				t.Errorf("AbandonedDependencies = %v, want %v", li.AbandonedDependencies, tt.wantDeps)
+			}
+		})
+	}
+}
+
+// A line longer than bufio.Scanner's 1 MB limit used to end the scan silently, hiding
+// everything after it.
+func TestParseRenovateLogs_ReadsPastVeryLongLines(t *testing.T) {
+	logs := `{"level":20,"msg":"packageFiles with updates","config":"` + strings.Repeat("x", 2*1024*1024) + `"}` + "\n" +
+		`{"level":30,"msg":"Repository finished","result":"done"}`
+
+	got := ParseRenovateLogs(logs).RenovateResultStatus
+	if got == nil || *got != "done" {
+		t.Errorf("RenovateResultStatus = %v, want done", got)
+	}
+}
+
 func TestParseRenovateLogs_AbandonedTruncated(t *testing.T) {
 	var pkgs []string
 	for i := range MaxAbandonedDependencies + 5 {

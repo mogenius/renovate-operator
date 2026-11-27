@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"bufio"
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -25,6 +25,7 @@ const MaxAbandonedDependencies = 50
 
 // abandonedStatsMsg is the debug line Renovate logs once per repository when
 // abandonmentThreshold flagged packages; its fields are {datasource: {package: lastRelease}}.
+// Without debug logs the same packages are read from the "Printing report" line.
 const abandonedStatsMsg = "Abandoned package statistics"
 
 // renovateResultRepositoryChanged is Renovate's "Repository finished" result when it
@@ -103,9 +104,24 @@ type branchesInfoEntry struct {
 	BranchesInfo []branchSummaryItem `json:"branchesInformation"`
 }
 
+// reportDependency picks the fields of a looked-up dependency in the report that
+// identify it and carry Renovate's abandonmentThreshold verdict.
+type reportDependency struct {
+	Datasource  string `json:"datasource"`
+	PackageName string `json:"packageName"`
+	DepName     string `json:"depName"`
+	IsAbandoned bool   `json:"isAbandoned"`
+}
+
 // reportRepositoryItem represents a single repository in the "Printing report" final report.
 type reportRepositoryItem struct {
 	Branches []branchSummaryItem `json:"branches"`
+	// PackageFiles is keyed by manager and holds the dependencies after lookup — the
+	// data Renovate's Dependency Dashboard reads. It is empty when the run stopped
+	// before the lookup finished.
+	PackageFiles map[string][]struct {
+		Deps []reportDependency `json:"deps"`
+	} `json:"packageFiles"`
 }
 
 // reportEntry is a targeted partial-unmarshal struct for "Printing report" messages
@@ -151,15 +167,12 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 	seenMessages := make(map[string]bool)
 	issuesTruncated := false
 	abandoned := make(map[string]bool)
+	reportAbandoned := make(map[string]bool)
+	hasReportedDeps := false
 
-	scanner := bufio.NewScanner(strings.NewReader(logs))
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	// strings.Lines has no line length limit: the report and debug lines carrying every
+	// dependency can exceed bufio.Scanner's buffer, which would end the scan early.
+	for line := range strings.Lines(logs) {
 		var entry renovateLogEntry
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			// Line is not valid JSON, skip it
@@ -318,6 +331,16 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 					for _, b := range repo.Branches {
 						applyBranchSummary(branchMap, b, isActiveBranchResult(b.Result, b.PRNo))
 					}
+					for _, packageFiles := range repo.PackageFiles {
+						hasReportedDeps = true
+						for _, packageFile := range packageFiles {
+							for _, dep := range packageFile.Deps {
+								if dep.IsAbandoned {
+									reportAbandoned[dep.Datasource+"/"+cmp.Or(dep.PackageName, dep.DepName)] = true
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -339,8 +362,17 @@ func ParseRenovateLogs(logs string) *LogParseResult {
 		}
 		if hasDebugLog {
 			logIssues.HasConfigMigration = &hasConfigMigration
-			// Renovate only logs the statistics line when something is abandoned,
-			// so with debug logs present its absence means zero.
+		}
+		// Abandonment is known at any log level from the report's looked-up
+		// dependencies, and at debug level from the statistics line, which Renovate
+		// only logs when something is abandoned (so its absence means zero). Prefer
+		// the statistics line over merging: it covers every base branch and names
+		// packages as looked up, which packageRules overrides can make differ from
+		// the report's names.
+		if len(abandoned) == 0 {
+			abandoned = reportAbandoned
+		}
+		if hasDebugLog || hasReportedDeps {
 			logIssues.AbandonedCount = new(len(abandoned))
 			logIssues.AbandonedDependencies = sortedCapped(abandoned, MaxAbandonedDependencies)
 		}
