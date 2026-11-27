@@ -20,6 +20,12 @@ func GetNameForGithubAppCredentialsSecret(jobName string) string {
 	return githubAppSecretName(jobName, "github-app-credentials")
 }
 
+// GetNameForGithubAppHostRulesSecret names the generated Secret holding the
+// shared hostRules of a GitHubAppInstallationSet.
+func GetNameForGithubAppHostRulesSecret(setName string) string {
+	return githubAppSecretName(setName, "github-app-host-rules")
+}
+
 func githubAppSecretName(jobName, suffix string) string {
 	name := utils.KubernetesCompatibleName(jobName)
 	hash := sha256.Sum256([]byte(name))

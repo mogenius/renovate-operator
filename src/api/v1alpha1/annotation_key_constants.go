@@ -55,3 +55,9 @@ const TriggerResyncAnnotationKey = GroupName + "/resync"
 // GitHubAppInstallationSet suspended because its installation is suspended, so
 // only that suspend is released when the installation is unsuspended.
 const SuspendedByInstallationAnnotationKey = GroupName + "/suspended-by-installation"
+
+// SharedInstallationsAnnotationKey records on a GitHubAppInstallationSet's
+// hostRules Secret which installations its tokens were minted for, as a sorted,
+// comma-separated list of id=login pairs. A different selection rebuilds the
+// Secret before its tokens expire.
+const SharedInstallationsAnnotationKey = GroupName + "/shared-installations"
